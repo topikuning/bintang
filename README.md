@@ -59,10 +59,15 @@ pnpm dev
 
 ## Default credentials (dari seed)
 
-| Role          | Email                 | Password   |
-| ------------- | --------------------- | ---------- |
-| Superadmin    | admin@bintang.me   | admin123   |
-| Project Admin | pm1@bintang.me     | pm123      |
+| Role             | Email                 | Password   | Akses               |
+| ---------------- | --------------------- | ---------- | ------------------- |
+| Superadmin       | admin@bintang.me      | admin123   | Semua proyek        |
+| PM Budi          | budi@bintang.me       | pm123      | PRJ-001, PRJ-002    |
+| PM Sari          | sari@bintang.me       | pm123      | PRJ-003, PRJ-004    |
+| PM Agus          | agus@bintang.me       | pm123      | PRJ-005             |
+
+Demo data: 3 perusahaan, 5 proyek (status sehat / waspada / overbudget / minus),
+12 kategori, 7 vendor/client, 30+ transaksi, 6 invoice (paid / partial / overdue / draft), 3 PO.
 
 ## Struktur
 
