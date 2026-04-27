@@ -334,8 +334,7 @@ async def init() -> None:
 
         # PRJ-003 (OVERBUDGET): out 240jt, budget 200jt = 120%
         all_txs += [
-            tx(p3, 75, TxnType.IN, c_dp, 60_000_000, "PT Klien Industri Maju", vc=None,
-               party_name="PT Klien Industri Maju",
+            tx(p3, 75, TxnType.IN, c_dp, 60_000_000, "PT Klien Industri Maju",
                desc="DP renovasi pabrik"),
             tx(p3, 50, TxnType.IN, c_termin, 80_000_000, "PT Klien Industri Maju",
                desc="Termin 1"),
