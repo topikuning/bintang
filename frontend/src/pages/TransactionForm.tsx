@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Input";
 import AttachmentUploader from "@/components/AttachmentUploader";
+import PendingAttachmentPicker from "@/components/PendingAttachmentPicker";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import type { Category, Page, Project, Transaction, VendorClient } from "@/types";
 import { todayISO } from "@/lib/utils";
@@ -26,6 +27,8 @@ export default function TransactionForm() {
     party_type: "COMPANY",
   });
   const [attachments, setAttachments] = useState<any[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const projectsQ = useQuery({
     queryKey: ["projects-light"],
@@ -65,8 +68,27 @@ export default function TransactionForm() {
         ...data,
         amount: String(data.amount ?? "0"),
       };
-      if (isEdit) return (await api.patch(`/transactions/${id}`, payload)).data;
-      return (await api.post("/transactions", payload)).data;
+      const saved: Transaction = isEdit
+        ? (await api.patch(`/transactions/${id}`, payload)).data
+        : (await api.post("/transactions", payload)).data;
+
+      // Setelah create, upload file yang sudah dipilih (mode Baru)
+      if (!isEdit && pendingFiles.length > 0) {
+        setUploadError(null);
+        for (const f of pendingFiles) {
+          try {
+            const fd = new FormData();
+            fd.append("file", f);
+            await api.post(`/transactions/${saved.id}/attachments`, fd, {
+              headers: { "Content-Type": "multipart/form-data" },
+            });
+          } catch (e: any) {
+            setUploadError(`Gagal upload ${f.name}: ${e?.response?.data?.detail || e.message}`);
+          }
+        }
+        setPendingFiles([]);
+      }
+      return saved;
     },
     onSuccess: (res: Transaction) => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
@@ -187,8 +209,8 @@ export default function TransactionForm() {
         </Field>
       </Card>
 
-      {isEdit && (
-        <Card className="mt-3">
+      <Card className="mt-3">
+        {isEdit ? (
           <AttachmentUploader
             attachments={attachments as any}
             onChange={setAttachments as any}
@@ -196,8 +218,11 @@ export default function TransactionForm() {
             deleteUrl={(aid) => `/transactions/${id}/attachments/${aid}`}
             disabled={isLocked}
           />
-        </Card>
-      )}
+        ) : (
+          <PendingAttachmentPicker files={pendingFiles} onChange={setPendingFiles} />
+        )}
+        {uploadError && <div className="mt-2 text-xs text-rose-600">{uploadError}</div>}
+      </Card>
 
       <div className="mt-3 flex flex-wrap gap-2">
         <Button onClick={() => save.mutate()} disabled={save.isPending || isLocked}>
