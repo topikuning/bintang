@@ -5,9 +5,10 @@ import { Card, StatCard } from "@/components/ui/Card";
 import PageHeader from "@/components/ui/PageHeader";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import CashflowChart from "@/components/charts/CashflowChart";
+import SpendingPie from "@/components/charts/SpendingPie";
 import BudgetProgress from "@/components/BudgetProgress";
 import { formatIDR } from "@/lib/utils";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Flame, TrendingUp, TrendingDown } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 
 export default function DashboardGlobal() {
@@ -66,10 +67,82 @@ export default function DashboardGlobal() {
             </Card>
           )}
 
+          {data.top_spender && (
+            <Card className="mt-3 border-rose-200 bg-rose-50/60">
+              <div className="flex items-start gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-full bg-rose-100 text-rose-600">
+                  <Flame className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] uppercase tracking-wide text-rose-700/80 font-medium">
+                    Proyek Paling Boros
+                  </div>
+                  <div className="font-semibold truncate">{data.top_spender.name}</div>
+                  <div className="text-sm tabular-nums">
+                    Rp {formatIDR(data.top_spender.total)}
+                  </div>
+                </div>
+                {data.totals.out > 0 && (
+                  <div className="text-right shrink-0">
+                    <div className="text-[11px] text-slate-500">% dari total</div>
+                    <div className="text-base font-bold tabular-nums text-rose-700">
+                      {((data.top_spender.total / data.totals.out) * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
+
           {data.monthly_cashflow?.length > 0 && (
             <Card className="mt-3">
-              <div className="mb-2 text-sm font-semibold">Arus Kas Bulanan</div>
+              <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                <TrendingUp className="h-4 w-4 text-emerald-600" />
+                <TrendingDown className="h-4 w-4 text-rose-600" />
+                Arus Kas Bulanan
+              </div>
               <CashflowChart data={data.monthly_cashflow} />
+            </Card>
+          )}
+
+          {data.spending_by_project?.length > 0 && (
+            <Card className="mt-3">
+              <div className="mb-1 text-sm font-semibold">Proporsi Pengeluaran per Proyek</div>
+              <div className="text-[11px] text-slate-500 mb-1">
+                Total Rp {formatIDR(data.totals.out)}
+              </div>
+              <SpendingPie
+                data={data.spending_by_project.map((s: any) => ({
+                  name: s.name,
+                  value: s.total,
+                }))}
+              />
+            </Card>
+          )}
+
+          {data.spending_by_category?.length > 0 && (
+            <Card className="mt-3">
+              <div className="mb-2 text-sm font-semibold">Proporsi Pengeluaran per Kategori</div>
+              <SpendingPie
+                data={data.spending_by_category.map((s: any) => ({
+                  name: s.category,
+                  value: s.total,
+                }))}
+              />
+              <ul className="mt-2 space-y-1 text-xs">
+                {data.spending_by_category.slice(0, 5).map((c: any) => {
+                  const pct = data.totals.out > 0 ? (c.total / data.totals.out) * 100 : 0;
+                  return (
+                    <li key={c.category} className="flex justify-between">
+                      <span className="text-slate-700 truncate">{c.category}</span>
+                      <span className="tabular-nums font-medium">
+                        Rp {formatIDR(c.total)}{" "}
+                        <span className="text-slate-500">({pct.toFixed(1)}%)</span>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
             </Card>
           )}
 

@@ -5,6 +5,7 @@ from app.models.models import (  # noqa: F401
     Company,
     Invoice,
     InvoiceAttachment,
+    InvoiceItem,
     POItem,
     Project,
     ProjectUser,

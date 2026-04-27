@@ -222,13 +222,23 @@ export default function POForm() {
           <Button variant="danger" onClick={() => action.mutate("cancel")}>Batalkan</Button>
         )}
         {isEdit && (
-          <a
-            href={`${import.meta.env.VITE_API_BASE_URL || "/api/v1"}/purchase-orders/${id}/pdf`}
-            target="_blank"
-            rel="noopener noreferrer"
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={async () => {
+              try {
+                const res = await api.get(`/purchase-orders/${id}/pdf`, { responseType: "blob" });
+                const blob = new Blob([res.data], { type: "application/pdf" });
+                const url = URL.createObjectURL(blob);
+                window.open(url, "_blank");
+                setTimeout(() => URL.revokeObjectURL(url), 60000);
+              } catch (e) {
+                alert("Gagal membuka PDF");
+              }
+            }}
           >
-            <Button type="button" variant="secondary"><Printer className="h-4 w-4" /> Cetak PDF</Button>
-          </a>
+            <Printer className="h-4 w-4" /> Cetak PDF
+          </Button>
         )}
       </div>
     </div>

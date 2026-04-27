@@ -86,6 +86,21 @@ class CancelIn(BaseModel):
 
 
 # --- Invoice ---
+class InvoiceItemIn(BaseModel):
+    description: str
+    quantity: Decimal = Decimal("1")
+    unit: str | None = None
+    unit_price: Decimal = Decimal("0")
+
+
+class InvoiceItemOut(InvoiceItemIn):
+    id: int
+    subtotal: Decimal
+
+    class Config:
+        from_attributes = True
+
+
 class InvoiceBase(BaseModel):
     number: str
     project_id: int
@@ -94,14 +109,12 @@ class InvoiceBase(BaseModel):
     due_date: date | None = None
     vendor_client_id: int | None = None
     party_name: str | None = None
-    subtotal: Decimal = Decimal("0")
     tax: Decimal = Decimal("0")
-    total: Decimal = Decimal("0")
     notes: str | None = None
 
 
 class InvoiceCreate(InvoiceBase):
-    pass
+    items: list[InvoiceItemIn] = []
 
 
 class InvoiceUpdate(BaseModel):
@@ -110,21 +123,23 @@ class InvoiceUpdate(BaseModel):
     due_date: date | None = None
     vendor_client_id: int | None = None
     party_name: str | None = None
-    subtotal: Decimal | None = None
     tax: Decimal | None = None
-    total: Decimal | None = None
     notes: str | None = None
     status: InvoiceStatus | None = None
+    items: list[InvoiceItemIn] | None = None
 
 
 class InvoiceOut(InvoiceBase):
     id: int
+    subtotal: Decimal
+    total: Decimal
     status: InvoiceStatus
     created_by_id: int
     created_at: datetime
     paid_amount: Decimal = Decimal("0")
     remaining: Decimal = Decimal("0")
     attachments: list[AttachmentOut] = []
+    items: list[InvoiceItemOut] = []
 
     class Config:
         from_attributes = True

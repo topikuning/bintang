@@ -5,6 +5,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import { Card, StatCard } from "@/components/ui/Card";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import CashflowChart from "@/components/charts/CashflowChart";
+import SpendingPie from "@/components/charts/SpendingPie";
 import BudgetProgress from "@/components/BudgetProgress";
 import { formatDate, formatIDR } from "@/lib/utils";
 import { AlertTriangle } from "lucide-react";
@@ -89,13 +90,22 @@ export default function DashboardProject() {
       {data.by_category?.length > 0 && (
         <Card className="mt-3">
           <div className="mb-2 text-sm font-semibold">Pengeluaran per Kategori</div>
-          <ul className="space-y-1.5">
-            {data.by_category.map((c: any) => (
-              <li key={c.category} className="flex justify-between text-sm">
-                <span className="text-slate-700">{c.category}</span>
-                <span className="tabular-nums font-medium">Rp {formatIDR(c.total)}</span>
-              </li>
-            ))}
+          <SpendingPie
+            data={data.by_category.map((c: any) => ({ name: c.category, value: c.total }))}
+          />
+          <ul className="mt-2 space-y-1.5">
+            {data.by_category.map((c: any) => {
+              const pct = data.totals.out > 0 ? (c.total / data.totals.out) * 100 : 0;
+              return (
+                <li key={c.category} className="flex justify-between text-sm">
+                  <span className="text-slate-700">{c.category}</span>
+                  <span className="tabular-nums font-medium">
+                    Rp {formatIDR(c.total)}{" "}
+                    <span className="text-slate-500 text-xs">({pct.toFixed(1)}%)</span>
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </Card>
       )}

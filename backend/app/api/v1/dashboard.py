@@ -170,6 +170,36 @@ async def global_dashboard(
 
     proj_summary.sort(key=lambda x: x["balance"])
 
+    # spending by category (OUT, verified)
+    cat_q = (
+        select(Category.name, func.coalesce(func.sum(Transaction.amount), 0))
+        .join(Category, Category.id == Transaction.category_id, isouter=True)
+        .where(
+            Transaction.project_id.in_(project_ids),
+            Transaction.type == TxnType.OUT,
+            Transaction.status == TxnStatus.VERIFIED,
+            Transaction.deleted_at.is_(None),
+        )
+        .group_by(Category.name)
+        .order_by(func.sum(Transaction.amount).desc())
+    )
+    cat_rows = (await db.execute(cat_q)).all()
+    spending_by_category = [
+        {"category": (r[0] or "Tanpa Kategori"), "total": float(r[1])} for r in cat_rows
+    ]
+
+    # spending by project (OUT, verified) -- already collected via proj_summary
+    spending_by_project = sorted(
+        [
+            {"project_id": p["id"], "name": p["name"], "total": p["total_out"]}
+            for p in proj_summary
+            if p["total_out"] > 0
+        ],
+        key=lambda x: x["total"],
+        reverse=True,
+    )
+    top_spender = spending_by_project[0] if spending_by_project else None
+
     warnings: list[str] = []
     if minus_count:
         warnings.append(f"{minus_count} proyek bersaldo minus")
@@ -190,6 +220,9 @@ async def global_dashboard(
         "total_projects": len(projects),
         "minus_projects": minus_count,
         "biggest_project": {"id": biggest["id"], "name": biggest["name"], "total": float(biggest["total"])} if biggest["id"] else None,
+        "top_spender": top_spender,
+        "spending_by_project": spending_by_project,
+        "spending_by_category": spending_by_category,
         "monthly_cashflow": monthly,
         "projects": proj_summary,
         "warnings": warnings,

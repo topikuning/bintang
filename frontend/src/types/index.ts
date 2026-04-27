@@ -115,6 +115,15 @@ export interface Transaction {
   attachments: Attachment[];
 }
 
+export interface InvoiceItem {
+  id: number;
+  description: string;
+  quantity: string;
+  unit?: string | null;
+  unit_price: string;
+  subtotal: string;
+}
+
 export interface Invoice {
   id: number;
   number: string;
@@ -134,6 +143,7 @@ export interface Invoice {
   paid_amount: string;
   remaining: string;
   attachments: Attachment[];
+  items: InvoiceItem[];
 }
 
 export interface POItem {

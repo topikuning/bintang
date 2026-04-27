@@ -298,6 +298,23 @@ class Invoice(TimestampMixin, Base):
     attachments: Mapped[list[InvoiceAttachment]] = relationship(
         back_populates="invoice", cascade="all,delete-orphan"
     )
+    items: Mapped[list[InvoiceItem]] = relationship(
+        back_populates="invoice", cascade="all,delete-orphan", order_by="InvoiceItem.id"
+    )
+
+
+class InvoiceItem(TimestampMixin, Base):
+    __tablename__ = "invoice_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id", ondelete="CASCADE"))
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), default=Decimal("1"))
+    unit: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
+    subtotal: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
+
+    invoice: Mapped[Invoice] = relationship(back_populates="items")
 
 
 class InvoiceAttachment(TimestampMixin, Base):

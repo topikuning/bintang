@@ -16,6 +16,7 @@ from app.models.models import (
     CategoryType,
     Company,
     Invoice,
+    InvoiceItem,
     InvoiceStatus,
     InvoiceType,
     PartyType,
@@ -151,6 +152,16 @@ async def init() -> None:
             notes="Tagihan termin 2",
             created_by_id=admin.id,
         )
+        inv.items.append(InvoiceItem(
+            description="Pekerjaan struktur lantai 2",
+            quantity=Decimal("1"), unit="lot",
+            unit_price=Decimal("100000000"), subtotal=Decimal("100000000"),
+        ))
+        inv.items.append(InvoiceItem(
+            description="Pekerjaan finishing dinding",
+            quantity=Decimal("1"), unit="lot",
+            unit_price=Decimal("50000000"), subtotal=Decimal("50000000"),
+        ))
         db.add(inv)
 
         await db.commit()

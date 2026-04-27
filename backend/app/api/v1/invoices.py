@@ -18,6 +18,7 @@ from app.models.models import (
     AuditAction,
     Invoice,
     InvoiceAttachment,
+    InvoiceItem,
     InvoiceStatus,
     User,
     UserRole,
@@ -26,6 +27,8 @@ from app.schemas.common import Page
 from app.schemas.finance import (
     AttachmentOut,
     InvoiceCreate,
+    InvoiceItemIn,
+    InvoiceItemOut,
     InvoiceOut,
     InvoiceUpdate,
 )
@@ -36,13 +39,27 @@ from app.services.storage.local import save_upload
 router = APIRouter()
 
 
+def _compute_totals(items: list[InvoiceItem], tax: Decimal) -> tuple[Decimal, Decimal]:
+    subtotal = Decimal("0")
+    for it in items:
+        it.subtotal = Decimal(it.unit_price) * Decimal(it.quantity)
+        subtotal += it.subtotal
+    total = subtotal + Decimal(tax or 0)
+    return subtotal, total
+
+
 async def _to_out(db: AsyncSession, inv: Invoice) -> InvoiceOut:
     paid = await paid_amount(db, inv.id)
     out = InvoiceOut.model_validate(inv)
     out.attachments = [AttachmentOut.model_validate(a) for a in inv.attachments]
+    out.items = [InvoiceItemOut.model_validate(it) for it in inv.items]
     out.paid_amount = paid
     out.remaining = max(Decimal(inv.total or 0) - paid, Decimal("0"))
     return out
+
+
+def _full_options():
+    return [selectinload(Invoice.attachments), selectinload(Invoice.items)]
 
 
 @router.get("", response_model=Page[InvoiceOut])
@@ -83,7 +100,7 @@ async def list_invoices(
         stmt = stmt.where((Invoice.number.ilike(like)) | (Invoice.party_name.ilike(like)))
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     stmt = (
-        stmt.options(selectinload(Invoice.attachments))
+        stmt.options(*_full_options())
         .order_by(Invoice.invoice_date.desc(), Invoice.id.desc())
         .offset((page - 1) * size)
         .limit(size)
@@ -100,14 +117,26 @@ async def create_invoice(
     user: User = Depends(get_current_user),
 ) -> InvoiceOut:
     await ensure_project_access(db, user, payload.project_id)
-    inv = Invoice(**payload.model_dump(), status=InvoiceStatus.DRAFT, created_by_id=user.id)
+    data = payload.model_dump(exclude={"items"})
+    inv = Invoice(**data, status=InvoiceStatus.DRAFT, created_by_id=user.id)
+    for it in payload.items:
+        inv.items.append(InvoiceItem(
+            description=it.description,
+            quantity=it.quantity,
+            unit=it.unit,
+            unit_price=it.unit_price,
+            subtotal=Decimal(it.unit_price) * Decimal(it.quantity),
+        ))
+    sub, tot = _compute_totals(inv.items, inv.tax)
+    inv.subtotal = sub
+    inv.total = tot
     db.add(inv)
     await db.flush()
     await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
               action=AuditAction.CREATE, after=snapshot(inv))
     await db.commit()
     res = await db.execute(
-        select(Invoice).options(selectinload(Invoice.attachments)).where(Invoice.id == inv.id)
+        select(Invoice).options(*_full_options()).where(Invoice.id == inv.id)
     )
     return await _to_out(db, res.scalar_one())
 
@@ -119,7 +148,7 @@ async def get_invoice(
     user: User = Depends(get_current_user),
 ) -> InvoiceOut:
     res = await db.execute(
-        select(Invoice).options(selectinload(Invoice.attachments)).where(Invoice.id == iid)
+        select(Invoice).options(*_full_options()).where(Invoice.id == iid)
     )
     inv = res.scalar_one_or_none()
     if not inv or inv.deleted_at is not None:
@@ -135,19 +164,43 @@ async def update_invoice(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> InvoiceOut:
-    inv = await db.get(Invoice, iid)
+    res = await db.execute(
+        select(Invoice).options(*_full_options()).where(Invoice.id == iid)
+    )
+    inv = res.scalar_one_or_none()
     if not inv or inv.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, inv.project_id)
     before = snapshot(inv)
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    items_data = data.pop("items", None)
+    for k, v in data.items():
         setattr(inv, k, v)
+    if items_data:
+        inv.items.clear()
+        await db.flush()
+        for it in items_data:
+            inv.items.append(InvoiceItem(
+                description=it["description"],
+                quantity=Decimal(str(it.get("quantity", 1))),
+                unit=it.get("unit"),
+                unit_price=Decimal(str(it.get("unit_price", 0))),
+                subtotal=Decimal(str(it.get("unit_price", 0))) * Decimal(str(it.get("quantity", 1))),
+            ))
+    if inv.items:
+        # ada items -- subtotal selalu mengikuti item
+        sub, tot = _compute_totals(inv.items, inv.tax)
+        inv.subtotal = sub
+        inv.total = tot
+    else:
+        # data legacy tanpa items: pertahankan subtotal, total = subtotal + tax
+        inv.total = Decimal(inv.subtotal or 0) + Decimal(inv.tax or 0)
     await recompute_invoice_status(db, inv)
     await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
               action=AuditAction.UPDATE, before=before, after=snapshot(inv))
     await db.commit()
     res = await db.execute(
-        select(Invoice).options(selectinload(Invoice.attachments)).where(Invoice.id == inv.id)
+        select(Invoice).options(*_full_options()).where(Invoice.id == inv.id)
     )
     return await _to_out(db, res.scalar_one())
 
@@ -170,7 +223,7 @@ async def issue_invoice(
               action=AuditAction.UPDATE, note="issued")
     await db.commit()
     res = await db.execute(
-        select(Invoice).options(selectinload(Invoice.attachments)).where(Invoice.id == inv.id)
+        select(Invoice).options(*_full_options()).where(Invoice.id == inv.id)
     )
     return await _to_out(db, res.scalar_one())
 
@@ -189,7 +242,7 @@ async def cancel_invoice(
               action=AuditAction.CANCEL)
     await db.commit()
     res = await db.execute(
-        select(Invoice).options(selectinload(Invoice.attachments)).where(Invoice.id == inv.id)
+        select(Invoice).options(*_full_options()).where(Invoice.id == inv.id)
     )
     return await _to_out(db, res.scalar_one())
 
