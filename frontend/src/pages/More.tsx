@@ -13,6 +13,7 @@ import {
   LogOut,
   Settings as SettingsIcon,
   Sparkles,
+  Upload,
 } from "lucide-react";
 
 const items = [
@@ -24,6 +25,7 @@ const items = [
 ];
 
 const adminOnly = [
+  { to: "/imports", icon: Upload, label: "Import Data (XLSX)" },
   { to: "/users", icon: ShieldCheck, label: "Pengguna" },
   { to: "/audit-logs", icon: ScrollText, label: "Audit Log" },
 ];

@@ -17,6 +17,7 @@ import POPage from "@/pages/PurchaseOrders";
 import POForm from "@/pages/PurchaseOrderForm";
 import ReportsPage from "@/pages/Reports";
 import AuditLogPage from "@/pages/AuditLog";
+import ImportsPage from "@/pages/Imports";
 import SettingsPage from "@/pages/Settings";
 import MorePage from "@/pages/More";
 
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="users" element={<UsersPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="audit-logs" element={<AuditLogPage />} />
+        <Route path="imports" element={<ImportsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="more" element={<MorePage />} />
       </Route>

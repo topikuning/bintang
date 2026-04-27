@@ -7,6 +7,7 @@ from app.api.v1 import (
     categories,
     companies,
     dashboard,
+    imports,
     invoices,
     ocr,
     projects,
@@ -35,4 +36,5 @@ api_router.include_router(attachments.router, prefix="/attachments", tags=["atta
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(audit_logs.router, prefix="/audit-logs", tags=["audit-logs"])
+api_router.include_router(imports.router, prefix="/imports", tags=["imports"])
 api_router.include_router(ocr.router, prefix="/ocr", tags=["ocr"])
