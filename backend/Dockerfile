@@ -13,8 +13,9 @@ RUN pip install --no-cache-dir uv \
  && uv pip install --system --no-cache .
 
 ENV PYTHONUNBUFFERED=1 \
-    UPLOAD_DIR=/data/uploads
+    UPLOAD_DIR=/data/uploads \
+    PORT=8000
 RUN mkdir -p /data/uploads
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
