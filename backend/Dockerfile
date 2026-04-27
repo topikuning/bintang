@@ -7,10 +7,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 COPY app ./app
 RUN pip install --no-cache-dir uv \
- && uv pip install --system --no-cache -e .
+ && uv pip install --system --no-cache .
 
 ENV PYTHONUNBUFFERED=1 \
     UPLOAD_DIR=/data/uploads
