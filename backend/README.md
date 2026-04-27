@@ -21,5 +21,5 @@ uvicorn app.main:app --reload --port 8000
 Swagger UI: http://localhost:8000/docs
 
 ## Default credentials (dari seed)
-- Superadmin: `admin@bintang.local` / `admin123`
-- Project admin: `pm1@bintang.local` / `pm123`
+- Superadmin: `admin@bintang.me` / `admin123`
+- Project admin: `pm1@bintang.me` / `pm123`

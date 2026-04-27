@@ -61,8 +61,8 @@ pnpm dev
 
 | Role          | Email                 | Password   |
 | ------------- | --------------------- | ---------- |
-| Superadmin    | admin@bintang.local   | admin123   |
-| Project Admin | pm1@bintang.local     | pm123      |
+| Superadmin    | admin@bintang.me   | admin123   |
+| Project Admin | pm1@bintang.me     | pm123      |
 
 ## Struktur
 

@@ -38,20 +38,20 @@ async def init() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
     async with SessionLocal() as db:
-        existing = (await db.execute(select(User).where(User.email == "admin@bintang.local"))).scalar_one_or_none()
+        existing = (await db.execute(select(User).where(User.email == "admin@bintang.me"))).scalar_one_or_none()
         if existing:
             print("Seed already applied. Skipping.")
             return
 
         admin = User(
-            email="admin@bintang.local",
+            email="admin@bintang.me",
             password_hash=hash_password("admin123"),
             name="Super Admin",
             role=UserRole.SUPERADMIN,
             is_active=True,
         )
         pm1 = User(
-            email="pm1@bintang.local",
+            email="pm1@bintang.me",
             password_hash=hash_password("pm123"),
             name="Pak Budi (PM)",
             role=UserRole.PROJECT_ADMIN,
@@ -154,7 +154,7 @@ async def init() -> None:
         db.add(inv)
 
         await db.commit()
-        print("Seed applied. Login as admin@bintang.local / admin123 (or pm1@bintang.local / pm123)")
+        print("Seed applied. Login as admin@bintang.me / admin123 (or pm1@bintang.me / pm123)")
 
 
 def main() -> None:

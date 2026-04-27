@@ -10,7 +10,7 @@ export default function LoginPage() {
   const setToken = useAuthStore((s) => s.setToken);
   const setUser = useAuthStore((s) => s.setUser);
 
-  const [email, setEmail] = useState("admin@bintang.local");
+  const [email, setEmail] = useState("admin@bintang.me");
   const [password, setPassword] = useState("admin123");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +71,7 @@ export default function LoginPage() {
           </Button>
         </form>
         <p className="mt-4 text-center text-xs text-slate-500">
-          Demo: admin@bintang.local / admin123
+          Demo: admin@bintang.me / admin123
         </p>
       </div>
     </div>
