@@ -1,0 +1,26 @@
+services:
+  backend:
+    build: ./backend
+    environment:
+      APP_ENV: prod
+      SECRET_KEY: ${SECRET_KEY:-please-change-me-32-characters-min}
+      DATABASE_URL: ${DATABASE_URL:-sqlite+aiosqlite:////data/bintang.db}
+      UPLOAD_DIR: /data/uploads
+      ALLOWED_ORIGINS: http://localhost,http://localhost:8080
+    volumes:
+      - bintang-data:/data
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api/v1
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  bintang-data:

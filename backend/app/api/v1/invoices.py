@@ -1,0 +1,231 @@
+from datetime import date as date_type
+from decimal import Decimal
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.core.deps import (
+    ensure_project_access,
+    get_current_user,
+    require_superadmin,
+    user_project_ids,
+)
+from app.db.session import get_db
+from app.models.models import (
+    AuditAction,
+    Invoice,
+    InvoiceAttachment,
+    InvoiceStatus,
+    User,
+    UserRole,
+)
+from app.schemas.common import Page
+from app.schemas.finance import (
+    AttachmentOut,
+    InvoiceCreate,
+    InvoiceOut,
+    InvoiceUpdate,
+)
+from app.services.audit import log, snapshot
+from app.services.invoice_status import paid_amount, recompute_invoice_status
+from app.services.storage.local import save_upload
+
+router = APIRouter()
+
+
+async def _to_out(db: AsyncSession, inv: Invoice) -> InvoiceOut:
+    paid = await paid_amount(db, inv.id)
+    out = InvoiceOut.model_validate(inv)
+    out.attachments = [AttachmentOut.model_validate(a) for a in inv.attachments]
+    out.paid_amount = paid
+    out.remaining = max(Decimal(inv.total or 0) - paid, Decimal("0"))
+    return out
+
+
+@router.get("", response_model=Page[InvoiceOut])
+async def list_invoices(
+    project_id: int | None = None,
+    type: str | None = None,
+    status: InvoiceStatus | None = None,
+    vendor_client_id: int | None = None,
+    date_from: date_type | None = None,
+    date_to: date_type | None = None,
+    q: str | None = None,
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Page[InvoiceOut]:
+    stmt = select(Invoice).where(Invoice.deleted_at.is_(None))
+    if user.role != UserRole.SUPERADMIN:
+        ids = await user_project_ids(db, user)
+        if not ids:
+            return Page(items=[], total=0, page=page, size=size)
+        stmt = stmt.where(Invoice.project_id.in_(ids))
+    if project_id:
+        await ensure_project_access(db, user, project_id)
+        stmt = stmt.where(Invoice.project_id == project_id)
+    if type:
+        stmt = stmt.where(Invoice.type == type)
+    if status:
+        stmt = stmt.where(Invoice.status == status)
+    if vendor_client_id:
+        stmt = stmt.where(Invoice.vendor_client_id == vendor_client_id)
+    if date_from:
+        stmt = stmt.where(Invoice.invoice_date >= date_from)
+    if date_to:
+        stmt = stmt.where(Invoice.invoice_date <= date_to)
+    if q:
+        like = f"%{q}%"
+        stmt = stmt.where((Invoice.number.ilike(like)) | (Invoice.party_name.ilike(like)))
+    total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    stmt = (
+        stmt.options(selectinload(Invoice.attachments))
+        .order_by(Invoice.invoice_date.desc(), Invoice.id.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    )
+    items = (await db.execute(stmt)).scalars().all()
+    out_items = [await _to_out(db, i) for i in items]
+    return Page(items=out_items, total=total, page=page, size=size)
+
+
+@router.post("", response_model=InvoiceOut, status_code=201)
+async def create_invoice(
+    payload: InvoiceCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> InvoiceOut:
+    await ensure_project_access(db, user, payload.project_id)
+    inv = Invoice(**payload.model_dump(), status=InvoiceStatus.DRAFT, created_by_id=user.id)
+    db.add(inv)
+    await db.flush()
+    await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
+              action=AuditAction.CREATE, after=snapshot(inv))
+    await db.commit()
+    res = await db.execute(
+        select(Invoice).options(selectinload(Invoice.attachments)).where(Invoice.id == inv.id)
+    )
+    return await _to_out(db, res.scalar_one())
+
+
+@router.get("/{iid}", response_model=InvoiceOut)
+async def get_invoice(
+    iid: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> InvoiceOut:
+    res = await db.execute(
+        select(Invoice).options(selectinload(Invoice.attachments)).where(Invoice.id == iid)
+    )
+    inv = res.scalar_one_or_none()
+    if not inv or inv.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    await ensure_project_access(db, user, inv.project_id)
+    return await _to_out(db, inv)
+
+
+@router.patch("/{iid}", response_model=InvoiceOut)
+async def update_invoice(
+    iid: int,
+    payload: InvoiceUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> InvoiceOut:
+    inv = await db.get(Invoice, iid)
+    if not inv or inv.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    await ensure_project_access(db, user, inv.project_id)
+    before = snapshot(inv)
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(inv, k, v)
+    await recompute_invoice_status(db, inv)
+    await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
+              action=AuditAction.UPDATE, before=before, after=snapshot(inv))
+    await db.commit()
+    res = await db.execute(
+        select(Invoice).options(selectinload(Invoice.attachments)).where(Invoice.id == inv.id)
+    )
+    return await _to_out(db, res.scalar_one())
+
+
+@router.post("/{iid}/issue", response_model=InvoiceOut)
+async def issue_invoice(
+    iid: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> InvoiceOut:
+    inv = await db.get(Invoice, iid)
+    if not inv or inv.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    await ensure_project_access(db, user, inv.project_id)
+    if inv.status != InvoiceStatus.DRAFT:
+        raise HTTPException(409, "invalid_state")
+    inv.status = InvoiceStatus.ISSUED
+    await recompute_invoice_status(db, inv)
+    await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
+              action=AuditAction.UPDATE, note="issued")
+    await db.commit()
+    res = await db.execute(
+        select(Invoice).options(selectinload(Invoice.attachments)).where(Invoice.id == inv.id)
+    )
+    return await _to_out(db, res.scalar_one())
+
+
+@router.post("/{iid}/cancel", response_model=InvoiceOut)
+async def cancel_invoice(
+    iid: int,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_superadmin),
+) -> InvoiceOut:
+    inv = await db.get(Invoice, iid)
+    if not inv or inv.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    inv.status = InvoiceStatus.CANCELLED
+    await log(db, user_id=admin.id, entity="invoice", entity_id=inv.id,
+              action=AuditAction.CANCEL)
+    await db.commit()
+    res = await db.execute(
+        select(Invoice).options(selectinload(Invoice.attachments)).where(Invoice.id == inv.id)
+    )
+    return await _to_out(db, res.scalar_one())
+
+
+@router.delete("/{iid}", status_code=204)
+async def delete_invoice(
+    iid: int,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_superadmin),
+) -> None:
+    inv = await db.get(Invoice, iid)
+    if not inv or inv.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    from sqlalchemy import func as sa_func
+    inv.deleted_at = sa_func.now()
+    await log(db, user_id=admin.id, entity="invoice", entity_id=inv.id,
+              action=AuditAction.DELETE)
+    await db.commit()
+
+
+@router.post("/{iid}/attachments", response_model=AttachmentOut, status_code=201)
+async def upload_invoice_attachment(
+    iid: int,
+    file: Annotated[UploadFile, File(...)],
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> AttachmentOut:
+    inv = await db.get(Invoice, iid)
+    if not inv or inv.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    await ensure_project_access(db, user, inv.project_id)
+    meta = await save_upload(file, subdir=f"invoices/{inv.id}")
+    att = InvoiceAttachment(invoice_id=inv.id, uploaded_by_id=user.id, **meta)
+    db.add(att)
+    await log(db, user_id=user.id, entity="invoice_attachment", entity_id=inv.id,
+              action=AuditAction.CREATE, after={"file": meta["file_name"]})
+    await db.commit()
+    await db.refresh(att)
+    return AttachmentOut.model_validate(att)

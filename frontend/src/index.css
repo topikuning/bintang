@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: oklch(0.68 0.18 70);
+  --color-primary-fg: oklch(0.18 0.04 260);
+  --color-bg: oklch(0.98 0.01 250);
+  --color-card: oklch(1 0 0);
+  --color-ink: oklch(0.18 0.04 260);
+  --color-muted: oklch(0.55 0.02 260);
+  --color-good: oklch(0.7 0.16 150);
+  --color-warn: oklch(0.78 0.16 80);
+  --color-bad:  oklch(0.6 0.22 25);
+  --radius-card: 14px;
+}
+
+html, body, #root {
+  height: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial;
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Hide number input spinners on iOS */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.scroll-touch { -webkit-overflow-scrolling: touch; }

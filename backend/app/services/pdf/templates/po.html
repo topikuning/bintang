@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<title>PO {{ po.number }}</title>
+<style>{{ base_css|safe }}</style>
+</head>
+<body>
+
+<div class="kop row">
+  <div>
+    {% if company.logo_url %}<img src="{{ company.logo_url }}" alt="logo">{% endif %}
+  </div>
+  <div style="flex:1; padding-left:12px;">
+    <div class="brand">{{ company.name }}</div>
+    <div class="muted">{{ company.address or "" }}</div>
+    <div class="muted">
+      {% if company.phone %}Telp: {{ company.phone }}{% endif %}
+      {% if company.email %} &middot; {{ company.email }}{% endif %}
+      {% if company.npwp %} &middot; NPWP: {{ company.npwp }}{% endif %}
+    </div>
+  </div>
+</div>
+<div class="hr"></div>
+
+<div class="row">
+  <div class="title">PURCHASE ORDER</div>
+  <div class="right">
+    <div><b>No. PO:</b> {{ po.number }}</div>
+    <div><b>Tanggal:</b> {{ po.po_date }}</div>
+    {% if po.needed_date %}<div><b>Tgl Kebutuhan:</b> {{ po.needed_date }}</div>{% endif %}
+  </div>
+</div>
+
+<table class="no-border" style="margin-top:8px;">
+  <tr>
+    <td style="width:50%; padding-left:0;">
+      <b>Kepada Vendor:</b><br/>
+      {{ po.vendor_name or (vendor.name if vendor else "-") }}<br/>
+      {% if vendor %}{{ vendor.address or "" }}<br/>{% endif %}
+      {% if vendor and vendor.phone %}Telp: {{ vendor.phone }}<br/>{% endif %}
+      {% if vendor and vendor.npwp %}NPWP: {{ vendor.npwp }}{% endif %}
+    </td>
+    <td style="width:50%;">
+      <b>Untuk Proyek:</b><br/>
+      {{ project.name }} ({{ project.code }})<br/>
+      {% if project.location %}{{ project.location }}{% endif %}
+    </td>
+  </tr>
+</table>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:32px;">No</th>
+      <th>Deskripsi Barang/Jasa</th>
+      <th style="width:60px;" class="right">Qty</th>
+      <th style="width:60px;">Unit</th>
+      <th style="width:110px;" class="right">Harga Satuan</th>
+      <th style="width:120px;" class="right">Subtotal</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for it in po.items %}
+    <tr>
+      <td class="center">{{ loop.index }}</td>
+      <td>{{ it.description }}</td>
+      <td class="right">{{ it.quantity }}</td>
+      <td>{{ it.unit or "" }}</td>
+      <td class="right">{{ it.unit_price|idr }}</td>
+      <td class="right">{{ it.subtotal|idr }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<table class="no-border" style="margin-top:8px;">
+  <tr>
+    <td style="width:60%; padding-left:0;">
+      {% if po.payment_terms %}<b>Syarat Pembayaran:</b> {{ po.payment_terms }}<br/>{% endif %}
+      {% if po.notes %}<b>Catatan:</b> {{ po.notes }}{% endif %}
+    </td>
+    <td style="width:40%;">
+      <table>
+        <tr><th>Subtotal</th><td class="right">{{ po.subtotal|idr }}</td></tr>
+        <tr><th>Pajak</th><td class="right">{{ po.tax|idr }}</td></tr>
+        <tr><th>Diskon</th><td class="right">{{ po.discount|idr }}</td></tr>
+        <tr><th>Total</th><td class="right"><b>{{ po.total|idr }}</b></td></tr>
+      </table>
+    </td>
+  </tr>
+</table>
+
+<div class="signature">
+  <div class="box center">
+    <div>Dibuat oleh,</div>
+    <div class="sign-area"></div>
+    <div>{{ created_by.name if created_by else "" }}</div>
+  </div>
+  <div class="box center">
+    <div>Disetujui oleh,</div>
+    <div class="sign-area"></div>
+    <div>{{ approved_by.name if approved_by else (company.director_name or "") }}</div>
+  </div>
+</div>
+
+</body></html>

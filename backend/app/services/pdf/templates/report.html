@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<title>{{ title }}</title>
+<style>{{ base_css|safe }}</style>
+</head>
+<body>
+
+<div class="kop row">
+  <div>
+    {% if company and company.logo_url %}<img src="{{ company.logo_url }}" alt="logo">{% endif %}
+  </div>
+  <div style="flex:1; padding-left:12px;">
+    <div class="brand">{{ company.name if company else app_name }}</div>
+    {% if company %}<div class="muted">{{ company.address or "" }}</div>{% endif %}
+  </div>
+  <div class="right">
+    <div class="muted">Dicetak: {{ printed_at }}</div>
+    <div class="muted">Oleh: {{ printed_by }}</div>
+  </div>
+</div>
+<div class="hr"></div>
+
+<h2>{{ title }}</h2>
+{% if subtitle %}<div class="muted">{{ subtitle }}</div>{% endif %}
+{% if filters %}
+  <div class="muted" style="margin-top:4px;">
+    Filter: {% for k, v in filters.items() %}<b>{{ k }}</b>: {{ v }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
+  </div>
+{% endif %}
+
+<table style="margin-top:10px;">
+  <thead>
+    <tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}</tr>
+  </thead>
+  <tbody>
+  {% for row in rows %}
+    <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if totals %}
+<table style="margin-top:10px; width:50%; margin-left:auto;">
+  <tbody>
+  {% for k, v in totals.items() %}
+    <tr><th>{{ k }}</th><td class="right">{{ v }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+</body></html>

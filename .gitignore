@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+dist/
+.vite/
+*.log
+
+# DB / uploads
+*.db
+*.db-journal
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,24 @@
+@page { size: A4; margin: 18mm 14mm 18mm 14mm; }
+* { box-sizing: border-box; }
+body { font-family: "Helvetica", "Arial", sans-serif; color: #111; font-size: 11px; }
+h1, h2, h3 { margin: 0; }
+.row { display: flex; justify-content: space-between; align-items: flex-start; }
+.muted { color: #666; }
+.right { text-align: right; }
+.center { text-align: center; }
+table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+th, td { border: 1px solid #cfcfcf; padding: 6px 8px; vertical-align: top; }
+th { background: #f4f4f4; text-align: left; font-weight: 600; }
+.no-border, .no-border td, .no-border th { border: none; }
+.hr { border-top: 1px solid #d4d4d4; margin: 10px 0; }
+.brand { font-size: 16px; font-weight: 700; }
+.kop { display: flex; gap: 12px; align-items: center; }
+.kop img { max-height: 56px; }
+.title { font-size: 18px; font-weight: 700; letter-spacing: 1px; }
+.signature { margin-top: 32px; display: flex; justify-content: space-between; }
+.signature .box { width: 45%; }
+.sign-area { height: 70px; border-bottom: 1px solid #999; margin: 6px 0; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; }
+.badge-green { background: #dcfce7; color: #14532d; }
+.badge-red { background: #fee2e2; color: #7f1d1d; }
+.badge-yellow { background: #fef3c7; color: #78350f; }
