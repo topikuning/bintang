@@ -3,9 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Input";
 import { formatDate, formatIDR } from "@/lib/utils";
+import { Plus } from "lucide-react";
 import type { Page, Project, Transaction } from "@/types";
 
 export default function TransactionsPage() {
@@ -39,7 +41,17 @@ export default function TransactionsPage() {
 
   return (
     <div>
-      <PageHeader title="Transaksi" subtitle="Catatan uang masuk & keluar" />
+      <PageHeader
+        title="Transaksi"
+        subtitle="Catatan uang masuk & keluar"
+        right={
+          <Link to="/transactions/new">
+            <Button size="sm">
+              <Plus className="h-4 w-4" /> Baru
+            </Button>
+          </Link>
+        }
+      />
 
       <div className="grid grid-cols-3 gap-2 mb-3">
         <Select value={projectId} onChange={(e) => setQ("project_id", e.target.value)}>

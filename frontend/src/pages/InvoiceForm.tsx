@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Input";
 import AttachmentUploader from "@/components/AttachmentUploader";
+import Combobox from "@/components/ui/Combobox";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import { Plus, Trash2 } from "lucide-react";
 import { formatIDR, todayISO } from "@/lib/utils";
@@ -137,10 +138,16 @@ export default function InvoiceForm() {
           <Input value={data.number || ""} onChange={(e) => setData({ ...data, number: e.target.value })} />
         </Field>
         <Field label="Proyek">
-          <Select disabled={isEdit} value={data.project_id ?? ""} onChange={(e) => setData({ ...data, project_id: Number(e.target.value) })}>
-            <option value="">- pilih -</option>
-            {projectsQ.data?.items.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </Select>
+          <Combobox
+            disabled={isEdit}
+            value={data.project_id ?? null}
+            onChange={(v) => setData({ ...data, project_id: v == null ? undefined : Number(v) })}
+            options={(projectsQ.data?.items || []).map((p) => ({
+              value: p.id, label: p.name, hint: p.code,
+            }))}
+            placeholder="Cari proyek..."
+            clearable={false}
+          />
         </Field>
         <Field label="Pihak (Vendor/Client)">
           <Select

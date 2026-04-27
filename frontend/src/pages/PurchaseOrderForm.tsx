@@ -6,6 +6,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Input";
+import Combobox from "@/components/ui/Combobox";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import { Trash2, Plus, Printer } from "lucide-react";
 import { formatIDR, todayISO } from "@/lib/utils";
@@ -124,14 +125,20 @@ export default function POForm() {
       <Card>
         <div className="grid grid-cols-2 gap-2">
           <Field label="Proyek">
-            <Select disabled={isEdit} value={data.project_id ?? ""} onChange={(e) => {
-              const pid = Number(e.target.value);
-              const proj = projectsQ.data?.items.find((p) => p.id === pid);
-              setData({ ...data, project_id: pid, company_id: proj?.company_id });
-            }}>
-              <option value="">- pilih -</option>
-              {projectsQ.data?.items.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </Select>
+            <Combobox
+              disabled={isEdit}
+              value={data.project_id ?? null}
+              onChange={(v) => {
+                const pid = v == null ? undefined : Number(v);
+                const proj = projectsQ.data?.items.find((p) => p.id === pid);
+                setData({ ...data, project_id: pid, company_id: proj?.company_id });
+              }}
+              options={(projectsQ.data?.items || []).map((p) => ({
+                value: p.id, label: p.name, hint: p.code,
+              }))}
+              placeholder="Cari proyek..."
+              clearable={false}
+            />
           </Field>
           <Field label="Perusahaan (kop)">
             <Select disabled={isEdit} value={data.company_id ?? ""} onChange={(e) => setData({ ...data, company_id: Number(e.target.value) })}>

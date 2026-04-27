@@ -28,12 +28,21 @@ Aplikasi web pencatatan & monitoring keuangan multi-proyek (mobile-first PWA).
 cp .env.example .env
 docker compose build
 docker compose up -d
-# init demo data
+
+# Pilih salah satu:
+# A) clean install (1 admin + 12 kategori default, tanpa data demo)
+docker compose exec backend python -m app.seed_master
+# B) demo data lengkap (3 perusahaan, 5 proyek, 30+ transaksi, dst)
 docker compose exec backend python -m app.seed
-# Open
-# http://localhost:8080  (PWA)
+
+# Buka:
+# http://localhost:8080      (PWA)
 # http://localhost:8000/docs (Swagger)
 ```
+
+## Deploy ke Railway
+
+Lihat [`RAILWAY.md`](./RAILWAY.md) untuk panduan rinci (3 service: Postgres + Backend FastAPI + Frontend nginx, persistent volume untuk uploads).
 
 ## Quick start (lokal tanpa Docker)
 

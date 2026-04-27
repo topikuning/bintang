@@ -47,10 +47,14 @@ export default function ProjectsPage() {
   });
 
   function newProject() {
+    if (!companies || companies.items.length === 0) {
+      alert("Tambah perusahaan dulu lewat menu Lainnya → Perusahaan.");
+      return;
+    }
     setEditing({
       code: "",
       name: "",
-      company_id: companies?.items[0]?.id,
+      company_id: companies.items[0].id,
       status: "AKTIF",
       currency: "IDR",
       budget_amount: 0,
@@ -64,8 +68,10 @@ export default function ProjectsPage() {
       <PageHeader
         title="Proyek"
         right={
-          isSuper(user) && companies && (
-            <Button size="sm" onClick={newProject}><Plus className="h-4 w-4" /> Baru</Button>
+          isSuper(user) && (
+            <Button size="sm" onClick={newProject}>
+              <Plus className="h-4 w-4" /> Baru
+            </Button>
           )
         }
       />
