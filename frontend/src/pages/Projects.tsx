@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Input";
 import Modal from "@/components/Modal";
+import TeamManager from "@/components/TeamManager";
 import { Badge } from "@/components/ui/Badge";
 import { Plus, Pencil } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -135,7 +136,7 @@ export default function ProjectsPage() {
           </Select>
         </Field>
         {users && (
-          <Field label="Admin Proyek (PIC)">
+          <Field label="Penanggung Jawab Utama (PIC)" hint="Untuk header dokumen / PDF. Tim admin lainnya bisa ditambahkan setelah simpan.">
             <Select
               value={editing?.pic_user_id ?? ""}
               onChange={(e) => setEditing({ ...editing, pic_user_id: e.target.value ? Number(e.target.value) : null })}
@@ -159,6 +160,12 @@ export default function ProjectsPage() {
           <Input type="number" inputMode="decimal" value={editing?.budget_amount ?? 0} onChange={(e) => setEditing({ ...editing, budget_amount: e.target.value })} />
         </Field>
         <Field label="Catatan"><Textarea value={editing?.notes || ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field>
+
+        {editing?.id && (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <TeamManager projectId={editing.id} />
+          </div>
+        )}
       </Modal>
     </div>
   );

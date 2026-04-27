@@ -8,13 +8,25 @@ import CashflowChart from "@/components/charts/CashflowChart";
 import SpendingPie from "@/components/charts/SpendingPie";
 import BudgetProgress from "@/components/BudgetProgress";
 import { formatDate, formatIDR } from "@/lib/utils";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Users } from "lucide-react";
+
+interface AssignedUser {
+  id: number;
+  email: string;
+  name: string;
+  role: string;
+}
 
 export default function DashboardProject() {
   const { id } = useParams();
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard-project", id],
     queryFn: async () => (await api.get(`/dashboard/project/${id}`)).data,
+    enabled: !!id,
+  });
+  const teamQ = useQuery({
+    queryKey: ["project-team", id],
+    queryFn: async () => (await api.get<AssignedUser[]>(`/projects/${id}/users`)).data,
     enabled: !!id,
   });
 
@@ -107,6 +119,32 @@ export default function DashboardProject() {
               );
             })}
           </ul>
+        </Card>
+      )}
+
+      {teamQ.data && teamQ.data.length > 0 && (
+        <Card className="mt-3">
+          <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+            <Users className="h-4 w-4 text-slate-500" />
+            Tim Admin Proyek ({teamQ.data.length})
+          </div>
+          <ul className="space-y-1.5">
+            {teamQ.data.map((u) => (
+              <li key={u.id} className="flex items-center gap-2 text-sm">
+                <div className="grid h-7 w-7 place-items-center rounded-full bg-slate-200 text-xs font-bold text-slate-700">
+                  {u.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{u.name}</div>
+                  <div className="text-[11px] text-slate-500 truncate">{u.email}</div>
+                </div>
+                <Badge tone={u.role === "SUPERADMIN" ? "info" : "neutral"}>{u.role}</Badge>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-2 text-[11px] text-slate-500">
+            Untuk mengubah tim, buka menu Proyek → ikon edit pada proyek ini.
+          </div>
         </Card>
       )}
 
