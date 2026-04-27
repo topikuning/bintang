@@ -20,7 +20,12 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const { data } = await api.post("/auth/login", { email, password });
+      const body = new URLSearchParams();
+      body.set("username", email);
+      body.set("password", password);
+      const { data } = await api.post("/auth/login", body, {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      });
       setToken(data.access_token);
       const me = await api.get("/auth/me");
       setUser(me.data);
