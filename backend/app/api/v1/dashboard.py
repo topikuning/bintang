@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.deps import (
     ensure_project_access,
     get_current_user,
@@ -27,6 +28,13 @@ from app.models.models import (
 from app.services.budget import budget_status, health_status, project_totals
 
 router = APIRouter()
+
+
+def _ym_expr():
+    """Dialect-aware month expression. SQLite uses strftime, others use to_char."""
+    if settings.is_sqlite:
+        return func.strftime("%Y-%m", Transaction.tx_date)
+    return func.to_char(Transaction.tx_date, "YYYY-MM")
 
 
 def _accessible_filter(stmt, user: User, ids: list[int]):
@@ -87,7 +95,7 @@ async def global_dashboard(
     # monthly cashflow last 12 months
     monthly_q = (
         select(
-            func.strftime("%Y-%m", Transaction.tx_date).label("ym"),
+            _ym_expr().label("ym"),
             func.coalesce(func.sum(case((Transaction.type == TxnType.IN, Transaction.amount), else_=0)), 0).label("in_"),
             func.coalesce(func.sum(case((Transaction.type == TxnType.OUT, Transaction.amount), else_=0)), 0).label("out_"),
         )
@@ -98,26 +106,8 @@ async def global_dashboard(
         )
         .group_by("ym").order_by("ym")
     )
-    try:
-        rows = (await db.execute(monthly_q)).all()
-        monthly = [{"month": r.ym, "in": float(r.in_), "out": float(r.out_)} for r in rows[-12:]]
-    except Exception:
-        # fallback for non-sqlite (postgres): use date_trunc
-        monthly_q2 = (
-            select(
-                func.to_char(Transaction.tx_date, "YYYY-MM").label("ym"),
-                func.coalesce(func.sum(case((Transaction.type == TxnType.IN, Transaction.amount), else_=0)), 0).label("in_"),
-                func.coalesce(func.sum(case((Transaction.type == TxnType.OUT, Transaction.amount), else_=0)), 0).label("out_"),
-            )
-            .where(
-                Transaction.project_id.in_(project_ids),
-                Transaction.status == TxnStatus.VERIFIED,
-                Transaction.deleted_at.is_(None),
-            )
-            .group_by("ym").order_by("ym")
-        )
-        rows = (await db.execute(monthly_q2)).all()
-        monthly = [{"month": r.ym, "in": float(r.in_), "out": float(r.out_)} for r in rows[-12:]]
+    rows = (await db.execute(monthly_q)).all()
+    monthly = [{"month": r.ym, "in": float(r.in_), "out": float(r.out_)} for r in rows[-12:]]
 
     overdue_count_q = select(func.count()).select_from(Invoice).where(
         Invoice.project_id.in_(project_ids),
@@ -279,24 +269,21 @@ async def project_dashboard(
     by_category = [{"category": (r[0] or "Tanpa Kategori"), "total": float(r[1])} for r in cat_rows]
 
     # cashflow monthly
-    try:
-        cash_q = (
-            select(
-                func.strftime("%Y-%m", Transaction.tx_date).label("ym"),
-                func.coalesce(func.sum(case((Transaction.type == TxnType.IN, Transaction.amount), else_=0)), 0).label("in_"),
-                func.coalesce(func.sum(case((Transaction.type == TxnType.OUT, Transaction.amount), else_=0)), 0).label("out_"),
-            )
-            .where(
-                Transaction.project_id == pid,
-                Transaction.status == TxnStatus.VERIFIED,
-                Transaction.deleted_at.is_(None),
-            )
-            .group_by("ym").order_by("ym")
+    cash_q = (
+        select(
+            _ym_expr().label("ym"),
+            func.coalesce(func.sum(case((Transaction.type == TxnType.IN, Transaction.amount), else_=0)), 0).label("in_"),
+            func.coalesce(func.sum(case((Transaction.type == TxnType.OUT, Transaction.amount), else_=0)), 0).label("out_"),
         )
-        rows = (await db.execute(cash_q)).all()
-        monthly = [{"month": r.ym, "in": float(r.in_), "out": float(r.out_)} for r in rows[-12:]]
-    except Exception:
-        monthly = []
+        .where(
+            Transaction.project_id == pid,
+            Transaction.status == TxnStatus.VERIFIED,
+            Transaction.deleted_at.is_(None),
+        )
+        .group_by("ym").order_by("ym")
+    )
+    rows = (await db.execute(cash_q)).all()
+    monthly = [{"month": r.ym, "in": float(r.in_), "out": float(r.out_)} for r in rows[-12:]]
 
     recent_q = (
         select(Transaction)
