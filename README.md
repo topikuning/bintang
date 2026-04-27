@@ -115,7 +115,13 @@ POST  /api/v1/ocr/extract      # stub (future: real OCR/AI)
 - [ ] PWA offline draft transaksi (background sync).
 - [ ] Notifikasi (overdue invoice, transaksi besar belum verified).
 - [ ] Multi-currency dengan FX rate.
-- [ ] S3/MinIO storage di prod.
+- [ ] **Storage backend tambahan**:
+  - [ ] S3 / MinIO (object storage)
+  - [ ] **Google Drive** via Service Account + Shared Drive
+        (proxy stream via backend untuk privasi; tulis adapter
+        `backend/app/services/storage/gdrive.py` mengikuti interface
+        `local.py`).
+- [ ] Cetak PDF Invoice (analog ke PO PDF) dengan kop perusahaan.
 
 ## Lisensi
 

@@ -10,7 +10,8 @@ import AttachmentUploader from "@/components/AttachmentUploader";
 import PendingAttachmentPicker from "@/components/PendingAttachmentPicker";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import type { Category, Page, Project, Transaction, VendorClient } from "@/types";
-import { todayISO } from "@/lib/utils";
+import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { cn, todayISO } from "@/lib/utils";
 import { useAuthStore, isSuper } from "@/store/auth";
 
 export default function TransactionForm() {
@@ -114,6 +115,12 @@ export default function TransactionForm() {
   const cats = (catsQ.data?.items || []).filter((c) => !data.type || c.type === data.type);
 
   const isLocked = data.status === "VERIFIED" && !isSuper(user);
+  const isIn = data.type === "IN";
+
+  function setType(next: "IN" | "OUT") {
+    if (isLocked || data.type === next) return;
+    setData({ ...data, type: next, category_id: null });
+  }
 
   return (
     <div>
@@ -123,18 +130,55 @@ export default function TransactionForm() {
         right={data.status && <Badge tone={statusTone(data.status)}>{data.status}</Badge>}
       />
 
-      <Card>
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="Tipe">
-            <Select disabled={isLocked} value={data.type || "OUT"} onChange={(e) => setData({ ...data, type: e.target.value as any, category_id: undefined })}>
-              <option value="IN">Masuk</option>
-              <option value="OUT">Keluar</option>
-            </Select>
-          </Field>
-          <Field label="Tanggal">
-            <Input disabled={isLocked} type="date" value={data.tx_date || ""} onChange={(e) => setData({ ...data, tx_date: e.target.value })} />
-          </Field>
-        </div>
+      <div className="mb-3 grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
+        <button
+          type="button"
+          onClick={() => setType("IN")}
+          disabled={isLocked}
+          aria-pressed={isIn}
+          className={cn(
+            "flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-all active:scale-[0.98]",
+            isIn
+              ? "bg-emerald-500 text-white shadow-md ring-2 ring-emerald-300/50"
+              : "bg-transparent text-slate-500 hover:text-slate-700",
+            isLocked && "opacity-60 cursor-not-allowed",
+          )}
+        >
+          <ArrowDownLeft className="h-5 w-5" />
+          Uang Masuk
+        </button>
+        <button
+          type="button"
+          onClick={() => setType("OUT")}
+          disabled={isLocked}
+          aria-pressed={!isIn}
+          className={cn(
+            "flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-all active:scale-[0.98]",
+            !isIn
+              ? "bg-rose-500 text-white shadow-md ring-2 ring-rose-300/50"
+              : "bg-transparent text-slate-500 hover:text-slate-700",
+            isLocked && "opacity-60 cursor-not-allowed",
+          )}
+        >
+          <ArrowUpRight className="h-5 w-5" />
+          Uang Keluar
+        </button>
+      </div>
+
+      <Card
+        className={cn(
+          "border-l-4",
+          isIn ? "border-l-emerald-500" : "border-l-rose-500",
+        )}
+      >
+        <Field label="Tanggal">
+          <Input
+            disabled={isLocked}
+            type="date"
+            value={data.tx_date || ""}
+            onChange={(e) => setData({ ...data, tx_date: e.target.value })}
+          />
+        </Field>
 
         <Field label="Proyek">
           <Select disabled={isLocked || isEdit} value={data.project_id ?? ""} onChange={(e) => setData({ ...data, project_id: Number(e.target.value) })}>
@@ -150,15 +194,31 @@ export default function TransactionForm() {
           </Select>
         </Field>
 
-        <Field label="Nominal (Rp)">
-          <Input
-            disabled={isLocked}
-            type="number"
-            inputMode="decimal"
-            placeholder="0"
-            value={data.amount ?? ""}
-            onChange={(e) => setData({ ...data, amount: e.target.value })}
-          />
+        <Field label={isIn ? "Jumlah Uang Masuk (Rp)" : "Jumlah Uang Keluar (Rp)"}>
+          <div className="relative">
+            <span
+              className={cn(
+                "absolute left-3 top-1/2 -translate-y-1/2 text-base font-semibold pointer-events-none",
+                isIn ? "text-emerald-600" : "text-rose-600",
+              )}
+            >
+              {isIn ? "+" : "-"} Rp
+            </span>
+            <Input
+              disabled={isLocked}
+              type="number"
+              inputMode="decimal"
+              placeholder="0"
+              value={data.amount ?? ""}
+              onChange={(e) => setData({ ...data, amount: e.target.value })}
+              className={cn(
+                "h-14 pl-16 pr-3 text-xl font-bold tabular-nums tracking-tight",
+                isIn
+                  ? "border-emerald-200 bg-emerald-50/50 text-emerald-900 focus:border-emerald-400 focus:ring-emerald-200"
+                  : "border-rose-200 bg-rose-50/50 text-rose-900 focus:border-rose-400 focus:ring-rose-200",
+              )}
+            />
+          </div>
         </Field>
 
         {data.type === "OUT" && (
@@ -225,8 +285,16 @@ export default function TransactionForm() {
       </Card>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        <Button onClick={() => save.mutate()} disabled={save.isPending || isLocked}>
-          {isEdit ? "Simpan Perubahan" : "Simpan Draft"}
+        <Button
+          onClick={() => save.mutate()}
+          disabled={save.isPending || isLocked}
+          className={cn(
+            isIn
+              ? "!bg-emerald-600 hover:!bg-emerald-500 !text-white"
+              : "!bg-rose-600 hover:!bg-rose-500 !text-white",
+          )}
+        >
+          {isEdit ? "Simpan Perubahan" : isIn ? "Simpan Uang Masuk" : "Simpan Uang Keluar"}
         </Button>
         {isEdit && data.status === "DRAFT" && (
           <Button variant="secondary" onClick={() => action.mutate({ kind: "submit" })}>Submit</Button>
