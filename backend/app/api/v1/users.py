@@ -17,7 +17,7 @@ router = APIRouter()
 async def list_users(
     q: str | None = None,
     page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1, le=200),
+    size: int = Query(20, ge=1, le=2000),
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_superadmin),
 ) -> Page[UserOut]:

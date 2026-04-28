@@ -20,7 +20,7 @@ async def list_audit_logs(
     date_from: date_type | None = None,
     date_to: date_type | None = None,
     page: int = Query(1, ge=1),
-    size: int = Query(50, ge=1, le=500),
+    size: int = Query(50, ge=1, le=2000),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Page:

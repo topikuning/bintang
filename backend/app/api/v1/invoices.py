@@ -93,7 +93,7 @@ async def list_invoices(
     date_to: date_type | None = None,
     q: str | None = None,
     page: int = Query(1, ge=1),
-    size: int = Query(50, ge=1, le=200),
+    size: int = Query(50, ge=1, le=2000),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Page[InvoiceOut]:

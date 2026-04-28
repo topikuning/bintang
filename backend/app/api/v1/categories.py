@@ -17,7 +17,7 @@ async def list_categories(
     q: str | None = None,
     type: str | None = None,
     page: int = Query(1, ge=1),
-    size: int = Query(100, ge=1, le=500),
+    size: int = Query(100, ge=1, le=2000),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> Page[CategoryOut]:
