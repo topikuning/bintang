@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, fileUrl } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { FileText, Image as ImageIcon, Loader2, Paperclip, Trash2, Upload } from "lucide-react";
+import { ExternalLink, FileText, Image as ImageIcon, Link2, Loader2, Paperclip, Trash2, Upload } from "lucide-react";
 import { canWrite, useAuthStore } from "@/store/auth";
 import { formatDate } from "@/lib/utils";
 
@@ -61,6 +61,28 @@ export default function ProjectAttachments({
     onError: (e: any) => setError(e?.response?.data?.detail || "Gagal upload"),
   });
 
+  const addLink = useMutation({
+    mutationFn: async () => {
+      const url = window.prompt(
+        "URL link dokumen (mis. Google Drive yang sudah di-share):",
+      );
+      if (!url || !url.trim()) return null;
+      const { data } = await api.post<ProjectAttachment>(
+        `/projects/${projectId}/attachments/link`,
+        {
+          url: url.trim(),
+          label: label.trim() || null,
+        },
+      );
+      return data;
+    },
+    onSuccess: (data) => {
+      if (data) qc.invalidateQueries({ queryKey: ["project-attachments", projectId] });
+      setError(null);
+    },
+    onError: (e: any) => setError(e?.response?.data?.detail || "Gagal menambahkan link"),
+  });
+
   const del = useMutation({
     mutationFn: async (aid: number) =>
       api.delete(`/projects/${projectId}/attachments/${aid}`),
@@ -90,14 +112,29 @@ export default function ProjectAttachments({
       ) : (
         <ul className="space-y-1.5 mb-3">
           {items.map((a) => {
-            const isImage = a.mime_type.startsWith("image/");
+            const isLink =
+              a.mime_type === "external/link" || /^https?:\/\//.test(a.url);
+            const isImage = a.mime_type.startsWith("image/") && !isLink;
             return (
               <li
                 key={a.id}
                 className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5"
               >
-                <div className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-500 shrink-0">
-                  {isImage ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                <div
+                  className={
+                    "grid h-9 w-9 place-items-center rounded-lg shrink-0 " +
+                    (isLink
+                      ? "bg-sky-100 text-sky-600"
+                      : "bg-slate-100 text-slate-500")
+                  }
+                >
+                  {isLink ? (
+                    <ExternalLink className="h-4 w-4" />
+                  ) : isImage ? (
+                    <ImageIcon className="h-4 w-4" />
+                  ) : (
+                    <FileText className="h-4 w-4" />
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   {a.label && (
@@ -159,24 +196,39 @@ export default function ProjectAttachments({
             className="hidden"
             onChange={pickFile}
           />
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="w-full"
-            disabled={upload.isPending}
-            onClick={() => fileRef.current?.click()}
-          >
-            {upload.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="h-4 w-4" />
-            )}
-            {upload.isPending ? "Mengunggah..." : "Tambah Dokumen"}
-          </Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={upload.isPending || addLink.isPending}
+              onClick={() => fileRef.current?.click()}
+            >
+              {upload.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4" />
+              )}
+              Upload File
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={upload.isPending || addLink.isPending}
+              onClick={() => addLink.mutate()}
+            >
+              {addLink.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Link2 className="h-4 w-4" />
+              )}
+              Tambah Link
+            </Button>
+          </div>
           {error && <div className="text-xs text-rose-600">{error}</div>}
           <div className="text-[11px] text-slate-500">
-            Format: PDF atau gambar. Tidak ada batas jumlah file.
+            File: PDF atau gambar (auto dikompresi). Link: Google Drive, Dropbox, dll yang sudah di-share.
           </div>
         </div>
       )}

@@ -33,6 +33,7 @@ from app.models.models import (
 from app.schemas.common import Page
 from app.schemas.finance import (
     AttachmentOut,
+    ExternalLinkIn,
     InvoiceCreate,
     InvoiceItemIn,
     InvoiceItemOut,
@@ -42,6 +43,7 @@ from app.schemas.finance import (
 )
 from app.services.audit import log, snapshot
 from app.services.invoice_status import linked_amount, paid_amount, recompute_invoice_status
+from app.services.storage.links import normalize_external_link
 from app.services.storage.local import save_upload
 
 router = APIRouter()
@@ -385,6 +387,27 @@ async def upload_invoice_attachment(
     db.add(att)
     await log(db, user_id=user.id, entity="invoice_attachment", entity_id=inv.id,
               action=AuditAction.CREATE, after={"file": meta["file_name"]})
+    await db.commit()
+    await db.refresh(att)
+    return AttachmentOut.model_validate(att)
+
+
+@router.post("/{iid}/attachments/link", response_model=AttachmentOut, status_code=201)
+async def attach_invoice_link(
+    iid: int,
+    body: ExternalLinkIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_can_write),
+) -> AttachmentOut:
+    inv = await db.get(Invoice, iid)
+    if not inv or inv.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    await ensure_project_access(db, user, inv.project_id)
+    meta = normalize_external_link(body.url, label=body.label, file_name=body.file_name)
+    att = InvoiceAttachment(invoice_id=inv.id, uploaded_by_id=user.id, **meta)
+    db.add(att)
+    await log(db, user_id=user.id, entity="invoice_attachment", entity_id=inv.id,
+              action=AuditAction.CREATE, after={"link": meta["file_name"], "url": meta["url"]})
     await db.commit()
     await db.refresh(att)
     return AttachmentOut.model_validate(att)

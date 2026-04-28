@@ -26,6 +26,13 @@ class AttachmentOut(BaseModel):
         from_attributes = True
 
 
+class ExternalLinkIn(BaseModel):
+    """Tambah lampiran berupa link eksternal (mis. Google Drive)."""
+    url: str
+    label: str | None = None        # dipakai sebagai file_name kalau diisi
+    file_name: str | None = None    # override eksplisit nama file
+
+
 # --- Transaction ---
 class TransactionBase(BaseModel):
     project_id: int

@@ -327,6 +327,7 @@ export default function TransactionForm() {
             attachments={attachments as any}
             onChange={setAttachments as any}
             uploadUrl={`/transactions/${id}/attachments`}
+            linkUrl={`/transactions/${id}/attachments/link`}
             deleteUrl={(aid) => `/transactions/${id}/attachments/${aid}`}
             disabled={isLocked}
           />

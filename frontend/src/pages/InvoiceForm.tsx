@@ -485,6 +485,7 @@ export default function InvoiceForm() {
             attachments={attachments as any}
             onChange={setAttachments as any}
             uploadUrl={`/invoices/${id}/attachments`}
+            linkUrl={`/invoices/${id}/attachments/link`}
             deleteUrl={(_aid) => `/invoices/${id}/attachments/${_aid}`}
           />
         ) : (

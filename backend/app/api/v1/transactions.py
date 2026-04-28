@@ -29,12 +29,14 @@ from app.schemas.common import Page
 from app.schemas.finance import (
     AttachmentOut,
     CancelIn,
+    ExternalLinkIn,
     TransactionCreate,
     TransactionOut,
     TransactionUpdate,
 )
 from app.services.audit import log, snapshot
 from app.services.invoice_status import recompute_invoice_status
+from app.services.storage.links import normalize_external_link
 from app.services.storage.local import save_upload
 
 router = APIRouter()
@@ -333,6 +335,30 @@ async def upload_attachment(
     db.add(att)
     await log(db, user_id=user.id, entity="transaction_attachment", entity_id=t.id,
               action=AuditAction.CREATE, after={"file": meta["file_name"], "url": meta["url"]})
+    await db.commit()
+    await db.refresh(att)
+    return AttachmentOut.model_validate(att)
+
+
+@router.post("/{tid}/attachments/link", response_model=AttachmentOut, status_code=201)
+async def attach_external_link(
+    tid: int,
+    body: ExternalLinkIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_can_write),
+) -> AttachmentOut:
+    """Lampirkan link eksternal (Google Drive, Dropbox, dll) sebagai bukti."""
+    t = await db.get(Transaction, tid)
+    if not t or t.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    await ensure_project_access(db, user, t.project_id)
+    if t.status == TxnStatus.VERIFIED and user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
+        raise HTTPException(409, "verified_locked")
+    meta = normalize_external_link(body.url, label=body.label, file_name=body.file_name)
+    att = TransactionAttachment(transaction_id=t.id, uploaded_by_id=user.id, **meta)
+    db.add(att)
+    await log(db, user_id=user.id, entity="transaction_attachment", entity_id=t.id,
+              action=AuditAction.CREATE, after={"link": meta["file_name"], "url": meta["url"]})
     await db.commit()
     await db.refresh(att)
     return AttachmentOut.model_validate(att)

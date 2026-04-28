@@ -24,6 +24,7 @@ from app.models.models import (
 from app.schemas.common import Page
 from app.schemas.refs import ProjectCreate, ProjectOut, ProjectUpdate
 from app.services.audit import log, snapshot
+from app.services.storage.links import normalize_external_link
 from app.services.storage.local import save_upload
 
 router = APIRouter()
@@ -213,6 +214,44 @@ async def upload_project_attachment(
     await db.flush()
     await log(db, user_id=admin.id, entity="project_attachment", entity_id=pid,
               action=AuditAction.CREATE, after={"file": meta["file_name"], "label": label})
+    await db.commit()
+    await db.refresh(att)
+    return ProjectAttachmentOut(
+        id=att.id, label=att.label, file_name=att.file_name, file_size=att.file_size,
+        mime_type=att.mime_type, url=att.url, uploaded_by_id=att.uploaded_by_id,
+        created_at=att.created_at.isoformat(),
+    )
+
+
+class _ProjectLinkIn(BaseModel):
+    url: str
+    label: str | None = None
+    file_name: str | None = None
+
+
+@router.post("/{pid}/attachments/link", response_model=ProjectAttachmentOut, status_code=201)
+async def attach_project_link(
+    pid: int,
+    body: _ProjectLinkIn,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> ProjectAttachmentOut:
+    """Lampirkan link eksternal (Google Drive, dll) sebagai dokumen proyek."""
+    p = await db.get(Project, pid)
+    if not p or p.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    meta = normalize_external_link(body.url, label=body.label, file_name=body.file_name)
+    att = ProjectAttachment(
+        project_id=pid,
+        label=(body.label or "").strip() or None,
+        uploaded_by_id=admin.id,
+        **meta,
+    )
+    db.add(att)
+    await db.flush()
+    await log(db, user_id=admin.id, entity="project_attachment", entity_id=pid,
+              action=AuditAction.CREATE,
+              after={"link": meta["file_name"], "url": meta["url"], "label": body.label})
     await db.commit()
     await db.refresh(att)
     return ProjectAttachmentOut(
