@@ -79,6 +79,9 @@ export default function ProjectsPage() {
         project_value: String(p.project_value ?? "0"),
         budget_amount: String(p.budget_amount ?? "0"),
         overbudget_tolerance_pct: String(p.overbudget_tolerance_pct ?? "0"),
+        tax_ppn_pct: String(p.tax_ppn_pct ?? "11"),
+        tax_pph_pct: String(p.tax_pph_pct ?? "2"),
+        marketing_pct: String(p.marketing_pct ?? "15"),
         company_id: p.company_id ? Number(p.company_id) : null,
         pic_user_id: p.pic_user_id ? Number(p.pic_user_id) : null,
       };
@@ -105,6 +108,9 @@ export default function ProjectsPage() {
       project_value: 0,
       budget_amount: 0,
       overbudget_tolerance_pct: 0,
+      tax_ppn_pct: 11,
+      tax_pph_pct: 2,
+      marketing_pct: 15,
     });
     setOpen(true);
   }
@@ -421,6 +427,40 @@ function BudgetFields({
             onChange={(e) => setEditing({ ...editing, overbudget_tolerance_pct: e.target.value })}
           />
         </Field>
+      </div>
+
+      <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <div className="text-xs font-semibold mb-2">Pajak & Marketing</div>
+        <div className="grid grid-cols-3 gap-2">
+          <Field label="PPn %">
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={editing?.tax_ppn_pct ?? 11}
+              onChange={(e) => setEditing({ ...editing, tax_ppn_pct: e.target.value })}
+            />
+          </Field>
+          <Field label="PPh %">
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={editing?.tax_pph_pct ?? 2}
+              onChange={(e) => setEditing({ ...editing, tax_pph_pct: e.target.value })}
+            />
+          </Field>
+          <Field label="Marketing %">
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={editing?.marketing_pct ?? 15}
+              onChange={(e) => setEditing({ ...editing, marketing_pct: e.target.value })}
+            />
+          </Field>
+        </div>
+        <div className="text-[11px] text-slate-500 mt-1">
+          Default: PPn 11%, PPh 2%, Marketing 15%. Dipakai untuk hitung
+          DPP / Nilai Cair / Profit di dashboard proyek.
+        </div>
       </div>
     </>
   );

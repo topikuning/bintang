@@ -19,6 +19,9 @@ async def _sync_pg_columns(conn) -> None:
     statements = [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS scope_all_projects BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_value NUMERIC(18,2) NOT NULL DEFAULT 0",
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS tax_ppn_pct NUMERIC(5,2) NOT NULL DEFAULT 11",
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS tax_pph_pct NUMERIC(5,2) NOT NULL DEFAULT 2",
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS marketing_pct NUMERIC(5,2) NOT NULL DEFAULT 15",
     ]
     for sql in statements:
         try:

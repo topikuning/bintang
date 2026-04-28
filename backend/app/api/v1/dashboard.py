@@ -30,6 +30,55 @@ from app.services.budget import budget_status, health_status, project_totals
 router = APIRouter()
 
 
+def _project_finance_breakdown(
+    *,
+    nilai_kontrak: Decimal,
+    ppn_pct: Decimal,
+    pph_pct: Decimal,
+    marketing_pct: Decimal,
+    biaya_aktual: Decimal,
+    biaya_proyeksi: Decimal,
+) -> dict:
+    """Hitung DPP, PPn, PPh, Nilai Cair, Marketing, dan profit (saat ini & proyeksi).
+
+    Rumus mengikuti konvensi Indonesia:
+        DPP = Nilai Kontrak / (1 + PPn%)
+        PPn = DPP * PPn%
+        PPh = DPP * PPh%
+        Nilai Cair = Nilai Kontrak - (PPn + PPh)
+        Marketing = Nilai Cair * Marketing%
+        Profit Saat Ini   = Nilai Cair - (Marketing + Biaya Aktual)
+        Profit Proyeksi   = Nilai Cair - (Marketing + Biaya Proyeksi)
+    """
+    one = Decimal("1")
+    hundred = Decimal("100")
+    ppn_rate = ppn_pct / hundred
+    pph_rate = pph_pct / hundred
+    mkt_rate = marketing_pct / hundred
+    dpp = nilai_kontrak / (one + ppn_rate) if (one + ppn_rate) != 0 else Decimal("0")
+    ppn = dpp * ppn_rate
+    pph = dpp * pph_rate
+    cair = nilai_kontrak - (ppn + pph)
+    marketing = cair * mkt_rate
+    profit_now = cair - (marketing + biaya_aktual)
+    profit_proj = cair - (marketing + biaya_proyeksi)
+    return {
+        "nilai_kontrak": float(nilai_kontrak),
+        "ppn_pct": float(ppn_pct),
+        "pph_pct": float(pph_pct),
+        "marketing_pct": float(marketing_pct),
+        "dpp": float(dpp),
+        "ppn": float(ppn),
+        "pph": float(pph),
+        "nilai_cair": float(cair),
+        "marketing": float(marketing),
+        "biaya_aktual": float(biaya_aktual),
+        "biaya_proyeksi": float(biaya_proyeksi),
+        "profit_now": float(profit_now),
+        "profit_proj": float(profit_proj),
+    }
+
+
 def _ym_expr():
     """Dialect-aware month expression. SQLite uses strftime, others use to_char."""
     if settings.is_sqlite:
@@ -384,6 +433,15 @@ async def project_dashboard(
     if unlinked_out_count:
         warnings.append(f"{unlinked_out_count} pengeluaran belum terhubung ke invoice")
 
+    finance = _project_finance_breakdown(
+        nilai_kontrak=Decimal(p.project_value or 0),
+        ppn_pct=Decimal(p.tax_ppn_pct or 0),
+        pph_pct=Decimal(p.tax_pph_pct or 0),
+        marketing_pct=Decimal(p.marketing_pct or 0),
+        biaya_aktual=Decimal(totals["total_out"] or 0),
+        biaya_proyeksi=Decimal(p.budget_amount or 0),
+    )
+
     return {
         "project": {
             "id": p.id, "code": p.code, "name": p.name, "status": p.status.value,
@@ -403,6 +461,7 @@ async def project_dashboard(
             "usage_pct": float(bs["usage_pct"]),
             "status": bs["status"],
         },
+        "finance": finance,
         "health": hs,
         "expense_to_income_ratio_pct": ratio,
         "invoice_open_total": inv_open,

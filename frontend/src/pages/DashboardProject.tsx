@@ -171,6 +171,98 @@ export default function DashboardProject() {
         <StatCard label="Invoice Lunas" value={`Rp ${formatIDR(data.invoice_paid_total)}`} tone="good" />
       </div>
 
+      {data.finance && data.finance.nilai_kontrak > 0 && (
+        <Card className="mt-3">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-sm font-semibold">Rincian Keuangan</div>
+            <div className="text-[11px] text-slate-500">
+              PPn {data.finance.ppn_pct}% · PPh {data.finance.pph_pct}% · Mkt {data.finance.marketing_pct}%
+            </div>
+          </div>
+          <ul className="text-sm divide-y divide-slate-100">
+            <li className="py-1.5 flex justify-between">
+              <span className="text-slate-600">Nilai Kontrak</span>
+              <span className="tabular-nums font-semibold">
+                Rp {formatIDR(data.finance.nilai_kontrak)}
+              </span>
+            </li>
+            <li className="py-1.5 flex justify-between">
+              <span className="text-slate-600">DPP</span>
+              <span className="tabular-nums">Rp {formatIDR(data.finance.dpp)}</span>
+            </li>
+            <li className="py-1.5 flex justify-between">
+              <span className="text-slate-600">PPn ({data.finance.ppn_pct}%)</span>
+              <span className="tabular-nums text-rose-700">
+                − Rp {formatIDR(data.finance.ppn)}
+              </span>
+            </li>
+            <li className="py-1.5 flex justify-between">
+              <span className="text-slate-600">PPh ({data.finance.pph_pct}%)</span>
+              <span className="tabular-nums text-rose-700">
+                − Rp {formatIDR(data.finance.pph)}
+              </span>
+            </li>
+            <li className="py-1.5 flex justify-between bg-emerald-50/50 -mx-3 px-3 rounded">
+              <span className="font-semibold text-emerald-800">Nilai Cair</span>
+              <span className="tabular-nums font-bold text-emerald-800">
+                Rp {formatIDR(data.finance.nilai_cair)}
+              </span>
+            </li>
+            <li className="py-1.5 flex justify-between">
+              <span className="text-slate-600">Marketing ({data.finance.marketing_pct}%)</span>
+              <span className="tabular-nums text-rose-700">
+                − Rp {formatIDR(data.finance.marketing)}
+              </span>
+            </li>
+            <li className="py-1.5 flex justify-between">
+              <span className="text-slate-600">Biaya Aktual (realisasi)</span>
+              <span className="tabular-nums text-rose-700">
+                − Rp {formatIDR(data.finance.biaya_aktual)}
+              </span>
+            </li>
+            <li className="py-1.5 flex justify-between">
+              <span className="text-slate-600">Biaya Proyeksi (target)</span>
+              <span className="tabular-nums text-rose-700">
+                − Rp {formatIDR(data.finance.biaya_proyeksi)}
+              </span>
+            </li>
+            <li
+              className={`py-2 mt-1 flex justify-between rounded-lg px-2 ${
+                data.finance.profit_now < 0 ? "bg-rose-50" : "bg-slate-50"
+              }`}
+            >
+              <span className="font-semibold">Profit Saat Ini</span>
+              <span
+                className={`tabular-nums font-bold ${
+                  data.finance.profit_now < 0 ? "text-rose-700" : "text-slate-900"
+                }`}
+              >
+                Rp {formatIDR(data.finance.profit_now)}
+              </span>
+            </li>
+            <li
+              className={`py-2 flex justify-between rounded-lg px-2 ${
+                data.finance.profit_proj < 0 ? "bg-rose-50" : "bg-emerald-50"
+              }`}
+            >
+              <span className="font-semibold">Profit Proyeksi</span>
+              <span
+                className={`tabular-nums font-bold ${
+                  data.finance.profit_proj < 0 ? "text-rose-700" : "text-emerald-800"
+                }`}
+              >
+                Rp {formatIDR(data.finance.profit_proj)}
+              </span>
+            </li>
+          </ul>
+          <div className="mt-2 text-[11px] text-slate-500 leading-relaxed">
+            DPP = Nilai Kontrak ÷ (1 + PPn%). Profit Saat Ini pakai realisasi
+            pengeluaran; Profit Proyeksi pakai target pengeluaran (budget).
+            Persentase pajak & marketing bisa diubah lewat menu Edit proyek.
+          </div>
+        </Card>
+      )}
+
       {data.monthly_cashflow?.length > 0 && (
         <Card className="mt-3">
           <div className="mb-2 text-sm font-semibold">Cashflow Bulanan</div>

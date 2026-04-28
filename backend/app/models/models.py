@@ -172,6 +172,11 @@ class Project(TimestampMixin, Base):
     currency: Mapped[str] = mapped_column(String(8), default="IDR")
     overbudget_tolerance_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"))
 
+    # tax & marketing % per proyek (diturunkan ke breakdown DPP/PPn/PPh/Cair)
+    tax_ppn_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("11"))
+    tax_pph_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("2"))
+    marketing_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("15"))
+
     company: Mapped[Company] = relationship(back_populates="projects")
     user_links: Mapped[list[ProjectUser]] = relationship(
         back_populates="project", cascade="all,delete-orphan"

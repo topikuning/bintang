@@ -60,6 +60,9 @@ export interface Project {
   budget_amount: string;
   currency: string;
   overbudget_tolerance_pct: string;
+  tax_ppn_pct: string;
+  tax_pph_pct: string;
+  marketing_pct: string;
 }
 
 export interface Category {

@@ -61,6 +61,9 @@ class ProjectBase(BaseModel):
     budget_amount: Decimal = Decimal("0")
     currency: str = "IDR"
     overbudget_tolerance_pct: Decimal = Decimal("0")
+    tax_ppn_pct: Decimal = Decimal("11")
+    tax_pph_pct: Decimal = Decimal("2")
+    marketing_pct: Decimal = Decimal("15")
 
 
 class ProjectCreate(ProjectBase):
@@ -81,6 +84,9 @@ class ProjectUpdate(BaseModel):
     budget_amount: Decimal | None = None
     currency: str | None = None
     overbudget_tolerance_pct: Decimal | None = None
+    tax_ppn_pct: Decimal | None = None
+    tax_pph_pct: Decimal | None = None
+    marketing_pct: Decimal | None = None
 
 
 class ProjectOut(ProjectBase):
