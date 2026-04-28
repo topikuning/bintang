@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import {
   AlertTriangle,
   CheckCircle2,
+  Copy,
   Download,
   FileSpreadsheet,
   Loader2,
@@ -25,12 +26,20 @@ interface EntityInfo {
 interface ImportResult {
   entity: string;
   total_rows: number;
-  valid_count: number;
+  new_count: number;
+  dup_count: number;
   error_count: number;
   committed: boolean;
+  dup_action: "skip" | "update" | "error";
   samples: any[];
+  dupes: any[];
   errors: { row: number; message: string; raw: any }[];
 }
+
+type DupAction = "skip" | "update" | "error";
+
+// Modul yang TIDAK mendukung 'update' lewat import (transactions append-only)
+const NO_UPDATE: Record<string, true> = { transactions: true };
 
 export default function ImportsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -39,6 +48,7 @@ export default function ImportsPage() {
   const [busy, setBusy] = useState<"preview" | "commit" | "template" | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dupAction, setDupAction] = useState<DupAction>("skip");
 
   const entitiesQ = useQuery({
     queryKey: ["import-entities"],
@@ -46,6 +56,7 @@ export default function ImportsPage() {
   });
 
   const current = entitiesQ.data?.find((e) => e.key === entity);
+  const updateNotSupported = NO_UPDATE[entity];
 
   async function downloadTemplate() {
     setBusy("template");
@@ -67,30 +78,61 @@ export default function ImportsPage() {
     }
   }
 
-  async function process(action: "preview" | "commit") {
+  async function runPreview() {
     if (!file) return;
-    setBusy(action);
+    setBusy("preview");
     setError(null);
     setResult(null);
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await api.post(`/imports/${entity}/${action}`, fd, {
+      const res = await api.post(`/imports/${entity}/preview`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setResult(res.data);
+      // Default action saat ada dupe: kalau modul tidak support update -> skip,
+      // selain itu user diberi peringatan di bawah.
+      if (res.data.dup_count > 0 && updateNotSupported) {
+        setDupAction("skip");
+      }
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || e?.message || "Gagal");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runCommit() {
+    if (!file) return;
+    if (result && result.dup_count > 0) {
+      const verb =
+        dupAction === "skip"
+          ? "abaikan"
+          : dupAction === "update"
+            ? "TIMPA data lama"
+            : "BATAL";
+      const ok = confirm(
+        `Ada ${result.dup_count} duplikat. Pilihan kamu: ${verb}.\n` +
+          `Lanjutkan commit ${result.new_count} data baru` +
+          (dupAction === "update" ? ` + update ${result.dup_count} data lama` : "") +
+          "?",
+      );
+      if (!ok) return;
+    } else if (!confirm("Yakin ingin meng-commit data ke database?")) {
+      return;
+    }
+    setBusy("commit");
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("dup_action", dupAction);
+      const res = await api.post(`/imports/${entity}/commit`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setResult(res.data);
     } catch (e: any) {
-      let detail = e?.response?.data?.detail || e?.message || "Gagal";
-      if (e?.response?.data instanceof Blob) {
-        try {
-          const text = await e.response.data.text();
-          const j = JSON.parse(text);
-          detail = j?.detail || text;
-        } catch {
-          /* ignore */
-        }
-      }
-      setError(detail);
+      setError(e?.response?.data?.detail || e?.message || "Gagal");
     } finally {
       setBusy(null);
     }
@@ -106,7 +148,15 @@ export default function ImportsPage() {
 
       <Card>
         <Field label="Modul">
-          <Select value={entity} onChange={(e) => { setEntity(e.target.value); setResult(null); setError(null); }}>
+          <Select
+            value={entity}
+            onChange={(e) => {
+              setEntity(e.target.value);
+              setResult(null);
+              setError(null);
+              setDupAction("skip");
+            }}
+          >
             {entitiesQ.data?.map((e) => (
               <option key={e.key} value={e.key}>
                 {e.label}
@@ -158,19 +208,16 @@ export default function ImportsPage() {
       </Card>
 
       <Card className="mt-3">
-        <div className="text-sm font-semibold mb-2">2. Review (dry-run) lalu Commit</div>
+        <div className="text-sm font-semibold mb-2">2. Preview lalu Commit</div>
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => process("preview")} disabled={!file || !!busy}>
+          <Button onClick={runPreview} disabled={!file || !!busy}>
             {busy === "preview" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             Preview (tidak menyimpan)
           </Button>
           <Button
             variant="success"
-            onClick={() => {
-              if (!confirm("Yakin ingin meng-commit data ke database?")) return;
-              process("commit");
-            }}
-            disabled={!file || !!busy || !result}
+            onClick={runCommit}
+            disabled={!file || !!busy || !result || result.committed}
           >
             {busy === "commit" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
             Commit Import
@@ -178,7 +225,73 @@ export default function ImportsPage() {
         </div>
         {!result && file && (
           <div className="mt-2 text-xs text-slate-500">
-            Klik Preview dulu untuk validasi, baru Commit setelah hasilnya OK.
+            Klik Preview dulu, sistem akan menghitung berapa data baru dan duplikat.
+          </div>
+        )}
+
+        {result && result.dup_count > 0 && !result.committed && (
+          <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
+            <div className="flex items-start gap-2 mb-2">
+              <Copy className="h-4 w-4 text-amber-700 mt-0.5 shrink-0" />
+              <div className="text-sm text-amber-900">
+                <b>Ditemukan {result.dup_count} duplikat</b> berdasarkan natural
+                key modul ini. Pilih perlakuan sebelum commit:
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5 ml-6">
+              <label className="flex items-start gap-2 text-sm cursor-pointer">
+                <input
+                  type="radio"
+                  name="dup_action"
+                  value="skip"
+                  checked={dupAction === "skip"}
+                  onChange={() => setDupAction("skip")}
+                  className="mt-0.5"
+                />
+                <div>
+                  <b>Lewati duplikat</b> – data lama tetap, hanya {result.new_count}{" "}
+                  data baru yang di-insert.
+                </div>
+              </label>
+              <label
+                className={`flex items-start gap-2 text-sm cursor-pointer ${
+                  updateNotSupported ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="dup_action"
+                  value="update"
+                  checked={dupAction === "update"}
+                  onChange={() => setDupAction("update")}
+                  disabled={updateNotSupported}
+                  className="mt-0.5"
+                />
+                <div>
+                  <b>Update data lama</b> – data field di-overwrite dari Excel.
+                  Status workflow & alokasi tidak ikut diubah.
+                  {updateNotSupported && (
+                    <div className="text-[11px] text-slate-500 italic">
+                      (modul transaksi append-only — opsi ini tidak tersedia)
+                    </div>
+                  )}
+                </div>
+              </label>
+              <label className="flex items-start gap-2 text-sm cursor-pointer">
+                <input
+                  type="radio"
+                  name="dup_action"
+                  value="error"
+                  checked={dupAction === "error"}
+                  onChange={() => setDupAction("error")}
+                  className="mt-0.5"
+                />
+                <div>
+                  <b>Anggap error</b> – batalkan seluruh import jika ada duplikat
+                  (perilaku lama).
+                </div>
+              </label>
+            </div>
           </div>
         )}
       </Card>
@@ -194,13 +307,24 @@ export default function ImportsPage() {
 
       {result && (
         <Card className="mt-3">
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 flex-wrap mb-2">
             <Badge tone="info">Total: {result.total_rows}</Badge>
-            <Badge tone="good">Valid: {result.valid_count}</Badge>
+            <Badge tone="good">Baru: {result.new_count}</Badge>
+            {result.dup_count > 0 && <Badge tone="warn">Duplikat: {result.dup_count}</Badge>}
             {result.error_count > 0 && <Badge tone="bad">Error: {result.error_count}</Badge>}
             <Badge tone={result.committed ? "good" : "warn"}>
               {result.committed ? "Sudah disimpan" : "Belum disimpan (preview)"}
             </Badge>
+            {result.committed && result.dup_count > 0 && (
+              <Badge tone="info">
+                Duplikat:{" "}
+                {result.dup_action === "update"
+                  ? "di-update"
+                  : result.dup_action === "error"
+                    ? "menyebabkan batal"
+                    : "di-skip"}
+              </Badge>
+            )}
           </div>
 
           {result.errors.length > 0 && (
@@ -216,9 +340,24 @@ export default function ImportsPage() {
             </div>
           )}
 
+          {result.dupes.length > 0 && (
+            <div className="mb-3">
+              <div className="text-sm font-semibold text-amber-700 mb-1">
+                Duplikat ({result.dupes.length} ditampilkan):
+              </div>
+              <ul className="space-y-1 text-xs max-h-48 overflow-y-auto rounded border border-amber-200 bg-amber-50 p-2 font-mono">
+                {result.dupes.map((d, i) => (
+                  <li key={i}>{JSON.stringify(d)}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {result.samples.length > 0 && (
             <div>
-              <div className="text-sm font-semibold mb-1">Contoh data valid:</div>
+              <div className="text-sm font-semibold mb-1">
+                Contoh data {result.committed ? "tersimpan" : "yang akan di-insert"}:
+              </div>
               <ul className="space-y-1 text-xs max-h-48 overflow-y-auto rounded border border-slate-200 bg-slate-50 p-2 font-mono">
                 {result.samples.map((s, i) => (
                   <li key={i}>{JSON.stringify(s)}</li>

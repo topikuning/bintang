@@ -1,15 +1,17 @@
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_admin, require_superadmin
+from app.core.deps import get_current_user, require_admin
 from app.db.session import get_db
 from app.models.models import User
 from app.services.excel.importer import SCHEMAS, build_template, read_xlsx
 
 router = APIRouter()
+
+DupAction = Literal["skip", "update", "error"]
 
 
 @router.get("/")
@@ -47,9 +49,12 @@ async def _process(
     db: AsyncSession,
     user: User,
     commit: bool,
+    dup_action: str = "skip",
 ) -> dict:
     if entity not in SCHEMAS:
         raise HTTPException(404, "unknown_entity")
+    if dup_action not in ("skip", "update", "error"):
+        raise HTTPException(422, "dup_action harus 'skip' | 'update' | 'error'")
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(415, "Hanya file .xlsx yang diterima")
     content = await file.read()
@@ -64,7 +69,9 @@ async def _process(
 
     handler = SCHEMAS[entity]["handler"]
     try:
-        valid, errors = await handler(rows, db, user, commit)
+        new, dupes, errors = await handler(
+            rows, db, user, commit=commit, dup_action=dup_action,
+        )
         if commit:
             await db.commit()
     except Exception as e:
@@ -74,10 +81,13 @@ async def _process(
     return {
         "entity": entity,
         "total_rows": len(rows),
-        "valid_count": len(valid),
+        "new_count": len(new),
+        "dup_count": len(dupes),
         "error_count": len(errors),
         "committed": commit,
-        "samples": valid[:20],
+        "dup_action": dup_action,
+        "samples": new[:20],
+        "dupes": dupes[:50],
         "errors": errors[:50],
     }
 
@@ -89,14 +99,17 @@ async def preview(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_admin),
 ) -> dict:
-    return await _process(entity, file, db, user, commit=False)
+    """Preview tidak menulis ke DB. Selalu pakai dup_action='skip' biar
+    klasifikasi new/dupes/errors murni dari natural key."""
+    return await _process(entity, file, db, user, commit=False, dup_action="skip")
 
 
 @router.post("/{entity}/commit")
 async def commit_import(
     entity: str,
     file: Annotated[UploadFile, File(...)],
+    dup_action: Annotated[str, Form()] = "skip",
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_admin),
 ) -> dict:
-    return await _process(entity, file, db, user, commit=True)
+    return await _process(entity, file, db, user, commit=True, dup_action=dup_action)
