@@ -23,6 +23,7 @@ from app.models.models import (
     CategoryType,
     Company,
     Invoice,
+    InvoiceAttachment,
     InvoiceItem,
     InvoiceStatus,
     InvoiceType,
@@ -31,15 +32,18 @@ from app.models.models import (
     POItem,
     POStatus,
     Project,
+    ProjectAttachment,
     ProjectStatus,
     PurchaseOrder,
     Transaction,
+    TransactionAttachment,
     TxnStatus,
     TxnType,
     User,
     VendorClient,
     VendorClientType,
 )
+from app.services.storage.links import normalize_external_link
 
 
 # ---------- Generic helpers ----------
@@ -254,6 +258,15 @@ async def import_projects(rows, db, user, commit):
                 budget_amount = (project_value * Decimal("0.7")).quantize(Decimal("0.01"))
             else:
                 budget_amount = _parse_decimal(budget_raw)
+            # dokumen proyek opsional via link (kontrak, BAST, dll)
+            doc_url = _str(r.get("document_url"))
+            doc_label = _str(r.get("document_label"))
+            doc_meta = None
+            if doc_url:
+                try:
+                    doc_meta = normalize_external_link(doc_url, label=doc_label)
+                except Exception as e:
+                    raise ValueError(f"document_url tidak valid: {e}")
             if commit:
                 if await _lookup(db, Project, code=code):
                     raise ValueError(f"Kode proyek '{code}' sudah ada")
@@ -272,6 +285,14 @@ async def import_projects(rows, db, user, commit):
                     overbudget_tolerance_pct=_parse_decimal(r.get("overbudget_tolerance_pct") or 0),
                 )
                 db.add(p)
+                if doc_meta:
+                    await db.flush()
+                    db.add(ProjectAttachment(
+                        project_id=p.id,
+                        label=doc_label,
+                        uploaded_by_id=user.id,
+                        **doc_meta,
+                    ))
             valid.append({"code": code, "name": name})
         except Exception as e:
             errors.append({"row": i, "message": str(e), "raw": r})
@@ -312,8 +333,18 @@ async def import_transactions(rows, db, user, commit):
             party_type = None
             if r.get("party_type"):
                 party_type = _parse_enum(r.get("party_type"), PartyType, "party_type")
+            # bukti link eksternal (Google Drive dll) -- opsional
+            att_url = _str(r.get("attachment_url")) or _str(r.get("bukti_url"))
+            att_label = _str(r.get("attachment_label")) or _str(r.get("bukti_label"))
+            att_meta = None
+            if att_url:
+                # validate format -- raise ValueError yg masuk error list per row
+                try:
+                    att_meta = normalize_external_link(att_url, label=att_label)
+                except Exception as e:
+                    raise ValueError(f"attachment_url tidak valid: {e}")
             if commit:
-                db.add(Transaction(
+                tx = Transaction(
                     project_id=project.id,
                     tx_date=tx_date,
                     type=ttype,
@@ -327,7 +358,15 @@ async def import_transactions(rows, db, user, commit):
                     description=_str(r.get("description")),
                     status=TxnStatus.DRAFT,
                     created_by_id=user.id,
-                ))
+                )
+                db.add(tx)
+                if att_meta:
+                    await db.flush()  # supaya tx.id ada
+                    db.add(TransactionAttachment(
+                        transaction_id=tx.id,
+                        uploaded_by_id=user.id,
+                        **att_meta,
+                    ))
             valid.append({
                 "project": project_code, "tx_date": tx_date.isoformat(),
                 "type": ttype.value, "amount": str(amount),
@@ -381,6 +420,15 @@ async def import_invoices(rows, db, user, commit):
                 ))
             subtotal = sum((it.subtotal for it in items), Decimal("0"))
             total = subtotal + tax
+            # bukti link eksternal (opsional, dibaca dari row pertama saja)
+            att_url = _str(first.get("attachment_url")) or _str(first.get("bukti_url"))
+            att_label = _str(first.get("attachment_label")) or _str(first.get("bukti_label"))
+            att_meta = None
+            if att_url:
+                try:
+                    att_meta = normalize_external_link(att_url, label=att_label)
+                except Exception as e:
+                    raise ValueError(f"attachment_url tidak valid: {e}")
             if commit:
                 if await _lookup(db, Invoice, number=num):
                     raise ValueError(f"Invoice '{num}' sudah ada")
@@ -397,6 +445,11 @@ async def import_invoices(rows, db, user, commit):
                 for it in items:
                     inv.items.append(it)
                 db.add(inv)
+                if att_meta:
+                    await db.flush()
+                    db.add(InvoiceAttachment(
+                        invoice_id=inv.id, uploaded_by_id=user.id, **att_meta,
+                    ))
             valid.append({"number": num, "items": len(items), "total": str(total)})
         except Exception as e:
             errors.append({"row": first_row_num, "message": str(e),
@@ -513,35 +566,55 @@ SCHEMAS: dict[str, dict[str, Any]] = {
         "headers": ["code", "name", "location", "company_name", "pic_email",
                     "start_date", "end_date", "status",
                     "project_value", "budget_amount",
-                    "currency", "overbudget_tolerance_pct", "notes"],
+                    "currency", "overbudget_tolerance_pct", "notes",
+                    "document_url", "document_label"],
         "example": ["PRJ-DEMO", "Proyek Demo", "Jakarta",
                     "PT Contoh Sejahtera", "budi@bintang.me",
                     "2026-04-01", "2026-12-31", "AKTIF",
                     357000000, 250000000,
-                    "IDR", 5, "Catatan demo"],
-        "note": "project_value = nilai kontrak/SPK. budget_amount = target pengeluaran. Kalau budget_amount dikosongkan, otomatis dihitung 70% dari project_value.",
+                    "IDR", 5, "Catatan demo",
+                    "https://drive.google.com/file/d/abc123/view", "Kontrak"],
+        "note": (
+            "project_value = nilai kontrak/SPK. budget_amount = target pengeluaran. "
+            "Kalau budget_amount dikosongkan, otomatis dihitung 70% dari project_value. "
+            "document_url opsional -- isi URL dokumen (mis. Google Drive yg sudah di-share) "
+            "untuk auto-attach sebagai dokumen proyek; document_label = 'Kontrak', 'BAST', dll."
+        ),
         "handler": import_projects,
     },
     "transactions": {
         "label": "Transaksi",
         "headers": ["project_code", "tx_date", "type", "category_name", "amount",
                     "party_name", "party_type", "vendor_client_name",
-                    "payment_method", "reference_no", "description"],
+                    "payment_method", "reference_no", "description",
+                    "attachment_url", "attachment_label"],
         "example": ["PRJ-001", "2026-04-15", "OUT", "Material Bangunan", 5500000,
                     "Toko Bangunan Sentosa", "COMPANY", "Toko Bangunan Sentosa",
-                    "TRANSFER", "TRF-2026-001", "Pembelian semen 50 sak"],
+                    "TRANSFER", "TRF-2026-001", "Pembelian semen 50 sak",
+                    "https://drive.google.com/file/d/xyz789/view", "Bukti TF BCA"],
+        "note": (
+            "attachment_url opsional -- isi URL bukti (mis. Google Drive yg sudah di-share) "
+            "untuk auto-attach sebagai bukti transaksi. attachment_label = nama dokumen "
+            "(opsional). Kompatibel juga dengan kolom 'bukti_url' dan 'bukti_label'."
+        ),
         "handler": import_transactions,
     },
     "invoices": {
         "label": "Invoice",
         "headers": ["number", "project_code", "type", "invoice_date", "due_date",
                     "vendor_client_name", "party_name", "tax", "notes",
-                    "item_description", "item_quantity", "item_unit", "item_unit_price"],
+                    "item_description", "item_quantity", "item_unit", "item_unit_price",
+                    "attachment_url", "attachment_label"],
         "example": ["INV/2026/04/PRJ-001/0099", "PRJ-001", "OUT", "2026-04-20",
                     "2026-05-20", "PT Klien Sukses Makmur", "PT Klien Sukses Makmur",
-                    11000000, "Termin demo", "Pekerjaan struktur", 1, "lot", 100000000],
+                    11000000, "Termin demo", "Pekerjaan struktur", 1, "lot", 100000000,
+                    "https://drive.google.com/file/d/inv001/view", "Scan invoice"],
         "handler": import_invoices,
-        "note": "Untuk invoice dengan banyak item: ulang baris dengan number yang sama, isi kolom item_* berbeda.",
+        "note": (
+            "Untuk invoice dengan banyak item: ulang baris dengan number yang sama, isi "
+            "kolom item_* berbeda. attachment_url & attachment_label dibaca dari baris "
+            "PERTAMA grup -- isi cukup di baris pertama saja."
+        ),
     },
     "purchase-orders": {
         "label": "Purchase Order",
