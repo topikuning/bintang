@@ -7,6 +7,7 @@ from decimal import Decimal
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Enum,
@@ -335,6 +336,46 @@ class Invoice(TimestampMixin, Base):
     items: Mapped[list[InvoiceItem]] = relationship(
         back_populates="invoice", cascade="all,delete-orphan", order_by="InvoiceItem.id"
     )
+    allocations: Mapped[list["InvoiceAllocation"]] = relationship(
+        back_populates="invoice", cascade="all,delete-orphan",
+        primaryjoin="and_(Invoice.id==InvoiceAllocation.invoice_id, "
+                    "InvoiceAllocation.deleted_at.is_(None))",
+        order_by="InvoiceAllocation.id",
+    )
+
+
+class InvoiceAllocation(TimestampMixin, Base):
+    """Bridging table M:N antara Transaction dan Invoice.
+
+    Satu baris = sebagian (atau seluruh) nilai transaksi diperhitungkan
+    untuk membayar sebuah invoice. Constraint:
+      - allocated_amount > 0 dan presisi 2 desimal
+      - hanya satu baris aktif per pasangan (transaction_id, invoice_id);
+        untuk menambah jumlah, update baris yang sama, jangan duplikat.
+    Sumber kebenaran tunggal untuk paid_amount/outstanding/remaining.
+    """
+    __tablename__ = "invoice_allocations"
+    __table_args__ = (
+        UniqueConstraint("transaction_id", "invoice_id", "deleted_at",
+                         name="uq_alloc_pair"),
+        CheckConstraint("allocated_amount > 0", name="ck_alloc_positive"),
+        Index("ix_alloc_txn", "transaction_id"),
+        Index("ix_alloc_inv", "invoice_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id", ondelete="RESTRICT"), nullable=False
+    )
+    invoice_id: Mapped[int] = mapped_column(
+        ForeignKey("invoices.id", ondelete="RESTRICT"), nullable=False
+    )
+    allocated_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+    invoice: Mapped[Invoice] = relationship(back_populates="allocations")
+    transaction: Mapped["Transaction"] = relationship()
 
 
 class InvoiceItem(TimestampMixin, Base):

@@ -15,7 +15,14 @@ import { ArrowDownLeft, ArrowUpRight, BadgeCheck, Link2, Loader2, Plus, Trash2 }
 import { Link } from "react-router-dom";
 import { canWrite, isSuper, useAuthStore } from "@/store/auth";
 import { cn, formatDate, formatIDR, todayISO } from "@/lib/utils";
-import type { Invoice, Page, PaymentMethod, Project, VendorClient } from "@/types";
+import type {
+  AllocatableTransaction,
+  Invoice,
+  Page,
+  PaymentMethod,
+  Project,
+  VendorClient,
+} from "@/types";
 
 interface ItemRow {
   description: string;
@@ -40,6 +47,8 @@ export default function InvoiceForm() {
     project_id: presetProjectId ? Number(presetProjectId) : undefined,
   });
   const [payOpen, setPayOpen] = useState(false);
+  const [payTab, setPayTab] = useState<"existing" | "new">("existing");
+  const [allocSelections, setAllocSelections] = useState<Record<number, string>>({});
   const [payment, setPayment] = useState<{
     tx_date: string;
     amount: string;
@@ -179,12 +188,45 @@ export default function InvoiceForm() {
       alert(e?.response?.data?.detail || "Gagal menandai lunas"),
   });
 
+  // Daftar transaksi existing yang masih punya remaining untuk dialokasikan
+  const allocatableQ = useQuery({
+    enabled: isEdit && payOpen && payTab === "existing",
+    queryKey: ["allocatable-transactions", id],
+    queryFn: async () =>
+      (await api.get<AllocatableTransaction[]>(
+        `/invoices/${id}/allocatable-transactions`,
+      )).data,
+  });
+
+  const payFromExisting = useMutation({
+    mutationFn: async () => {
+      const items = Object.entries(allocSelections)
+        .filter(([, v]) => v && Number(v) > 0)
+        .map(([txId, v]) => ({ transaction_id: Number(txId), requested_amount: v }));
+      if (items.length === 0) throw new Error("Pilih minimal satu transaksi.");
+      return (await api.post(`/invoices/${id}/allocations`, { items })).data;
+    },
+    onSuccess: async () => {
+      setPayOpen(false);
+      setAllocSelections({});
+      const fresh = (await api.get<Invoice>(`/invoices/${id}`)).data;
+      setData(fresh);
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-global"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-project"] });
+      qc.invalidateQueries({ queryKey: ["allocatable-transactions"] });
+    },
+    onError: (e: any) =>
+      alert(e?.response?.data?.detail || e?.message || "Gagal alokasi"),
+  });
+
   const payManual = useMutation({
     mutationFn: async () => {
-      // Bikin transaksi pembayaran manual yang otomatis terhubung ke invoice ini.
-      // Arah: invoice IN (hutang) -> tx OUT, invoice OUT (piutang) -> tx IN.
+      // 1) Buat transaksi pembayaran (tanpa invoice_id - skema lama).
+      // 2) Alokasikan transaksi tsb ke invoice ini lewat endpoint allocation.
       const txType = data.type === "IN" ? "OUT" : "IN";
-      const payload = {
+      const txPayload = {
         project_id: data.project_id,
         tx_date: payment.tx_date,
         type: txType,
@@ -194,9 +236,13 @@ export default function InvoiceForm() {
         payment_method: payment.payment_method,
         reference_no: payment.reference_no || null,
         description: payment.description || `Pembayaran invoice ${data.number || ""}`.trim(),
-        invoice_id: Number(id),
       };
-      return (await api.post("/transactions", payload)).data;
+      const tx = (await api.post("/transactions", txPayload)).data;
+      await api.post(`/invoices/${id}/allocations`, {
+        items: [{ transaction_id: tx.id, requested_amount: payment.amount }],
+        note: "manual payment from invoice",
+      });
+      return tx;
     },
     onSuccess: async () => {
       setPayOpen(false);
@@ -500,80 +546,197 @@ export default function InvoiceForm() {
         {uploadError && <div className="mt-2 text-xs text-rose-600">{uploadError}</div>}
       </Card>
 
-      {/* Modal: Tambah Pembayaran Manual */}
+      {/* Modal: Tambah Pembayaran */}
       <Modal
         open={payOpen}
         onClose={() => setPayOpen(false)}
-        title="Tambah Pembayaran Manual"
+        title="Tambah Pembayaran"
         footer={
-          <>
-            <Button variant="ghost" onClick={() => setPayOpen(false)}>Batal</Button>
-            <Button
-              onClick={() => payManual.mutate()}
-              disabled={
-                payManual.isPending ||
-                !payment.amount ||
-                Number(payment.amount) <= 0
-              }
-            >
-              {payManual.isPending ? "Menyimpan..." : "Simpan"}
-            </Button>
-          </>
+          payTab === "existing" ? (
+            <>
+              <Button variant="ghost" onClick={() => setPayOpen(false)}>Batal</Button>
+              <Button
+                onClick={() => payFromExisting.mutate()}
+                disabled={
+                  payFromExisting.isPending ||
+                  Object.values(allocSelections).filter((v) => Number(v) > 0).length === 0
+                }
+              >
+                {payFromExisting.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                {payFromExisting.isPending ? "Mengalokasi..." : "Alokasikan"}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" onClick={() => setPayOpen(false)}>Batal</Button>
+              <Button
+                onClick={() => payManual.mutate()}
+                disabled={
+                  payManual.isPending ||
+                  !payment.amount ||
+                  Number(payment.amount) <= 0
+                }
+              >
+                {payManual.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                {payManual.isPending ? "Menyimpan..." : "Simpan & Alokasikan"}
+              </Button>
+            </>
+          )
         }
       >
         <div className="text-xs text-slate-500 mb-2">
-          Akan membuat transaksi DRAFT{" "}
-          <b className={data.type === "IN" ? "text-rose-600" : "text-emerald-600"}>
-            {data.type === "IN" ? "OUT" : "IN"}
-          </b>{" "}
-          terhubung ke invoice ini. Sisa invoice saat ini:{" "}
-          <b>Rp {formatIDR(data.remaining)}</b>.
+          Sisa invoice saat ini: <b>Rp {formatIDR(data.remaining)}</b>. Alokasi
+          akan otomatis di-cap kalau melebihi sisa transaksi atau sisa invoice.
         </div>
-        <Field label="Tanggal">
-          <Input
-            type="date"
-            value={payment.tx_date}
-            onChange={(e) => setPayment({ ...payment, tx_date: e.target.value })}
-          />
-        </Field>
-        <Field label="Jumlah (Rp)">
-          <Input
-            type="number"
-            inputMode="decimal"
-            value={payment.amount}
-            onChange={(e) => setPayment({ ...payment, amount: e.target.value })}
-            placeholder={`Sisa: ${formatIDR(data.remaining)}`}
-          />
-        </Field>
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="Metode">
-            <Select
-              value={payment.payment_method}
-              onChange={(e) =>
-                setPayment({ ...payment, payment_method: e.target.value as PaymentMethod })
-              }
-            >
-              <option value="CASH">Cash</option>
-              <option value="TRANSFER">Transfer</option>
-              <option value="QRIS">QRIS</option>
-              <option value="GIRO">Giro</option>
-              <option value="OTHER">Lainnya</option>
-            </Select>
-          </Field>
-          <Field label="No. Referensi">
-            <Input
-              value={payment.reference_no}
-              onChange={(e) => setPayment({ ...payment, reference_no: e.target.value })}
-            />
-          </Field>
+
+        <div className="mb-3 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 text-xs">
+          <button
+            type="button"
+            onClick={() => setPayTab("existing")}
+            className={cn(
+              "rounded-lg py-2 font-semibold transition-all",
+              payTab === "existing"
+                ? "bg-white shadow text-slate-900"
+                : "text-slate-500 hover:text-slate-700",
+            )}
+          >
+            Pakai Transaksi Existing
+          </button>
+          <button
+            type="button"
+            onClick={() => setPayTab("new")}
+            className={cn(
+              "rounded-lg py-2 font-semibold transition-all",
+              payTab === "new"
+                ? "bg-white shadow text-slate-900"
+                : "text-slate-500 hover:text-slate-700",
+            )}
+          >
+            Buat Transaksi Baru
+          </button>
         </div>
-        <Field label="Keterangan">
-          <Input
-            value={payment.description}
-            onChange={(e) => setPayment({ ...payment, description: e.target.value })}
-            placeholder={`Pembayaran invoice ${data.number || ""}`}
-          />
-        </Field>
+
+        {payTab === "existing" ? (
+          <div className="space-y-2">
+            {allocatableQ.isLoading && (
+              <div className="text-xs text-slate-500">Memuat transaksi...</div>
+            )}
+            {!allocatableQ.isLoading && (allocatableQ.data?.length ?? 0) === 0 && (
+              <div className="text-xs text-slate-500 italic">
+                Belum ada transaksi {data.type === "IN" ? "OUT" : "IN"} di proyek
+                ini yang masih punya sisa.
+              </div>
+            )}
+            {(allocatableQ.data || []).map((t) => {
+              const remaining = Number(t.remaining_amount);
+              const value = allocSelections[t.id] ?? "";
+              const setValue = (v: string) =>
+                setAllocSelections((s) => ({ ...s, [t.id]: v }));
+              return (
+                <div key={t.id} className="rounded-xl border border-slate-200 p-2">
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">
+                        #{t.id} · {t.description || t.party_name || "Transaksi"}
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        {t.tx_date} · {t.payment_method} · status {t.status}
+                      </div>
+                      <div className="text-[11px] text-slate-600">
+                        Total Rp {formatIDR(t.total_amount)} · sudah dipakai Rp{" "}
+                        {formatIDR(t.allocated_amount)} · <b>sisa Rp {formatIDR(remaining)}</b>
+                      </div>
+                    </div>
+                    <div className="w-32 shrink-0">
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        placeholder="Alokasi"
+                        value={value}
+                        onChange={(e) => setValue(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="text-[10px] text-sky-600 mt-0.5"
+                        onClick={() => {
+                          const cap = Math.min(
+                            remaining,
+                            Number(data.remaining || 0),
+                          );
+                          setValue(String(cap));
+                        }}
+                      >
+                        Pakai max
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {payFromExisting.isError && (
+              <div className="text-xs text-rose-600">
+                {(payFromExisting.error as any)?.response?.data?.detail ||
+                  (payFromExisting.error as any)?.message ||
+                  "Gagal alokasi"}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <div className="text-xs text-slate-500 mb-2">
+              Akan membuat transaksi DRAFT{" "}
+              <b className={data.type === "IN" ? "text-rose-600" : "text-emerald-600"}>
+                {data.type === "IN" ? "OUT" : "IN"}
+              </b>{" "}
+              dan langsung dialokasikan ke invoice ini.
+            </div>
+            <Field label="Tanggal">
+              <Input
+                type="date"
+                value={payment.tx_date}
+                onChange={(e) => setPayment({ ...payment, tx_date: e.target.value })}
+              />
+            </Field>
+            <Field label="Jumlah (Rp)">
+              <Input
+                type="number"
+                inputMode="decimal"
+                value={payment.amount}
+                onChange={(e) => setPayment({ ...payment, amount: e.target.value })}
+                placeholder={`Sisa: ${formatIDR(data.remaining)}`}
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Metode">
+                <Select
+                  value={payment.payment_method}
+                  onChange={(e) =>
+                    setPayment({ ...payment, payment_method: e.target.value as PaymentMethod })
+                  }
+                >
+                  <option value="CASH">Cash</option>
+                  <option value="TRANSFER">Transfer</option>
+                  <option value="QRIS">QRIS</option>
+                  <option value="GIRO">Giro</option>
+                  <option value="OTHER">Lainnya</option>
+                </Select>
+              </Field>
+              <Field label="No. Referensi">
+                <Input
+                  value={payment.reference_no}
+                  onChange={(e) => setPayment({ ...payment, reference_no: e.target.value })}
+                />
+              </Field>
+            </div>
+            <Field label="Keterangan">
+              <Input
+                value={payment.description}
+                onChange={(e) => setPayment({ ...payment, description: e.target.value })}
+                placeholder={`Pembayaran invoice ${data.number || ""}`}
+              />
+            </Field>
+          </div>
+        )}
       </Modal>
 
       <div className="mt-3 flex flex-wrap gap-2">

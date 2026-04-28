@@ -74,6 +74,16 @@ class TransactionUpdate(BaseModel):
     purchase_order_id: int | None = None
 
 
+class TransactionAllocationRef(BaseModel):
+    """Ringkasan alokasi yang dipakai pada response Transaction."""
+    id: int                       # allocation_id
+    invoice_id: int
+    invoice_number: str | None = None
+    invoice_total: Decimal
+    invoice_status: InvoiceStatus
+    allocated_amount: Decimal
+
+
 class TransactionOut(TransactionBase):
     id: int
     status: TxnStatus
@@ -83,6 +93,9 @@ class TransactionOut(TransactionBase):
     cancel_reason: str | None = None
     created_at: datetime
     attachments: list[AttachmentOut] = []
+    allocated_amount: Decimal = Decimal("0")
+    remaining_amount: Decimal = Decimal("0")
+    allocations: list[TransactionAllocationRef] = []
 
     class Config:
         from_attributes = True
@@ -109,19 +122,88 @@ class InvoiceItemOut(InvoiceItemIn):
 
 
 class InvoicePayment(BaseModel):
-    """Ringkasan transaksi pembayaran yang terhubung ke invoice."""
-    id: int
+    """Ringkasan transaksi pembayaran yang terhubung ke invoice
+    (lewat tabel `invoice_allocations`).
+    """
+    id: int                              # transaction_id
+    allocation_id: int
     tx_date: date
     type: TxnType
-    amount: Decimal
+    amount: Decimal                       # nilai yang dialokasikan ke invoice ini
+    transaction_total: Decimal            # nilai total transaksi
     status: TxnStatus
     payment_method: PaymentMethod
     reference_no: str | None = None
     description: str | None = None
     created_at: datetime
 
+
+class AllocationItemIn(BaseModel):
+    """Satu baris alokasi (digunakan oleh kedua arah API)."""
+    transaction_id: int | None = None     # diisi pada endpoint invoice-side
+    invoice_id: int | None = None         # diisi pada endpoint transaction-side
+    requested_amount: Decimal
+
+
+class AllocationCreate(BaseModel):
+    items: list[AllocationItemIn]
+    note: str | None = None
+
+
+class AllocationOut(BaseModel):
+    """Detail satu baris alokasi."""
+    id: int
+    transaction_id: int
+    invoice_id: int
+    allocated_amount: Decimal
+    note: str | None = None
+    created_at: datetime
+
     class Config:
         from_attributes = True
+
+
+class AllocationApplyResult(BaseModel):
+    """Respons setelah create allocation (auto-cap)."""
+    applied: list[AllocationOut]
+    total_applied: Decimal
+    leftover_requested: Decimal
+    invoice_paid: Decimal
+    invoice_outstanding: Decimal
+    invoice_status: InvoiceStatus
+
+
+class AllocationPatch(BaseModel):
+    allocated_amount: Decimal
+
+
+class AllocatableTransactionRow(BaseModel):
+    """Kandidat transaksi untuk dialokasikan ke invoice."""
+    id: int
+    tx_date: date
+    type: TxnType
+    party_name: str | None = None
+    payment_method: PaymentMethod
+    reference_no: str | None = None
+    description: str | None = None
+    status: TxnStatus
+    total_amount: Decimal
+    allocated_amount: Decimal
+    remaining_amount: Decimal
+
+
+class AllocatableInvoiceRow(BaseModel):
+    """Kandidat invoice untuk dialokasikan dari sebuah transaksi."""
+    id: int
+    number: str
+    invoice_date: date
+    due_date: date | None = None
+    type: InvoiceType
+    party_name: str | None = None
+    status: InvoiceStatus
+    total_amount: Decimal
+    paid_amount: Decimal
+    outstanding_amount: Decimal
 
 
 class InvoiceBase(BaseModel):
@@ -160,10 +242,11 @@ class InvoiceOut(InvoiceBase):
     created_by_id: int
     created_at: datetime
     paid_amount: Decimal = Decimal("0")
-    remaining: Decimal = Decimal("0")
+    remaining: Decimal = Decimal("0")            # alias outstanding_amount
+    outstanding_amount: Decimal = Decimal("0")
     attachments: list[AttachmentOut] = []
     items: list[InvoiceItemOut] = []
-    payments: list[InvoicePayment] = []
+    payments: list[InvoicePayment] = []          # 1 baris per allocation aktif
 
     class Config:
         from_attributes = True

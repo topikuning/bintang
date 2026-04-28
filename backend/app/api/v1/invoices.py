@@ -19,6 +19,7 @@ from app.db.session import get_db
 from app.models.models import (
     AuditAction,
     Invoice,
+    InvoiceAllocation,
     InvoiceAttachment,
     InvoiceItem,
     InvoiceStatus,
@@ -64,18 +65,38 @@ async def _to_out(db: AsyncSession, inv: Invoice) -> InvoiceOut:
     out.attachments = [AttachmentOut.model_validate(a) for a in inv.attachments]
     out.items = [InvoiceItemOut.model_validate(it) for it in inv.items]
     out.paid_amount = paid
-    out.remaining = max(Decimal(inv.total or 0) - paid, Decimal("0"))
+    outstanding = max(Decimal(inv.total or 0) - paid, Decimal("0"))
+    out.remaining = outstanding
+    out.outstanding_amount = outstanding
 
+    # payments dirakit dari allocation rows: 1 baris = 1 alokasi.
     pq = (
-        select(Transaction)
+        select(InvoiceAllocation, Transaction)
+        .join(Transaction, Transaction.id == InvoiceAllocation.transaction_id)
         .where(
-            Transaction.invoice_id == inv.id,
+            InvoiceAllocation.invoice_id == inv.id,
+            InvoiceAllocation.deleted_at.is_(None),
             Transaction.deleted_at.is_(None),
         )
-        .order_by(Transaction.tx_date.asc(), Transaction.id.asc())
+        .order_by(Transaction.tx_date.asc(), InvoiceAllocation.id.asc())
     )
-    pay_rows = (await db.execute(pq)).scalars().all()
-    out.payments = [InvoicePayment.model_validate(t) for t in pay_rows]
+    rows = (await db.execute(pq)).all()
+    out.payments = [
+        InvoicePayment(
+            id=t.id,
+            allocation_id=a.id,
+            tx_date=t.tx_date,
+            type=t.type,
+            amount=Decimal(a.allocated_amount),
+            transaction_total=Decimal(t.amount),
+            status=t.status,
+            payment_method=t.payment_method,
+            reference_no=t.reference_no,
+            description=t.description,
+            created_at=a.created_at,
+        )
+        for a, t in rows
+    ]
     return out
 
 
@@ -255,11 +276,14 @@ async def mark_invoice_paid(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_can_write),
 ) -> InvoiceOut:
-    """Tandai invoice lunas. Kalau total transaksi yang sudah terhubung lebih
-    kecil dari nilai invoice, otomatis buatkan transaksi DRAFT untuk
-    selisihnya. Arah transaksi disesuaikan dengan tipe invoice:
-    - Invoice IN  (vendor menagih kita / hutang) -> transaksi OUT
-    - Invoice OUT (kita menagih client / piutang) -> transaksi IN
+    """Tandai invoice LUNAS.
+
+    Skema baru (M:N allocations):
+      1. Hitung outstanding = total - SUM(allocations aktif).
+      2. Kalau outstanding > 0, buat transaksi DRAFT untuk selisih +
+         allocation row sebesar outstanding (auto-link via tabel
+         `invoice_allocations`, BUKAN lewat `transactions.invoice_id`).
+      3. Allocation service akan menaikkan status invoice ke PAID.
     """
     inv = await db.get(Invoice, iid)
     if not inv or inv.deleted_at is not None:
@@ -272,34 +296,44 @@ async def mark_invoice_paid(
     if total <= 0:
         raise HTTPException(409, "invoice_total_zero")
 
-    linked = await linked_amount(db, inv.id)
-    diff = total - linked
+    paid = await paid_amount(db, inv.id)
+    outstanding = total - paid
 
     note_msg = None
-    if diff > 0:
-        # buat transaksi pelunasan otomatis
+    if outstanding > 0:
         tx_type = TxnType.OUT if inv.type == InvoiceType.IN else TxnType.IN
         new_tx = Transaction(
             project_id=inv.project_id,
             tx_date=date.today(),
             type=tx_type,
-            amount=diff,
+            amount=outstanding,
             party_name=inv.party_name,
             vendor_client_id=inv.vendor_client_id,
             payment_method=PaymentMethod.TRANSFER,
             description=f"Pelunasan invoice {inv.number}",
             status=TxnStatus.DRAFT,
-            invoice_id=inv.id,
             created_by_id=user.id,
         )
         db.add(new_tx)
         await db.flush()
-        note_msg = f"auto-create transaksi {tx_type.value} Rp{diff} untuk pelunasan"
         await log(db, user_id=user.id, entity="transaction", entity_id=new_tx.id,
                   action=AuditAction.CREATE, after=snapshot(new_tx),
-                  note=f"Otomatis dibuat dari mark_paid invoice {inv.number}")
+                  note=f"Auto-create dari mark_paid invoice {inv.number}")
+        # Buat allocation row sebesar outstanding (lewat service supaya
+        # validasi & lock konsisten dengan endpoint /allocations).
+        from app.services.allocation import apply_allocations_to_invoice
+        await apply_allocations_to_invoice(
+            db,
+            invoice_id=inv.id,
+            items=[(new_tx.id, outstanding)],
+            note=f"auto mark-paid",
+            user_id=user.id,
+        )
+        note_msg = f"auto-create transaksi {tx_type.value} Rp{outstanding} untuk pelunasan"
+    else:
+        # sudah lunas via alokasi sebelumnya; pastikan status PAID
+        inv.status = InvoiceStatus.PAID
 
-    inv.status = InvoiceStatus.PAID
     await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
               action=AuditAction.UPDATE, note=note_msg or "marked paid")
     await db.commit()
@@ -350,14 +384,24 @@ async def hard_delete_invoice(
     db: AsyncSession = Depends(get_db),
     god: User = Depends(require_superadmin),
 ) -> None:
-    """GOD-MODE: hapus permanen invoice + items + lampiran. Transaksi yang
-    terhubung di-unlink (invoice_id = NULL), tidak ikut dihapus.
-    Cuma SUPERADMIN."""
+    """GOD-MODE: hapus permanen invoice + items + lampiran + semua
+    allocation row yang terhubung. Transaksi pembayaran TIDAK ikut
+    dihapus, hanya alokasinya yang dibuang. Legacy `transactions.invoice_id`
+    yang masih null-able juga di-clear bila ada (kompat). Cuma SUPERADMIN."""
     inv = await db.get(Invoice, iid)
     if not inv:
         raise HTTPException(404, "not_found")
 
-    # unlink transactions yang terhubung
+    # Hapus semua allocations row untuk invoice ini
+    alloc_res = await db.execute(
+        select(InvoiceAllocation).where(InvoiceAllocation.invoice_id == iid)
+    )
+    allocs = alloc_res.scalars().all()
+    for a in allocs:
+        await db.delete(a)
+
+    # Legacy: bila masih ada transaksi yang menunjuk invoice ini lewat
+    # kolom lama, clear juga.
     res = await db.execute(select(Transaction).where(Transaction.invoice_id == iid))
     txs = res.scalars().all()
     for t in txs:
@@ -367,7 +411,8 @@ async def hard_delete_invoice(
     await db.delete(inv)  # cascade items + attachments
     await log(db, user_id=god.id, entity="invoice", entity_id=iid,
               action=AuditAction.DELETE, before=before,
-              note=f"HARD DELETE (god-mode), {len(txs)} transaksi di-unlink")
+              note=f"HARD DELETE (god-mode), {len(allocs)} alokasi dihapus, "
+                   f"{len(txs)} legacy link di-unlink")
     await db.commit()
 
 

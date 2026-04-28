@@ -18,6 +18,7 @@ from app.db.session import get_db
 from app.models.models import (
     AuditAction,
     Invoice,
+    InvoiceAllocation,
     Transaction,
     TransactionAttachment,
     TxnStatus,
@@ -30,6 +31,7 @@ from app.schemas.finance import (
     AttachmentOut,
     CancelIn,
     ExternalLinkIn,
+    TransactionAllocationRef,
     TransactionCreate,
     TransactionOut,
     TransactionUpdate,
@@ -42,10 +44,56 @@ from app.services.storage.local import save_upload
 router = APIRouter()
 
 
-def _serialize(t: Transaction) -> TransactionOut:
+async def _build_allocation_refs(
+    db: AsyncSession, txn_ids: list[int]
+) -> dict[int, list[TransactionAllocationRef]]:
+    """Map transaction_id -> list of allocations refs (1 query)."""
+    if not txn_ids:
+        return {}
+    q = (
+        select(InvoiceAllocation, Invoice)
+        .join(Invoice, Invoice.id == InvoiceAllocation.invoice_id)
+        .where(
+            InvoiceAllocation.transaction_id.in_(txn_ids),
+            InvoiceAllocation.deleted_at.is_(None),
+        )
+        .order_by(InvoiceAllocation.id)
+    )
+    rows = (await db.execute(q)).all()
+    out: dict[int, list[TransactionAllocationRef]] = {}
+    for a, inv in rows:
+        out.setdefault(a.transaction_id, []).append(
+            TransactionAllocationRef(
+                id=a.id,
+                invoice_id=inv.id,
+                invoice_number=inv.number,
+                invoice_total=inv.total,
+                invoice_status=inv.status,
+                allocated_amount=a.allocated_amount,
+            )
+        )
+    return out
+
+
+def _serialize(t: Transaction, allocs: list[TransactionAllocationRef] | None = None) -> TransactionOut:
     out = TransactionOut.model_validate(t)
     out.attachments = [AttachmentOut.model_validate(a) for a in t.attachments]
+    out.allocations = allocs or []
+    allocated = sum(
+        (a.allocated_amount for a in (allocs or [])),
+        start=__import__("decimal").Decimal("0"),
+    )
+    out.allocated_amount = allocated
+    out.remaining_amount = max(
+        __import__("decimal").Decimal(t.amount or 0) - allocated,
+        __import__("decimal").Decimal("0"),
+    )
     return out
+
+
+async def _serialize_with_allocs(db: AsyncSession, t: Transaction) -> TransactionOut:
+    refs = (await _build_allocation_refs(db, [t.id])).get(t.id, [])
+    return _serialize(t, refs)
 
 
 @router.get("", response_model=Page[TransactionOut])
@@ -102,7 +150,11 @@ async def list_transactions(
         .limit(size)
     )
     items = (await db.execute(stmt)).scalars().all()
-    return Page(items=[_serialize(t) for t in items], total=total, page=page, size=size)
+    refs_by_id = await _build_allocation_refs(db, [t.id for t in items])
+    return Page(
+        items=[_serialize(t, refs_by_id.get(t.id, [])) for t in items],
+        total=total, page=page, size=size,
+    )
 
 
 @router.post("", response_model=TransactionOut, status_code=201)
@@ -125,7 +177,7 @@ async def create_transaction(
     res = await db.execute(
         select(Transaction).options(selectinload(Transaction.attachments)).where(Transaction.id == t.id)
     )
-    return _serialize(res.scalar_one())
+    return await _serialize_with_allocs(db, res.scalar_one())
 
 
 @router.get("/{tid}", response_model=TransactionOut)
@@ -141,7 +193,7 @@ async def get_transaction(
     if not t or t.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
-    return _serialize(t)
+    return await _serialize_with_allocs(db, t)
 
 
 @router.patch("/{tid}", response_model=TransactionOut)
@@ -170,7 +222,7 @@ async def update_transaction(
     res = await db.execute(
         select(Transaction).options(selectinload(Transaction.attachments)).where(Transaction.id == t.id)
     )
-    return _serialize(res.scalar_one())
+    return await _serialize_with_allocs(db, res.scalar_one())
 
 
 @router.post("/{tid}/submit", response_model=TransactionOut)
@@ -194,7 +246,7 @@ async def submit_transaction(
     res = await db.execute(
         select(Transaction).options(selectinload(Transaction.attachments)).where(Transaction.id == t.id)
     )
-    return _serialize(res.scalar_one())
+    return await _serialize_with_allocs(db, res.scalar_one())
 
 
 @router.post("/{tid}/verify", response_model=TransactionOut)
@@ -222,7 +274,7 @@ async def verify_transaction(
     res = await db.execute(
         select(Transaction).options(selectinload(Transaction.attachments)).where(Transaction.id == t.id)
     )
-    return _serialize(res.scalar_one())
+    return await _serialize_with_allocs(db, res.scalar_one())
 
 
 @router.post("/{tid}/reject", response_model=TransactionOut)
@@ -246,7 +298,7 @@ async def reject_transaction(
     res = await db.execute(
         select(Transaction).options(selectinload(Transaction.attachments)).where(Transaction.id == t.id)
     )
-    return _serialize(res.scalar_one())
+    return await _serialize_with_allocs(db, res.scalar_one())
 
 
 @router.post("/{tid}/cancel", response_model=TransactionOut)
@@ -272,7 +324,7 @@ async def cancel_transaction(
     res = await db.execute(
         select(Transaction).options(selectinload(Transaction.attachments)).where(Transaction.id == t.id)
     )
-    return _serialize(res.scalar_one())
+    return await _serialize_with_allocs(db, res.scalar_one())
 
 
 @router.delete("/{tid}", status_code=204)
@@ -306,12 +358,28 @@ async def hard_delete_transaction(
     if not t:
         raise HTTPException(404, "not_found")
     before = snapshot(t)
-    inv_id = t.invoice_id
+
+    # Cabut semua alokasi yang menunjuk ke transaksi ini, lalu recompute
+    # status invoice yang terdampak agar konsisten.
+    alloc_res = await db.execute(
+        select(InvoiceAllocation).where(InvoiceAllocation.transaction_id == tid)
+    )
+    affected_inv_ids: set[int] = set()
+    for a in alloc_res.scalars().all():
+        affected_inv_ids.add(a.invoice_id)
+        await db.delete(a)
+
+    inv_id_legacy = t.invoice_id
     await db.delete(t)  # cascade attachments via cascade="all,delete-orphan"
     await log(db, user_id=god.id, entity="transaction", entity_id=tid,
-              action=AuditAction.DELETE, before=before, note="HARD DELETE (god-mode)")
-    if inv_id:
-        inv = await db.get(Invoice, inv_id)
+              action=AuditAction.DELETE, before=before,
+              note=f"HARD DELETE (god-mode), {len(affected_inv_ids)} invoice direcompute")
+    for iid in affected_inv_ids:
+        inv = await db.get(Invoice, iid)
+        if inv:
+            await recompute_invoice_status(db, inv)
+    if inv_id_legacy and inv_id_legacy not in affected_inv_ids:
+        inv = await db.get(Invoice, inv_id_legacy)
         if inv:
             await recompute_invoice_status(db, inv)
     await db.commit()

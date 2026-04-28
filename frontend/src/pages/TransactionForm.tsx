@@ -8,11 +8,19 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Input";
 import AttachmentUploader from "@/components/AttachmentUploader";
 import PendingAttachmentPicker from "@/components/PendingAttachmentPicker";
+import Modal from "@/components/Modal";
 import Combobox from "@/components/ui/Combobox";
 import { Badge, statusTone } from "@/components/ui/Badge";
-import type { Category, Invoice, Page, Project, Transaction, VendorClient } from "@/types";
-import { ArrowDownLeft, ArrowUpRight, Loader2 } from "lucide-react";
-import { cn, todayISO } from "@/lib/utils";
+import type {
+  AllocatableInvoice,
+  Category,
+  Page,
+  Project,
+  Transaction,
+  VendorClient,
+} from "@/types";
+import { ArrowDownLeft, ArrowUpRight, Link2, Loader2, Plus, Trash2 } from "lucide-react";
+import { cn, formatIDR, todayISO } from "@/lib/utils";
 import { useAuthStore, isSuper, isAdmin, canWrite } from "@/store/auth";
 
 export default function TransactionForm() {
@@ -48,21 +56,57 @@ export default function TransactionForm() {
     queryFn: async () => (await api.get<Page<VendorClient>>("/vendors-clients?size=1000")).data,
   });
 
-  // Invoice list untuk combobox "Invoice Terhubung" -- hanya invoice
-  // dari proyek yang sama dan tipe yang kompatibel:
-  //   transaksi IN  (uang masuk)  <-> invoice OUT (piutang)
-  //   transaksi OUT (uang keluar) <-> invoice IN  (hutang)
-  const invoicesQ = useQuery({
-    enabled: !!data.project_id,
-    queryKey: ["invoices-link", data.project_id, data.type],
-    queryFn: async () => {
-      const compatibleType = data.type === "IN" ? "OUT" : "IN";
-      const params = new URLSearchParams({
-        project_id: String(data.project_id),
-        type: compatibleType,
-        size: "200",
-      });
-      return (await api.get<Page<Invoice>>(`/invoices?${params}`)).data;
+  // Daftar invoice yang masih punya outstanding & cocok arah-nya
+  const allocatableInvoicesQ = useQuery({
+    enabled: isEdit,
+    queryKey: ["allocatable-invoices", id],
+    queryFn: async () =>
+      (await api.get<AllocatableInvoice[]>(
+        `/transactions/${id}/allocatable-invoices`,
+      )).data,
+  });
+
+  const [allocPickerOpen, setAllocPickerOpen] = useState(false);
+  const [allocPickerSelections, setAllocPickerSelections] = useState<
+    Record<number, string>
+  >({});
+
+  const allocate = useMutation({
+    mutationFn: async () => {
+      const items = Object.entries(allocPickerSelections)
+        .filter(([, v]) => v && Number(v) > 0)
+        .map(([invId, v]) => ({ invoice_id: Number(invId), requested_amount: v }));
+      if (items.length === 0) throw new Error("Pilih minimal satu invoice.");
+      return (await api.post(`/transactions/${id}/allocations`, { items })).data;
+    },
+    onSuccess: async () => {
+      setAllocPickerOpen(false);
+      setAllocPickerSelections({});
+      const fresh = (await api.get<Transaction>(`/transactions/${id}`)).data;
+      setData(fresh);
+      setAttachments(fresh.attachments || []);
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-global"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-project"] });
+      qc.invalidateQueries({ queryKey: ["allocatable-invoices"] });
+    },
+    onError: (e: any) =>
+      alert(e?.response?.data?.detail || e?.message || "Gagal alokasi"),
+  });
+
+  const removeAllocation = useMutation({
+    mutationFn: async (allocId: number) =>
+      api.delete(`/allocations/${allocId}`),
+    onSuccess: async () => {
+      const fresh = (await api.get<Transaction>(`/transactions/${id}`)).data;
+      setData(fresh);
+      setAttachments(fresh.attachments || []);
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-global"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-project"] });
+      qc.invalidateQueries({ queryKey: ["allocatable-invoices"] });
     },
   });
 
@@ -278,31 +322,6 @@ export default function TransactionForm() {
           <Input disabled={isLocked} value={data.party_name || ""} onChange={(e) => setData({ ...data, party_name: e.target.value })} />
         </Field>
 
-        <Field
-          label="Invoice Terhubung (opsional)"
-          hint={
-            data.project_id
-              ? `Invoice ${data.type === "IN" ? "Piutang (OUT)" : "Hutang (IN)"} di proyek ini.`
-              : "Pilih proyek dulu untuk memilih invoice."
-          }
-        >
-          <Combobox
-            disabled={isLocked || !data.project_id}
-            value={data.invoice_id ?? null}
-            onChange={(v) => setData({ ...data, invoice_id: v == null ? null : Number(v) })}
-            options={(invoicesQ.data?.items || []).map((inv) => ({
-              value: inv.id,
-              label: inv.number,
-              hint: `${inv.party_name || "-"} · Rp ${Number(inv.total).toLocaleString("id-ID")} · ${inv.status}`,
-            }))}
-            placeholder={
-              invoicesQ.data?.items.length === 0
-                ? "Tidak ada invoice yang cocok"
-                : "Cari invoice..."
-            }
-          />
-        </Field>
-
         <div className="grid grid-cols-2 gap-2">
           <Field label="Metode Pembayaran">
             <Select disabled={isLocked} value={data.payment_method || "TRANSFER"} onChange={(e) => setData({ ...data, payment_method: e.target.value as any })}>
@@ -326,6 +345,182 @@ export default function TransactionForm() {
           <Textarea disabled={isLocked} value={data.usage_note || ""} onChange={(e) => setData({ ...data, usage_note: e.target.value })} />
         </Field>
       </Card>
+
+      {isEdit && (
+        <Card className="mt-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-semibold flex items-center gap-2">
+              <Link2 className="h-4 w-4 text-slate-500" />
+              Alokasi ke Invoice
+              {(data.allocations?.length ?? 0) > 0 && (
+                <Badge tone="neutral">{data.allocations?.length ?? 0}</Badge>
+              )}
+            </div>
+            {!isLocked && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setAllocPickerOpen(true)}
+                disabled={Number(data.remaining_amount || 0) <= 0}
+              >
+                <Plus className="h-4 w-4" /> Tambah
+              </Button>
+            )}
+          </div>
+          <div className="text-[11px] text-slate-500 mb-2 grid grid-cols-3 gap-2">
+            <div>
+              Total: <b className="tabular-nums">Rp {formatIDR(data.amount)}</b>
+            </div>
+            <div>
+              Dialokasi:{" "}
+              <b className="tabular-nums">Rp {formatIDR(data.allocated_amount)}</b>
+            </div>
+            <div>
+              Sisa:{" "}
+              <b
+                className={cn(
+                  "tabular-nums",
+                  Number(data.remaining_amount || 0) <= 0 && "text-emerald-700",
+                )}
+              >
+                Rp {formatIDR(data.remaining_amount)}
+              </b>
+            </div>
+          </div>
+          {(data.allocations?.length ?? 0) === 0 ? (
+            <div className="text-xs text-slate-500 italic">
+              Belum ada alokasi. Klik <b>Tambah</b> untuk hubungkan transaksi ini
+              ke satu atau lebih invoice.
+            </div>
+          ) : (
+            <ul className="divide-y">
+              {(data.allocations || []).map((a) => (
+                <li key={a.id} className="py-2 flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">
+                      INV {a.invoice_number || `#${a.invoice_id}`}
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      Total invoice Rp {formatIDR(a.invoice_total)} ·{" "}
+                      <Badge tone={statusTone(a.invoice_status)}>
+                        {a.invoice_status}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="tabular-nums font-semibold text-sm">
+                      Rp {formatIDR(a.allocated_amount)}
+                    </div>
+                  </div>
+                  {!isLocked && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(`Lepas alokasi ke INV ${a.invoice_number}?`))
+                          removeAllocation.mutate(a.id);
+                      }}
+                      className="grid h-8 w-8 place-items-center rounded-full bg-rose-100 text-rose-700"
+                      aria-label="Lepas alokasi"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
+
+      {/* Modal: Pilih invoice untuk dialokasikan */}
+      <Modal
+        open={allocPickerOpen}
+        onClose={() => setAllocPickerOpen(false)}
+        title="Alokasikan ke Invoice"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setAllocPickerOpen(false)}>
+              Batal
+            </Button>
+            <Button
+              onClick={() => allocate.mutate()}
+              disabled={
+                allocate.isPending ||
+                Object.values(allocPickerSelections).filter((v) => Number(v) > 0).length === 0
+              }
+            >
+              {allocate.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {allocate.isPending ? "Mengalokasi..." : "Alokasikan"}
+            </Button>
+          </>
+        }
+      >
+        <div className="text-xs text-slate-500 mb-2">
+          Sisa transaksi:{" "}
+          <b>Rp {formatIDR(data.remaining_amount)}</b>. Backend akan auto-cap
+          jika permintaanmu melebihi sisa transaksi atau outstanding invoice.
+        </div>
+        {allocatableInvoicesQ.isLoading && (
+          <div className="text-xs text-slate-500">Memuat invoice...</div>
+        )}
+        {!allocatableInvoicesQ.isLoading &&
+          (allocatableInvoicesQ.data?.length ?? 0) === 0 && (
+            <div className="text-xs text-slate-500 italic">
+              Belum ada invoice {data.type === "IN" ? "OUT" : "IN"} di proyek ini
+              yang masih punya outstanding.
+            </div>
+          )}
+        <div className="space-y-2">
+          {(allocatableInvoicesQ.data || []).map((inv: AllocatableInvoice) => {
+            const outstanding = Number(inv.outstanding_amount);
+            const value = allocPickerSelections[inv.id] ?? "";
+            const setValue = (v: string) =>
+              setAllocPickerSelections((s) => ({ ...s, [inv.id]: v }));
+            return (
+              <div key={inv.id} className="rounded-xl border border-slate-200 p-2">
+                <div className="flex items-start gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">
+                      INV {inv.number}
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      {inv.invoice_date} · {inv.party_name || "-"} ·{" "}
+                      <Badge tone={statusTone(inv.status)}>{inv.status}</Badge>
+                    </div>
+                    <div className="text-[11px] text-slate-600">
+                      Total Rp {formatIDR(inv.total_amount)} · sudah dibayar Rp{" "}
+                      {formatIDR(inv.paid_amount)} ·{" "}
+                      <b>outstanding Rp {formatIDR(outstanding)}</b>
+                    </div>
+                  </div>
+                  <div className="w-32 shrink-0">
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      placeholder="Alokasi"
+                      value={value}
+                      onChange={(e) => setValue(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="text-[10px] text-sky-600 mt-0.5"
+                      onClick={() => {
+                        const cap = Math.min(
+                          outstanding,
+                          Number(data.remaining_amount || 0),
+                        );
+                        setValue(String(cap));
+                      }}
+                    >
+                      Pakai max
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Modal>
 
       <Card className="mt-3">
         {isEdit ? (

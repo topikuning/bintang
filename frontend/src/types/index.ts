@@ -93,6 +93,15 @@ export interface Attachment {
   created_at: string;
 }
 
+export interface TransactionAllocationRef {
+  id: number;                        // allocation_id
+  invoice_id: number;
+  invoice_number?: string | null;
+  invoice_total: string;
+  invoice_status: InvoiceStatus;
+  allocated_amount: string;
+}
+
 export interface Transaction {
   id: number;
   project_id: number;
@@ -109,7 +118,7 @@ export interface Transaction {
   reference_no?: string | null;
   description?: string | null;
   usage_note?: string | null;
-  invoice_id?: number | null;
+  invoice_id?: number | null;          // legacy; jangan ditulis lagi
   purchase_order_id?: number | null;
   status: TxnStatus;
   cancel_reason?: string | null;
@@ -118,6 +127,9 @@ export interface Transaction {
   verified_at?: string | null;
   created_at: string;
   attachments: Attachment[];
+  allocated_amount: string;
+  remaining_amount: string;
+  allocations: TransactionAllocationRef[];
 }
 
 export interface InvoiceItem {
@@ -130,15 +142,44 @@ export interface InvoiceItem {
 }
 
 export interface InvoicePayment {
-  id: number;
+  id: number;                          // transaction_id
+  allocation_id: number;
   tx_date: string;
   type: TxnType;
-  amount: string;
+  amount: string;                      // nilai yang dialokasikan ke invoice ini
+  transaction_total: string;
   status: TxnStatus;
   payment_method: PaymentMethod;
   reference_no?: string | null;
   description?: string | null;
   created_at: string;
+}
+
+export interface AllocatableTransaction {
+  id: number;
+  tx_date: string;
+  type: TxnType;
+  party_name?: string | null;
+  payment_method: PaymentMethod;
+  reference_no?: string | null;
+  description?: string | null;
+  status: TxnStatus;
+  total_amount: string;
+  allocated_amount: string;
+  remaining_amount: string;
+}
+
+export interface AllocatableInvoice {
+  id: number;
+  number: string;
+  invoice_date: string;
+  due_date?: string | null;
+  type: InvoiceType;
+  party_name?: string | null;
+  status: InvoiceStatus;
+  total_amount: string;
+  paid_amount: string;
+  outstanding_amount: string;
 }
 
 export interface Invoice {
@@ -159,9 +200,10 @@ export interface Invoice {
   created_at: string;
   paid_amount: string;
   remaining: string;
+  outstanding_amount: string;
   attachments: Attachment[];
   items: InvoiceItem[];
-  payments: InvoicePayment[];
+  payments: InvoicePayment[];          // 1 baris per allocation aktif
 }
 
 export interface POItem {
