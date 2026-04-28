@@ -132,8 +132,39 @@ class User(TimestampMixin, Base):
     # EXECUTIVE: True = boleh lihat semua proyek; False = hanya proyek di project_users.
     # Diabaikan untuk role lain.
     scope_all_projects: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Telegram bot integration: chat_id user setelah berhasil /link
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(40), unique=True, nullable=True)
 
     project_links: Mapped[list[ProjectUser]] = relationship(back_populates="user", cascade="all,delete-orphan")
+
+
+class TelegramLinkCode(TimestampMixin, Base):
+    """Kode 6 digit sekali pakai untuk meng-link user web ke chat Telegram.
+    User generate kode dari halaman profil, ketik `/link <code>` di bot.
+    Server cocokkan kode -> isi telegram_chat_id user.
+    Kode kadaluwarsa setelah `expires_at`.
+    """
+    __tablename__ = "telegram_link_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    code: Mapped[str] = mapped_column(String(12), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TelegramPendingCommand(TimestampMixin, Base):
+    """Buffer kecil per chat untuk mengaitkan foto yang dikirim *setelah*
+    command /keluar atau /masuk dengan transaksi yang baru dibuat. Foto
+    masuk dalam jendela waktu pendek setelah command sukses akan otomatis
+    di-attach ke transaksi terakhir.
+    """
+    __tablename__ = "telegram_pending_attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    transaction_id: Mapped[int] = mapped_column(ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class Company(TimestampMixin, Base):

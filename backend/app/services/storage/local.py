@@ -74,6 +74,57 @@ def _optimize_image(target: Path, content_type: str) -> int:
     return target.stat().st_size
 
 
+async def save_bytes(
+    content: bytes,
+    *,
+    original_name: str,
+    subdir: str,
+    mime_hint: str | None = None,
+) -> dict:
+    """Simpan bytes mentah ke uploads. Dipakai mis. oleh integrasi
+    Telegram yang sudah pegang file dari Bot API.
+
+    Skema penyimpanan & optimasi gambar identik dengan save_upload.
+    """
+    base = Path(settings.UPLOAD_DIR) / subdir / datetime.utcnow().strftime("%Y/%m")
+    base.mkdir(parents=True, exist_ok=True)
+
+    suffix = Path(original_name or "").suffix.lower() or ".bin"
+    safe_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(6)}{suffix}"
+    target = base / safe_name
+
+    max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
+    if len(content) > max_bytes:
+        raise HTTPException(413, f"file_too_large_max_{settings.MAX_UPLOAD_MB}_mb")
+    async with aiofiles.open(target, "wb") as out:
+        await out.write(content)
+
+    mime = mime_hint
+    if mime is None:
+        if suffix in (".jpg", ".jpeg"):
+            mime = "image/jpeg"
+        elif suffix == ".png":
+            mime = "image/png"
+        elif suffix == ".webp":
+            mime = "image/webp"
+        elif suffix == ".pdf":
+            mime = "application/pdf"
+        else:
+            mime = "application/octet-stream"
+
+    size = target.stat().st_size
+    if mime.startswith("image/"):
+        size = _optimize_image(target, mime)
+
+    rel = target.relative_to(Path(settings.UPLOAD_DIR)).as_posix()
+    return {
+        "file_name": original_name or safe_name,
+        "file_size": size,
+        "mime_type": mime,
+        "url": f"/files/{rel}",
+    }
+
+
 async def save_upload(file: UploadFile, subdir: str) -> dict:
     if file.content_type not in ALLOWED_MIME:
         raise HTTPException(415, f"unsupported_media_type: {file.content_type}")

@@ -1,0 +1,1 @@
+"""Bintang Telegram bot integration."""

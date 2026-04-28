@@ -18,6 +18,8 @@ async def _sync_pg_columns(conn) -> None:
     Idempoten via `ADD COLUMN IF NOT EXISTS` (Postgres 9.6+)."""
     statements = [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS scope_all_projects BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id VARCHAR(40)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_telegram_chat_id ON users (telegram_chat_id) WHERE telegram_chat_id IS NOT NULL",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_value NUMERIC(18,2) NOT NULL DEFAULT 0",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS tax_ppn_pct NUMERIC(5,2) NOT NULL DEFAULT 11",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS tax_pph_pct NUMERIC(5,2) NOT NULL DEFAULT 2",
@@ -70,6 +72,17 @@ async def lifespan(_app: FastAPI):
             # jangan blok startup; cetak warning saja
             print(f"[startup] schema sync warning: {e}")
     Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
+
+    # Register Telegram webhook kalau token + base URL tersedia.
+    if settings.TELEGRAM_BOT_TOKEN and settings.PUBLIC_BASE_URL:
+        try:
+            from app.services.telegram import client as tg
+            url = settings.PUBLIC_BASE_URL.rstrip("/") + "/api/v1/telegram/webhook"
+            ok = await tg.set_webhook(url, settings.TELEGRAM_WEBHOOK_SECRET or None)
+            print(f"[startup] telegram setWebhook {url} -> ok={ok}")
+        except Exception as e:  # noqa: BLE001
+            print(f"[startup] telegram setWebhook failed: {e}")
+
     yield
 
 

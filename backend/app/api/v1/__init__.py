@@ -14,6 +14,7 @@ from app.api.v1 import (
     projects,
     purchase_orders,
     reports,
+    telegram,
     transactions,
     users,
     vendors_clients,
@@ -39,6 +40,7 @@ api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(audit_logs.router, prefix="/audit-logs", tags=["audit-logs"])
 api_router.include_router(imports.router, prefix="/imports", tags=["imports"])
 api_router.include_router(ocr.router, prefix="/ocr", tags=["ocr"])
+api_router.include_router(telegram.router, prefix="/telegram", tags=["telegram"])
 # allocations dipasang di prefix root karena rutenya bercampur:
 #   /invoices/{id}/allocations, /transactions/{id}/allocations, /allocations/{id}
 api_router.include_router(allocations.router, tags=["allocations"])
