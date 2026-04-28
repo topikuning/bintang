@@ -8,10 +8,10 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Input";
 import Combobox from "@/components/ui/Combobox";
 import { Badge, statusTone } from "@/components/ui/Badge";
-import { Trash2, Plus, Printer } from "lucide-react";
+import { Loader2, Plus, Printer, Trash2 } from "lucide-react";
 import { formatIDR, todayISO } from "@/lib/utils";
 import type { Company, Page, Project, PurchaseOrder, VendorClient } from "@/types";
-import { useAuthStore, isSuper } from "@/store/auth";
+import { useAuthStore, isAdmin, isSuper } from "@/store/auth";
 
 interface ItemRow {
   id?: number;
@@ -218,15 +218,48 @@ export default function POForm() {
       </Card>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        <Button onClick={() => save.mutate()} disabled={save.isPending}>Simpan</Button>
+        <Button
+          onClick={() => save.mutate()}
+          disabled={save.isPending || action.isPending}
+        >
+          {save.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+          {save.isPending ? "Menyimpan..." : "Simpan"}
+        </Button>
         {isEdit && data.status === "DRAFT" && (
-          <Button variant="secondary" onClick={() => action.mutate("issue")}>Issue</Button>
+          <Button
+            variant="secondary"
+            onClick={() => action.mutate("issue")}
+            disabled={action.isPending || save.isPending}
+          >
+            {action.isPending && action.variables === "issue" && (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            )}
+            Issue
+          </Button>
         )}
-        {isEdit && isSuper(user) && (data.status === "DRAFT" || data.status === "ISSUED") && (
-          <Button variant="success" onClick={() => action.mutate("approve")}>Setujui</Button>
+        {isEdit && isAdmin(user) && (data.status === "DRAFT" || data.status === "ISSUED") && (
+          <Button
+            variant="success"
+            onClick={() => action.mutate("approve")}
+            disabled={action.isPending || save.isPending}
+          >
+            {action.isPending && action.variables === "approve" && (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            )}
+            Setujui
+          </Button>
         )}
-        {isEdit && isSuper(user) && data.status !== "CANCELLED" && (
-          <Button variant="danger" onClick={() => action.mutate("cancel")}>Batalkan</Button>
+        {isEdit && isAdmin(user) && data.status !== "CANCELLED" && (
+          <Button
+            variant="danger"
+            onClick={() => action.mutate("cancel")}
+            disabled={action.isPending || save.isPending}
+          >
+            {action.isPending && action.variables === "cancel" && (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            )}
+            Batalkan
+          </Button>
         )}
         {isEdit && (
           <Button
@@ -248,6 +281,16 @@ export default function POForm() {
           </Button>
         )}
       </div>
+      {save.isError && (
+        <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {(save.error as any)?.response?.data?.detail || "Gagal menyimpan"}
+        </div>
+      )}
+      {action.isError && (
+        <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {(action.error as any)?.response?.data?.detail || "Aksi gagal"}
+        </div>
+      )}
     </div>
   );
 }

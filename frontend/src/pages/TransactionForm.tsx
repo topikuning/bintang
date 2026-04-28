@@ -11,9 +11,9 @@ import PendingAttachmentPicker from "@/components/PendingAttachmentPicker";
 import Combobox from "@/components/ui/Combobox";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import type { Category, Invoice, Page, Project, Transaction, VendorClient } from "@/types";
-import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Loader2 } from "lucide-react";
 import { cn, todayISO } from "@/lib/utils";
-import { useAuthStore, isSuper, canWrite } from "@/store/auth";
+import { useAuthStore, isSuper, isAdmin, canWrite } from "@/store/auth";
 
 export default function TransactionForm() {
   const { id } = useParams();
@@ -133,7 +133,7 @@ export default function TransactionForm() {
 
   const cats = (catsQ.data?.items || []).filter((c) => !data.type || c.type === data.type);
 
-  const isLocked = (data.status === "VERIFIED" && !isSuper(user)) || !canWrite(user);
+  const isLocked = (data.status === "VERIFIED" && !isAdmin(user)) || !canWrite(user);
   const isIn = data.type === "IN";
 
   function setType(next: "IN" | "OUT") {
@@ -340,40 +340,73 @@ export default function TransactionForm() {
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
           onClick={() => save.mutate()}
-          disabled={save.isPending || isLocked}
+          disabled={save.isPending || isLocked || action.isPending}
           className={cn(
             isIn
               ? "!bg-emerald-600 hover:!bg-emerald-500 !text-white"
               : "!bg-rose-600 hover:!bg-rose-500 !text-white",
           )}
         >
-          {isEdit ? "Simpan Perubahan" : isIn ? "Simpan Uang Masuk" : "Simpan Uang Keluar"}
+          {save.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+          {save.isPending
+            ? "Menyimpan..."
+            : isEdit
+              ? "Simpan Perubahan"
+              : isIn
+                ? "Simpan Uang Masuk"
+                : "Simpan Uang Keluar"}
         </Button>
         {isEdit && data.status === "DRAFT" && (
-          <Button variant="secondary" onClick={() => action.mutate({ kind: "submit" })}>Submit</Button>
+          <Button
+            variant="secondary"
+            onClick={() => action.mutate({ kind: "submit" })}
+            disabled={action.isPending || save.isPending}
+          >
+            {action.isPending && action.variables?.kind === "submit" && (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            )}
+            Submit
+          </Button>
         )}
-        {isEdit && isSuper(user) && (data.status === "SUBMITTED" || data.status === "DRAFT") && (
+        {isEdit && isAdmin(user) && (data.status === "SUBMITTED" || data.status === "DRAFT") && (
           <>
-            <Button variant="success" onClick={() => action.mutate({ kind: "verify" })}>Verifikasi</Button>
+            <Button
+              variant="success"
+              onClick={() => action.mutate({ kind: "verify" })}
+              disabled={action.isPending || save.isPending}
+            >
+              {action.isPending && action.variables?.kind === "verify" && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+              Verifikasi
+            </Button>
             <Button
               variant="danger"
+              disabled={action.isPending || save.isPending}
               onClick={() => {
                 const reason = prompt("Alasan tolak:") || "";
                 if (reason) action.mutate({ kind: "reject", reason });
               }}
             >
+              {action.isPending && action.variables?.kind === "reject" && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
               Tolak
             </Button>
           </>
         )}
-        {isEdit && isSuper(user) && data.status === "VERIFIED" && (
+        {isEdit && isAdmin(user) && data.status === "VERIFIED" && (
           <Button
             variant="danger"
+            disabled={action.isPending || save.isPending}
             onClick={() => {
               const reason = prompt("Alasan pembatalan transaksi yang sudah verified:") || "";
               if (reason) action.mutate({ kind: "cancel", reason });
             }}
           >
+            {action.isPending && action.variables?.kind === "cancel" && (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            )}
             Batalkan
           </Button>
         )}
@@ -400,7 +433,14 @@ export default function TransactionForm() {
         )}
       </div>
       {save.isError && (
-        <div className="mt-2 text-sm text-rose-600">{(save.error as any)?.response?.data?.detail || "Gagal menyimpan"}</div>
+        <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {(save.error as any)?.response?.data?.detail || "Gagal menyimpan"}
+        </div>
+      )}
+      {action.isError && (
+        <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {(action.error as any)?.response?.data?.detail || "Aksi gagal"}
+        </div>
       )}
     </div>
   );

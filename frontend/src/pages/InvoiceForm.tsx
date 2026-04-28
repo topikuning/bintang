@@ -11,7 +11,7 @@ import PendingAttachmentPicker from "@/components/PendingAttachmentPicker";
 import Combobox from "@/components/ui/Combobox";
 import Modal from "@/components/Modal";
 import { Badge, statusTone } from "@/components/ui/Badge";
-import { ArrowDownLeft, ArrowUpRight, BadgeCheck, Link2, Plus, Trash2 } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, BadgeCheck, Link2, Loader2, Plus, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { canWrite, isSuper, useAuthStore } from "@/store/auth";
 import { cn, formatDate, formatIDR, todayISO } from "@/lib/utils";
@@ -573,17 +573,23 @@ export default function InvoiceForm() {
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
           onClick={() => save.mutate()}
-          disabled={save.isPending || !canWrite(user)}
+          disabled={save.isPending || !canWrite(user) || issue.isPending || markPaid.isPending}
           className={cn(
             data.type === "OUT"
               ? "!bg-emerald-600 hover:!bg-emerald-500 !text-white"
               : "!bg-rose-600 hover:!bg-rose-500 !text-white",
           )}
         >
-          Simpan
+          {save.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+          {save.isPending ? "Menyimpan..." : "Simpan"}
         </Button>
         {isEdit && data.status === "DRAFT" && (
-          <Button variant="secondary" onClick={() => issue.mutate()}>
+          <Button
+            variant="secondary"
+            onClick={() => issue.mutate()}
+            disabled={issue.isPending || save.isPending}
+          >
+            {issue.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Terbitkan (Issue)
           </Button>
         )}
@@ -600,9 +606,14 @@ export default function InvoiceForm() {
                   : "Tandai invoice LUNAS?";
               if (confirm(msg)) markPaid.mutate();
             }}
-            disabled={markPaid.isPending}
+            disabled={markPaid.isPending || save.isPending}
           >
-            <BadgeCheck className="h-4 w-4" /> Tandai Lunas
+            {markPaid.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <BadgeCheck className="h-4 w-4" />
+            )}
+            Tandai Lunas
           </Button>
         )}
         {isEdit && isSuper(user) && (
@@ -629,8 +640,13 @@ export default function InvoiceForm() {
         )}
       </div>
       {save.isError && (
-        <div className="mt-2 text-sm text-rose-600">
+        <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {(save.error as any)?.response?.data?.detail || "Gagal menyimpan"}
+        </div>
+      )}
+      {issue.isError && (
+        <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {(issue.error as any)?.response?.data?.detail || "Gagal terbitkan invoice"}
         </div>
       )}
     </div>
