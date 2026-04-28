@@ -197,17 +197,24 @@ export default function InvoiceForm() {
           />
         </Field>
         <Field label="Pihak (Vendor/Client)">
-          <Select
-            value={data.vendor_client_id ?? ""}
-            onChange={(e) => {
-              const vid = e.target.value ? Number(e.target.value) : null;
-              const v = vcQ.data?.items.find((x) => x.id === vid);
-              setData({ ...data, vendor_client_id: vid, party_name: v?.name || data.party_name });
+          <Combobox
+            value={data.vendor_client_id ?? null}
+            onChange={(v) => {
+              const vid = v == null ? null : Number(v);
+              const item = vcQ.data?.items.find((x) => x.id === vid);
+              setData({
+                ...data,
+                vendor_client_id: vid,
+                party_name: item?.name || data.party_name,
+              });
             }}
-          >
-            <option value="">- pilih -</option>
-            {vcQ.data?.items.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-          </Select>
+            options={(vcQ.data?.items || []).map((v) => ({
+              value: v.id,
+              label: v.name,
+              hint: v.type,
+            }))}
+            placeholder="Cari vendor / client..."
+          />
         </Field>
         <Field label="Nama Pihak (manual)">
           <Input value={data.party_name || ""} onChange={(e) => setData({ ...data, party_name: e.target.value })} />
