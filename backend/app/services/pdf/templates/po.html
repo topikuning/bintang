@@ -10,7 +10,7 @@
 <!-- KOP / LETTERHEAD (kecil, opsional) -->
 <div class="kop row">
   <div>
-    {% if company.logo_url %}<img src="{{ company.logo_url }}" alt="logo">{% endif %}
+    {% if logo_data %}<img src="{{ logo_data }}" alt="logo">{% endif %}
   </div>
   <div style="flex:1; padding-left:10px;">
     <div class="brand">{{ company.name }}</div>

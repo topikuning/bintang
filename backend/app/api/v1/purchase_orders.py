@@ -31,7 +31,7 @@ from app.models.models import (
 from app.schemas.common import Page
 from app.schemas.finance import CancelIn, POCreate, POOut, POUpdate
 from app.services.audit import log, snapshot
-from app.services.pdf.render import html_to_pdf, render_html
+from app.services.pdf.render import html_to_pdf, inline_image, render_html
 
 router = APIRouter()
 
@@ -348,10 +348,13 @@ async def po_pdf(
     created_by = await db.get(User, po.created_by_id) if po.created_by_id else None
     approved_by = await db.get(User, po.approved_by_id) if po.approved_by_id else None
     base_css = (Path(__file__).parent.parent.parent / "services/pdf/templates/_base.css").read_text(encoding="utf-8")
+    logo_data = inline_image(company.logo_url) if company else None
+    letterhead_data = inline_image(company.letterhead_url) if company else None
     html = render_html(
         "po.html",
         po=po, project=project, company=company,
         vendor=vendor, created_by=created_by, approved_by=approved_by,
+        logo_data=logo_data, letterhead_data=letterhead_data,
         base_css=base_css,
     )
     pdf = html_to_pdf(html)

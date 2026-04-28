@@ -48,7 +48,7 @@ from app.schemas.finance import (
 )
 from app.services.audit import log, snapshot
 from app.services.invoice_status import linked_amount, paid_amount, recompute_invoice_status
-from app.services.pdf.render import html_to_pdf, render_html
+from app.services.pdf.render import html_to_pdf, inline_image, render_html
 from app.services.storage.links import normalize_external_link
 from app.services.storage.local import save_upload
 
@@ -540,12 +540,15 @@ async def invoice_pdf(
     base_css = (
         Path(__file__).parent.parent.parent / "services/pdf/templates/_base.css"
     ).read_text(encoding="utf-8")
+    logo_data = inline_image(company.logo_url) if company else None
+    letterhead_data = inline_image(company.letterhead_url) if company else None
     html = render_html(
         "invoice.html",
         invoice=inv, project=project, company=company,
         vendor=vendor, created_by=created_by,
         paid_amount=paid, outstanding=outstanding,
         amount_in_words=_terbilang(int(Decimal(inv.total or 0))).capitalize(),
+        logo_data=logo_data, letterhead_data=letterhead_data,
         base_css=base_css,
     )
     pdf = html_to_pdf(html)
