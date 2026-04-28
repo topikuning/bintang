@@ -26,6 +26,14 @@ from app.schemas.refs import ProjectCreate, ProjectOut, ProjectUpdate
 from app.services.audit import log, snapshot
 from app.services.storage.links import normalize_external_link
 from app.services.storage.local import save_upload
+from app.models.models import (  # extra imports for stats endpoint
+    Company as _Company,
+    Invoice as _Invoice,
+    InvoiceStatus as _InvoiceStatus,
+    Transaction as _Transaction,
+    TxnStatus as _TxnStatus,
+    TxnType as _TxnType,
+)
 
 router = APIRouter()
 
@@ -57,6 +65,113 @@ async def list_projects(
     stmt = stmt.order_by(Project.id.desc()).offset((page - 1) * size).limit(size)
     items = (await db.execute(stmt)).scalars().all()
     return Page(items=[ProjectOut.model_validate(p) for p in items], total=total, page=page, size=size)
+
+
+@router.get("/stats")
+async def list_projects_with_stats(
+    q: str | None = None,
+    status: str | None = None,
+    company_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    """List proyek lengkap dengan agregat keuangan (untuk halaman Proyek
+    yang kaya kartu). Hormat scoping user."""
+    stmt = select(Project).where(Project.deleted_at.is_(None))
+    pids = await user_project_ids(db, user)
+    if pids is not None:
+        if not pids:
+            return []
+        stmt = stmt.where(Project.id.in_(pids))
+    if q:
+        like = f"%{q}%"
+        stmt = stmt.where((Project.name.ilike(like)) | (Project.code.ilike(like)))
+    if status:
+        stmt = stmt.where(Project.status == status)
+    if company_id:
+        stmt = stmt.where(Project.company_id == company_id)
+    stmt = stmt.order_by(Project.id.desc())
+    projects = (await db.execute(stmt)).scalars().all()
+
+    # company map
+    cmap_q = select(_Company)
+    cmap = {c.id: c for c in (await db.execute(cmap_q)).scalars().all()}
+
+    out: list[dict] = []
+    active_tx_statuses = (_TxnStatus.DRAFT, _TxnStatus.SUBMITTED, _TxnStatus.VERIFIED)
+    open_inv_statuses = (
+        _InvoiceStatus.ISSUED, _InvoiceStatus.PARTIALLY_PAID, _InvoiceStatus.OVERDUE,
+    )
+    for p in projects:
+        # totals_in / totals_out (active)
+        in_q = select(func.coalesce(func.sum(_Transaction.amount), 0)).where(
+            _Transaction.project_id == p.id,
+            _Transaction.type == _TxnType.IN,
+            _Transaction.status.in_(active_tx_statuses),
+            _Transaction.deleted_at.is_(None),
+        )
+        out_q = select(func.coalesce(func.sum(_Transaction.amount), 0)).where(
+            _Transaction.project_id == p.id,
+            _Transaction.type == _TxnType.OUT,
+            _Transaction.status.in_(active_tx_statuses),
+            _Transaction.deleted_at.is_(None),
+        )
+        total_in = float((await db.execute(in_q)).scalar_one() or 0)
+        total_out = float((await db.execute(out_q)).scalar_one() or 0)
+
+        # invoice open
+        inv_open_q = select(func.coalesce(func.sum(_Invoice.total), 0)).where(
+            _Invoice.project_id == p.id,
+            _Invoice.status.in_(open_inv_statuses),
+            _Invoice.deleted_at.is_(None),
+        )
+        inv_open = float((await db.execute(inv_open_q)).scalar_one() or 0)
+
+        budget = float(p.budget_amount or 0)
+        spent = total_out
+        usage_pct = (spent / budget * 100) if budget > 0 else 0.0
+        if budget <= 0:
+            bstatus = "no_budget"
+        elif usage_pct <= 80:
+            bstatus = "aman"
+        elif usage_pct <= 100:
+            bstatus = "mendekati_batas"
+        else:
+            bstatus = "overbudget"
+
+        balance = total_in - total_out
+        if balance < 0:
+            health = "minus"
+        elif balance == 0:
+            health = "waspada"
+        else:
+            health = "sehat"
+
+        out.append({
+            "id": p.id,
+            "code": p.code,
+            "name": p.name,
+            "location": p.location,
+            "status": p.status.value,
+            "currency": p.currency,
+            "company_id": p.company_id,
+            "company": cmap[p.company_id].name if p.company_id in cmap else None,
+            "project_value": float(p.project_value or 0),
+            "budget_amount": budget,
+            "total_in": total_in,
+            "total_out": total_out,
+            "balance": balance,
+            "invoice_open": inv_open,
+            "budget": {
+                "amount": budget,
+                "spent": spent,
+                "remaining": budget - spent,
+                "usage_pct": round(usage_pct, 2),
+                "status": bstatus,
+            },
+            "health": health,
+        })
+    return out
 
 
 @router.post("", response_model=ProjectOut, status_code=201)

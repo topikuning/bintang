@@ -56,6 +56,7 @@ export interface Project {
   end_date?: string | null;
   status: ProjectStatus;
   notes?: string | null;
+  project_value: string;
   budget_amount: string;
   currency: string;
   overbudget_tolerance_pct: string;

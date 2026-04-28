@@ -18,6 +18,7 @@ async def _sync_pg_columns(conn) -> None:
     Idempoten via `ADD COLUMN IF NOT EXISTS` (Postgres 9.6+)."""
     statements = [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS scope_all_projects BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_value NUMERIC(18,2) NOT NULL DEFAULT 0",
     ]
     for sql in statements:
         try:

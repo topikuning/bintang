@@ -57,6 +57,7 @@ class ProjectBase(BaseModel):
     end_date: date | None = None
     status: ProjectStatus = ProjectStatus.AKTIF
     notes: str | None = None
+    project_value: Decimal = Decimal("0")
     budget_amount: Decimal = Decimal("0")
     currency: str = "IDR"
     overbudget_tolerance_pct: Decimal = Decimal("0")
@@ -76,6 +77,7 @@ class ProjectUpdate(BaseModel):
     end_date: date | None = None
     status: ProjectStatus | None = None
     notes: str | None = None
+    project_value: Decimal | None = None
     budget_amount: Decimal | None = None
     currency: str | None = None
     overbudget_tolerance_pct: Decimal | None = None

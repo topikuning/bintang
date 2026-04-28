@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
@@ -7,23 +8,66 @@ import { Badge, statusTone } from "@/components/ui/Badge";
 import CashflowChart from "@/components/charts/CashflowChart";
 import SpendingPie from "@/components/charts/SpendingPie";
 import BudgetProgress from "@/components/BudgetProgress";
+import Combobox from "@/components/ui/Combobox";
+import { Input } from "@/components/ui/Input";
 import { formatIDR } from "@/lib/utils";
-import { AlertTriangle, Flame, TrendingUp, TrendingDown, Clock, Link2Off } from "lucide-react";
+import { AlertTriangle, Flame, TrendingUp, TrendingDown, Clock, Link2Off, Search } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
+import type { Company, Page } from "@/types";
 
 export default function DashboardGlobal() {
   const user = useAuthStore((s) => s.user);
+  const [q, setQ] = useState("");
+  const [companyId, setCompanyId] = useState<number | null>(null);
+
+  const params = new URLSearchParams();
+  if (q.trim()) params.set("q", q.trim());
+  if (companyId) params.set("company_id", String(companyId));
+
   const { data, isLoading } = useQuery({
-    queryKey: ["dashboard-global"],
-    queryFn: async () => (await api.get("/dashboard/global")).data,
+    queryKey: ["dashboard-global", q, companyId],
+    queryFn: async () => (await api.get(`/dashboard/global?${params}`)).data,
+  });
+
+  const { data: companies } = useQuery({
+    queryKey: ["companies"],
+    queryFn: async () => (await api.get<Page<Company>>("/companies?size=500")).data,
   });
 
   return (
     <div>
       <PageHeader
         title={`Halo, ${user?.name?.split(" ")[0] || ""}`}
-        subtitle="Ringkasan keuangan seluruh proyek"
+        subtitle={
+          q || companyId
+            ? "Ringkasan terfilter"
+            : "Ringkasan keuangan seluruh proyek"
+        }
       />
+
+      {/* Filter bar */}
+      <Card className="mb-3 !p-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Cari nama / kode proyek..."
+              className="pl-9"
+            />
+          </div>
+          <Combobox
+            value={companyId}
+            onChange={(v) => setCompanyId(v == null ? null : Number(v))}
+            options={(companies?.items || []).map((c) => ({
+              value: c.id,
+              label: c.name,
+            }))}
+            placeholder="Semua perusahaan"
+          />
+        </div>
+      </Card>
 
       {isLoading || !data ? (
         <div className="text-sm text-slate-500">Memuat...</div>

@@ -167,7 +167,8 @@ class Project(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # budget control
-    budget_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
+    project_value: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))   # nilai proyek (kontrak/SPK)
+    budget_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))   # target pengeluaran (default 70% project_value)
     currency: Mapped[str] = mapped_column(String(8), default="IDR")
     overbudget_tolerance_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"))
 

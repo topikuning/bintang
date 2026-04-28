@@ -39,6 +39,8 @@ def _ym_expr():
 
 @router.get("/global")
 async def global_dashboard(
+    q: str | None = None,
+    company_id: int | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
@@ -56,6 +58,11 @@ async def global_dashboard(
                 "warnings": [],
             }
         proj_q = proj_q.where(Project.id.in_(pids))
+    if q:
+        like = f"%{q}%"
+        proj_q = proj_q.where((Project.name.ilike(like)) | (Project.code.ilike(like)))
+    if company_id:
+        proj_q = proj_q.where(Project.company_id == company_id)
     projects = (await db.execute(proj_q)).scalars().all()
     project_ids = [p.id for p in projects]
 
