@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Input";
 import { formatDate, formatIDR } from "@/lib/utils";
-import { Plus } from "lucide-react";
+import { Link2, Plus } from "lucide-react";
 import type { Page, Project, Transaction } from "@/types";
 
 export default function TransactionsPage() {
@@ -92,8 +92,14 @@ export default function TransactionsPage() {
                     <div className="text-sm font-medium truncate">
                       {t.description || t.party_name || "Transaksi"}
                     </div>
-                    <div className="text-[11px] text-slate-500">
-                      {formatDate(t.tx_date)} · {t.payment_method}
+                    <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                      <span>{formatDate(t.tx_date)} · {t.payment_method}</span>
+                      {t.invoice_id && (
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-sky-100 text-sky-700 px-1.5 py-0.5">
+                          <Link2 className="h-3 w-3" />
+                          INV#{t.invoice_id}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="text-right shrink-0">

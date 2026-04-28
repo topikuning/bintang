@@ -10,7 +10,7 @@ import AttachmentUploader from "@/components/AttachmentUploader";
 import PendingAttachmentPicker from "@/components/PendingAttachmentPicker";
 import Combobox from "@/components/ui/Combobox";
 import { Badge, statusTone } from "@/components/ui/Badge";
-import type { Category, Page, Project, Transaction, VendorClient } from "@/types";
+import type { Category, Invoice, Page, Project, Transaction, VendorClient } from "@/types";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { cn, todayISO } from "@/lib/utils";
 import { useAuthStore, isSuper } from "@/store/auth";
@@ -43,6 +43,24 @@ export default function TransactionForm() {
   const vcQ = useQuery({
     queryKey: ["vendors-clients"],
     queryFn: async () => (await api.get<Page<VendorClient>>("/vendors-clients?size=500")).data,
+  });
+
+  // Invoice list untuk combobox "Invoice Terhubung" -- hanya invoice
+  // dari proyek yang sama dan tipe yang kompatibel:
+  //   transaksi IN  (uang masuk)  <-> invoice OUT (piutang)
+  //   transaksi OUT (uang keluar) <-> invoice IN  (hutang)
+  const invoicesQ = useQuery({
+    enabled: !!data.project_id,
+    queryKey: ["invoices-link", data.project_id, data.type],
+    queryFn: async () => {
+      const compatibleType = data.type === "IN" ? "OUT" : "IN";
+      const params = new URLSearchParams({
+        project_id: String(data.project_id),
+        type: compatibleType,
+        size: "200",
+      });
+      return (await api.get<Page<Invoice>>(`/invoices?${params}`)).data;
+    },
   });
 
   const detailQ = useQuery({
@@ -252,6 +270,31 @@ export default function TransactionForm() {
 
         <Field label="Nama Pihak">
           <Input disabled={isLocked} value={data.party_name || ""} onChange={(e) => setData({ ...data, party_name: e.target.value })} />
+        </Field>
+
+        <Field
+          label="Invoice Terhubung (opsional)"
+          hint={
+            data.project_id
+              ? `Invoice ${data.type === "IN" ? "Piutang (OUT)" : "Hutang (IN)"} di proyek ini.`
+              : "Pilih proyek dulu untuk memilih invoice."
+          }
+        >
+          <Combobox
+            disabled={isLocked || !data.project_id}
+            value={data.invoice_id ?? null}
+            onChange={(v) => setData({ ...data, invoice_id: v == null ? null : Number(v) })}
+            options={(invoicesQ.data?.items || []).map((inv) => ({
+              value: inv.id,
+              label: inv.number,
+              hint: `${inv.party_name || "-"} · Rp ${Number(inv.total).toLocaleString("id-ID")} · ${inv.status}`,
+            }))}
+            placeholder={
+              invoicesQ.data?.items.length === 0
+                ? "Tidak ada invoice yang cocok"
+                : "Cari invoice..."
+            }
+          />
         </Field>
 
         <div className="grid grid-cols-2 gap-2">

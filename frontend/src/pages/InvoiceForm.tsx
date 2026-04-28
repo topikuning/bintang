@@ -5,13 +5,15 @@ import { api } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Field, Input, Textarea } from "@/components/ui/Input";
+import { Field, Input, Select, Textarea } from "@/components/ui/Input";
 import AttachmentUploader from "@/components/AttachmentUploader";
 import Combobox from "@/components/ui/Combobox";
+import Modal from "@/components/Modal";
 import { Badge, statusTone } from "@/components/ui/Badge";
-import { ArrowDownLeft, ArrowUpRight, BadgeCheck, Plus, Trash2 } from "lucide-react";
-import { cn, formatIDR, todayISO } from "@/lib/utils";
-import type { Invoice, Page, Project, VendorClient } from "@/types";
+import { ArrowDownLeft, ArrowUpRight, BadgeCheck, Link2, Plus, Trash2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { cn, formatDate, formatIDR, todayISO } from "@/lib/utils";
+import type { Invoice, Page, PaymentMethod, Project, VendorClient } from "@/types";
 
 interface ItemRow {
   description: string;
@@ -27,9 +29,23 @@ export default function InvoiceForm() {
   const qc = useQueryClient();
 
   const [data, setData] = useState<Partial<Invoice>>({
-    type: "OUT",
+    type: "IN",  // default: Hutang/Pengajuan internal (paling umum)
     invoice_date: todayISO(),
     tax: "0",
+  });
+  const [payOpen, setPayOpen] = useState(false);
+  const [payment, setPayment] = useState<{
+    tx_date: string;
+    amount: string;
+    payment_method: PaymentMethod;
+    reference_no: string;
+    description: string;
+  }>({
+    tx_date: todayISO(),
+    amount: "",
+    payment_method: "TRANSFER",
+    reference_no: "",
+    description: "",
   });
   const [items, setItems] = useState<ItemRow[]>([
     { description: "", quantity: 1, unit: "", unit_price: 0 },
@@ -133,6 +149,45 @@ export default function InvoiceForm() {
       alert(e?.response?.data?.detail || "Gagal menandai lunas"),
   });
 
+  const payManual = useMutation({
+    mutationFn: async () => {
+      // Bikin transaksi pembayaran manual yang otomatis terhubung ke invoice ini.
+      // Arah: invoice IN (hutang) -> tx OUT, invoice OUT (piutang) -> tx IN.
+      const txType = data.type === "IN" ? "OUT" : "IN";
+      const payload = {
+        project_id: data.project_id,
+        tx_date: payment.tx_date,
+        type: txType,
+        amount: payment.amount,
+        party_name: data.party_name,
+        vendor_client_id: data.vendor_client_id,
+        payment_method: payment.payment_method,
+        reference_no: payment.reference_no || null,
+        description: payment.description || `Pembayaran invoice ${data.number || ""}`.trim(),
+        invoice_id: Number(id),
+      };
+      return (await api.post("/transactions", payload)).data;
+    },
+    onSuccess: async () => {
+      setPayOpen(false);
+      setPayment({
+        tx_date: todayISO(),
+        amount: "",
+        payment_method: "TRANSFER",
+        reference_no: "",
+        description: "",
+      });
+      // Refresh invoice (untuk dapat payments terbaru)
+      const fresh = (await api.get<Invoice>(`/invoices/${id}`)).data;
+      setData(fresh);
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-global"] });
+    },
+    onError: (e: any) =>
+      alert(e?.response?.data?.detail || "Gagal membuat pembayaran"),
+  });
+
   return (
     <div>
       <PageHeader
@@ -168,7 +223,7 @@ export default function InvoiceForm() {
           )}
         >
           <ArrowUpRight className="h-5 w-5" />
-          Hutang (Invoice dari Vendor)
+          Invoice / Pengajuan (Hutang)
         </button>
       </div>
 
@@ -335,6 +390,73 @@ export default function InvoiceForm() {
 
       {isEdit && (
         <Card className="mt-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-semibold flex items-center gap-2">
+              <Link2 className="h-4 w-4 text-slate-500" />
+              Transaksi Pembayaran
+              {(data.payments?.length ?? 0) > 0 && (
+                <Badge tone="neutral">{data.payments?.length ?? 0}</Badge>
+              )}
+            </div>
+            {data.status !== "PAID" && data.status !== "CANCELLED" && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setPayOpen(true)}
+                disabled={!data.project_id}
+              >
+                <Plus className="h-4 w-4" /> Tambah Pembayaran
+              </Button>
+            )}
+          </div>
+
+          {(data.payments?.length ?? 0) === 0 ? (
+            <div className="text-xs text-slate-500 italic">
+              Belum ada transaksi pembayaran terhubung.
+              Klik <b>Tandai Lunas</b> di bawah untuk auto-create, atau
+              <b> Tambah Pembayaran</b> untuk catat manual.
+            </div>
+          ) : (
+            <ul className="divide-y">
+              {(data.payments ?? []).map((p) => (
+                <li key={p.id} className="py-2 flex items-center gap-2">
+                  <div
+                    className={`h-7 w-7 shrink-0 rounded-full grid place-items-center text-xs font-bold ${
+                      p.type === "IN"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-rose-100 text-rose-700"
+                    }`}
+                  >
+                    {p.type === "IN" ? "+" : "-"}
+                  </div>
+                  <Link to={`/transactions/${p.id}`} className="flex-1 min-w-0">
+                    <div className="text-sm truncate">
+                      {p.description || `Pembayaran #${p.id}`}
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      {formatDate(p.tx_date)} · {p.payment_method}
+                      {p.reference_no ? ` · ${p.reference_no}` : ""}
+                    </div>
+                  </Link>
+                  <div className="text-right shrink-0">
+                    <div
+                      className={`tabular-nums font-semibold text-sm ${
+                        p.type === "IN" ? "text-emerald-700" : "text-rose-700"
+                      }`}
+                    >
+                      Rp {formatIDR(p.amount)}
+                    </div>
+                    <Badge tone={statusTone(p.status)}>{p.status}</Badge>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
+
+      {isEdit && (
+        <Card className="mt-3">
           <AttachmentUploader
             attachments={attachments as any}
             onChange={setAttachments as any}
@@ -343,6 +465,82 @@ export default function InvoiceForm() {
           />
         </Card>
       )}
+
+      {/* Modal: Tambah Pembayaran Manual */}
+      <Modal
+        open={payOpen}
+        onClose={() => setPayOpen(false)}
+        title="Tambah Pembayaran Manual"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setPayOpen(false)}>Batal</Button>
+            <Button
+              onClick={() => payManual.mutate()}
+              disabled={
+                payManual.isPending ||
+                !payment.amount ||
+                Number(payment.amount) <= 0
+              }
+            >
+              {payManual.isPending ? "Menyimpan..." : "Simpan"}
+            </Button>
+          </>
+        }
+      >
+        <div className="text-xs text-slate-500 mb-2">
+          Akan membuat transaksi DRAFT{" "}
+          <b className={data.type === "IN" ? "text-rose-600" : "text-emerald-600"}>
+            {data.type === "IN" ? "OUT" : "IN"}
+          </b>{" "}
+          terhubung ke invoice ini. Sisa invoice saat ini:{" "}
+          <b>Rp {formatIDR(data.remaining)}</b>.
+        </div>
+        <Field label="Tanggal">
+          <Input
+            type="date"
+            value={payment.tx_date}
+            onChange={(e) => setPayment({ ...payment, tx_date: e.target.value })}
+          />
+        </Field>
+        <Field label="Jumlah (Rp)">
+          <Input
+            type="number"
+            inputMode="decimal"
+            value={payment.amount}
+            onChange={(e) => setPayment({ ...payment, amount: e.target.value })}
+            placeholder={`Sisa: ${formatIDR(data.remaining)}`}
+          />
+        </Field>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Metode">
+            <Select
+              value={payment.payment_method}
+              onChange={(e) =>
+                setPayment({ ...payment, payment_method: e.target.value as PaymentMethod })
+              }
+            >
+              <option value="CASH">Cash</option>
+              <option value="TRANSFER">Transfer</option>
+              <option value="QRIS">QRIS</option>
+              <option value="GIRO">Giro</option>
+              <option value="OTHER">Lainnya</option>
+            </Select>
+          </Field>
+          <Field label="No. Referensi">
+            <Input
+              value={payment.reference_no}
+              onChange={(e) => setPayment({ ...payment, reference_no: e.target.value })}
+            />
+          </Field>
+        </div>
+        <Field label="Keterangan">
+          <Input
+            value={payment.description}
+            onChange={(e) => setPayment({ ...payment, description: e.target.value })}
+            placeholder={`Pembayaran invoice ${data.number || ""}`}
+          />
+        </Field>
+      </Modal>
 
       <div className="mt-3 flex flex-wrap gap-2">
         <Button

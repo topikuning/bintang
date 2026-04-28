@@ -101,6 +101,22 @@ class InvoiceItemOut(InvoiceItemIn):
         from_attributes = True
 
 
+class InvoicePayment(BaseModel):
+    """Ringkasan transaksi pembayaran yang terhubung ke invoice."""
+    id: int
+    tx_date: date
+    type: TxnType
+    amount: Decimal
+    status: TxnStatus
+    payment_method: PaymentMethod
+    reference_no: str | None = None
+    description: str | None = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class InvoiceBase(BaseModel):
     number: str
     project_id: int
@@ -140,6 +156,7 @@ class InvoiceOut(InvoiceBase):
     remaining: Decimal = Decimal("0")
     attachments: list[AttachmentOut] = []
     items: list[InvoiceItemOut] = []
+    payments: list[InvoicePayment] = []
 
     class Config:
         from_attributes = True

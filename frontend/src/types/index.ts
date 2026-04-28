@@ -124,6 +124,18 @@ export interface InvoiceItem {
   subtotal: string;
 }
 
+export interface InvoicePayment {
+  id: number;
+  tx_date: string;
+  type: TxnType;
+  amount: string;
+  status: TxnStatus;
+  payment_method: PaymentMethod;
+  reference_no?: string | null;
+  description?: string | null;
+  created_at: string;
+}
+
 export interface Invoice {
   id: number;
   number: string;
@@ -144,6 +156,7 @@ export interface Invoice {
   remaining: string;
   attachments: Attachment[];
   items: InvoiceItem[];
+  payments: InvoicePayment[];
 }
 
 export interface POItem {

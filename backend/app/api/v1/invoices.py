@@ -35,6 +35,7 @@ from app.schemas.finance import (
     InvoiceItemIn,
     InvoiceItemOut,
     InvoiceOut,
+    InvoicePayment,
     InvoiceUpdate,
 )
 from app.services.audit import log, snapshot
@@ -60,6 +61,17 @@ async def _to_out(db: AsyncSession, inv: Invoice) -> InvoiceOut:
     out.items = [InvoiceItemOut.model_validate(it) for it in inv.items]
     out.paid_amount = paid
     out.remaining = max(Decimal(inv.total or 0) - paid, Decimal("0"))
+
+    pq = (
+        select(Transaction)
+        .where(
+            Transaction.invoice_id == inv.id,
+            Transaction.deleted_at.is_(None),
+        )
+        .order_by(Transaction.tx_date.asc(), Transaction.id.asc())
+    )
+    pay_rows = (await db.execute(pq)).scalars().all()
+    out.payments = [InvoicePayment.model_validate(t) for t in pay_rows]
     return out
 
 
