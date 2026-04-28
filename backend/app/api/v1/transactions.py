@@ -10,6 +10,7 @@ from app.core.deps import (
     ensure_project_access,
     get_current_user,
     require_admin,
+    require_can_write,
     require_superadmin,
     user_project_ids,
 )
@@ -106,7 +107,7 @@ async def list_transactions(
 async def create_transaction(
     payload: TransactionCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_can_write),
 ) -> TransactionOut:
     await ensure_project_access(db, user, payload.project_id)
     t = Transaction(**payload.model_dump(), status=TxnStatus.DRAFT, created_by_id=user.id)
@@ -146,7 +147,7 @@ async def update_transaction(
     tid: int,
     payload: TransactionUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_can_write),
 ) -> TransactionOut:
     t = await db.get(Transaction, tid)
     if not t or t.deleted_at is not None:
@@ -174,7 +175,7 @@ async def update_transaction(
 async def submit_transaction(
     tid: int,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_can_write),
 ) -> TransactionOut:
     t = await db.get(Transaction, tid)
     if not t or t.deleted_at is not None:
@@ -319,7 +320,7 @@ async def upload_attachment(
     tid: int,
     file: Annotated[UploadFile, File(...)],
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_can_write),
 ) -> AttachmentOut:
     t = await db.get(Transaction, tid)
     if not t or t.deleted_at is not None:
@@ -341,7 +342,7 @@ async def upload_attachment(
 async def delete_attachment(
     tid: int, aid: int,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_can_write),
 ) -> None:
     t = await db.get(Transaction, tid)
     if not t or t.deleted_at is not None:

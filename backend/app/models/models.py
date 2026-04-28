@@ -28,6 +28,7 @@ class UserRole(str, enum.Enum):
     SUPERADMIN = "SUPERADMIN"          # god-mode: hard delete + cascade
     CENTRAL_ADMIN = "CENTRAL_ADMIN"    # admin pusat, manage semua kecuali destructive ops
     PROJECT_ADMIN = "PROJECT_ADMIN"    # admin proyek, scoped ke project_users
+    EXECUTIVE = "EXECUTIVE"            # view-only (laporan, dashboard) -- bisa scope semua atau per proyek
 
 
 class ProjectStatus(str, enum.Enum):
@@ -127,6 +128,9 @@ class User(TimestampMixin, Base):
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.PROJECT_ADMIN)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # EXECUTIVE: True = boleh lihat semua proyek; False = hanya proyek di project_users.
+    # Diabaikan untuk role lain.
+    scope_all_projects: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     project_links: Mapped[list[ProjectUser]] = relationship(back_populates="user", cascade="all,delete-orphan")
 

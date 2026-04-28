@@ -30,3 +30,12 @@ export function isSuper(u: User | null) {
 export function isAdmin(u: User | null) {
   return u?.role === "SUPERADMIN" || u?.role === "CENTRAL_ADMIN";
 }
+
+export function isExec(u: User | null) {
+  return u?.role === "EXECUTIVE";
+}
+
+export function canWrite(u: User | null) {
+  // semua role kecuali EXECUTIVE
+  return !!u && u.role !== "EXECUTIVE";
+}

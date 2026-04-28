@@ -11,6 +11,7 @@ from app.core.deps import (
     ensure_project_access,
     get_current_user,
     require_admin,
+    require_can_write,
     require_superadmin,
     user_project_ids,
 )
@@ -132,7 +133,7 @@ async def list_invoices(
 async def create_invoice(
     payload: InvoiceCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_can_write),
 ) -> InvoiceOut:
     await ensure_project_access(db, user, payload.project_id)
     data = payload.model_dump(exclude={"items"})
@@ -180,7 +181,7 @@ async def update_invoice(
     iid: int,
     payload: InvoiceUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_can_write),
 ) -> InvoiceOut:
     res = await db.execute(
         select(Invoice).options(*_full_options()).where(Invoice.id == iid)
@@ -227,7 +228,7 @@ async def update_invoice(
 async def issue_invoice(
     iid: int,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_can_write),
 ) -> InvoiceOut:
     inv = await db.get(Invoice, iid)
     if not inv or inv.deleted_at is not None:
@@ -250,7 +251,7 @@ async def issue_invoice(
 async def mark_invoice_paid(
     iid: int,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_can_write),
 ) -> InvoiceOut:
     """Tandai invoice lunas. Kalau total transaksi yang sudah terhubung lebih
     kecil dari nilai invoice, otomatis buatkan transaksi DRAFT untuk
@@ -373,7 +374,7 @@ async def upload_invoice_attachment(
     iid: int,
     file: Annotated[UploadFile, File(...)],
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_can_write),
 ) -> AttachmentOut:
     inv = await db.get(Invoice, iid)
     if not inv or inv.deleted_at is not None:

@@ -47,7 +47,7 @@ export default function UsersPage() {
                 <div className="font-medium">{u.name}</div>
                 <div className="text-[11px] text-slate-500">{u.email}</div>
               </div>
-              <Badge tone={u.role === "SUPERADMIN" ? "info" : "neutral"}>{u.role}</Badge>
+              <Badge tone={u.role === "SUPERADMIN" ? "info" : u.role === "EXECUTIVE" ? "warn" : "neutral"}>{u.role}</Badge>
               <button
                 onClick={() => { setEditing({ ...u, password: "" }); setOpen(true); }}
                 className="text-xs text-slate-600 underline"
@@ -75,10 +75,39 @@ export default function UsersPage() {
         <Field label="Role">
           <Select value={editing?.role || "PROJECT_ADMIN"} onChange={(e) => setEditing({ ...editing!, role: e.target.value })}>
             <option value="PROJECT_ADMIN">Project Admin (admin proyek)</option>
+            <option value="EXECUTIVE">Eksekutif (view-only laporan)</option>
             <option value="CENTRAL_ADMIN">Admin Pusat (manage semua proyek)</option>
             <option value="SUPERADMIN">Superadmin (god-mode)</option>
           </Select>
         </Field>
+
+        {(editing?.role === "EXECUTIVE" || editing?.role === "PROJECT_ADMIN") && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 mb-3">
+            <label className="flex items-start gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!editing?.scope_all_projects}
+                onChange={(e) => setEditing({ ...editing!, scope_all_projects: e.target.checked })}
+                className="mt-0.5 h-4 w-4"
+              />
+              <div>
+                <div className="font-medium">Akses ke semua proyek</div>
+                <div className="text-[11px] text-slate-500">
+                  {editing?.role === "EXECUTIVE"
+                    ? "Aktifkan jika eksekutif perlu lihat laporan & dashboard semua proyek. Kalau dimatikan, hanya proyek yang ditugaskan via menu Proyek → Tim."
+                    : "Biasanya project admin hanya akses proyek yang ditugaskan. Aktifkan kalau memang perlu akses ke semua proyek."}
+                </div>
+              </div>
+            </label>
+          </div>
+        )}
+
+        {editing?.role === "EXECUTIVE" && (
+          <div className="text-[11px] text-slate-500 mb-3">
+            Eksekutif hanya bisa melihat dashboard, list, dan unduh laporan PDF/XLSX. Tidak bisa membuat / mengubah / menghapus data.
+          </div>
+        )}
+
         <Field label={editing?.id ? "Password (kosong = tidak ganti)" : "Password"}>
           <Input type="password" value={editing?.password || ""} onChange={(e) => setEditing({ ...editing!, password: e.target.value })} />
         </Field>

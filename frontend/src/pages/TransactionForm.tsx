@@ -13,7 +13,7 @@ import { Badge, statusTone } from "@/components/ui/Badge";
 import type { Category, Invoice, Page, Project, Transaction, VendorClient } from "@/types";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { cn, todayISO } from "@/lib/utils";
-import { useAuthStore, isSuper } from "@/store/auth";
+import { useAuthStore, isSuper, canWrite } from "@/store/auth";
 
 export default function TransactionForm() {
   const { id } = useParams();
@@ -133,7 +133,7 @@ export default function TransactionForm() {
 
   const cats = (catsQ.data?.items || []).filter((c) => !data.type || c.type === data.type);
 
-  const isLocked = data.status === "VERIFIED" && !isSuper(user);
+  const isLocked = (data.status === "VERIFIED" && !isSuper(user)) || !canWrite(user);
   const isIn = data.type === "IN";
 
   function setType(next: "IN" | "OUT") {

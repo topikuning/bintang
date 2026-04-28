@@ -12,6 +12,7 @@ from app.core.deps import (
     ensure_project_access,
     get_current_user,
     require_admin,
+    require_can_write,
     require_superadmin,
     user_project_ids,
 )
@@ -107,7 +108,7 @@ async def list_pos(
 async def create_po(
     payload: POCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_can_write),
 ) -> POOut:
     await ensure_project_access(db, user, payload.project_id)
     project = await db.get(Project, payload.project_id)
@@ -177,7 +178,7 @@ async def update_po(
     pid: int,
     payload: POUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_can_write),
 ) -> POOut:
     res = await db.execute(
         select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == pid)
@@ -220,7 +221,7 @@ async def update_po(
 async def issue_po(
     pid: int,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_can_write),
 ) -> POOut:
     po = await db.get(PurchaseOrder, pid)
     if not po or po.deleted_at is not None:

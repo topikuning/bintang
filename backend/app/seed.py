@@ -75,6 +75,14 @@ async def init() -> None:
             role=UserRole.CENTRAL_ADMIN,
             phone="0811-2000-009",
         )
+        exec_all = User(
+            email="direksi@bintang.me",
+            password_hash=hash_password("exec123"),
+            name="Direksi (Eksekutif)",
+            role=UserRole.EXECUTIVE,
+            phone="0811-3000-008",
+            scope_all_projects=True,
+        )
         pm1 = User(
             email="budi@bintang.me",
             password_hash=hash_password("pm123"),
@@ -96,7 +104,7 @@ async def init() -> None:
             role=UserRole.PROJECT_ADMIN,
             phone="0814-4000-004",
         )
-        db.add_all([admin, central, pm1, pm2, pm3])
+        db.add_all([admin, central, exec_all, pm1, pm2, pm3])
         await db.flush()
 
         # ---------- Companies ----------
@@ -594,6 +602,7 @@ async def init() -> None:
         print("Login:")
         print("  Superadmin (god) : admin@bintang.me / admin123")
         print("  Admin Pusat      : pusat@bintang.me / pusat123")
+        print("  Eksekutif (RO)   : direksi@bintang.me / exec123  (semua proyek)")
         print("  PM Budi (PRJ1,2) : budi@bintang.me / pm123")
         print("  PM Sari (PRJ3,4) : sari@bintang.me / pm123")
         print("  PM Agus (PRJ5)   : agus@bintang.me / pm123")

@@ -46,6 +46,7 @@ async def create_user(
         name=payload.name,
         role=payload.role,
         phone=payload.phone,
+        scope_all_projects=payload.scope_all_projects,
     )
     db.add(user)
     await db.flush()

@@ -15,6 +15,7 @@ class UserOut(BaseModel):
     role: UserRole
     is_active: bool
     phone: str | None = None
+    scope_all_projects: bool = False
 
     class Config:
         from_attributes = True
@@ -30,6 +31,7 @@ class UserCreate(BaseModel):
     name: str
     role: UserRole = UserRole.PROJECT_ADMIN
     phone: str | None = None
+    scope_all_projects: bool = False
 
 
 class UserUpdate(BaseModel):
@@ -38,3 +40,4 @@ class UserUpdate(BaseModel):
     is_active: bool | None = None
     phone: str | None = None
     password: str | None = None
+    scope_all_projects: bool | None = None

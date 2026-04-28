@@ -8,9 +8,11 @@ import { Badge, statusTone } from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Input";
 import { formatDate, formatIDR } from "@/lib/utils";
 import { Link2, Plus } from "lucide-react";
+import { canWrite, useAuthStore } from "@/store/auth";
 import type { Page, Project, Transaction } from "@/types";
 
 export default function TransactionsPage() {
+  const user = useAuthStore((s) => s.user);
   const [params, setParams] = useSearchParams();
   const projectId = params.get("project_id") || "";
   const type = params.get("type") || "";
@@ -45,11 +47,13 @@ export default function TransactionsPage() {
         title="Transaksi"
         subtitle="Catatan uang masuk & keluar"
         right={
-          <Link to="/transactions/new">
-            <Button size="sm">
-              <Plus className="h-4 w-4" /> Baru
-            </Button>
-          </Link>
+          canWrite(user) && (
+            <Link to="/transactions/new">
+              <Button size="sm">
+                <Plus className="h-4 w-4" /> Baru
+              </Button>
+            </Link>
+          )
         }
       />
 

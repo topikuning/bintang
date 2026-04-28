@@ -13,6 +13,19 @@ from app.db.base import Base
 from app.db.session import engine
 
 
+async def _sync_pg_columns(conn) -> None:
+    """Tambahkan kolom baru yang muncul di model setelah tabel sudah ada di prod.
+    Idempoten via `ADD COLUMN IF NOT EXISTS` (Postgres 9.6+)."""
+    statements = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS scope_all_projects BOOLEAN NOT NULL DEFAULT FALSE",
+    ]
+    for sql in statements:
+        try:
+            await conn.execute(text(sql))
+        except Exception as e:  # noqa: BLE001
+            print(f"[startup] column add warning: {e}")
+
+
 async def _sync_pg_enums(conn) -> None:
     """Postgres: pastikan tiap nilai enum di model ada di type DB.
     `create_all` tidak update enum yang sudah ada, sehingga value baru
@@ -43,14 +56,15 @@ async def lifespan(_app: FastAPI):
     # Pastikan tabel ada untuk dev (SQLite). Untuk prod gunakan Alembic.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    # Sync enum (hanya Postgres). SQLite simpan enum sebagai VARCHAR -- tidak perlu.
+    # Sync enum + kolom baru (hanya Postgres). SQLite cukup create_all.
     if not settings.is_sqlite:
         try:
             async with engine.begin() as conn:
+                await _sync_pg_columns(conn)
                 await _sync_pg_enums(conn)
         except Exception as e:  # noqa: BLE001
             # jangan blok startup; cetak warning saja
-            print(f"[startup] enum sync warning: {e}")
+            print(f"[startup] schema sync warning: {e}")
     Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
     yield
 

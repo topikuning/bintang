@@ -13,7 +13,7 @@ import Modal from "@/components/Modal";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import { ArrowDownLeft, ArrowUpRight, BadgeCheck, Link2, Plus, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { isSuper, useAuthStore } from "@/store/auth";
+import { canWrite, isSuper, useAuthStore } from "@/store/auth";
 import { cn, formatDate, formatIDR, todayISO } from "@/lib/utils";
 import type { Invoice, Page, PaymentMethod, Project, VendorClient } from "@/types";
 
@@ -572,7 +572,7 @@ export default function InvoiceForm() {
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
           onClick={() => save.mutate()}
-          disabled={save.isPending}
+          disabled={save.isPending || !canWrite(user)}
           className={cn(
             data.type === "OUT"
               ? "!bg-emerald-600 hover:!bg-emerald-500 !text-white"

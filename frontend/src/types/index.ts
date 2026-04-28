@@ -1,4 +1,4 @@
-export type Role = "SUPERADMIN" | "CENTRAL_ADMIN" | "PROJECT_ADMIN";
+export type Role = "SUPERADMIN" | "CENTRAL_ADMIN" | "PROJECT_ADMIN" | "EXECUTIVE";
 export type TxnType = "IN" | "OUT";
 export type TxnStatus = "DRAFT" | "SUBMITTED" | "VERIFIED" | "REJECTED" | "CANCELLED";
 export type PaymentMethod = "CASH" | "TRANSFER" | "QRIS" | "GIRO" | "OTHER";
@@ -28,6 +28,7 @@ export interface User {
   role: Role;
   is_active: boolean;
   phone?: string | null;
+  scope_all_projects?: boolean;
   project_ids?: number[];
 }
 

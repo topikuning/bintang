@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/Input";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import { formatDate, formatIDR } from "@/lib/utils";
 import { Plus } from "lucide-react";
+import { canWrite, useAuthStore } from "@/store/auth";
 import type { Invoice, Page, Project } from "@/types";
 
 export default function InvoicesPage() {
@@ -37,15 +38,19 @@ export default function InvoicesPage() {
     setParams(p);
   }
 
+  const user = useAuthStore((s) => s.user);
+
   return (
     <div>
       <PageHeader
         title="Invoice"
         subtitle="Tagihan masuk & keluar"
         right={
-          <Link to="/invoices/new">
-            <Button size="sm"><Plus className="h-4 w-4" /> Baru</Button>
-          </Link>
+          canWrite(user) && (
+            <Link to="/invoices/new">
+              <Button size="sm"><Plus className="h-4 w-4" /> Baru</Button>
+            </Link>
+          )
         }
       />
 
