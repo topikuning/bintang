@@ -17,6 +17,7 @@ from typing import Any, Awaitable, Callable
 from openpyxl import Workbook, load_workbook
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.models import (
     Category,
@@ -522,7 +523,9 @@ async def import_invoices(rows, db, user, *, commit, dup_action):
                     raise ValueError(f"attachment_url tidak valid: {e}")
 
             existing = (await db.execute(
-                select(Invoice).where(
+                select(Invoice)
+                .options(selectinload(Invoice.items))
+                .where(
                     Invoice.project_id == project.id,
                     Invoice.number == num,
                     Invoice.deleted_at.is_(None),
@@ -634,7 +637,9 @@ async def import_purchase_orders(rows, db, user, *, commit, dup_action):
             existing = None
             if explicit_number:
                 existing = (await db.execute(
-                    select(PurchaseOrder).where(
+                    select(PurchaseOrder)
+                    .options(selectinload(PurchaseOrder.items))
+                    .where(
                         PurchaseOrder.project_id == project.id,
                         PurchaseOrder.number == explicit_number,
                         PurchaseOrder.deleted_at.is_(None),
