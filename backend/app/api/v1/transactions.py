@@ -63,11 +63,11 @@ async def list_transactions(
     user: User = Depends(get_current_user),
 ) -> Page[TransactionOut]:
     stmt = select(Transaction).where(Transaction.deleted_at.is_(None))
-    if user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
-        ids = await user_project_ids(db, user)
-        if not ids:
+    pids = await user_project_ids(db, user)
+    if pids is not None:
+        if not pids:
             return Page(items=[], total=0, page=page, size=size)
-        stmt = stmt.where(Transaction.project_id.in_(ids))
+        stmt = stmt.where(Transaction.project_id.in_(pids))
     if project_id:
         await ensure_project_access(db, user, project_id)
         stmt = stmt.where(Transaction.project_id == project_id)

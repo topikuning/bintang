@@ -29,11 +29,11 @@ async def list_projects(
     user: User = Depends(get_current_user),
 ) -> Page[ProjectOut]:
     stmt = select(Project).where(Project.deleted_at.is_(None))
-    if user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
-        ids = await user_project_ids(db, user)
-        if not ids:
+    pids = await user_project_ids(db, user)
+    if pids is not None:
+        if not pids:
             return Page(items=[], total=0, page=page, size=size)
-        stmt = stmt.where(Project.id.in_(ids))
+        stmt = stmt.where(Project.id.in_(pids))
     if q:
         like = f"%{q}%"
         stmt = stmt.where((Project.name.ilike(like)) | (Project.code.ilike(like)))

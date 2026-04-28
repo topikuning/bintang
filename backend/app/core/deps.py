@@ -54,21 +54,28 @@ def require_can_write(user: User = Depends(get_current_user)) -> User:
     return user
 
 
-def _has_global_access(user: User) -> bool:
-    """SUPERADMIN/CENTRAL_ADMIN selalu, EXECUTIVE jika scope_all_projects True."""
+def has_global_access(user: User) -> bool:
+    """User boleh akses SEMUA proyek (tidak perlu filter):
+    - SUPERADMIN dan CENTRAL_ADMIN selalu
+    - EXECUTIVE / PROJECT_ADMIN bila flag scope_all_projects = True
+    """
     if user.role in CENTRAL_ROLES:
         return True
-    if user.role == UserRole.EXECUTIVE and user.scope_all_projects:
+    if user.scope_all_projects:
         return True
     return False
 
 
-async def user_project_ids(db: AsyncSession, user: User) -> list[int]:
-    """List proyek yang boleh diakses user.
-    Empty list (=[]) = semua proyek (untuk role global).
+async def user_project_ids(db: AsyncSession, user: User) -> list[int] | None:
+    """Project IDs yang boleh diakses user.
+
+    Konvensi:
+    - **None**  = akses ke SEMUA proyek (tidak perlu filter)
+    - **[]**    = restricted user tanpa proyek yg ditugaskan (= no access)
+    - **[...]** = list project_id yang ditugaskan via project_users
     """
-    if _has_global_access(user):
-        return []  # convention: empty = all
+    if has_global_access(user):
+        return None
     res = await db.execute(
         select(ProjectUser.project_id).where(ProjectUser.user_id == user.id)
     )
@@ -76,7 +83,7 @@ async def user_project_ids(db: AsyncSession, user: User) -> list[int]:
 
 
 async def ensure_project_access(db: AsyncSession, user: User, project_id: int) -> None:
-    if _has_global_access(user):
+    if has_global_access(user):
         return
     res = await db.execute(
         select(ProjectUser.id).where(

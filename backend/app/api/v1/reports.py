@@ -36,14 +36,31 @@ from app.services.pdf.render import html_to_pdf, render_html
 router = APIRouter()
 
 
-def _accessible_pids(role, ids: list[int], project_id: int | None) -> list[int] | None:
-    if role in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
-        return [project_id] if project_id else None  # None = all
-    if not ids:
+def _accessible_pids(
+    user_pids: list[int] | None,
+    project_id: int | None,
+) -> list[int] | None:
+    """Hitung filter project_id untuk laporan.
+
+    Args:
+        user_pids: hasil `user_project_ids(db, user)` --
+            None = akses semua proyek, [] = no access, [...] = scoped.
+        project_id: filter laporan ke 1 proyek (opsional).
+
+    Returns:
+        None = tidak perlu filter (semua proyek)
+        []   = tidak boleh akses (caller harus 403)
+        [...] = list project_id yang harus difilter
+    """
+    if user_pids is None:
+        # User punya akses ke semua proyek
+        return [project_id] if project_id else None
+    # User restricted
+    if not user_pids:
         return []
-    if project_id and project_id not in ids:
-        return []
-    return [project_id] if project_id else ids
+    if project_id is not None:
+        return [project_id] if project_id in user_pids else []
+    return user_pids
 
 
 def _fmt_idr(v) -> str:
@@ -102,7 +119,7 @@ async def cashflow(
     user: User = Depends(get_current_user),
 ) -> Response:
     ids = await user_project_ids(db, user)
-    pids = _accessible_pids(user.role, ids, project_id)
+    pids = _accessible_pids(ids, project_id)
     if pids is not None and not pids:
         raise HTTPException(403, "no_project_access")
 
@@ -163,7 +180,7 @@ async def report_transactions(
     user: User = Depends(get_current_user),
 ) -> Response:
     ids = await user_project_ids(db, user)
-    pids = _accessible_pids(user.role, ids, project_id)
+    pids = _accessible_pids(ids, project_id)
     if pids is not None and not pids:
         raise HTTPException(403, "no_project_access")
 
@@ -223,7 +240,7 @@ async def report_invoices(
     user: User = Depends(get_current_user),
 ) -> Response:
     ids = await user_project_ids(db, user)
-    pids = _accessible_pids(user.role, ids, project_id)
+    pids = _accessible_pids(ids, project_id)
     if pids is not None and not pids:
         raise HTTPException(403, "no_project_access")
 
@@ -272,7 +289,7 @@ async def report_debts(
     user: User = Depends(get_current_user),
 ) -> Response:
     ids = await user_project_ids(db, user)
-    pids = _accessible_pids(user.role, ids, project_id)
+    pids = _accessible_pids(ids, project_id)
     if pids is not None and not pids:
         raise HTTPException(403, "no_project_access")
 
@@ -328,7 +345,9 @@ async def report_budget(
 ) -> Response:
     ids = await user_project_ids(db, user)
     stmt = select(Project).where(Project.deleted_at.is_(None))
-    if user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
+    if ids is not None:
+        if not ids:
+            raise HTTPException(403, "no_project_access")
         stmt = stmt.where(Project.id.in_(ids))
     projects = (await db.execute(stmt)).scalars().all()
     company_map = {c.id: c for c in (await db.execute(select(Company))).scalars().all()}
@@ -376,7 +395,7 @@ async def report_pos(
     user: User = Depends(get_current_user),
 ) -> Response:
     ids = await user_project_ids(db, user)
-    pids = _accessible_pids(user.role, ids, project_id)
+    pids = _accessible_pids(ids, project_id)
     if pids is not None and not pids:
         raise HTTPException(403, "no_project_access")
     stmt = select(PurchaseOrder).where(PurchaseOrder.deleted_at.is_(None))

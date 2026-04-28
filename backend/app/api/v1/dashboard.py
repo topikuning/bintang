@@ -37,32 +37,25 @@ def _ym_expr():
     return func.to_char(Transaction.tx_date, "YYYY-MM")
 
 
-def _accessible_filter(stmt, user: User, ids: list[int]):
-    if user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
-        if not ids:
-            return None
-        return stmt.where(Project.id.in_(ids))
-    return stmt
-
-
 @router.get("/global")
 async def global_dashboard(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
-    ids = await user_project_ids(db, user)
+    pids = await user_project_ids(db, user)  # None=all, []=no access, [..]=scoped
     proj_q = select(Project).where(Project.deleted_at.is_(None))
-    proj_q = _accessible_filter(proj_q, user, ids)
-    if proj_q is None:
-        return {
-            "totals": {"in": 0, "out": 0, "balance": 0},
-            "active_projects": 0,
-            "minus_projects": 0,
-            "biggest_project": None,
-            "monthly_cashflow": [],
-            "projects": [],
-            "warnings": [],
-        }
+    if pids is not None:
+        if not pids:
+            return {
+                "totals": {"in": 0, "out": 0, "balance": 0},
+                "active_projects": 0,
+                "minus_projects": 0,
+                "biggest_project": None,
+                "monthly_cashflow": [],
+                "projects": [],
+                "warnings": [],
+            }
+        proj_q = proj_q.where(Project.id.in_(pids))
     projects = (await db.execute(proj_q)).scalars().all()
     project_ids = [p.id for p in projects]
 

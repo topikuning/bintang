@@ -43,5 +43,7 @@ async def me(
         role=user.role,
         is_active=user.is_active,
         phone=user.phone,
-        project_ids=pids,
+        scope_all_projects=user.scope_all_projects,
+        # None (akses semua) -> [] di payload (frontend tidak perlu daftar id)
+        project_ids=pids or [],
     )
