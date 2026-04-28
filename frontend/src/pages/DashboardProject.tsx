@@ -137,10 +137,10 @@ export default function DashboardProject() {
                   <Link2Off className="h-5 w-5 text-sky-600 shrink-0 mt-0.5" />
                   <div className="min-w-0">
                     <div className="text-[11px] uppercase font-medium text-sky-700/80">
-                      OUT Tanpa Invoice
+                      Sisa Belum Dialokasi
                     </div>
                     <div className="text-base font-bold tabular-nums text-sky-900">
-                      {data.unlinked_out_count}
+                      {data.unlinked_out_count} txn
                     </div>
                     <div className="text-[11px] text-sky-800 tabular-nums truncate">
                       Rp {formatIDR(data.unlinked_out_total)}
@@ -323,6 +323,94 @@ export default function DashboardProject() {
         <Card className="mt-3">
           <ProjectAttachments projectId={Number(id)} readOnly />
         </Card>
+      )}
+
+      {(data.invoices?.length ?? 0) > 0 && (
+        <>
+          <div className="mt-3 mb-2 flex items-center justify-between">
+            <div className="text-sm font-semibold">Invoice Proyek</div>
+            <Link to={`/invoices?project_id=${id}`} className="text-xs text-slate-500">
+              Lihat semua
+            </Link>
+          </div>
+          <div className="space-y-2">
+            {data.invoices.map((inv: any) => {
+              const total = Number(inv.total || 0);
+              const paid = Number(inv.paid_amount || 0);
+              const outstanding = Number(inv.outstanding_amount || 0);
+              const pct = total > 0 ? Math.min(100, (paid / total) * 100) : 0;
+              const isPiutang = inv.type === "OUT";
+              return (
+                <Card key={inv.id} className="!p-3">
+                  <Link
+                    to={`/invoices/${inv.id}`}
+                    className="block active:bg-slate-50 -m-3 p-3 rounded-2xl"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={`h-9 w-9 shrink-0 rounded-full grid place-items-center text-xs font-bold ${
+                          isPiutang
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-rose-100 text-rose-700"
+                        }`}
+                      >
+                        {isPiutang ? "P" : "H"}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium truncate">
+                          INV {inv.number}
+                        </div>
+                        <div className="text-[11px] text-slate-500 truncate">
+                          {formatDate(inv.invoice_date)}
+                          {inv.due_date && ` · jatuh tempo ${formatDate(inv.due_date)}`}
+                          {inv.party_name ? ` · ${inv.party_name}` : ""}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="tabular-nums font-semibold text-sm">
+                          Rp {formatIDR(total)}
+                        </div>
+                        <Badge tone={statusTone(inv.status)}>{inv.status}</Badge>
+                      </div>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+                      <div>
+                        <div className="text-slate-500">Dibayar</div>
+                        <div className="tabular-nums font-semibold text-emerald-700">
+                          Rp {formatIDR(paid)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-slate-500">Sisa</div>
+                        <div
+                          className={`tabular-nums font-semibold ${
+                            outstanding > 0 ? "text-rose-700" : "text-slate-500"
+                          }`}
+                        >
+                          Rp {formatIDR(outstanding)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-slate-500">Tipe</div>
+                        <div className="font-semibold">
+                          {isPiutang ? "Piutang (OUT)" : "Hutang (IN)"}
+                        </div>
+                      </div>
+                    </div>
+                    {total > 0 && (
+                      <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-500"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    )}
+                  </Link>
+                </Card>
+              );
+            })}
+          </div>
+        </>
       )}
 
       <div className="mt-3 mb-2 flex items-center justify-between">

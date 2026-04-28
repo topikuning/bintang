@@ -16,6 +16,7 @@ from app.models.models import (
     Category,
     Company,
     Invoice,
+    InvoiceAllocation,
     InvoiceStatus,
     Project,
     ProjectStatus,
@@ -28,6 +29,19 @@ from app.models.models import (
 from app.services.budget import budget_status, health_status, project_totals
 
 router = APIRouter()
+
+
+def _txn_alloc_subq():
+    """Subquery: total alokasi aktif per transaction_id."""
+    return (
+        select(
+            InvoiceAllocation.transaction_id.label("txn_id"),
+            func.coalesce(func.sum(InvoiceAllocation.allocated_amount), 0).label("alloc_sum"),
+        )
+        .where(InvoiceAllocation.deleted_at.is_(None))
+        .group_by(InvoiceAllocation.transaction_id)
+        .subquery()
+    )
 
 
 def _project_finance_breakdown(
@@ -163,15 +177,22 @@ async def global_dashboard(
     )
     pending_count, pending_total = (await db.execute(pending_q)).one()
 
-    # Transaksi OUT tanpa invoice (active statuses)
-    unlinked_out_q = select(
-        func.count(),
-        func.coalesce(func.sum(Transaction.amount), 0),
+    # Transaksi OUT yang masih punya remaining_amount > 0 (belum sepenuhnya
+    # dialokasikan ke invoice manapun lewat tabel invoice_allocations).
+    alloc_sub = _txn_alloc_subq()
+    remaining_expr = Transaction.amount - func.coalesce(alloc_sub.c.alloc_sum, 0)
+    unlinked_out_q = (
+        select(
+            func.count(),
+            func.coalesce(func.sum(remaining_expr), 0),
+        )
+        .select_from(Transaction)
+        .outerjoin(alloc_sub, alloc_sub.c.txn_id == Transaction.id)
     ).where(
         Transaction.project_id.in_(project_ids),
         Transaction.type == TxnType.OUT,
         Transaction.status.in_([TxnStatus.DRAFT, TxnStatus.SUBMITTED, TxnStatus.VERIFIED]),
-        Transaction.invoice_id.is_(None),
+        remaining_expr > 0,
         Transaction.deleted_at.is_(None),
     )
     unlinked_out_count, unlinked_out_total = (await db.execute(unlinked_out_q)).one()
@@ -266,7 +287,7 @@ async def global_dashboard(
     if pending_count:
         warnings.append(f"{pending_count} transaksi belum diverifikasi")
     if unlinked_out_count:
-        warnings.append(f"{unlinked_out_count} pengeluaran belum terhubung ke invoice")
+        warnings.append(f"{unlinked_out_count} pengeluaran masih punya sisa belum dialokasi (Rp{unlinked_out_total:,.0f})".replace(",", "."))
 
     active = sum(1 for p in projects if p.status == ProjectStatus.AKTIF)
 
@@ -328,15 +349,24 @@ async def project_dashboard(
     )
     pending_count, pending_total = (await db.execute(pending_q)).one()
 
-    unlinked_out_q = select(
-        func.count(),
-        func.coalesce(func.sum(Transaction.amount), 0),
+    # Transaksi OUT dengan remaining_amount > 0 (belum semua nilainya
+    # dialokasikan ke invoice). Yang ditampilkan adalah jumlah txn dan
+    # nominal sisa yang belum terpetakan, BUKAN total nominal txn.
+    alloc_sub = _txn_alloc_subq()
+    remaining_expr = Transaction.amount - func.coalesce(alloc_sub.c.alloc_sum, 0)
+    unlinked_out_q = (
+        select(
+            func.count(),
+            func.coalesce(func.sum(remaining_expr), 0),
+        )
+        .select_from(Transaction)
+        .outerjoin(alloc_sub, alloc_sub.c.txn_id == Transaction.id)
     ).where(
         Transaction.project_id == pid,
         Transaction.type == TxnType.OUT,
         Transaction.status.in_([TxnStatus.DRAFT, TxnStatus.SUBMITTED, TxnStatus.VERIFIED]),
-        Transaction.invoice_id.is_(None),
         Transaction.deleted_at.is_(None),
+        remaining_expr > 0,
     )
     unlinked_out_count, unlinked_out_total = (await db.execute(unlinked_out_q)).one()
 
@@ -407,6 +437,42 @@ async def project_dashboard(
         for t in recent_rows
     ]
 
+    # Daftar invoice proyek (terbaru di atas) lengkap dengan paid /
+    # outstanding hasil agregasi alokasi.
+    inv_alloc_sub = (
+        select(
+            InvoiceAllocation.invoice_id.label("inv_id"),
+            func.coalesce(func.sum(InvoiceAllocation.allocated_amount), 0).label("paid"),
+        )
+        .where(InvoiceAllocation.deleted_at.is_(None))
+        .group_by(InvoiceAllocation.invoice_id)
+        .subquery()
+    )
+    inv_q = (
+        select(Invoice, func.coalesce(inv_alloc_sub.c.paid, 0))
+        .outerjoin(inv_alloc_sub, inv_alloc_sub.c.inv_id == Invoice.id)
+        .where(Invoice.project_id == pid, Invoice.deleted_at.is_(None))
+        .order_by(Invoice.invoice_date.desc(), Invoice.id.desc())
+        .limit(15)
+    )
+    inv_rows = (await db.execute(inv_q)).all()
+    invoices_list = []
+    for inv, paid in inv_rows:
+        total = float(inv.total or 0)
+        paid_f = float(paid or 0)
+        invoices_list.append({
+            "id": inv.id,
+            "number": inv.number,
+            "type": inv.type.value,
+            "invoice_date": inv.invoice_date.isoformat(),
+            "due_date": inv.due_date.isoformat() if inv.due_date else None,
+            "party_name": inv.party_name,
+            "total": total,
+            "paid_amount": paid_f,
+            "outstanding_amount": max(total - paid_f, 0.0),
+            "status": inv.status.value,
+        })
+
     has_overdue = inv_open > 0 and (
         await db.execute(
             select(func.count()).select_from(Invoice).where(
@@ -431,7 +497,7 @@ async def project_dashboard(
     if pending_count:
         warnings.append(f"{pending_count} transaksi belum diverifikasi")
     if unlinked_out_count:
-        warnings.append(f"{unlinked_out_count} pengeluaran belum terhubung ke invoice")
+        warnings.append(f"{unlinked_out_count} pengeluaran masih punya sisa belum dialokasi (Rp{unlinked_out_total:,.0f})".replace(",", "."))
 
     finance = _project_finance_breakdown(
         nilai_kontrak=Decimal(p.project_value or 0),
@@ -473,5 +539,6 @@ async def project_dashboard(
         "by_category": by_category,
         "monthly_cashflow": monthly,
         "recent_transactions": recent,
+        "invoices": invoices_list,
         "warnings": warnings,
     }
