@@ -7,12 +7,12 @@
 </head>
 <body>
 
-<!-- KOP / LETTERHEAD -->
+<!-- KOP / LETTERHEAD (kecil, opsional) -->
 <div class="kop row">
   <div>
     {% if company.logo_url %}<img src="{{ company.logo_url }}" alt="logo">{% endif %}
   </div>
-  <div style="flex:1; padding-left:12px;">
+  <div style="flex:1; padding-left:10px;">
     <div class="brand">{{ company.name }}</div>
     <div class="muted">{{ company.address or "" }}</div>
     <div class="muted">
@@ -22,19 +22,50 @@
     </div>
   </div>
 </div>
-<div class="divider"></div>
 
-<!-- TITLE + META -->
-<div class="row doc-head">
-  <div>
-    <div class="doc-title"><span class="accent">PURCHASE</span> ORDER</div>
-    <div class="muted small mt-1">Pesanan pembelian resmi atas barang/jasa di bawah ini.</div>
-  </div>
-  <div class="doc-meta">
-    <div><span class="label">No. PO</span> <b>{{ po.number }}</b></div>
-    <div><span class="label">Tanggal PO</span> <b>{{ po.po_date }}</b></div>
-    {% if po.needed_date %}<div><span class="label">Tgl Dibutuhkan</span> <b>{{ po.needed_date }}</b></div>{% endif %}
-    <div><span class="label">Status</span>
+<!-- TITLE BAR (dark navy seperti PO4.pdf) -->
+<div class="title-bar">
+  <div class="line1">PURCHASE ORDER &mdash; PENGADAAN BARANG/JASA</div>
+  <div class="line2">{{ project.name|upper }}</div>
+</div>
+
+<!-- META KEY/VALUE -->
+<table class="meta">
+  <tr>
+    <td class="label">No. PO</td>
+    <td class="value">{{ po.number }}</td>
+  </tr>
+  <tr>
+    <td class="label">Tanggal PO</td>
+    <td class="value">{{ po.po_date }}</td>
+  </tr>
+  {% if po.needed_date %}
+  <tr>
+    <td class="label">Tanggal Dibutuhkan</td>
+    <td class="value">{{ po.needed_date }}</td>
+  </tr>
+  {% endif %}
+  <tr>
+    <td class="label">Vendor / Supplier</td>
+    <td class="value">{{ po.vendor_name or (vendor.name if vendor else "-") }}</td>
+  </tr>
+  {% if vendor and (vendor.address or vendor.phone or vendor.npwp) %}
+  <tr>
+    <td class="label">Detail Vendor</td>
+    <td class="value">
+      {% if vendor.address %}{{ vendor.address }}{% endif %}
+      {% if vendor.phone %} &middot; Telp: {{ vendor.phone }}{% endif %}
+      {% if vendor.npwp %} &middot; NPWP: {{ vendor.npwp }}{% endif %}
+    </td>
+  </tr>
+  {% endif %}
+  <tr>
+    <td class="label">Lokasi Proyek</td>
+    <td class="value">{{ project.location or project.name }}</td>
+  </tr>
+  <tr>
+    <td class="label">Status</td>
+    <td class="value">
       <span class="badge
         {% if po.status == 'APPROVED' %}badge-paid
         {% elif po.status == 'CANCELLED' %}badge-cancelled
@@ -42,62 +73,59 @@
         {% elif po.status == 'FULFILLED' %}badge-paid
         {% elif po.status == 'ISSUED' %}badge-issued
         {% else %}badge-draft{% endif %}">{{ po.status }}</span>
-    </div>
-  </div>
-</div>
-
-<!-- INFO GRID -->
-<div class="info-grid">
-  <div class="info-card">
-    <div class="label">Kepada Vendor</div>
-    <div><b>{{ po.vendor_name or (vendor.name if vendor else "-") }}</b></div>
-    {% if vendor and vendor.address %}<div class="muted small">{{ vendor.address }}</div>{% endif %}
-    {% if vendor and vendor.phone %}<div class="muted small">Telp: {{ vendor.phone }}</div>{% endif %}
-    {% if vendor and vendor.npwp %}<div class="muted small">NPWP: {{ vendor.npwp }}</div>{% endif %}
-  </div>
-  <div class="info-card">
-    <div class="label">Untuk Proyek</div>
-    <div><b>{{ project.name }}</b></div>
-    <div class="muted small">Kode: {{ project.code }}</div>
-    {% if project.location %}<div class="muted small">{{ project.location }}</div>{% endif %}
-  </div>
-</div>
+    </td>
+  </tr>
+</table>
 
 <!-- ITEMS TABLE -->
 <table class="items">
   <thead>
     <tr>
-      <th class="center" style="width:32px;">No</th>
-      <th>Deskripsi Barang/Jasa</th>
-      <th class="right" style="width:60px;">Qty</th>
-      <th style="width:60px;">Unit</th>
-      <th class="right" style="width:110px;">Harga Satuan</th>
-      <th class="right" style="width:120px;">Subtotal</th>
+      <th style="width:30px;">No.</th>
+      <th>Nama Material / Pekerjaan</th>
+      <th>Spesifikasi / Keterangan</th>
+      <th style="width:48px;">Sat.</th>
+      <th class="right" style="width:78px;">Volume</th>
+      <th class="right" style="width:108px;">Harga Satuan (Rp)</th>
+      <th class="right" style="width:118px;">Jumlah (Rp)</th>
     </tr>
   </thead>
   <tbody>
   {% for it in po.items %}
     <tr>
       <td class="center">{{ loop.index }}</td>
-      <td>{{ it.description }}</td>
-      <td class="right">{{ it.quantity }}</td>
+      <td><span class="name">{{ it.description.split('—')[0]|trim if '—' in it.description else it.description }}</span></td>
+      <td class="spec">{{ it.description.split('—')[1]|trim if '—' in it.description else (it.unit or '') }}</td>
       <td>{{ it.unit or "" }}</td>
+      <td class="right">{{ it.quantity|idr }}</td>
       <td class="right">{{ it.unit_price|idr }}</td>
       <td class="right">{{ it.subtotal|idr }}</td>
     </tr>
+  {% else %}
+    <tr><td colspan="7" class="center muted">Tidak ada item.</td></tr>
   {% endfor %}
   </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="6">TOTAL NILAI PO &mdash; {{ po.number }}</td>
+      <td class="value">{{ po.total|idr }}</td>
+    </tr>
+  </tfoot>
 </table>
 
-<!-- TOTALS -->
+<!-- SUB-TOTAL DETAIL (jika ada pajak/diskon, tampilkan terpisah) -->
+{% if (po.tax and po.tax|float > 0) or (po.discount and po.discount|float > 0) %}
 <table class="totals">
   <tr><td class="label">Subtotal</td><td class="value">{{ po.subtotal|idr }}</td></tr>
+  {% if po.tax and po.tax|float > 0 %}
   <tr><td class="label">Pajak</td><td class="value">{{ po.tax|idr }}</td></tr>
+  {% endif %}
   {% if po.discount and po.discount|float > 0 %}
   <tr><td class="label">Diskon</td><td class="value">- {{ po.discount|idr }}</td></tr>
   {% endif %}
-  <tr class="grand"><td>TOTAL (Rp)</td><td class="value">{{ po.total|idr }}</td></tr>
+  <tr class="grand"><td>TOTAL</td><td class="value">{{ po.total|idr }}</td></tr>
 </table>
+{% endif %}
 
 <!-- NOTES -->
 {% if po.payment_terms or po.notes %}
@@ -107,7 +135,7 @@
   <div>{{ po.payment_terms }}</div>
   {% endif %}
   {% if po.notes %}
-  <span class="label">{% if po.payment_terms %}Catatan{% else %}Catatan{% endif %}</span>
+  <span class="label">Catatan</span>
   <div>{{ po.notes }}</div>
   {% endif %}
 </div>
@@ -130,8 +158,7 @@
 </div>
 
 <div class="foot-note">
-  Dokumen ini sah tanpa tanda tangan basah jika dicetak/dikirim secara resmi
-  oleh sistem {{ company.name }}.
+  Dokumen diterbitkan secara elektronik oleh sistem {{ company.name }} dan sah tanpa tanda tangan basah.
 </div>
 
 </body></html>
