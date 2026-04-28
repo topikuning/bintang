@@ -32,7 +32,13 @@ async def send_message(
     disable_preview: bool = True,
     reply_to: int | None = None,
 ) -> dict | None:
-    """Kirim pesan teks. Return body dari Telegram, atau None kalau gagal/disabled."""
+    """Kirim pesan teks. Return body dari Telegram, atau None kalau gagal/disabled.
+
+    Kalau Telegram menolak (mis. parse_mode HTML salah karena ada tag yang
+    tidak valid), kita retry sekali tanpa parse_mode supaya pesan tetap
+    sampai (dengan tag mentah). Body error juga di-log agar bug serupa
+    kelihatan, bukan hilang senyap.
+    """
     if not is_enabled():
         logger.debug("Telegram disabled (no token); skip send_message")
         return None
@@ -46,6 +52,13 @@ async def send_message(
     try:
         async with httpx.AsyncClient(timeout=10.0) as cli:
             r = await cli.post(_api_url("sendMessage"), json=payload)
+            if r.status_code == 400 and parse_mode:
+                logger.warning(
+                    "telegram sendMessage 400 with parse_mode=%s; body=%s; retrying as plain",
+                    parse_mode, r.text[:500],
+                )
+                payload.pop("parse_mode", None)
+                r = await cli.post(_api_url("sendMessage"), json=payload)
             r.raise_for_status()
             return r.json()
     except Exception as e:

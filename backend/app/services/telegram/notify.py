@@ -5,6 +5,7 @@ try/except dan dijalankan setelah commit.
 """
 from __future__ import annotations
 
+import html
 import logging
 
 from sqlalchemy import select
@@ -26,6 +27,12 @@ logger = logging.getLogger(__name__)
 def _fmt_idr(n) -> str:
     n = float(n or 0)
     return f"{n:,.0f}".replace(",", ".")
+
+
+def _esc(s) -> str:
+    if s is None:
+        return "-"
+    return html.escape(str(s), quote=False)
 
 
 async def _admins_for_project(db: AsyncSession, project_id: int) -> list[User]:
@@ -71,12 +78,13 @@ async def notify_transaction_submitted(db: AsyncSession, tx: Transaction) -> Non
         if not admins:
             return
         sym = "−" if tx.type == TxnType.OUT else "+"
+        desc = (tx.description or tx.party_name or "-")[:100]
         text = (
             "🔔 <b>Transaksi menunggu verifikasi</b>\n"
-            f"#{tx.id} <code>{proj.code if proj else '-'}</code> "
+            f"#{tx.id} <code>{_esc(proj.code if proj else '-')}</code> "
             f"{sym}Rp {_fmt_idr(tx.amount)}\n"
-            f"<i>{(tx.description or tx.party_name or '-')[:100]}</i>\n"
-            f"Dibuat oleh: {creator.name if creator else '-'}\n"
+            f"<i>{_esc(desc)}</i>\n"
+            f"Dibuat oleh: {_esc(creator.name if creator else '-')}\n"
         )
         for a in admins:
             await tg.send_message(a.telegram_chat_id, text)
@@ -91,11 +99,12 @@ async def notify_transaction_verified(db: AsyncSession, tx: Transaction) -> None
             return
         proj = await db.get(Project, tx.project_id)
         sym = "−" if tx.type == TxnType.OUT else "+"
+        desc = (tx.description or "-")[:100]
         text = (
             "✅ <b>Transaksi diverifikasi</b>\n"
-            f"#{tx.id} <code>{proj.code if proj else '-'}</code> "
+            f"#{tx.id} <code>{_esc(proj.code if proj else '-')}</code> "
             f"{sym}Rp {_fmt_idr(tx.amount)}\n"
-            f"<i>{(tx.description or '-')[:100]}</i>"
+            f"<i>{_esc(desc)}</i>"
         )
         await tg.send_message(creator.telegram_chat_id, text)
     except Exception:
@@ -110,9 +119,9 @@ async def notify_transaction_rejected(db: AsyncSession, tx: Transaction) -> None
         proj = await db.get(Project, tx.project_id)
         text = (
             "❌ <b>Transaksi ditolak</b>\n"
-            f"#{tx.id} <code>{proj.code if proj else '-'}</code> "
+            f"#{tx.id} <code>{_esc(proj.code if proj else '-')}</code> "
             f"Rp {_fmt_idr(tx.amount)}\n"
-            f"<i>Alasan:</i> {tx.cancel_reason or '-'}"
+            f"<i>Alasan:</i> {_esc(tx.cancel_reason or '-')}"
         )
         await tg.send_message(creator.telegram_chat_id, text)
     except Exception:

@@ -12,6 +12,7 @@ SUPERADMIN/CENTRAL_ADMIN).
 """
 from __future__ import annotations
 
+import html
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -56,6 +57,13 @@ def _fmt_idr(n) -> str:
     return s.replace(",", ".")
 
 
+def _esc(s) -> str:
+    """Escape teks user-provided agar aman dipakai di parse_mode=HTML."""
+    if s is None:
+        return ""
+    return html.escape(str(s), quote=False)
+
+
 def _is_admin(user: User) -> bool:
     return user.role in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN)
 
@@ -77,7 +85,7 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "<b>Bintang Bot</b> — perintah:\n"
         "<b>Lihat data:</b>\n"
         "  /saldo — saldo semua proyek\n"
-        "  /saldo <kode> — saldo + budget proyek\n"
+        "  /saldo &lt;kode&gt; — saldo + budget proyek\n"
         "  /proyek — list proyek\n"
         "  /pending — transaksi belum diverifikasi (admin)\n"
         "  /invoice — invoice belum lunas\n"
@@ -87,7 +95,7 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "  Contoh: <code>/keluar PRJ-001 5000000 Beli semen 50 sak</code>\n"
         "  Foto yang dikirim setelahnya jadi attachment otomatis.\n"
         "\n<b>Akun:</b>\n"
-        "  /link <code>123456</code> — hubungkan akun web\n"
+        "  /link &lt;kode&gt; — hubungkan akun web (kode 6 digit dari menu Pengaturan)\n"
         "  /unlink — putuskan akun\n"
     )
 
@@ -95,7 +103,7 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
 async def cmd_start(db, user, chat_id, args, msg) -> str:
     if user:
         return (
-            f"Selamat datang kembali, <b>{user.name}</b>.\n"
+            f"Selamat datang kembali, <b>{_esc(user.name)}</b>.\n"
             "Akun ini sudah ter-link. Ketik /help untuk daftar perintah."
         )
     return (
@@ -109,7 +117,7 @@ async def cmd_start(db, user, chat_id, args, msg) -> str:
 
 async def cmd_link(db, user, chat_id, args, msg) -> str:
     if user:
-        return f"Akun ini sudah ter-link sebagai <b>{user.name}</b>. Pakai /unlink dulu kalau mau ganti."
+        return f"Akun ini sudah ter-link sebagai <b>{_esc(user.name)}</b>. Pakai /unlink dulu kalau mau ganti."
     if not args:
         return "Cara pakai: <code>/link 123456</code> (kode 6 digit dari halaman Profil web)."
     code = args[0].strip()
@@ -117,7 +125,8 @@ async def cmd_link(db, user, chat_id, args, msg) -> str:
     if not linked:
         return "Kode tidak ditemukan / sudah kadaluwarsa. Generate kode baru dari web."
     return (
-        f"✅ Berhasil! Akun ini terhubung ke <b>{linked.name}</b> ({linked.email}).\n"
+        f"✅ Berhasil! Akun ini terhubung ke <b>{_esc(linked.name)}</b> "
+        f"({_esc(linked.email)}).\n"
         "Ketik /help untuk daftar perintah."
     )
 
@@ -147,7 +156,9 @@ async def cmd_proyek(db, user, chat_id, args, msg) -> str:
         return "Tidak ada proyek yang bisa diakses."
     lines = ["<b>Proyek kamu:</b>"]
     for p in projects[:30]:
-        lines.append(f"• <code>{p.code}</code> — {p.name} <i>({p.status.value})</i>")
+        lines.append(
+            f"• <code>{_esc(p.code)}</code> — {_esc(p.name)} <i>({p.status.value})</i>"
+        )
     if len(projects) > 30:
         lines.append(f"\n…dan {len(projects)-30} lagi.")
     return "\n".join(lines)
@@ -170,12 +181,12 @@ async def cmd_saldo(db, user, chat_id, args, msg) -> str:
         totals = await project_totals(db, proj.id)
         bs = budget_status(proj, totals["total_out"])
         return (
-            f"<b>{proj.name}</b> ({proj.code})\n"
+            f"<b>{_esc(proj.name)}</b> ({_esc(proj.code)})\n"
             f"Masuk: Rp {_fmt_idr(totals['total_in'])}\n"
             f"Keluar: Rp {_fmt_idr(totals['total_out'])}\n"
             f"Saldo: <b>Rp {_fmt_idr(totals['balance'])}</b>\n"
             f"Budget: Rp {_fmt_idr(bs['spent'])} / Rp {_fmt_idr(bs['budget_amount'])} "
-            f"({float(bs['usage_pct']):.1f}% — {bs['status']})"
+            f"({float(bs['usage_pct']):.1f}% — {_esc(bs['status'])})"
         )
     # global
     projects = await _accessible_projects(db, user)
@@ -222,9 +233,10 @@ async def cmd_pending(db, user, chat_id, args, msg) -> str:
     lines = [f"<b>{len(rows)} transaksi menunggu verifikasi:</b>"]
     for t, code in rows:
         sym = "−" if t.type == TxnType.OUT else "+"
+        desc = (t.description or t.party_name or "Transaksi")[:40]
         lines.append(
-            f"• #{t.id} <code>{code}</code> {sym}Rp {_fmt_idr(t.amount)} — "
-            f"{(t.description or t.party_name or 'Transaksi')[:40]}"
+            f"• #{t.id} <code>{_esc(code)}</code> {sym}Rp {_fmt_idr(t.amount)} — "
+            f"{_esc(desc)}"
         )
     return "\n".join(lines)
 
@@ -265,7 +277,8 @@ async def cmd_invoice(db, user, chat_id, args, msg) -> str:
         outstanding = float(inv.total or 0) - float(paid or 0)
         due = inv.due_date.isoformat() if inv.due_date else "-"
         lines.append(
-            f"• {inv.number} <code>{code}</code> sisa <b>Rp {_fmt_idr(outstanding)}</b> "
+            f"• {_esc(inv.number)} <code>{_esc(code)}</code> sisa "
+            f"<b>Rp {_fmt_idr(outstanding)}</b> "
             f"({inv.status.value}, jatuh tempo {due})"
         )
     return "\n".join(lines)
@@ -345,7 +358,8 @@ async def _make_transaction(
     sym = "−" if ttype == TxnType.OUT else "+"
     return (
         f"✅ Transaksi DRAFT #{tx.id} dibuat\n"
-        f"<b>{proj.code}</b> {sym}Rp {_fmt_idr(amount)} — {description or '(tanpa deskripsi)'}\n"
+        f"<b>{_esc(proj.code)}</b> {sym}Rp {_fmt_idr(amount)} — "
+        f"{_esc(description or '(tanpa deskripsi)')}\n"
         f"<i>Kirim foto bukti (boleh beberapa) dalam {ATTACH_WINDOW_MINUTES} menit ke depan,\n"
         f"otomatis dilampirkan ke transaksi ini.</i>\n"
         "Submit untuk verifikasi lewat web."
