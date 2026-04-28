@@ -7,6 +7,7 @@
 </head>
 <body>
 
+<!-- KOP / LETTERHEAD -->
 <div class="kop row">
   <div>
     {% if company.logo_url %}<img src="{{ company.logo_url }}" alt="logo">{% endif %}
@@ -16,48 +17,62 @@
     <div class="muted">{{ company.address or "" }}</div>
     <div class="muted">
       {% if company.phone %}Telp: {{ company.phone }}{% endif %}
-      {% if company.email %} &middot; {{ company.email }}{% endif %}
-      {% if company.npwp %} &middot; NPWP: {{ company.npwp }}{% endif %}
+      {% if company.email %} &nbsp;&middot;&nbsp; {{ company.email }}{% endif %}
+      {% if company.npwp %} &nbsp;&middot;&nbsp; NPWP: {{ company.npwp }}{% endif %}
     </div>
   </div>
 </div>
-<div class="hr"></div>
+<div class="divider"></div>
 
-<div class="row">
-  <div class="title">PURCHASE ORDER</div>
-  <div class="right">
-    <div><b>No. PO:</b> {{ po.number }}</div>
-    <div><b>Tanggal:</b> {{ po.po_date }}</div>
-    {% if po.needed_date %}<div><b>Tgl Kebutuhan:</b> {{ po.needed_date }}</div>{% endif %}
+<!-- TITLE + META -->
+<div class="row doc-head">
+  <div>
+    <div class="doc-title"><span class="accent">PURCHASE</span> ORDER</div>
+    <div class="muted small mt-1">Pesanan pembelian resmi atas barang/jasa di bawah ini.</div>
+  </div>
+  <div class="doc-meta">
+    <div><span class="label">No. PO</span> <b>{{ po.number }}</b></div>
+    <div><span class="label">Tanggal PO</span> <b>{{ po.po_date }}</b></div>
+    {% if po.needed_date %}<div><span class="label">Tgl Dibutuhkan</span> <b>{{ po.needed_date }}</b></div>{% endif %}
+    <div><span class="label">Status</span>
+      <span class="badge
+        {% if po.status == 'APPROVED' %}badge-paid
+        {% elif po.status == 'CANCELLED' %}badge-cancelled
+        {% elif po.status == 'PARTIALLY_FULFILLED' %}badge-partial
+        {% elif po.status == 'FULFILLED' %}badge-paid
+        {% elif po.status == 'ISSUED' %}badge-issued
+        {% else %}badge-draft{% endif %}">{{ po.status }}</span>
+    </div>
   </div>
 </div>
 
-<table class="no-border" style="margin-top:8px;">
-  <tr>
-    <td style="width:50%; padding-left:0;">
-      <b>Kepada Vendor:</b><br/>
-      {{ po.vendor_name or (vendor.name if vendor else "-") }}<br/>
-      {% if vendor %}{{ vendor.address or "" }}<br/>{% endif %}
-      {% if vendor and vendor.phone %}Telp: {{ vendor.phone }}<br/>{% endif %}
-      {% if vendor and vendor.npwp %}NPWP: {{ vendor.npwp }}{% endif %}
-    </td>
-    <td style="width:50%;">
-      <b>Untuk Proyek:</b><br/>
-      {{ project.name }} ({{ project.code }})<br/>
-      {% if project.location %}{{ project.location }}{% endif %}
-    </td>
-  </tr>
-</table>
+<!-- INFO GRID -->
+<div class="info-grid">
+  <div class="info-card">
+    <div class="label">Kepada Vendor</div>
+    <div><b>{{ po.vendor_name or (vendor.name if vendor else "-") }}</b></div>
+    {% if vendor and vendor.address %}<div class="muted small">{{ vendor.address }}</div>{% endif %}
+    {% if vendor and vendor.phone %}<div class="muted small">Telp: {{ vendor.phone }}</div>{% endif %}
+    {% if vendor and vendor.npwp %}<div class="muted small">NPWP: {{ vendor.npwp }}</div>{% endif %}
+  </div>
+  <div class="info-card">
+    <div class="label">Untuk Proyek</div>
+    <div><b>{{ project.name }}</b></div>
+    <div class="muted small">Kode: {{ project.code }}</div>
+    {% if project.location %}<div class="muted small">{{ project.location }}</div>{% endif %}
+  </div>
+</div>
 
-<table>
+<!-- ITEMS TABLE -->
+<table class="items">
   <thead>
     <tr>
-      <th style="width:32px;">No</th>
+      <th class="center" style="width:32px;">No</th>
       <th>Deskripsi Barang/Jasa</th>
-      <th style="width:60px;" class="right">Qty</th>
+      <th class="right" style="width:60px;">Qty</th>
       <th style="width:60px;">Unit</th>
-      <th style="width:110px;" class="right">Harga Satuan</th>
-      <th style="width:120px;" class="right">Subtotal</th>
+      <th class="right" style="width:110px;">Harga Satuan</th>
+      <th class="right" style="width:120px;">Subtotal</th>
     </tr>
   </thead>
   <tbody>
@@ -74,34 +89,49 @@
   </tbody>
 </table>
 
-<table class="no-border" style="margin-top:8px;">
-  <tr>
-    <td style="width:60%; padding-left:0;">
-      {% if po.payment_terms %}<b>Syarat Pembayaran:</b> {{ po.payment_terms }}<br/>{% endif %}
-      {% if po.notes %}<b>Catatan:</b> {{ po.notes }}{% endif %}
-    </td>
-    <td style="width:40%;">
-      <table>
-        <tr><th>Subtotal</th><td class="right">{{ po.subtotal|idr }}</td></tr>
-        <tr><th>Pajak</th><td class="right">{{ po.tax|idr }}</td></tr>
-        <tr><th>Diskon</th><td class="right">{{ po.discount|idr }}</td></tr>
-        <tr><th>Total</th><td class="right"><b>{{ po.total|idr }}</b></td></tr>
-      </table>
-    </td>
-  </tr>
+<!-- TOTALS -->
+<table class="totals">
+  <tr><td class="label">Subtotal</td><td class="value">{{ po.subtotal|idr }}</td></tr>
+  <tr><td class="label">Pajak</td><td class="value">{{ po.tax|idr }}</td></tr>
+  {% if po.discount and po.discount|float > 0 %}
+  <tr><td class="label">Diskon</td><td class="value">- {{ po.discount|idr }}</td></tr>
+  {% endif %}
+  <tr class="grand"><td>TOTAL (Rp)</td><td class="value">{{ po.total|idr }}</td></tr>
 </table>
 
+<!-- NOTES -->
+{% if po.payment_terms or po.notes %}
+<div class="notes">
+  {% if po.payment_terms %}
+  <span class="label">Syarat Pembayaran</span>
+  <div>{{ po.payment_terms }}</div>
+  {% endif %}
+  {% if po.notes %}
+  <span class="label">{% if po.payment_terms %}Catatan{% else %}Catatan{% endif %}</span>
+  <div>{{ po.notes }}</div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- SIGNATURE -->
 <div class="signature">
-  <div class="box center">
-    <div>Dibuat oleh,</div>
+  <div class="box">
+    <div class="role">Dibuat oleh,</div>
     <div class="sign-area"></div>
-    <div>{{ created_by.name if created_by else "" }}</div>
+    <div class="name">{{ created_by.name if created_by else "" }}</div>
+    <div class="title-sub">Project Admin</div>
   </div>
-  <div class="box center">
-    <div>Disetujui oleh,</div>
+  <div class="box">
+    <div class="role">Disetujui oleh,</div>
     <div class="sign-area"></div>
-    <div>{{ approved_by.name if approved_by else (company.director_name or "") }}</div>
+    <div class="name">{{ approved_by.name if approved_by else (company.director_name or "") }}</div>
+    <div class="title-sub">Direktur</div>
   </div>
+</div>
+
+<div class="foot-note">
+  Dokumen ini sah tanpa tanda tangan basah jika dicetak/dikirim secara resmi
+  oleh sistem {{ company.name }}.
 </div>
 
 </body></html>

@@ -1,8 +1,9 @@
 from datetime import date, date as date_type
 from decimal import Decimal
+from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -18,6 +19,7 @@ from app.core.deps import (
 from app.db.session import get_db
 from app.models.models import (
     AuditAction,
+    Company,
     Invoice,
     InvoiceAllocation,
     InvoiceAttachment,
@@ -25,11 +27,13 @@ from app.models.models import (
     InvoiceStatus,
     InvoiceType,
     PaymentMethod,
+    Project,
     Transaction,
     TxnStatus,
     TxnType,
     User,
     UserRole,
+    VendorClient,
 )
 from app.schemas.common import Page
 from app.schemas.finance import (
@@ -44,6 +48,7 @@ from app.schemas.finance import (
 )
 from app.services.audit import log, snapshot
 from app.services.invoice_status import linked_amount, paid_amount, recompute_invoice_status
+from app.services.pdf.render import html_to_pdf, render_html
 from app.services.storage.links import normalize_external_link
 from app.services.storage.local import save_upload
 
@@ -456,3 +461,97 @@ async def attach_invoice_link(
     await db.commit()
     await db.refresh(att)
     return AttachmentOut.model_validate(att)
+
+
+# --- Bahasa Indonesia "terbilang" (angka -> kata) ----------------------------
+
+def _terbilang(n: int) -> str:
+    """Konversi bilangan bulat positif ke kata-kata Bahasa Indonesia."""
+    n = int(abs(n))
+    if n == 0:
+        return "nol"
+    satuan = ["", "satu", "dua", "tiga", "empat", "lima",
+              "enam", "tujuh", "delapan", "sembilan", "sepuluh", "sebelas"]
+
+    def _below_1000(x: int) -> str:
+        if x < 12:
+            return satuan[x]
+        if x < 20:
+            return satuan[x - 10] + " belas"
+        if x < 100:
+            return satuan[x // 10] + " puluh" + (
+                " " + satuan[x % 10] if x % 10 else ""
+            )
+        if x < 200:
+            return "seratus" + (" " + _below_1000(x - 100) if x > 100 else "")
+        if x < 1000:
+            return satuan[x // 100] + " ratus" + (
+                " " + _below_1000(x % 100) if x % 100 else ""
+            )
+        return ""  # tidak akan terjadi
+
+    if n < 1000:
+        return _below_1000(n)
+    if n < 2000:
+        return "seribu" + (" " + _terbilang(n - 1000) if n > 1000 else "")
+    if n < 1_000_000:
+        return _terbilang(n // 1000) + " ribu" + (
+            " " + _terbilang(n % 1000) if n % 1000 else ""
+        )
+    if n < 1_000_000_000:
+        return _terbilang(n // 1_000_000) + " juta" + (
+            " " + _terbilang(n % 1_000_000) if n % 1_000_000 else ""
+        )
+    if n < 1_000_000_000_000:
+        return _terbilang(n // 1_000_000_000) + " miliar" + (
+            " " + _terbilang(n % 1_000_000_000) if n % 1_000_000_000 else ""
+        )
+    return _terbilang(n // 1_000_000_000_000) + " triliun" + (
+        " " + _terbilang(n % 1_000_000_000_000) if n % 1_000_000_000_000 else ""
+    )
+
+
+@router.get("/{iid}/pdf")
+async def invoice_pdf(
+    iid: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    """Cetak invoice ke PDF (A4). Status, paid, dan sisa diambil
+    real-time dari tabel allocations."""
+    res = await db.execute(
+        select(Invoice).options(*_full_options()).where(Invoice.id == iid)
+    )
+    inv = res.scalar_one_or_none()
+    if not inv or inv.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    await ensure_project_access(db, user, inv.project_id)
+
+    project = await db.get(Project, inv.project_id)
+    company = await db.get(Company, project.company_id) if project else None
+    vendor = (
+        await db.get(VendorClient, inv.vendor_client_id)
+        if inv.vendor_client_id else None
+    )
+    created_by = await db.get(User, inv.created_by_id) if inv.created_by_id else None
+    paid = await paid_amount(db, inv.id)
+    outstanding = max(Decimal(inv.total or 0) - paid, Decimal("0"))
+
+    base_css = (
+        Path(__file__).parent.parent.parent / "services/pdf/templates/_base.css"
+    ).read_text(encoding="utf-8")
+    html = render_html(
+        "invoice.html",
+        invoice=inv, project=project, company=company,
+        vendor=vendor, created_by=created_by,
+        paid_amount=paid, outstanding=outstanding,
+        amount_in_words=_terbilang(int(Decimal(inv.total or 0))).capitalize(),
+        base_css=base_css,
+    )
+    pdf = html_to_pdf(html)
+    safe_name = (inv.number or f"INV-{inv.id}").replace("/", "-")
+    return Response(
+        pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{safe_name}.pdf"'},
+    )

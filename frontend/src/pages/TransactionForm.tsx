@@ -41,6 +41,7 @@ export default function TransactionForm() {
   });
   const [attachments, setAttachments] = useState<any[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingLinks, setPendingLinks] = useState<{ url: string; label: string }[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const projectsQ = useQuery({
@@ -142,8 +143,8 @@ export default function TransactionForm() {
         ? (await api.patch(`/transactions/${id}`, payload)).data
         : (await api.post("/transactions", payload)).data;
 
-      // Setelah create, upload file yang sudah dipilih (mode Baru)
-      if (!isEdit && pendingFiles.length > 0) {
+      // Setelah create, upload file + link yang sudah dipilih (mode Baru)
+      if (!isEdit) {
         setUploadError(null);
         for (const f of pendingFiles) {
           try {
@@ -156,7 +157,18 @@ export default function TransactionForm() {
             setUploadError(`Gagal upload ${f.name}: ${e?.response?.data?.detail || e.message}`);
           }
         }
+        for (const l of pendingLinks) {
+          try {
+            await api.post(`/transactions/${saved.id}/attachments/link`, {
+              url: l.url,
+              label: l.label || null,
+            });
+          } catch (e: any) {
+            setUploadError(`Gagal lampirkan link ${l.url}: ${e?.response?.data?.detail || e.message}`);
+          }
+        }
         setPendingFiles([]);
+        setPendingLinks([]);
       }
       return saved;
     },
@@ -533,7 +545,12 @@ export default function TransactionForm() {
             disabled={isLocked}
           />
         ) : (
-          <PendingAttachmentPicker files={pendingFiles} onChange={setPendingFiles} />
+          <PendingAttachmentPicker
+            files={pendingFiles}
+            onChange={setPendingFiles}
+            links={pendingLinks}
+            onLinksChange={setPendingLinks}
+          />
         )}
         {uploadError && <div className="mt-2 text-xs text-rose-600">{uploadError}</div>}
       </Card>

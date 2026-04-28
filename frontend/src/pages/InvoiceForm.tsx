@@ -11,7 +11,7 @@ import PendingAttachmentPicker from "@/components/PendingAttachmentPicker";
 import Combobox from "@/components/ui/Combobox";
 import Modal from "@/components/Modal";
 import { Badge, statusTone } from "@/components/ui/Badge";
-import { ArrowDownLeft, ArrowUpRight, BadgeCheck, Link2, Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, BadgeCheck, Link2, Loader2, Plus, Printer, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { canWrite, isSuper, useAuthStore } from "@/store/auth";
 import { cn, formatDate, formatIDR, todayISO } from "@/lib/utils";
@@ -67,6 +67,7 @@ export default function InvoiceForm() {
   ]);
   const [attachments, setAttachments] = useState<any[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingLinks, setPendingLinks] = useState<{ url: string; label: string }[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const projectsQ = useQuery({
@@ -140,8 +141,8 @@ export default function InvoiceForm() {
         ? (await api.patch(`/invoices/${id}`, payload)).data
         : (await api.post("/invoices", payload)).data;
 
-      // upload pending files yang dipilih sebelum invoice tersimpan
-      if (!isEdit && pendingFiles.length > 0) {
+      // upload pending files + pending links yang dipilih sebelum invoice tersimpan
+      if (!isEdit) {
         setUploadError(null);
         for (const f of pendingFiles) {
           try {
@@ -154,7 +155,18 @@ export default function InvoiceForm() {
             setUploadError(`Gagal upload ${f.name}: ${e?.response?.data?.detail || e.message}`);
           }
         }
+        for (const l of pendingLinks) {
+          try {
+            await api.post(`/invoices/${saved.id}/attachments/link`, {
+              url: l.url,
+              label: l.label || null,
+            });
+          } catch (e: any) {
+            setUploadError(`Gagal lampirkan link ${l.url}: ${e?.response?.data?.detail || e.message}`);
+          }
+        }
         setPendingFiles([]);
+        setPendingLinks([]);
       }
       return saved;
     },
@@ -541,7 +553,12 @@ export default function InvoiceForm() {
             deleteUrl={(_aid) => `/invoices/${id}/attachments/${_aid}`}
           />
         ) : (
-          <PendingAttachmentPicker files={pendingFiles} onChange={setPendingFiles} />
+          <PendingAttachmentPicker
+            files={pendingFiles}
+            onChange={setPendingFiles}
+            links={pendingLinks}
+            onLinksChange={setPendingLinks}
+          />
         )}
         {uploadError && <div className="mt-2 text-xs text-rose-600">{uploadError}</div>}
       </Card>
@@ -783,6 +800,25 @@ export default function InvoiceForm() {
               <BadgeCheck className="h-4 w-4" />
             )}
             Tandai Lunas
+          </Button>
+        )}
+        {isEdit && (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={async () => {
+              try {
+                const res = await api.get(`/invoices/${id}/pdf`, { responseType: "blob" });
+                const blob = new Blob([res.data], { type: "application/pdf" });
+                const url = URL.createObjectURL(blob);
+                window.open(url, "_blank");
+                setTimeout(() => URL.revokeObjectURL(url), 60000);
+              } catch (e) {
+                alert("Gagal membuka PDF");
+              }
+            }}
+          >
+            <Printer className="h-4 w-4" /> Cetak PDF
           </Button>
         )}
         {isEdit && isSuper(user) && (

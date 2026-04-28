@@ -1,13 +1,22 @@
 import { useEffect, useRef, useState } from "react";
-import { Camera, FileText, Image as ImageIcon, Trash2, Upload } from "lucide-react";
+import { Camera, FileText, Image as ImageIcon, Link2, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+
+export interface PendingLink {
+  url: string;
+  label: string;
+}
 
 export default function PendingAttachmentPicker({
   files,
   onChange,
+  links,
+  onLinksChange,
 }: {
   files: File[];
   onChange: (f: File[]) => void;
+  links?: PendingLink[];
+  onLinksChange?: (l: PendingLink[]) => void;
 }) {
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -34,17 +43,35 @@ export default function PendingAttachmentPicker({
     onChange(files.filter((_, j) => j !== i));
   }
 
+  function addLink() {
+    if (!onLinksChange) return;
+    const url = window.prompt(
+      "Masukkan URL link (mis. Google Drive yang sudah di-share):",
+    );
+    if (!url || !url.trim()) return;
+    const label =
+      window.prompt("Nama / label dokumen (opsional):", "Bukti via link") || "";
+    onLinksChange([...(links || []), { url: url.trim(), label: label.trim() }]);
+  }
+
+  function removeLink(i: number) {
+    if (!onLinksChange) return;
+    onLinksChange((links || []).filter((_, j) => j !== i));
+  }
+
+  const showLinks = !!onLinksChange;
+
   return (
     <div>
       <div className="text-xs font-medium text-slate-600 mb-2">
         Lampiran (akan di-upload setelah disimpan)
       </div>
 
-      {files.length > 0 && (
+      {(files.length > 0 || (showLinks && (links?.length ?? 0) > 0)) && (
         <div className="grid grid-cols-3 gap-2 mb-2">
           {files.map((f, i) => (
             <div
-              key={i}
+              key={`f-${i}`}
               className="relative rounded-lg overflow-hidden border border-slate-200 bg-slate-50"
             >
               {f.type.startsWith("image/") ? (
@@ -65,6 +92,29 @@ export default function PendingAttachmentPicker({
               <div className="px-1.5 py-1 text-[10px] text-slate-600 truncate">{f.name}</div>
             </div>
           ))}
+          {showLinks &&
+            (links || []).map((l, i) => (
+              <div
+                key={`l-${i}`}
+                className="relative rounded-lg overflow-hidden border border-sky-200 bg-sky-50"
+              >
+                <div className="grid h-24 place-items-center text-sky-600">
+                  <Link2 className="h-7 w-7" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeLink(i)}
+                  className="absolute top-1 right-1 grid h-7 w-7 place-items-center rounded-full bg-white/90 text-rose-600 shadow"
+                  aria-label="Hapus"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+                <div className="px-1.5 py-1 text-[10px] text-slate-600 truncate flex items-center gap-1">
+                  <Link2 className="h-3 w-3 text-sky-500 shrink-0" />
+                  <span className="truncate">{l.label || l.url}</span>
+                </div>
+              </div>
+            ))}
         </div>
       )}
 
@@ -78,6 +128,11 @@ export default function PendingAttachmentPicker({
         <Button type="button" variant="secondary" size="sm" onClick={() => fileRef.current?.click()}>
           <Upload className="h-4 w-4" /> File / PDF
         </Button>
+        {showLinks && (
+          <Button type="button" variant="secondary" size="sm" onClick={addLink}>
+            <Link2 className="h-4 w-4" /> Link
+          </Button>
+        )}
         <input
           ref={cameraRef}
           type="file"

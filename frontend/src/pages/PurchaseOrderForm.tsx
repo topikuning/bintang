@@ -280,6 +280,27 @@ export default function POForm() {
             <Printer className="h-4 w-4" /> Cetak PDF
           </Button>
         )}
+        {isEdit && isSuper(user) && (
+          <Button
+            variant="danger"
+            onClick={async () => {
+              const c1 = prompt(
+                `GOD-MODE: hapus PERMANEN PO #${id}?\nKetik HAPUS untuk konfirmasi.`,
+              );
+              if (c1 !== "HAPUS") return;
+              try {
+                await api.delete(`/purchase-orders/${id}/hard`);
+                qc.invalidateQueries({ queryKey: ["purchase-orders"] });
+                qc.invalidateQueries({ queryKey: ["transactions"] });
+                nav("/purchase-orders");
+              } catch (e: any) {
+                alert(e?.response?.data?.detail || "Gagal hard delete");
+              }
+            }}
+          >
+            🔥 Hapus Permanen (God-mode)
+          </Button>
+        )}
       </div>
       {save.isError && (
         <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">

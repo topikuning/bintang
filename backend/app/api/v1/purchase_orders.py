@@ -301,6 +301,34 @@ async def delete_po(
     await db.commit()
 
 
+@router.delete("/{pid}/hard", status_code=204)
+async def hard_delete_po(
+    pid: int,
+    db: AsyncSession = Depends(get_db),
+    god: User = Depends(require_superadmin),
+) -> None:
+    """GOD-MODE: hapus permanen PO + semua item-nya. Bypass status apa pun.
+    Transaksi yang sempat menunjuk PO ini di-unlink (purchase_order_id = NULL)
+    agar tidak meninggalkan FK menggantung. Cuma SUPERADMIN."""
+    po = await db.get(PurchaseOrder, pid)
+    if not po:
+        raise HTTPException(404, "not_found")
+    # Unlink transactions yang masih menunjuk PO ini
+    from app.models.models import Transaction as TxnModel
+    res = await db.execute(
+        select(TxnModel).where(TxnModel.purchase_order_id == pid)
+    )
+    txs = res.scalars().all()
+    for t in txs:
+        t.purchase_order_id = None
+    before = snapshot(po)
+    await db.delete(po)  # cascade items via cascade="all,delete-orphan"
+    await log(db, user_id=god.id, entity="purchase_order", entity_id=pid,
+              action=AuditAction.DELETE, before=before,
+              note=f"HARD DELETE (god-mode), {len(txs)} transaksi di-unlink")
+    await db.commit()
+
+
 @router.get("/{pid}/pdf")
 async def po_pdf(
     pid: int,

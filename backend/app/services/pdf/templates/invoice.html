@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<title>Invoice {{ invoice.number }}</title>
+<style>{{ base_css|safe }}</style>
+</head>
+<body>
+
+{% if invoice.status == 'PAID' %}<div class="watermark">LUNAS</div>{% endif %}
+{% if invoice.status == 'CANCELLED' %}<div class="watermark" style="color: rgba(185, 28, 28, 0.08);">DIBATALKAN</div>{% endif %}
+
+<!-- KOP / LETTERHEAD -->
+<div class="kop row">
+  <div>
+    {% if company.logo_url %}<img src="{{ company.logo_url }}" alt="logo">{% endif %}
+  </div>
+  <div style="flex:1; padding-left:12px;">
+    <div class="brand">{{ company.name }}</div>
+    <div class="muted">{{ company.address or "" }}</div>
+    <div class="muted">
+      {% if company.phone %}Telp: {{ company.phone }}{% endif %}
+      {% if company.email %} &nbsp;&middot;&nbsp; {{ company.email }}{% endif %}
+      {% if company.npwp %} &nbsp;&middot;&nbsp; NPWP: {{ company.npwp }}{% endif %}
+    </div>
+  </div>
+</div>
+<div class="divider"></div>
+
+<!-- TITLE + META -->
+<div class="row doc-head">
+  <div>
+    <div class="doc-title">
+      {% if invoice.type == 'OUT' %}<span class="accent">INVOICE</span> / TAGIHAN
+      {% else %}<span class="accent">INVOICE</span> / PENGAJUAN
+      {% endif %}
+    </div>
+    <div class="muted small mt-1">
+      {% if invoice.type == 'OUT' %}
+        Tagihan kepada client atas pekerjaan/proyek di bawah ini.
+      {% else %}
+        Pengajuan pembayaran kepada perusahaan atas penagihan vendor di bawah ini.
+      {% endif %}
+    </div>
+  </div>
+  <div class="doc-meta">
+    <div><span class="label">No. Invoice</span> <b>{{ invoice.number }}</b></div>
+    <div><span class="label">Tanggal</span> <b>{{ invoice.invoice_date }}</b></div>
+    {% if invoice.due_date %}<div><span class="label">Jatuh Tempo</span> <b>{{ invoice.due_date }}</b></div>{% endif %}
+    <div><span class="label">Status</span>
+      <span class="badge
+        {% if invoice.status == 'PAID' %}badge-paid
+        {% elif invoice.status == 'OVERDUE' %}badge-overdue
+        {% elif invoice.status == 'PARTIALLY_PAID' %}badge-partial
+        {% elif invoice.status == 'CANCELLED' %}badge-cancelled
+        {% elif invoice.status == 'ISSUED' %}badge-issued
+        {% else %}badge-draft{% endif %}">{{ invoice.status }}</span>
+    </div>
+  </div>
+</div>
+
+<!-- INFO GRID -->
+<div class="info-grid">
+  <div class="info-card">
+    <div class="label">
+      {% if invoice.type == 'OUT' %}Kepada Client{% else %}Kepada / Pembayar{% endif %}
+    </div>
+    <div><b>{{ invoice.party_name or (vendor.name if vendor else "-") }}</b></div>
+    {% if vendor and vendor.address %}<div class="muted small">{{ vendor.address }}</div>{% endif %}
+    {% if vendor and vendor.phone %}<div class="muted small">Telp: {{ vendor.phone }}</div>{% endif %}
+    {% if vendor and vendor.npwp %}<div class="muted small">NPWP: {{ vendor.npwp }}</div>{% endif %}
+  </div>
+  <div class="info-card">
+    <div class="label">Proyek Terkait</div>
+    <div><b>{{ project.name }}</b></div>
+    <div class="muted small">Kode: {{ project.code }}</div>
+    {% if project.location %}<div class="muted small">{{ project.location }}</div>{% endif %}
+  </div>
+</div>
+
+<!-- ITEMS TABLE -->
+<table class="items">
+  <thead>
+    <tr>
+      <th class="center" style="width:32px;">No</th>
+      <th>Deskripsi</th>
+      <th class="right" style="width:60px;">Qty</th>
+      <th style="width:60px;">Unit</th>
+      <th class="right" style="width:110px;">Harga Satuan</th>
+      <th class="right" style="width:120px;">Subtotal</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for it in invoice.items %}
+    <tr>
+      <td class="center">{{ loop.index }}</td>
+      <td>{{ it.description }}</td>
+      <td class="right">{{ it.quantity }}</td>
+      <td>{{ it.unit or "" }}</td>
+      <td class="right">{{ it.unit_price|idr }}</td>
+      <td class="right">{{ it.subtotal|idr }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted center">Tidak ada item.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<!-- TOTALS -->
+<table class="totals">
+  <tr><td class="label">Subtotal</td><td class="value">{{ invoice.subtotal|idr }}</td></tr>
+  <tr><td class="label">Pajak</td><td class="value">{{ invoice.tax|idr }}</td></tr>
+  <tr class="grand"><td>TOTAL (Rp)</td><td class="value">{{ invoice.total|idr }}</td></tr>
+  {% if paid_amount and paid_amount|float > 0 %}
+  <tr><td class="label">Sudah Dibayar</td><td class="value" style="color:#15803d;">- {{ paid_amount|idr }}</td></tr>
+  <tr style="font-weight:700;">
+    <td class="label" style="color:#0f172a;">Sisa Tagihan</td>
+    <td class="value" style="color:{% if outstanding|float <= 0 %}#15803d{% else %}#b91c1c{% endif %};">
+      {{ outstanding|idr }}
+    </td>
+  </tr>
+  {% endif %}
+</table>
+
+<!-- TERBILANG (rupiah words, optional simple) -->
+<div class="notes mt-2">
+  <span class="label">Terbilang</span>
+  <div><i>{{ amount_in_words }} rupiah</i></div>
+</div>
+
+<!-- NOTES -->
+{% if invoice.notes %}
+<div class="notes">
+  <span class="label">Catatan</span>
+  <div>{{ invoice.notes }}</div>
+</div>
+{% endif %}
+
+<!-- BANK INFO -->
+{% if company.bank_account %}
+<div class="notes">
+  <span class="label">Rekening Pembayaran</span>
+  <div>{{ company.bank_account }}{% if company.name %}<br/>a.n. {{ company.name }}{% endif %}</div>
+</div>
+{% endif %}
+
+<!-- SIGNATURE -->
+<div class="signature">
+  <div class="box">
+    <div class="role">Dibuat oleh,</div>
+    <div class="sign-area"></div>
+    <div class="name">{{ created_by.name if created_by else "" }}</div>
+    <div class="title-sub">Admin</div>
+  </div>
+  <div class="box">
+    <div class="role">Mengetahui,</div>
+    <div class="sign-area"></div>
+    <div class="name">{{ company.director_name or "" }}</div>
+    <div class="title-sub">Direktur</div>
+  </div>
+</div>
+
+<div class="foot-note">
+  Dokumen ini diterbitkan secara elektronik oleh sistem {{ company.name }} dan sah tanpa tanda tangan basah.
+</div>
+
+</body></html>
