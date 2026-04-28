@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/Input";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import { formatDate, formatIDR } from "@/lib/utils";
 import { Plus } from "lucide-react";
+import AttachmentStrip from "@/components/AttachmentStrip";
 import { canWrite, useAuthStore } from "@/store/auth";
 import type { Invoice, Page, Project } from "@/types";
 
@@ -80,27 +81,29 @@ export default function InvoicesPage() {
       ) : (
         <div className="space-y-2">
           {data?.items.map((inv) => (
-            <Link key={inv.id} to={`/invoices/${inv.id}`}>
-              <Card className="!p-3 active:bg-slate-50">
-                <div className="flex items-start gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <Badge tone={inv.type === "IN" ? "bad" : "good"}>{inv.type === "IN" ? "Hutang" : "Piutang"}</Badge>
-                      <span className="text-xs text-slate-500 truncate">{inv.number}</span>
-                    </div>
-                    <div className="text-sm font-medium truncate mt-0.5">{inv.party_name || "-"}</div>
-                    <div className="text-[11px] text-slate-500">
-                      {formatDate(inv.invoice_date)} · jatuh tempo {formatDate(inv.due_date)}
-                    </div>
+            <Card key={inv.id} className="!p-3">
+              <Link
+                to={`/invoices/${inv.id}`}
+                className="flex items-start gap-2 active:bg-slate-50 -m-3 p-3 rounded-2xl"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Badge tone={inv.type === "IN" ? "bad" : "good"}>{inv.type === "IN" ? "Hutang" : "Piutang"}</Badge>
+                    <span className="text-xs text-slate-500 truncate">{inv.number}</span>
                   </div>
-                  <div className="text-right shrink-0">
-                    <div className="tabular-nums font-semibold text-sm">Rp {formatIDR(inv.total)}</div>
-                    <div className="text-[11px] text-slate-500">Sisa: Rp {formatIDR(inv.remaining)}</div>
-                    <Badge tone={statusTone(inv.status)}>{inv.status}</Badge>
+                  <div className="text-sm font-medium truncate mt-0.5">{inv.party_name || "-"}</div>
+                  <div className="text-[11px] text-slate-500">
+                    {formatDate(inv.invoice_date)} · jatuh tempo {formatDate(inv.due_date)}
                   </div>
                 </div>
-              </Card>
-            </Link>
+                <div className="text-right shrink-0">
+                  <div className="tabular-nums font-semibold text-sm">Rp {formatIDR(inv.total)}</div>
+                  <div className="text-[11px] text-slate-500">Sisa: Rp {formatIDR(inv.remaining)}</div>
+                  <Badge tone={statusTone(inv.status)}>{inv.status}</Badge>
+                </div>
+              </Link>
+              <AttachmentStrip attachments={inv.attachments} />
+            </Card>
           ))}
           {data?.items.length === 0 && <div className="text-sm text-slate-500">Belum ada invoice.</div>}
         </div>

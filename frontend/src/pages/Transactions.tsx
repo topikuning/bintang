@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Input";
+import AttachmentStrip from "@/components/AttachmentStrip";
 import { formatDate, formatIDR } from "@/lib/utils";
 import { Link2, Plus } from "lucide-react";
 import { canWrite, useAuthStore } from "@/store/auth";
@@ -82,43 +83,45 @@ export default function TransactionsPage() {
       ) : (
         <div className="space-y-2">
           {data?.items.map((t) => (
-            <Link key={t.id} to={`/transactions/${t.id}`}>
-              <Card className="!p-3 active:bg-slate-50">
-                <div className="flex items-start gap-3">
-                  <div
-                    className={`h-9 w-9 shrink-0 rounded-full grid place-items-center text-sm font-semibold ${
-                      t.type === "IN" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
-                    }`}
-                  >
-                    {t.type === "IN" ? "+" : "-"}
+            <Card key={t.id} className="!p-3">
+              <Link
+                to={`/transactions/${t.id}`}
+                className="flex items-start gap-3 active:bg-slate-50 -m-3 p-3 rounded-2xl"
+              >
+                <div
+                  className={`h-9 w-9 shrink-0 rounded-full grid place-items-center text-sm font-semibold ${
+                    t.type === "IN" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                  }`}
+                >
+                  {t.type === "IN" ? "+" : "-"}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">
+                    {t.description || t.party_name || "Transaksi"}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium truncate">
-                      {t.description || t.party_name || "Transaksi"}
-                    </div>
-                    <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-                      <span>{formatDate(t.tx_date)} · {t.payment_method}</span>
-                      {t.invoice_id && (
-                        <span className="inline-flex items-center gap-0.5 rounded-full bg-sky-100 text-sky-700 px-1.5 py-0.5">
-                          <Link2 className="h-3 w-3" />
-                          INV#{t.invoice_id}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div
-                      className={`tabular-nums font-semibold text-sm ${
-                        t.type === "IN" ? "text-emerald-700" : "text-rose-700"
-                      }`}
-                    >
-                      Rp {formatIDR(t.amount)}
-                    </div>
-                    <Badge tone={statusTone(t.status)}>{t.status}</Badge>
+                  <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                    <span>{formatDate(t.tx_date)} · {t.payment_method}</span>
+                    {t.invoice_id && (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-sky-100 text-sky-700 px-1.5 py-0.5">
+                        <Link2 className="h-3 w-3" />
+                        INV#{t.invoice_id}
+                      </span>
+                    )}
                   </div>
                 </div>
-              </Card>
-            </Link>
+                <div className="text-right shrink-0">
+                  <div
+                    className={`tabular-nums font-semibold text-sm ${
+                      t.type === "IN" ? "text-emerald-700" : "text-rose-700"
+                    }`}
+                  >
+                    Rp {formatIDR(t.amount)}
+                  </div>
+                  <Badge tone={statusTone(t.status)}>{t.status}</Badge>
+                </div>
+              </Link>
+              <AttachmentStrip attachments={t.attachments} />
+            </Card>
           ))}
           {data?.items.length === 0 && <div className="text-sm text-slate-500">Tidak ada transaksi.</div>}
         </div>
