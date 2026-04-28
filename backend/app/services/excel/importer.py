@@ -247,6 +247,13 @@ async def import_projects(rows, db, user, commit):
             status = ProjectStatus.AKTIF
             if r.get("status"):
                 status = _parse_enum(r.get("status"), ProjectStatus, "status")
+            project_value = _parse_decimal(r.get("project_value") or 0)
+            budget_raw = r.get("budget_amount")
+            if budget_raw in (None, ""):
+                # smart-default: 70% nilai proyek
+                budget_amount = (project_value * Decimal("0.7")).quantize(Decimal("0.01"))
+            else:
+                budget_amount = _parse_decimal(budget_raw)
             if commit:
                 if await _lookup(db, Project, code=code):
                     raise ValueError(f"Kode proyek '{code}' sudah ada")
@@ -259,7 +266,8 @@ async def import_projects(rows, db, user, commit):
                     end_date=_parse_date(r.get("end_date")),
                     status=status,
                     notes=_str(r.get("notes")),
-                    budget_amount=_parse_decimal(r.get("budget_amount")),
+                    project_value=project_value,
+                    budget_amount=budget_amount,
                     currency=_str(r.get("currency")) or "IDR",
                     overbudget_tolerance_pct=_parse_decimal(r.get("overbudget_tolerance_pct") or 0),
                 )
@@ -503,12 +511,15 @@ SCHEMAS: dict[str, dict[str, Any]] = {
     "projects": {
         "label": "Proyek",
         "headers": ["code", "name", "location", "company_name", "pic_email",
-                    "start_date", "end_date", "status", "budget_amount",
+                    "start_date", "end_date", "status",
+                    "project_value", "budget_amount",
                     "currency", "overbudget_tolerance_pct", "notes"],
         "example": ["PRJ-DEMO", "Proyek Demo", "Jakarta",
                     "PT Contoh Sejahtera", "budi@bintang.me",
-                    "2026-04-01", "2026-12-31", "AKTIF", 250000000,
+                    "2026-04-01", "2026-12-31", "AKTIF",
+                    357000000, 250000000,
                     "IDR", 5, "Catatan demo"],
+        "note": "project_value = nilai kontrak/SPK. budget_amount = target pengeluaran. Kalau budget_amount dikosongkan, otomatis dihitung 70% dari project_value.",
         "handler": import_projects,
     },
     "transactions": {
