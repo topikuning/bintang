@@ -17,7 +17,7 @@ export default function UsersPage() {
 
   const { data } = useQuery({
     queryKey: ["users"],
-    queryFn: async () => (await api.get<Page<User>>("/users?size=200")).data,
+    queryFn: async () => (await api.get<Page<User>>("/users?size=1000")).data,
   });
 
   const save = useMutation({

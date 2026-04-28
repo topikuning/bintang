@@ -59,11 +59,11 @@ export default function InvoiceForm() {
 
   const projectsQ = useQuery({
     queryKey: ["projects-light"],
-    queryFn: async () => (await api.get<Page<Project>>("/projects?size=200")).data,
+    queryFn: async () => (await api.get<Page<Project>>("/projects?size=1000")).data,
   });
   const vcQ = useQuery({
     queryKey: ["vendors-clients"],
-    queryFn: async () => (await api.get<Page<VendorClient>>("/vendors-clients?size=500")).data,
+    queryFn: async () => (await api.get<Page<VendorClient>>("/vendors-clients?size=1000")).data,
   });
   const detailQ = useQuery({
     enabled: isEdit,

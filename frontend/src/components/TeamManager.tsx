@@ -27,7 +27,7 @@ export default function TeamManager({ projectId }: { projectId: number }) {
 
   const usersQ = useQuery({
     queryKey: ["users"],
-    queryFn: async () => (await api.get<Page<User>>("/users?size=200")).data,
+    queryFn: async () => (await api.get<Page<User>>("/users?size=1000")).data,
   });
 
   const assigned = teamQ.data || [];

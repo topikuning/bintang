@@ -20,7 +20,7 @@ export default function CompaniesPage() {
 
   const { data } = useQuery({
     queryKey: ["companies"],
-    queryFn: async () => (await api.get<Page<Company>>("/companies?size=200")).data,
+    queryFn: async () => (await api.get<Page<Company>>("/companies?size=1000")).data,
   });
 
   const save = useMutation({

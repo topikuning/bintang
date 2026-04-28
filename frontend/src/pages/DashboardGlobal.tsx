@@ -31,7 +31,7 @@ export default function DashboardGlobal() {
 
   const { data: companies } = useQuery({
     queryKey: ["companies"],
-    queryFn: async () => (await api.get<Page<Company>>("/companies?size=500")).data,
+    queryFn: async () => (await api.get<Page<Company>>("/companies?size=1000")).data,
   });
 
   return (

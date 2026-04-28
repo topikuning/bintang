@@ -19,7 +19,7 @@ export default function VendorsPage() {
 
   const { data } = useQuery({
     queryKey: ["vendors-clients"],
-    queryFn: async () => (await api.get<Page<VendorClient>>("/vendors-clients?size=500")).data,
+    queryFn: async () => (await api.get<Page<VendorClient>>("/vendors-clients?size=1000")).data,
   });
 
   const save = useMutation({

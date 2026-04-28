@@ -64,12 +64,12 @@ export default function ProjectsPage() {
 
   const { data: companies } = useQuery({
     queryKey: ["companies"],
-    queryFn: async () => (await api.get<Page<Company>>("/companies?size=500")).data,
+    queryFn: async () => (await api.get<Page<Company>>("/companies?size=1000")).data,
   });
   const { data: users } = useQuery({
     enabled: isAdmin(user),
     queryKey: ["users"],
-    queryFn: async () => (await api.get<Page<User>>("/users?size=500")).data,
+    queryFn: async () => (await api.get<Page<User>>("/users?size=1000")).data,
   });
 
   const save = useMutation({
@@ -291,9 +291,15 @@ export default function ProjectsPage() {
             options={(companies?.items || []).map((c) => ({
               value: c.id, label: c.name, hint: c.npwp ?? undefined,
             }))}
-            placeholder="Cari perusahaan..."
+            placeholder={
+              companies === undefined
+                ? "Memuat daftar perusahaan..."
+                : noCompanies
+                  ? "Belum ada perusahaan"
+                  : "Cari perusahaan..."
+            }
             clearable={false}
-            disabled={noCompanies}
+            disabled={companies === undefined || noCompanies}
           />
         </Field>
 

@@ -29,7 +29,7 @@ export default function ReportsPage() {
 
   const projectsQ = useQuery({
     queryKey: ["projects-light"],
-    queryFn: async () => (await api.get<Page<Project>>("/projects?size=200")).data,
+    queryFn: async () => (await api.get<Page<Project>>("/projects?size=1000")).data,
   });
 
   function reportPath(r: typeof REPORTS[number]) {

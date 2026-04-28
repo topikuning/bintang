@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Eye, EyeOff, Loader2, Mail } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Input";
+import { prefetchReferenceData } from "@/hooks/useReferenceData";
 
 export default function LoginPage() {
   const nav = useNavigate();
+  const qc = useQueryClient();
   const setToken = useAuthStore((s) => s.setToken);
   const setUser = useAuthStore((s) => s.setUser);
 
@@ -32,6 +35,9 @@ export default function LoginPage() {
       setToken(data.access_token);
       const me = await api.get("/auth/me");
       setUser(me.data);
+      // hangatkan cache referensi paralel di background -- nggak block
+      // navigasi, tapi data sudah siap saat user buka halaman pertama.
+      void prefetchReferenceData(qc);
       nav("/");
     } catch (err: any) {
       const detail = err?.response?.data?.detail;

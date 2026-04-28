@@ -21,7 +21,7 @@ export default function TransactionsPage() {
 
   const { data: projects } = useQuery({
     queryKey: ["projects-light"],
-    queryFn: async () => (await api.get<Page<Project>>("/projects?size=200")).data,
+    queryFn: async () => (await api.get<Page<Project>>("/projects?size=1000")).data,
   });
 
   const qs = new URLSearchParams();

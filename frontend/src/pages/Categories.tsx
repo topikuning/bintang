@@ -19,7 +19,7 @@ export default function CategoriesPage() {
 
   const { data } = useQuery({
     queryKey: ["categories"],
-    queryFn: async () => (await api.get<Page<Category>>("/categories?size=500")).data,
+    queryFn: async () => (await api.get<Page<Category>>("/categories?size=1000")).data,
   });
 
   const save = useMutation({

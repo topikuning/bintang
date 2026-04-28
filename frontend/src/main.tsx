@@ -7,7 +7,16 @@ import "./index.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 30_000, refetchOnWindowFocus: false, retry: 1 },
+    queries: {
+      // 5 menit fresh; data referensi jarang berubah, hindari refetch saat
+      // pindah-pindah halaman.
+      staleTime: 5 * 60_000,
+      // simpan di cache 30 menit setelah tidak dipakai
+      gcTime: 30 * 60_000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+      retry: 1,
+    },
   },
 });
 
