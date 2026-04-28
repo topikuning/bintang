@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -21,12 +21,15 @@ export default function TransactionForm() {
   const nav = useNavigate();
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const [searchParams] = useSearchParams();
+  const presetProjectId = searchParams.get("project_id");
 
   const [data, setData] = useState<Partial<Transaction>>({
     tx_date: todayISO(),
     type: "OUT",
     payment_method: "TRANSFER",
     party_type: "COMPANY",
+    project_id: presetProjectId ? Number(presetProjectId) : undefined,
   });
   const [attachments, setAttachments] = useState<any[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -78,9 +81,12 @@ export default function TransactionForm() {
 
   useEffect(() => {
     if (!isEdit && projectsQ.data && !data.project_id) {
-      setData((d) => ({ ...d, project_id: projectsQ.data!.items[0]?.id }));
+      const fallback = presetProjectId
+        ? Number(presetProjectId)
+        : projectsQ.data.items[0]?.id;
+      setData((d) => ({ ...d, project_id: fallback }));
     }
-  }, [projectsQ.data, isEdit]);
+  }, [projectsQ.data, isEdit, presetProjectId]);
 
   const save = useMutation({
     mutationFn: async () => {

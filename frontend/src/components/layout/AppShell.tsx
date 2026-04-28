@@ -2,6 +2,7 @@ import { Outlet, useNavigate } from "react-router-dom";
 import BottomNav from "./BottomNav";
 import { Plus } from "lucide-react";
 import { canWrite, useAuthStore } from "@/store/auth";
+import Lightbox from "@/components/Lightbox";
 
 export default function AppShell() {
   const nav = useNavigate();
@@ -23,6 +24,7 @@ export default function AppShell() {
       )}
 
       <BottomNav />
+      <Lightbox />
     </div>
   );
 }

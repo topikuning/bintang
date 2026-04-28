@@ -4,12 +4,16 @@ import { api } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
 import { Card, StatCard } from "@/components/ui/Card";
 import { Badge, statusTone } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import CashflowChart from "@/components/charts/CashflowChart";
 import SpendingPie from "@/components/charts/SpendingPie";
 import BudgetProgress from "@/components/BudgetProgress";
 import ProjectAttachments from "@/components/ProjectAttachments";
+import AttachmentStrip from "@/components/AttachmentStrip";
 import { formatDate, formatIDR } from "@/lib/utils";
-import { AlertTriangle, Clock, Link2Off, Users } from "lucide-react";
+import { AlertTriangle, Clock, FileText, Link2, Link2Off, Plus, Users } from "lucide-react";
+import { canWrite, useAuthStore } from "@/store/auth";
+import type { Page, Transaction } from "@/types";
 
 interface AssignedUser {
   id: number;
@@ -20,6 +24,7 @@ interface AssignedUser {
 
 export default function DashboardProject() {
   const { id } = useParams();
+  const user = useAuthStore((s) => s.user);
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard-project", id],
     queryFn: async () => (await api.get(`/dashboard/project/${id}`)).data,
@@ -28,6 +33,12 @@ export default function DashboardProject() {
   const teamQ = useQuery({
     queryKey: ["project-team", id],
     queryFn: async () => (await api.get<AssignedUser[]>(`/projects/${id}/users`)).data,
+    enabled: !!id,
+  });
+  const txQ = useQuery({
+    queryKey: ["project-transactions", id],
+    queryFn: async () =>
+      (await api.get<Page<Transaction>>(`/transactions?project_id=${id}&size=20`)).data,
     enabled: !!id,
   });
 
@@ -41,6 +52,21 @@ export default function DashboardProject() {
         subtitle={`${data.project.code} · ${data.project.status}`}
         right={<Badge tone={statusTone(data.health)}>{data.health}</Badge>}
       />
+
+      {canWrite(user) && (
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <Link to={`/transactions/new?project_id=${id}`}>
+            <Button size="sm" className="w-full">
+              <Plus className="h-4 w-4" /> Transaksi
+            </Button>
+          </Link>
+          <Link to={`/invoices/new?project_id=${id}`}>
+            <Button size="sm" variant="secondary" className="w-full">
+              <FileText className="h-4 w-4" /> Invoice
+            </Button>
+          </Link>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2.5">
         <StatCard label="Masuk" value={`Rp ${formatIDR(data.totals.in)}`} tone="good" />
@@ -207,45 +233,68 @@ export default function DashboardProject() {
         </Card>
       )}
 
-      <Card className="mt-3">
-        <div className="mb-2 flex items-center justify-between">
-          <div className="text-sm font-semibold">Transaksi Terbaru</div>
-          <Link to={`/transactions?project_id=${id}`} className="text-xs text-slate-500">
-            Lihat semua
-          </Link>
-        </div>
-        <ul className="divide-y">
-          {data.recent_transactions.map((t: any) => (
-            <li key={t.id} className="py-2 flex items-center gap-2">
-              <div
-                className={`h-8 w-8 rounded-full grid place-items-center text-xs font-semibold ${
-                  t.type === "IN"
-                    ? "bg-emerald-100 text-emerald-700"
-                    : "bg-rose-100 text-rose-700"
-                }`}
+      <div className="mt-3 mb-2 flex items-center justify-between">
+        <div className="text-sm font-semibold">Transaksi Terbaru</div>
+        <Link to={`/transactions?project_id=${id}`} className="text-xs text-slate-500">
+          Lihat semua
+        </Link>
+      </div>
+      <div className="space-y-2">
+        {txQ.isLoading && (
+          <div className="text-sm text-slate-500">Memuat transaksi...</div>
+        )}
+        {!txQ.isLoading &&
+          (txQ.data?.items || []).map((t) => (
+            <Card key={t.id} className="!p-3">
+              <Link
+                to={`/transactions/${t.id}`}
+                className="flex items-start gap-3 active:bg-slate-50 -m-3 p-3 rounded-2xl"
               >
-                {t.type === "IN" ? "+" : "-"}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm truncate">{t.description || t.party || "Transaksi"}</div>
-                <div className="text-[11px] text-slate-500">
-                  {formatDate(t.date)} · {t.status}
+                <div
+                  className={`h-9 w-9 shrink-0 rounded-full grid place-items-center text-sm font-semibold ${
+                    t.type === "IN"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-rose-100 text-rose-700"
+                  }`}
+                >
+                  {t.type === "IN" ? "+" : "-"}
                 </div>
-              </div>
-              <div
-                className={`tabular-nums text-sm font-semibold ${
-                  t.type === "IN" ? "text-emerald-700" : "text-rose-700"
-                }`}
-              >
-                Rp {formatIDR(t.amount)}
-              </div>
-            </li>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">
+                    {t.description || t.party_name || "Transaksi"}
+                  </div>
+                  <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                    <span>
+                      {formatDate(t.tx_date)} · {t.payment_method}
+                    </span>
+                    {t.invoice_id && (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-sky-100 text-sky-700 px-1.5 py-0.5">
+                        <Link2 className="h-3 w-3" />
+                        INV#{t.invoice_id}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div
+                    className={`tabular-nums font-semibold text-sm ${
+                      t.type === "IN" ? "text-emerald-700" : "text-rose-700"
+                    }`}
+                  >
+                    Rp {formatIDR(t.amount)}
+                  </div>
+                  <Badge tone={statusTone(t.status)}>{t.status}</Badge>
+                </div>
+              </Link>
+              <AttachmentStrip attachments={t.attachments} />
+            </Card>
           ))}
-          {data.recent_transactions.length === 0 && (
-            <li className="py-3 text-sm text-slate-500">Belum ada transaksi.</li>
-          )}
-        </ul>
-      </Card>
+        {!txQ.isLoading && (txQ.data?.items.length ?? 0) === 0 && (
+          <Card>
+            <div className="py-2 text-sm text-slate-500">Belum ada transaksi.</div>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }
