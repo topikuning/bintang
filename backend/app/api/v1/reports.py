@@ -37,7 +37,7 @@ router = APIRouter()
 
 
 def _accessible_pids(role, ids: list[int], project_id: int | None) -> list[int] | None:
-    if role == UserRole.SUPERADMIN:
+    if role in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
         return [project_id] if project_id else None  # None = all
     if not ids:
         return []
@@ -328,7 +328,7 @@ async def report_budget(
 ) -> Response:
     ids = await user_project_ids(db, user)
     stmt = select(Project).where(Project.deleted_at.is_(None))
-    if user.role != UserRole.SUPERADMIN:
+    if user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
         stmt = stmt.where(Project.id.in_(ids))
     projects = (await db.execute(stmt)).scalars().all()
     company_map = {c.id: c for c in (await db.execute(select(Company))).scalars().all()}
@@ -419,7 +419,7 @@ async def report_audit(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_user),
 ) -> Response:
-    if admin.role != UserRole.SUPERADMIN:
+    if admin.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
         raise HTTPException(403, "superadmin_only")
     stmt = select(AuditLog)
     if entity:

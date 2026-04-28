@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.core.deps import (
     ensure_project_access,
     get_current_user,
+    require_admin,
     require_superadmin,
     user_project_ids,
 )
@@ -72,7 +73,7 @@ async def list_pos(
     user: User = Depends(get_current_user),
 ) -> Page[POOut]:
     stmt = select(PurchaseOrder).where(PurchaseOrder.deleted_at.is_(None))
-    if user.role != UserRole.SUPERADMIN:
+    if user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
         ids = await user_project_ids(db, user)
         if not ids:
             return Page(items=[], total=0, page=page, size=size)
@@ -185,7 +186,7 @@ async def update_po(
     if not po or po.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, po.project_id)
-    if po.status not in (POStatus.DRAFT,) and user.role != UserRole.SUPERADMIN:
+    if po.status not in (POStatus.DRAFT,) and user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
         raise HTTPException(409, "approved_locked")
     before = snapshot(po)
     data = payload.model_dump(exclude_unset=True)
@@ -241,7 +242,7 @@ async def issue_po(
 async def approve_po(
     pid: int,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> POOut:
     po = await db.get(PurchaseOrder, pid)
     if not po or po.deleted_at is not None:
@@ -265,7 +266,7 @@ async def cancel_po(
     pid: int,
     body: CancelIn,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> POOut:
     po = await db.get(PurchaseOrder, pid)
     if not po or po.deleted_at is not None:
@@ -285,7 +286,7 @@ async def cancel_po(
 async def delete_po(
     pid: int,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> None:
     po = await db.get(PurchaseOrder, pid)
     if not po or po.deleted_at is not None:

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import (
     ensure_project_access,
     get_current_user,
+    require_admin,
     require_superadmin,
     user_project_ids,
 )
@@ -28,7 +29,7 @@ async def list_projects(
     user: User = Depends(get_current_user),
 ) -> Page[ProjectOut]:
     stmt = select(Project).where(Project.deleted_at.is_(None))
-    if user.role != UserRole.SUPERADMIN:
+    if user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
         ids = await user_project_ids(db, user)
         if not ids:
             return Page(items=[], total=0, page=page, size=size)
@@ -50,7 +51,7 @@ async def list_projects(
 async def create_project(
     payload: ProjectCreate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> ProjectOut:
     exists = (await db.execute(select(Project).where(Project.code == payload.code))).scalar_one_or_none()
     if exists:
@@ -85,7 +86,7 @@ async def update_project(
     pid: int,
     payload: ProjectUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> ProjectOut:
     p = await db.get(Project, pid)
     if not p or p.deleted_at is not None:
@@ -104,7 +105,7 @@ async def update_project(
 async def delete_project(
     pid: int,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> None:
     p = await db.get(Project, pid)
     if not p or p.deleted_at is not None:

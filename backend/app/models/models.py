@@ -25,8 +25,9 @@ from app.db.base import Base, TimestampMixin
 
 # --- Enums ---
 class UserRole(str, enum.Enum):
-    SUPERADMIN = "SUPERADMIN"
-    PROJECT_ADMIN = "PROJECT_ADMIN"
+    SUPERADMIN = "SUPERADMIN"          # god-mode: hard delete + cascade
+    CENTRAL_ADMIN = "CENTRAL_ADMIN"    # admin pusat, manage semua kecuali destructive ops
+    PROJECT_ADMIN = "PROJECT_ADMIN"    # admin proyek, scoped ke project_users
 
 
 class ProjectStatus(str, enum.Enum):

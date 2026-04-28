@@ -26,3 +26,7 @@ export const useAuthStore = create<AuthState>()(
 export function isSuper(u: User | null) {
   return u?.role === "SUPERADMIN";
 }
+
+export function isAdmin(u: User | null) {
+  return u?.role === "SUPERADMIN" || u?.role === "CENTRAL_ADMIN";
+}

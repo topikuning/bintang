@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.core.deps import (
     ensure_project_access,
     get_current_user,
+    require_admin,
     require_superadmin,
     user_project_ids,
 )
@@ -61,7 +62,7 @@ async def list_transactions(
     user: User = Depends(get_current_user),
 ) -> Page[TransactionOut]:
     stmt = select(Transaction).where(Transaction.deleted_at.is_(None))
-    if user.role != UserRole.SUPERADMIN:
+    if user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
         ids = await user_project_ids(db, user)
         if not ids:
             return Page(items=[], total=0, page=page, size=size)
@@ -151,7 +152,7 @@ async def update_transaction(
     if not t or t.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
-    if t.status == TxnStatus.VERIFIED and user.role != UserRole.SUPERADMIN:
+    if t.status == TxnStatus.VERIFIED and user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
         raise HTTPException(409, "verified_locked")
     before = snapshot(t)
     for k, v in payload.model_dump(exclude_unset=True).items():
@@ -197,7 +198,7 @@ async def submit_transaction(
 async def verify_transaction(
     tid: int,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> TransactionOut:
     t = await db.get(Transaction, tid)
     if not t or t.deleted_at is not None:
@@ -226,7 +227,7 @@ async def reject_transaction(
     tid: int,
     body: CancelIn,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> TransactionOut:
     t = await db.get(Transaction, tid)
     if not t or t.deleted_at is not None:
@@ -250,7 +251,7 @@ async def cancel_transaction(
     tid: int,
     body: CancelIn,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> TransactionOut:
     t = await db.get(Transaction, tid)
     if not t or t.deleted_at is not None:
@@ -275,7 +276,7 @@ async def cancel_transaction(
 async def delete_transaction(
     tid: int,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> None:
     t = await db.get(Transaction, tid)
     if not t or t.deleted_at is not None:
@@ -290,6 +291,29 @@ async def delete_transaction(
     await db.commit()
 
 
+@router.delete("/{tid}/hard", status_code=204)
+async def hard_delete_transaction(
+    tid: int,
+    db: AsyncSession = Depends(get_db),
+    god: User = Depends(require_superadmin),
+) -> None:
+    """GOD-MODE: hapus permanen transaksi + lampiran. Bypass status apa pun.
+    Cuma SUPERADMIN."""
+    t = await db.get(Transaction, tid)
+    if not t:
+        raise HTTPException(404, "not_found")
+    before = snapshot(t)
+    inv_id = t.invoice_id
+    await db.delete(t)  # cascade attachments via cascade="all,delete-orphan"
+    await log(db, user_id=god.id, entity="transaction", entity_id=tid,
+              action=AuditAction.DELETE, before=before, note="HARD DELETE (god-mode)")
+    if inv_id:
+        inv = await db.get(Invoice, inv_id)
+        if inv:
+            await recompute_invoice_status(db, inv)
+    await db.commit()
+
+
 @router.post("/{tid}/attachments", response_model=AttachmentOut, status_code=201)
 async def upload_attachment(
     tid: int,
@@ -301,7 +325,7 @@ async def upload_attachment(
     if not t or t.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
-    if t.status == TxnStatus.VERIFIED and user.role != UserRole.SUPERADMIN:
+    if t.status == TxnStatus.VERIFIED and user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
         raise HTTPException(409, "verified_locked")
     meta = await save_upload(file, subdir=f"transactions/{t.id}")
     att = TransactionAttachment(transaction_id=t.id, uploaded_by_id=user.id, **meta)
@@ -323,7 +347,7 @@ async def delete_attachment(
     if not t or t.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
-    if t.status == TxnStatus.VERIFIED and user.role != UserRole.SUPERADMIN:
+    if t.status == TxnStatus.VERIFIED and user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
         raise HTTPException(409, "verified_locked")
     att = await db.get(TransactionAttachment, aid)
     if not att or att.transaction_id != tid:

@@ -22,9 +22,19 @@ api.interceptors.response.use(
   },
 );
 
+function backendOrigin(): string {
+  // VITE_API_BASE_URL bisa berupa:
+  //   "/api/v1"                                  (dev / docker-compose)
+  //   "https://backend.up.railway.app/api/v1"    (prod / Railway)
+  // Origin = bagian sebelum /api/v1.
+  const base = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+  return base.replace(/\/api\/v\d+\/?$/, "");
+}
+
 export function fileUrl(path?: string | null): string | undefined {
   if (!path) return undefined;
   if (/^https?:/.test(path)) return path;
-  // Vite dev proxies /files to backend
-  return path.startsWith("/files/") ? path : `/files/${path.replace(/^\//, "")}`;
+  const clean = path.startsWith("/") ? path : `/${path}`;
+  const finalPath = clean.startsWith("/files/") ? clean : `/files${clean}`;
+  return `${backendOrigin()}${finalPath}`;
 }

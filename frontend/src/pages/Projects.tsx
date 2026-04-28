@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Plus, Pencil } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { Company, Page, Project, User } from "@/types";
-import { useAuthStore, isSuper } from "@/store/auth";
+import { useAuthStore, isSuper, isAdmin } from "@/store/auth";
 import { formatIDR } from "@/lib/utils";
 
 export default function ProjectsPage() {
@@ -29,7 +29,7 @@ export default function ProjectsPage() {
     queryFn: async () => (await api.get<Page<Company>>("/companies?size=500")).data,
   });
   const { data: users } = useQuery({
-    enabled: isSuper(user),
+    enabled: isAdmin(user),
     queryKey: ["users"],
     queryFn: async () => (await api.get<Page<User>>("/users?size=500")).data,
   });
@@ -69,7 +69,7 @@ export default function ProjectsPage() {
       <PageHeader
         title="Proyek"
         right={
-          isSuper(user) && (
+          isAdmin(user) && (
             <Button size="sm" onClick={newProject}>
               <Plus className="h-4 w-4" /> Baru
             </Button>
@@ -91,7 +91,7 @@ export default function ProjectsPage() {
                 <Badge tone={p.status === "AKTIF" ? "good" : p.status === "DIBATALKAN" ? "bad" : "warn"}>
                   {p.status}
                 </Badge>
-                {isSuper(user) && (
+                {isAdmin(user) && (
                   <button
                     onClick={() => { setEditing({ ...p }); setOpen(true); }}
                     className="grid h-8 w-8 place-items-center rounded-full bg-slate-100"

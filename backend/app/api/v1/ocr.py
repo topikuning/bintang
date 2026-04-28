@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_superadmin
+from app.core.deps import get_current_user, require_admin, require_superadmin
 from app.db.session import get_db
 from app.models.models import (
     AIExtraction,
@@ -66,7 +66,7 @@ async def extract(
 @router.get("/drafts")
 async def list_drafts(
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_superadmin),
+    _admin: User = Depends(require_admin),
 ) -> list[dict]:
     rows = (
         await db.execute(
@@ -94,7 +94,7 @@ async def review_draft(
     eid: int,
     body: ReviewIn = Body(...),
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_superadmin),
+    user: User = Depends(require_admin),
 ) -> dict:
     rec = await db.get(AIExtraction, eid)
     if not rec:

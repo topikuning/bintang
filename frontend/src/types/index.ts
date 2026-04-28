@@ -1,4 +1,4 @@
-export type Role = "SUPERADMIN" | "PROJECT_ADMIN";
+export type Role = "SUPERADMIN" | "CENTRAL_ADMIN" | "PROJECT_ADMIN";
 export type TxnType = "IN" | "OUT";
 export type TxnStatus = "DRAFT" | "SUBMITTED" | "VERIFIED" | "REJECTED" | "CANCELLED";
 export type PaymentMethod = "CASH" | "TRANSFER" | "QRIS" | "GIRO" | "OTHER";

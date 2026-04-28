@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_superadmin
+from app.core.deps import get_current_user, require_admin, require_superadmin
 from app.db.session import get_db
 from app.models.models import AuditAction, User, VendorClient
 from app.schemas.common import Page
@@ -36,7 +36,7 @@ async def list_vc(
 async def create_vc(
     payload: VendorClientCreate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> VendorClientOut:
     c = VendorClient(**payload.model_dump())
     db.add(c)
@@ -53,7 +53,7 @@ async def update_vc(
     cid: int,
     payload: VendorClientUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> VendorClientOut:
     c = await db.get(VendorClient, cid)
     if not c or c.deleted_at is not None:
@@ -72,7 +72,7 @@ async def update_vc(
 async def delete_vc(
     cid: int,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> None:
     c = await db.get(VendorClient, cid)
     if not c or c.deleted_at is not None:

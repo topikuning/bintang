@@ -74,8 +74,9 @@ export default function UsersPage() {
         <Field label="Email"><Input type="email" value={editing?.email || ""} disabled={!!editing?.id} onChange={(e) => setEditing({ ...editing!, email: e.target.value })} /></Field>
         <Field label="Role">
           <Select value={editing?.role || "PROJECT_ADMIN"} onChange={(e) => setEditing({ ...editing!, role: e.target.value })}>
-            <option value="PROJECT_ADMIN">Project Admin</option>
-            <option value="SUPERADMIN">Superadmin</option>
+            <option value="PROJECT_ADMIN">Project Admin (admin proyek)</option>
+            <option value="CENTRAL_ADMIN">Admin Pusat (manage semua proyek)</option>
+            <option value="SUPERADMIN">Superadmin (god-mode)</option>
           </Select>
         </Field>
         <Field label={editing?.id ? "Password (kosong = tidak ganti)" : "Password"}>

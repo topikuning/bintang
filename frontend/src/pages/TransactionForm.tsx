@@ -376,6 +376,27 @@ export default function TransactionForm() {
             Batalkan
           </Button>
         )}
+        {isEdit && isSuper(user) && (
+          <Button
+            variant="danger"
+            onClick={async () => {
+              const c1 = prompt(
+                `GOD-MODE: hapus PERMANEN transaksi #${id}?\nKetik HAPUS untuk konfirmasi.`,
+              );
+              if (c1 !== "HAPUS") return;
+              try {
+                await api.delete(`/transactions/${id}/hard`);
+                qc.invalidateQueries({ queryKey: ["transactions"] });
+                qc.invalidateQueries({ queryKey: ["dashboard-global"] });
+                nav("/transactions");
+              } catch (e: any) {
+                alert(e?.response?.data?.detail || "Gagal hard delete");
+              }
+            }}
+          >
+            🔥 Hapus Permanen (God-mode)
+          </Button>
+        )}
       </div>
       {save.isError && (
         <div className="mt-2 text-sm text-rose-600">{(save.error as any)?.response?.data?.detail || "Gagal menyimpan"}</div>

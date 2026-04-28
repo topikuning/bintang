@@ -38,7 +38,7 @@ def _ym_expr():
 
 
 def _accessible_filter(stmt, user: User, ids: list[int]):
-    if user.role != UserRole.SUPERADMIN:
+    if user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
         if not ids:
             return None
         return stmt.where(Project.id.in_(ids))

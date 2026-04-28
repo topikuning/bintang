@@ -68,6 +68,13 @@ async def init() -> None:
             role=UserRole.SUPERADMIN,
             phone="0811-1000-001",
         )
+        central = User(
+            email="pusat@bintang.me",
+            password_hash=hash_password("pusat123"),
+            name="Admin Pusat",
+            role=UserRole.CENTRAL_ADMIN,
+            phone="0811-2000-009",
+        )
         pm1 = User(
             email="budi@bintang.me",
             password_hash=hash_password("pm123"),
@@ -89,7 +96,7 @@ async def init() -> None:
             role=UserRole.PROJECT_ADMIN,
             phone="0814-4000-004",
         )
-        db.add_all([admin, pm1, pm2, pm3])
+        db.add_all([admin, central, pm1, pm2, pm3])
         await db.flush()
 
         # ---------- Companies ----------
@@ -585,10 +592,11 @@ async def init() -> None:
         print("Seed sukses!")
         print("=" * 60)
         print("Login:")
-        print("  Superadmin     : admin@bintang.me / admin123")
-        print("  PM Budi (PRJ1,2): budi@bintang.me / pm123")
-        print("  PM Sari (PRJ3,4): sari@bintang.me / pm123")
-        print("  PM Agus (PRJ5)  : agus@bintang.me / pm123")
+        print("  Superadmin (god) : admin@bintang.me / admin123")
+        print("  Admin Pusat      : pusat@bintang.me / pusat123")
+        print("  PM Budi (PRJ1,2) : budi@bintang.me / pm123")
+        print("  PM Sari (PRJ3,4) : sari@bintang.me / pm123")
+        print("  PM Agus (PRJ5)   : agus@bintang.me / pm123")
         print()
         print("Demo data: 3 perusahaan, 5 proyek, 12 kategori, 7 vendor/client,")
         print(f"           {len(all_txs)} transaksi, 6 invoice, 3 PO")

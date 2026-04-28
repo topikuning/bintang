@@ -9,7 +9,7 @@ import Modal from "@/components/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { Plus, Pencil } from "lucide-react";
 import type { Category, Page } from "@/types";
-import { useAuthStore, isSuper } from "@/store/auth";
+import { useAuthStore, isSuper, isAdmin } from "@/store/auth";
 
 export default function CategoriesPage() {
   const qc = useQueryClient();
@@ -40,7 +40,7 @@ export default function CategoriesPage() {
         back
         title="Kategori"
         right={
-          isSuper(user) && (
+          isAdmin(user) && (
             <Button size="sm" onClick={() => { setEditing({ type: "OUT" }); setOpen(true); }}>
               <Plus className="h-4 w-4" /> Baru
             </Button>
@@ -56,7 +56,7 @@ export default function CategoriesPage() {
                 <div className="text-[11px] text-slate-500 truncate">{c.description || "-"}</div>
               </div>
               <Badge tone={c.type === "IN" ? "good" : "bad"}>{c.type}</Badge>
-              {isSuper(user) && (
+              {isAdmin(user) && (
                 <button
                   onClick={() => { setEditing(c); setOpen(true); }}
                   className="grid h-8 w-8 place-items-center rounded-full bg-slate-100"

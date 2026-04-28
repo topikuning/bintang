@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.core.deps import (
     ensure_project_access,
     get_current_user,
+    require_admin,
     require_superadmin,
     user_project_ids,
 )
@@ -94,7 +95,7 @@ async def list_invoices(
     user: User = Depends(get_current_user),
 ) -> Page[InvoiceOut]:
     stmt = select(Invoice).where(Invoice.deleted_at.is_(None))
-    if user.role != UserRole.SUPERADMIN:
+    if user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
         ids = await user_project_ids(db, user)
         if not ids:
             return Page(items=[], total=0, page=page, size=size)
@@ -309,7 +310,7 @@ async def mark_invoice_paid(
 async def cancel_invoice(
     iid: int,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> InvoiceOut:
     inv = await db.get(Invoice, iid)
     if not inv or inv.deleted_at is not None:
@@ -328,7 +329,7 @@ async def cancel_invoice(
 async def delete_invoice(
     iid: int,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> None:
     inv = await db.get(Invoice, iid)
     if not inv or inv.deleted_at is not None:
@@ -337,6 +338,33 @@ async def delete_invoice(
     inv.deleted_at = sa_func.now()
     await log(db, user_id=admin.id, entity="invoice", entity_id=inv.id,
               action=AuditAction.DELETE)
+    await db.commit()
+
+
+@router.delete("/{iid}/hard", status_code=204)
+async def hard_delete_invoice(
+    iid: int,
+    db: AsyncSession = Depends(get_db),
+    god: User = Depends(require_superadmin),
+) -> None:
+    """GOD-MODE: hapus permanen invoice + items + lampiran. Transaksi yang
+    terhubung di-unlink (invoice_id = NULL), tidak ikut dihapus.
+    Cuma SUPERADMIN."""
+    inv = await db.get(Invoice, iid)
+    if not inv:
+        raise HTTPException(404, "not_found")
+
+    # unlink transactions yang terhubung
+    res = await db.execute(select(Transaction).where(Transaction.invoice_id == iid))
+    txs = res.scalars().all()
+    for t in txs:
+        t.invoice_id = None
+
+    before = snapshot(inv)
+    await db.delete(inv)  # cascade items + attachments
+    await log(db, user_id=god.id, entity="invoice", entity_id=iid,
+              action=AuditAction.DELETE, before=before,
+              note=f"HARD DELETE (god-mode), {len(txs)} transaksi di-unlink")
     await db.commit()
 
 

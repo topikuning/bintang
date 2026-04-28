@@ -24,7 +24,7 @@ async def list_audit_logs(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Page:
-    if user.role != UserRole.SUPERADMIN:
+    if user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
         from fastapi import HTTPException
         raise HTTPException(403, "superadmin_only")
     stmt = select(AuditLog)

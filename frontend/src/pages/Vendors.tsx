@@ -9,7 +9,7 @@ import Modal from "@/components/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { Plus, Pencil } from "lucide-react";
 import type { Page, VendorClient } from "@/types";
-import { useAuthStore, isSuper } from "@/store/auth";
+import { useAuthStore, isSuper, isAdmin } from "@/store/auth";
 
 export default function VendorsPage() {
   const qc = useQueryClient();
@@ -36,7 +36,7 @@ export default function VendorsPage() {
         back
         title="Vendor & Client"
         right={
-          isSuper(user) && (
+          isAdmin(user) && (
             <Button size="sm" onClick={() => { setEditing({ type: "VENDOR" }); setOpen(true); }}>
               <Plus className="h-4 w-4" /> Baru
             </Button>
@@ -52,7 +52,7 @@ export default function VendorsPage() {
                 <div className="text-[11px] text-slate-500 truncate">{v.contact || v.phone || v.email || "-"}</div>
               </div>
               <Badge tone={v.type === "VENDOR" ? "info" : v.type === "CLIENT" ? "good" : "neutral"}>{v.type}</Badge>
-              {isSuper(user) && (
+              {isAdmin(user) && (
                 <button onClick={() => { setEditing(v); setOpen(true); }} className="grid h-8 w-8 place-items-center rounded-full bg-slate-100">
                   <Pencil className="h-3.5 w-3.5" />
                 </button>

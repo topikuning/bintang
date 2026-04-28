@@ -29,14 +29,25 @@ async def get_current_user(
     return user
 
 
+CENTRAL_ROLES = (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN)
+
+
 def require_superadmin(user: User = Depends(get_current_user)) -> User:
+    """God-mode only: hard delete + cascade. Hanya SUPERADMIN."""
     if user.role != UserRole.SUPERADMIN:
         raise HTTPException(status_code=403, detail="superadmin_only")
     return user
 
 
+def require_admin(user: User = Depends(get_current_user)) -> User:
+    """Operasional admin pusat: SUPERADMIN atau CENTRAL_ADMIN."""
+    if user.role not in CENTRAL_ROLES:
+        raise HTTPException(status_code=403, detail="admin_only")
+    return user
+
+
 async def user_project_ids(db: AsyncSession, user: User) -> list[int]:
-    if user.role == UserRole.SUPERADMIN:
+    if user.role in CENTRAL_ROLES:
         return []  # convention: empty = all
     res = await db.execute(
         select(ProjectUser.project_id).where(ProjectUser.user_id == user.id)
@@ -45,7 +56,7 @@ async def user_project_ids(db: AsyncSession, user: User) -> list[int]:
 
 
 async def ensure_project_access(db: AsyncSession, user: User, project_id: int) -> None:
-    if user.role == UserRole.SUPERADMIN:
+    if user.role in CENTRAL_ROLES:
         return
     res = await db.execute(
         select(ProjectUser.id).where(

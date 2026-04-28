@@ -7,11 +7,13 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Input";
 import AttachmentUploader from "@/components/AttachmentUploader";
+import PendingAttachmentPicker from "@/components/PendingAttachmentPicker";
 import Combobox from "@/components/ui/Combobox";
 import Modal from "@/components/Modal";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import { ArrowDownLeft, ArrowUpRight, BadgeCheck, Link2, Plus, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { isSuper, useAuthStore } from "@/store/auth";
 import { cn, formatDate, formatIDR, todayISO } from "@/lib/utils";
 import type { Invoice, Page, PaymentMethod, Project, VendorClient } from "@/types";
 
@@ -27,6 +29,7 @@ export default function InvoiceForm() {
   const isEdit = !!id;
   const nav = useNavigate();
   const qc = useQueryClient();
+  const user = useAuthStore((s) => s.user);
 
   const [data, setData] = useState<Partial<Invoice>>({
     type: "IN",  // default: Hutang/Pengajuan internal (paling umum)
@@ -51,6 +54,8 @@ export default function InvoiceForm() {
     { description: "", quantity: 1, unit: "", unit_price: 0 },
   ]);
   const [attachments, setAttachments] = useState<any[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const projectsQ = useQuery({
     queryKey: ["projects-light"],
@@ -116,8 +121,27 @@ export default function InvoiceForm() {
           })),
       };
       if (!isEdit) payload.project_id = data.project_id;
-      if (isEdit) return (await api.patch(`/invoices/${id}`, payload)).data;
-      return (await api.post("/invoices", payload)).data;
+      const saved: Invoice = isEdit
+        ? (await api.patch(`/invoices/${id}`, payload)).data
+        : (await api.post("/invoices", payload)).data;
+
+      // upload pending files yang dipilih sebelum invoice tersimpan
+      if (!isEdit && pendingFiles.length > 0) {
+        setUploadError(null);
+        for (const f of pendingFiles) {
+          try {
+            const fd = new FormData();
+            fd.append("file", f);
+            await api.post(`/invoices/${saved.id}/attachments`, fd, {
+              headers: { "Content-Type": "multipart/form-data" },
+            });
+          } catch (e: any) {
+            setUploadError(`Gagal upload ${f.name}: ${e?.response?.data?.detail || e.message}`);
+          }
+        }
+        setPendingFiles([]);
+      }
+      return saved;
     },
     onSuccess: (res: Invoice) => {
       qc.invalidateQueries({ queryKey: ["invoices"] });
@@ -455,16 +479,19 @@ export default function InvoiceForm() {
         </Card>
       )}
 
-      {isEdit && (
-        <Card className="mt-3">
+      <Card className="mt-3">
+        {isEdit ? (
           <AttachmentUploader
             attachments={attachments as any}
             onChange={setAttachments as any}
             uploadUrl={`/invoices/${id}/attachments`}
             deleteUrl={(_aid) => `/invoices/${id}/attachments/${_aid}`}
           />
-        </Card>
-      )}
+        ) : (
+          <PendingAttachmentPicker files={pendingFiles} onChange={setPendingFiles} />
+        )}
+        {uploadError && <div className="mt-2 text-xs text-rose-600">{uploadError}</div>}
+      </Card>
 
       {/* Modal: Tambah Pembayaran Manual */}
       <Modal
@@ -575,6 +602,28 @@ export default function InvoiceForm() {
             disabled={markPaid.isPending}
           >
             <BadgeCheck className="h-4 w-4" /> Tandai Lunas
+          </Button>
+        )}
+        {isEdit && isSuper(user) && (
+          <Button
+            variant="danger"
+            onClick={async () => {
+              const c1 = prompt(
+                `GOD-MODE: hapus PERMANEN invoice ${data.number || `#${id}`}?\nTransaksi pembayaran tidak dihapus, hanya di-unlink.\nKetik HAPUS untuk konfirmasi.`,
+              );
+              if (c1 !== "HAPUS") return;
+              try {
+                await api.delete(`/invoices/${id}/hard`);
+                qc.invalidateQueries({ queryKey: ["invoices"] });
+                qc.invalidateQueries({ queryKey: ["transactions"] });
+                qc.invalidateQueries({ queryKey: ["dashboard-global"] });
+                nav("/invoices");
+              } catch (e: any) {
+                alert(e?.response?.data?.detail || "Gagal hard delete");
+              }
+            }}
+          >
+            🔥 Hapus Permanen (God-mode)
           </Button>
         )}
       </div>

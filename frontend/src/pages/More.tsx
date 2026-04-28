@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import PageHeader from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
-import { useAuthStore, isSuper } from "@/store/auth";
+import { useAuthStore, isSuper, isAdmin } from "@/store/auth";
 import {
   Building2,
   Users,
@@ -34,7 +34,7 @@ export default function MorePage() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const nav = useNavigate();
-  const all = [...items, ...(isSuper(user) ? adminOnly : [])];
+  const all = [...items, ...(isAdmin(user) ? adminOnly : [])];
   return (
     <div>
       <PageHeader title="Menu Lainnya" subtitle={user ? `${user.name} · ${user.role}` : ""} />

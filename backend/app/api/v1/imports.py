@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_superadmin
+from app.core.deps import get_current_user, require_admin, require_superadmin
 from app.db.session import get_db
 from app.models.models import User
 from app.services.excel.importer import SCHEMAS, build_template, read_xlsx
@@ -87,7 +87,7 @@ async def preview(
     entity: str,
     file: Annotated[UploadFile, File(...)],
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_superadmin),
+    user: User = Depends(require_admin),
 ) -> dict:
     return await _process(entity, file, db, user, commit=False)
 
@@ -97,6 +97,6 @@ async def commit_import(
     entity: str,
     file: Annotated[UploadFile, File(...)],
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_superadmin),
+    user: User = Depends(require_admin),
 ) -> dict:
     return await _process(entity, file, db, user, commit=True)
