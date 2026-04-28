@@ -77,20 +77,7 @@ async def global_dashboard(
             "warnings": [],
         }
 
-    sum_in_q = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-        Transaction.project_id.in_(project_ids),
-        Transaction.type == TxnType.IN,
-        Transaction.status == TxnStatus.VERIFIED,
-        Transaction.deleted_at.is_(None),
-    )
-    sum_out_q = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-        Transaction.project_id.in_(project_ids),
-        Transaction.type == TxnType.OUT,
-        Transaction.status == TxnStatus.VERIFIED,
-        Transaction.deleted_at.is_(None),
-    )
-    total_in = Decimal((await db.execute(sum_in_q)).scalar_one() or 0)
-    total_out = Decimal((await db.execute(sum_out_q)).scalar_one() or 0)
+    # totals_in/out dihitung lewat proj_summary di bawah agar konsisten
 
     # monthly cashflow last 12 months
     monthly_q = (
@@ -115,6 +102,30 @@ async def global_dashboard(
         Invoice.deleted_at.is_(None),
     )
     overdue_count = (await db.execute(overdue_count_q)).scalar_one()
+
+    # Pending verifikasi (DRAFT + SUBMITTED)
+    pending_q = select(
+        func.count(),
+        func.coalesce(func.sum(Transaction.amount), 0),
+    ).where(
+        Transaction.project_id.in_(project_ids),
+        Transaction.status.in_([TxnStatus.DRAFT, TxnStatus.SUBMITTED]),
+        Transaction.deleted_at.is_(None),
+    )
+    pending_count, pending_total = (await db.execute(pending_q)).one()
+
+    # Transaksi OUT tanpa invoice (active statuses)
+    unlinked_out_q = select(
+        func.count(),
+        func.coalesce(func.sum(Transaction.amount), 0),
+    ).where(
+        Transaction.project_id.in_(project_ids),
+        Transaction.type == TxnType.OUT,
+        Transaction.status.in_([TxnStatus.DRAFT, TxnStatus.SUBMITTED, TxnStatus.VERIFIED]),
+        Transaction.invoice_id.is_(None),
+        Transaction.deleted_at.is_(None),
+    )
+    unlinked_out_count, unlinked_out_total = (await db.execute(unlinked_out_q)).one()
 
     proj_summary: list[dict] = []
     minus_count = 0
@@ -148,6 +159,8 @@ async def global_dashboard(
             "total_in": float(totals["total_in"]),
             "total_out": float(totals["total_out"]),
             "balance": float(totals["balance"]),
+            "pending_in": float(totals["pending_in"]),
+            "pending_out": float(totals["pending_out"]),
             "budget": {
                 "amount": float(bs["budget_amount"]),
                 "spent": float(bs["spent"]),
@@ -201,14 +214,35 @@ async def global_dashboard(
     near_budget = [p for p in proj_summary if p["budget"]["status"] == "mendekati_batas"]
     if near_budget:
         warnings.append(f"{len(near_budget)} proyek mendekati batas budget")
+    if pending_count:
+        warnings.append(f"{pending_count} transaksi belum diverifikasi")
+    if unlinked_out_count:
+        warnings.append(f"{unlinked_out_count} pengeluaran belum terhubung ke invoice")
 
     active = sum(1 for p in projects if p.status == ProjectStatus.AKTIF)
 
+    # totals_in/out di global juga ikut termasuk pending sekarang, jadi recompute
+    sum_in_total = sum((Decimal(str(p["total_in"])) for p in proj_summary), Decimal("0"))
+    sum_out_total = sum((Decimal(str(p["total_out"])) for p in proj_summary), Decimal("0"))
+    sum_pending_in = sum((Decimal(str(p["pending_in"])) for p in proj_summary), Decimal("0"))
+    sum_pending_out = sum((Decimal(str(p["pending_out"])) for p in proj_summary), Decimal("0"))
+
     return {
-        "totals": {"in": float(total_in), "out": float(total_out), "balance": float(total_in - total_out)},
+        "totals": {
+            "in": float(sum_in_total),
+            "out": float(sum_out_total),
+            "balance": float(sum_in_total - sum_out_total),
+            "pending_in": float(sum_pending_in),
+            "pending_out": float(sum_pending_out),
+        },
         "active_projects": active,
         "total_projects": len(projects),
         "minus_projects": minus_count,
+        "pending_count": int(pending_count),
+        "pending_total": float(pending_total),
+        "unlinked_out_count": int(unlinked_out_count),
+        "unlinked_out_total": float(unlinked_out_total),
+        "overdue_invoices": int(overdue_count),
         "biggest_project": {"id": biggest["id"], "name": biggest["name"], "total": float(biggest["total"])} if biggest["id"] else None,
         "top_spender": top_spender,
         "spending_by_project": spending_by_project,
@@ -233,6 +267,29 @@ async def project_dashboard(
     await ensure_project_access(db, user, pid)
     totals = await project_totals(db, pid)
     bs = budget_status(p, totals["total_out"])
+
+    # Pending dan unlinked di proyek ini
+    pending_q = select(
+        func.count(),
+        func.coalesce(func.sum(Transaction.amount), 0),
+    ).where(
+        Transaction.project_id == pid,
+        Transaction.status.in_([TxnStatus.DRAFT, TxnStatus.SUBMITTED]),
+        Transaction.deleted_at.is_(None),
+    )
+    pending_count, pending_total = (await db.execute(pending_q)).one()
+
+    unlinked_out_q = select(
+        func.count(),
+        func.coalesce(func.sum(Transaction.amount), 0),
+    ).where(
+        Transaction.project_id == pid,
+        Transaction.type == TxnType.OUT,
+        Transaction.status.in_([TxnStatus.DRAFT, TxnStatus.SUBMITTED, TxnStatus.VERIFIED]),
+        Transaction.invoice_id.is_(None),
+        Transaction.deleted_at.is_(None),
+    )
+    unlinked_out_count, unlinked_out_total = (await db.execute(unlinked_out_q)).one()
 
     # invoice aggregates
     inv_open_q = select(func.coalesce(func.sum(Invoice.total), 0)).where(
@@ -322,6 +379,10 @@ async def project_dashboard(
         warnings.append("Pemakaian budget di atas 80%")
     if has_overdue:
         warnings.append("Ada invoice overdue")
+    if pending_count:
+        warnings.append(f"{pending_count} transaksi belum diverifikasi")
+    if unlinked_out_count:
+        warnings.append(f"{unlinked_out_count} pengeluaran belum terhubung ke invoice")
 
     return {
         "project": {
@@ -332,6 +393,8 @@ async def project_dashboard(
             "in": float(totals["total_in"]),
             "out": float(totals["total_out"]),
             "balance": float(totals["balance"]),
+            "pending_in": float(totals["pending_in"]),
+            "pending_out": float(totals["pending_out"]),
         },
         "budget": {
             "amount": float(bs["budget_amount"]),
@@ -344,6 +407,10 @@ async def project_dashboard(
         "expense_to_income_ratio_pct": ratio,
         "invoice_open_total": inv_open,
         "invoice_paid_total": inv_paid,
+        "pending_count": int(pending_count),
+        "pending_total": float(pending_total),
+        "unlinked_out_count": int(unlinked_out_count),
+        "unlinked_out_total": float(unlinked_out_total),
         "by_category": by_category,
         "monthly_cashflow": monthly,
         "recent_transactions": recent,

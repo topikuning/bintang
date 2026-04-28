@@ -56,8 +56,8 @@ export default function InvoicesPage() {
         </Select>
         <Select value={type} onChange={(e) => setQ("type", e.target.value)}>
           <option value="">Semua Tipe</option>
-          <option value="IN">Masuk (Hutang)</option>
-          <option value="OUT">Keluar (Piutang)</option>
+          <option value="OUT">Piutang (uang akan masuk)</option>
+          <option value="IN">Hutang (uang akan keluar)</option>
         </Select>
         <Select value={status} onChange={(e) => setQ("status", e.target.value)}>
           <option value="">Semua Status</option>
@@ -80,7 +80,7 @@ export default function InvoicesPage() {
                 <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <Badge tone={inv.type === "IN" ? "info" : "good"}>{inv.type === "IN" ? "Hutang" : "Piutang"}</Badge>
+                      <Badge tone={inv.type === "IN" ? "bad" : "good"}>{inv.type === "IN" ? "Hutang" : "Piutang"}</Badge>
                       <span className="text-xs text-slate-500 truncate">{inv.number}</span>
                     </div>
                     <div className="text-sm font-medium truncate mt-0.5">{inv.party_name || "-"}</div>

@@ -7,27 +7,33 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import Project, Transaction, TxnStatus, TxnType
 
+# Status yang dihitung dalam total proyek. REJECTED & CANCELLED dikeluarkan.
+ACTIVE_STATUSES = (TxnStatus.DRAFT, TxnStatus.SUBMITTED, TxnStatus.VERIFIED)
+PENDING_STATUSES = (TxnStatus.DRAFT, TxnStatus.SUBMITTED)
+
 
 async def project_totals(db: AsyncSession, project_id: int) -> dict[str, Decimal]:
-    """Total IN, OUT (verified only), and balance for a project."""
-    in_q = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-        Transaction.project_id == project_id,
-        Transaction.type == TxnType.IN,
-        Transaction.status == TxnStatus.VERIFIED,
-        Transaction.deleted_at.is_(None),
-    )
-    out_q = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-        Transaction.project_id == project_id,
-        Transaction.type == TxnType.OUT,
-        Transaction.status == TxnStatus.VERIFIED,
-        Transaction.deleted_at.is_(None),
-    )
-    total_in = Decimal((await db.execute(in_q)).scalar_one() or 0)
-    total_out = Decimal((await db.execute(out_q)).scalar_one() or 0)
+    """Total IN, OUT (semua active), pending breakdown, dan saldo proyek."""
+
+    def _sum_q(ttype: TxnType, statuses):
+        return select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+            Transaction.project_id == project_id,
+            Transaction.type == ttype,
+            Transaction.status.in_(statuses),
+            Transaction.deleted_at.is_(None),
+        )
+
+    total_in = Decimal((await db.execute(_sum_q(TxnType.IN, ACTIVE_STATUSES))).scalar_one() or 0)
+    total_out = Decimal((await db.execute(_sum_q(TxnType.OUT, ACTIVE_STATUSES))).scalar_one() or 0)
+    pending_in = Decimal((await db.execute(_sum_q(TxnType.IN, PENDING_STATUSES))).scalar_one() or 0)
+    pending_out = Decimal((await db.execute(_sum_q(TxnType.OUT, PENDING_STATUSES))).scalar_one() or 0)
+
     return {
         "total_in": total_in,
         "total_out": total_out,
         "balance": total_in - total_out,
+        "pending_in": pending_in,
+        "pending_out": pending_out,
     }
 
 

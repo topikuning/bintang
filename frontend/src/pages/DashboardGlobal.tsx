@@ -8,7 +8,7 @@ import CashflowChart from "@/components/charts/CashflowChart";
 import SpendingPie from "@/components/charts/SpendingPie";
 import BudgetProgress from "@/components/BudgetProgress";
 import { formatIDR } from "@/lib/utils";
-import { AlertTriangle, Flame, TrendingUp, TrendingDown } from "lucide-react";
+import { AlertTriangle, Flame, TrendingUp, TrendingDown, Clock, Link2Off } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 
 export default function DashboardGlobal() {
@@ -50,6 +50,58 @@ export default function DashboardGlobal() {
               value={`${data.active_projects} / ${data.total_projects}`}
             />
           </div>
+
+          {(data.totals.pending_in > 0 || data.totals.pending_out > 0) && (
+            <div className="mt-2 text-[11px] text-slate-500">
+              Termasuk pending: +Rp {formatIDR(data.totals.pending_in)} / −Rp{" "}
+              {formatIDR(data.totals.pending_out)}
+            </div>
+          )}
+
+          {(data.pending_count > 0 || data.unlinked_out_count > 0) && (
+            <div className="mt-3 grid grid-cols-2 gap-2.5">
+              {data.pending_count > 0 && (
+                <Link to="/transactions?status=DRAFT">
+                  <Card className="!p-3 border-amber-200 bg-amber-50/60 active:bg-amber-100">
+                    <div className="flex items-start gap-2">
+                      <Clock className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <div className="text-[11px] uppercase font-medium text-amber-700/80">
+                          Belum Verifikasi
+                        </div>
+                        <div className="text-base font-bold tabular-nums text-amber-900">
+                          {data.pending_count} transaksi
+                        </div>
+                        <div className="text-[11px] text-amber-800 tabular-nums truncate">
+                          Rp {formatIDR(data.pending_total)}
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                </Link>
+              )}
+              {data.unlinked_out_count > 0 && (
+                <Link to="/transactions?type=OUT">
+                  <Card className="!p-3 border-sky-200 bg-sky-50/60 active:bg-sky-100">
+                    <div className="flex items-start gap-2">
+                      <Link2Off className="h-5 w-5 text-sky-600 shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <div className="text-[11px] uppercase font-medium text-sky-700/80">
+                          OUT Tanpa Invoice
+                        </div>
+                        <div className="text-base font-bold tabular-nums text-sky-900">
+                          {data.unlinked_out_count} transaksi
+                        </div>
+                        <div className="text-[11px] text-sky-800 tabular-nums truncate">
+                          Rp {formatIDR(data.unlinked_out_total)}
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                </Link>
+              )}
+            </div>
+          )}
 
           {data.warnings?.length > 0 && (
             <Card className="mt-3 border-amber-200 bg-amber-50">

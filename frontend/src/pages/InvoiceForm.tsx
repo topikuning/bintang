@@ -5,12 +5,12 @@ import { api } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Field, Input, Select, Textarea } from "@/components/ui/Input";
+import { Field, Input, Textarea } from "@/components/ui/Input";
 import AttachmentUploader from "@/components/AttachmentUploader";
 import Combobox from "@/components/ui/Combobox";
 import { Badge, statusTone } from "@/components/ui/Badge";
-import { Plus, Trash2 } from "lucide-react";
-import { formatIDR, todayISO } from "@/lib/utils";
+import { ArrowDownLeft, ArrowUpRight, BadgeCheck, Plus, Trash2 } from "lucide-react";
+import { cn, formatIDR, todayISO } from "@/lib/utils";
 import type { Invoice, Page, Project, VendorClient } from "@/types";
 
 interface ItemRow {
@@ -114,6 +114,25 @@ export default function InvoiceForm() {
     onSuccess: (res: Invoice) => setData(res),
   });
 
+  const markPaid = useMutation({
+    mutationFn: async () => (await api.post(`/invoices/${id}/mark-paid`)).data,
+    onSuccess: (res: Invoice) => {
+      setData(res);
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-global"] });
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      const linked = Number(res.paid_amount || 0);
+      const total = Number(res.total || 0);
+      if (linked < total) {
+        alert(
+          `Invoice ditandai LUNAS.\n\nKekurangan Rp ${(total - linked).toLocaleString("id-ID")} otomatis dibuatkan transaksi DRAFT (lihat menu Transaksi).`,
+        );
+      }
+    },
+    onError: (e: any) =>
+      alert(e?.response?.data?.detail || "Gagal menandai lunas"),
+  });
+
   return (
     <div>
       <PageHeader
@@ -122,18 +141,46 @@ export default function InvoiceForm() {
         right={data.status && <Badge tone={statusTone(data.status)}>{data.status}</Badge>}
       />
 
-      <Card>
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="Tipe">
-            <Select value={data.type || "OUT"} onChange={(e) => setData({ ...data, type: e.target.value as any })}>
-              <option value="OUT">Tagihan ke Client (OUT)</option>
-              <option value="IN">Invoice dari Vendor (IN)</option>
-            </Select>
-          </Field>
-          <Field label="Tanggal">
-            <Input type="date" value={data.invoice_date || ""} onChange={(e) => setData({ ...data, invoice_date: e.target.value })} />
-          </Field>
-        </div>
+      <div className="mb-3 grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
+        <button
+          type="button"
+          onClick={() => setData({ ...data, type: "OUT" })}
+          aria-pressed={data.type === "OUT"}
+          className={cn(
+            "flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-all active:scale-[0.98]",
+            data.type === "OUT"
+              ? "bg-emerald-500 text-white shadow-md ring-2 ring-emerald-300/50"
+              : "bg-transparent text-slate-500 hover:text-slate-700",
+          )}
+        >
+          <ArrowDownLeft className="h-5 w-5" />
+          Piutang (Tagihan ke Client)
+        </button>
+        <button
+          type="button"
+          onClick={() => setData({ ...data, type: "IN" })}
+          aria-pressed={data.type === "IN"}
+          className={cn(
+            "flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-all active:scale-[0.98]",
+            data.type === "IN"
+              ? "bg-rose-500 text-white shadow-md ring-2 ring-rose-300/50"
+              : "bg-transparent text-slate-500 hover:text-slate-700",
+          )}
+        >
+          <ArrowUpRight className="h-5 w-5" />
+          Hutang (Invoice dari Vendor)
+        </button>
+      </div>
+
+      <Card
+        className={cn(
+          "border-l-4",
+          data.type === "OUT" ? "border-l-emerald-500" : "border-l-rose-500",
+        )}
+      >
+        <Field label="Tanggal">
+          <Input type="date" value={data.invoice_date || ""} onChange={(e) => setData({ ...data, invoice_date: e.target.value })} />
+        </Field>
         <Field label="No. Invoice">
           <Input value={data.number || ""} onChange={(e) => setData({ ...data, number: e.target.value })} />
         </Field>
@@ -291,12 +338,38 @@ export default function InvoiceForm() {
       )}
 
       <div className="mt-3 flex flex-wrap gap-2">
-        <Button onClick={() => save.mutate()} disabled={save.isPending}>
+        <Button
+          onClick={() => save.mutate()}
+          disabled={save.isPending}
+          className={cn(
+            data.type === "OUT"
+              ? "!bg-emerald-600 hover:!bg-emerald-500 !text-white"
+              : "!bg-rose-600 hover:!bg-rose-500 !text-white",
+          )}
+        >
           Simpan
         </Button>
         {isEdit && data.status === "DRAFT" && (
           <Button variant="secondary" onClick={() => issue.mutate()}>
-            Issue
+            Terbitkan (Issue)
+          </Button>
+        )}
+        {isEdit && data.status && !["DRAFT", "PAID", "CANCELLED"].includes(data.status) && (
+          <Button
+            variant="success"
+            onClick={() => {
+              const linked = Number(data.paid_amount || 0);
+              const total = Number(data.total || 0);
+              const diff = total - linked;
+              const msg =
+                diff > 0
+                  ? `Tandai invoice LUNAS?\n\nKekurangan Rp ${diff.toLocaleString("id-ID")} akan otomatis dibuatkan transaksi DRAFT.`
+                  : "Tandai invoice LUNAS?";
+              if (confirm(msg)) markPaid.mutate();
+            }}
+            disabled={markPaid.isPending}
+          >
+            <BadgeCheck className="h-4 w-4" /> Tandai Lunas
           </Button>
         )}
       </div>

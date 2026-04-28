@@ -1,4 +1,4 @@
-from datetime import date as date_type
+from datetime import date, date as date_type
 from decimal import Decimal
 from typing import Annotated
 
@@ -20,6 +20,11 @@ from app.models.models import (
     InvoiceAttachment,
     InvoiceItem,
     InvoiceStatus,
+    InvoiceType,
+    PaymentMethod,
+    Transaction,
+    TxnStatus,
+    TxnType,
     User,
     UserRole,
 )
@@ -33,7 +38,7 @@ from app.schemas.finance import (
     InvoiceUpdate,
 )
 from app.services.audit import log, snapshot
-from app.services.invoice_status import paid_amount, recompute_invoice_status
+from app.services.invoice_status import linked_amount, paid_amount, recompute_invoice_status
 from app.services.storage.local import save_upload
 
 router = APIRouter()
@@ -221,6 +226,66 @@ async def issue_invoice(
     await recompute_invoice_status(db, inv)
     await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
               action=AuditAction.UPDATE, note="issued")
+    await db.commit()
+    res = await db.execute(
+        select(Invoice).options(*_full_options()).where(Invoice.id == inv.id)
+    )
+    return await _to_out(db, res.scalar_one())
+
+
+@router.post("/{iid}/mark-paid", response_model=InvoiceOut)
+async def mark_invoice_paid(
+    iid: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> InvoiceOut:
+    """Tandai invoice lunas. Kalau total transaksi yang sudah terhubung lebih
+    kecil dari nilai invoice, otomatis buatkan transaksi DRAFT untuk
+    selisihnya. Arah transaksi disesuaikan dengan tipe invoice:
+    - Invoice IN  (vendor menagih kita / hutang) -> transaksi OUT
+    - Invoice OUT (kita menagih client / piutang) -> transaksi IN
+    """
+    inv = await db.get(Invoice, iid)
+    if not inv or inv.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    await ensure_project_access(db, user, inv.project_id)
+    if inv.status == InvoiceStatus.CANCELLED:
+        raise HTTPException(409, "invoice_cancelled")
+
+    total = Decimal(inv.total or 0)
+    if total <= 0:
+        raise HTTPException(409, "invoice_total_zero")
+
+    linked = await linked_amount(db, inv.id)
+    diff = total - linked
+
+    note_msg = None
+    if diff > 0:
+        # buat transaksi pelunasan otomatis
+        tx_type = TxnType.OUT if inv.type == InvoiceType.IN else TxnType.IN
+        new_tx = Transaction(
+            project_id=inv.project_id,
+            tx_date=date.today(),
+            type=tx_type,
+            amount=diff,
+            party_name=inv.party_name,
+            vendor_client_id=inv.vendor_client_id,
+            payment_method=PaymentMethod.TRANSFER,
+            description=f"Pelunasan invoice {inv.number}",
+            status=TxnStatus.DRAFT,
+            invoice_id=inv.id,
+            created_by_id=user.id,
+        )
+        db.add(new_tx)
+        await db.flush()
+        note_msg = f"auto-create transaksi {tx_type.value} Rp{diff} untuk pelunasan"
+        await log(db, user_id=user.id, entity="transaction", entity_id=new_tx.id,
+                  action=AuditAction.CREATE, after=snapshot(new_tx),
+                  note=f"Otomatis dibuat dari mark_paid invoice {inv.number}")
+
+    inv.status = InvoiceStatus.PAID
+    await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
+              action=AuditAction.UPDATE, note=note_msg or "marked paid")
     await db.commit()
     res = await db.execute(
         select(Invoice).options(*_full_options()).where(Invoice.id == inv.id)
