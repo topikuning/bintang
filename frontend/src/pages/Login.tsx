@@ -52,9 +52,9 @@ export default function LoginPage() {
           <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-amber-400 text-slate-900 shadow-lg">
             <span className="text-2xl font-black">B</span>
           </div>
-          <div className="text-2xl font-bold tracking-tight">Bintang</div>
+          <div className="text-2xl font-bold tracking-tight">BINTANG</div>
           <div className="text-xs text-slate-300">
-            Biaya, Investasi dan Tata Anggaran Gerak
+            Aplikasi Biaya, Investasi dan Tata Anggaran Gerak
           </div>
         </div>
 
