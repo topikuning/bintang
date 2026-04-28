@@ -7,6 +7,7 @@ import { Badge, statusTone } from "@/components/ui/Badge";
 import CashflowChart from "@/components/charts/CashflowChart";
 import SpendingPie from "@/components/charts/SpendingPie";
 import BudgetProgress from "@/components/BudgetProgress";
+import ProjectAttachments from "@/components/ProjectAttachments";
 import { formatDate, formatIDR } from "@/lib/utils";
 import { AlertTriangle, Clock, Link2Off, Users } from "lucide-react";
 
@@ -197,6 +198,12 @@ export default function DashboardProject() {
           <div className="mt-2 text-[11px] text-slate-500">
             Untuk mengubah tim, buka menu Proyek → ikon edit pada proyek ini.
           </div>
+        </Card>
+      )}
+
+      {id && (
+        <Card className="mt-3">
+          <ProjectAttachments projectId={Number(id)} readOnly />
         </Card>
       )}
 

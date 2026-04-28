@@ -175,6 +175,29 @@ class Project(TimestampMixin, Base):
     user_links: Mapped[list[ProjectUser]] = relationship(
         back_populates="project", cascade="all,delete-orphan"
     )
+    attachments: Mapped[list[ProjectAttachment]] = relationship(
+        back_populates="project", cascade="all,delete-orphan",
+        order_by="ProjectAttachment.id",
+    )
+
+
+class ProjectAttachment(TimestampMixin, Base):
+    """Lampiran dokumen proyek (kontrak, surat penunjukan, BAST, dll).
+    Opsional, bisa banyak per proyek."""
+    __tablename__ = "project_attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    label: Mapped[str | None] = mapped_column(String(100), nullable=True)  # mis: "Kontrak", "BAST"
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    url: Mapped[str] = mapped_column(String(500), nullable=False)
+    uploaded_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+    project: Mapped[Project] = relationship(back_populates="attachments")
 
 
 class ProjectUser(TimestampMixin, Base):

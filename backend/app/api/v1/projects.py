@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,10 +13,18 @@ from app.core.deps import (
     user_project_ids,
 )
 from app.db.session import get_db
-from app.models.models import AuditAction, Project, ProjectUser, User, UserRole
+from app.models.models import (
+    AuditAction,
+    Project,
+    ProjectAttachment,
+    ProjectUser,
+    User,
+    UserRole,
+)
 from app.schemas.common import Page
 from app.schemas.refs import ProjectCreate, ProjectOut, ProjectUpdate
 from app.services.audit import log, snapshot
+from app.services.storage.local import save_upload
 
 router = APIRouter()
 
@@ -135,3 +146,93 @@ async def project_users(
         {"id": u.id, "email": u.email, "name": u.name, "role": u.role.value}
         for u in res.scalars().all()
     ]
+
+
+# ---------- Project document attachments (kontrak, BAST, dll) ----------
+class ProjectAttachmentOut(BaseModel):
+    id: int
+    label: str | None = None
+    file_name: str
+    file_size: int
+    mime_type: str
+    url: str
+    uploaded_by_id: int
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/{pid}/attachments", response_model=list[ProjectAttachmentOut])
+async def list_project_attachments(
+    pid: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[ProjectAttachmentOut]:
+    """Daftar dokumen proyek. Bisa dilihat siapa pun yang punya akses ke proyek."""
+    p = await db.get(Project, pid)
+    if not p or p.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    await ensure_project_access(db, user, pid)
+    res = await db.execute(
+        select(ProjectAttachment)
+        .where(ProjectAttachment.project_id == pid, ProjectAttachment.deleted_at.is_(None))
+        .order_by(ProjectAttachment.id.asc())
+    )
+    return [
+        ProjectAttachmentOut(
+            id=a.id, label=a.label, file_name=a.file_name, file_size=a.file_size,
+            mime_type=a.mime_type, url=a.url, uploaded_by_id=a.uploaded_by_id,
+            created_at=a.created_at.isoformat(),
+        )
+        for a in res.scalars().all()
+    ]
+
+
+@router.post("/{pid}/attachments", response_model=ProjectAttachmentOut, status_code=201)
+async def upload_project_attachment(
+    pid: int,
+    file: Annotated[UploadFile, File(...)],
+    label: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> ProjectAttachmentOut:
+    """Upload dokumen proyek (kontrak, surat penunjukan, BAST, dll).
+    Hanya superadmin / admin pusat yang boleh upload."""
+    p = await db.get(Project, pid)
+    if not p or p.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    meta = await save_upload(file, subdir=f"projects/{pid}")
+    att = ProjectAttachment(
+        project_id=pid,
+        label=(label or "").strip() or None,
+        uploaded_by_id=admin.id,
+        **meta,
+    )
+    db.add(att)
+    await db.flush()
+    await log(db, user_id=admin.id, entity="project_attachment", entity_id=pid,
+              action=AuditAction.CREATE, after={"file": meta["file_name"], "label": label})
+    await db.commit()
+    await db.refresh(att)
+    return ProjectAttachmentOut(
+        id=att.id, label=att.label, file_name=att.file_name, file_size=att.file_size,
+        mime_type=att.mime_type, url=att.url, uploaded_by_id=att.uploaded_by_id,
+        created_at=att.created_at.isoformat(),
+    )
+
+
+@router.delete("/{pid}/attachments/{aid}", status_code=204)
+async def delete_project_attachment(
+    pid: int,
+    aid: int,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> None:
+    att = await db.get(ProjectAttachment, aid)
+    if not att or att.project_id != pid or att.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    await db.delete(att)
+    await log(db, user_id=admin.id, entity="project_attachment", entity_id=pid,
+              action=AuditAction.DELETE, before={"file": att.file_name, "label": att.label})
+    await db.commit()

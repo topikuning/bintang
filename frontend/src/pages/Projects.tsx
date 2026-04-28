@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Input";
 import Modal from "@/components/Modal";
 import TeamManager from "@/components/TeamManager";
+import ProjectAttachments from "@/components/ProjectAttachments";
 import { Badge } from "@/components/ui/Badge";
 import { Plus, Pencil } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -162,9 +163,14 @@ export default function ProjectsPage() {
         <Field label="Catatan"><Textarea value={editing?.notes || ""} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} /></Field>
 
         {editing?.id && (
-          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <TeamManager projectId={editing.id} />
-          </div>
+          <>
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <TeamManager projectId={editing.id} />
+            </div>
+            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <ProjectAttachments projectId={editing.id} />
+            </div>
+          </>
         )}
       </Modal>
     </div>
