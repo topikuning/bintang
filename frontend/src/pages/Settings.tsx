@@ -13,7 +13,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
-import { isAdmin, useAuthStore } from "@/store/auth";
+import { isAdmin, isSuper, useAuthStore } from "@/store/auth";
 
 interface ChannelStatus {
   linked: boolean;
@@ -46,6 +46,7 @@ interface WahaSession {
 export default function SettingsPage() {
   const user = useAuthStore((s) => s.user);
   const admin = isAdmin(user);
+  const sup = isSuper(user);
 
   return (
     <div>
@@ -58,7 +59,7 @@ export default function SettingsPage() {
         <div className="text-xs text-slate-500">{user?.role}</div>
       </Card>
 
-      {admin && <MessagingConfigCard />}
+      {sup && <MessagingConfigCard />}
       <TelegramCard />
       <WhatsAppCard admin={admin} />
 

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.deps import get_current_user, require_admin
+from app.core.deps import get_current_user, require_superadmin
 from app.db.session import get_db
 from app.models.models import User
 from app.services import messaging
@@ -60,7 +60,7 @@ async def get_messaging_config(
 async def patch_messaging_config(
     payload: MessagingConfigPatch,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_superadmin),
 ) -> MessagingConfigOut:
     cfg = await messaging.get_config(db)
     if payload.telegram_enabled is not None:
