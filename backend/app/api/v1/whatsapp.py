@@ -136,20 +136,43 @@ def _extract_text(message: dict) -> str:
     return ""
 
 
+def _sanitize_for_log(obj, max_len: int = 80):
+    """Versi ringkas dict/list utk logging: string base64 panjang dipotong."""
+    if isinstance(obj, str):
+        return obj if len(obj) <= max_len else f"<str len={len(obj)}>"
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_log(v, max_len) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_log(x, max_len) for x in obj[:5]]
+    return obj
+
+
 def _extract_media(message: dict) -> tuple[str, str | None, str | None] | None:
-    """Cari URL media di payload WAHA. Return (url, mime, filename)."""
+    """Cari sumber media di payload WAHA. Return (source, mime, filename).
+
+    `source` bisa berupa URL HTTP, path relatif "/api/...", atau data URI
+    `data:image/...;base64,...` -- semua ditangani oleh `download_media`.
+    """
     if not isinstance(message, dict):
         return None
+
     media = message.get("media")
     if isinstance(media, dict):
         url = media.get("url") or media.get("link")
         if url:
             return url, media.get("mimetype"), media.get("filename")
-    # NOWEB engine: sometimes hasMedia + downloadUrl
-    if message.get("hasMedia"):
-        url = message.get("mediaUrl") or message.get("downloadUrl")
+        # base64 inline (WAHA dengan downloadMedia=false bisa pakai data)
+        b64 = media.get("data") or media.get("body")
+        if isinstance(b64, str) and b64:
+            mime = media.get("mimetype") or "application/octet-stream"
+            return f"data:{mime};base64,{b64}", mime, media.get("filename")
+
+    # Field-field alternatif tergantung engine WAHA
+    if message.get("hasMedia") or message.get("type") in ("image", "video", "document", "audio"):
+        url = message.get("mediaUrl") or message.get("downloadUrl") or message.get("url")
         if url:
             return url, message.get("mimetype"), message.get("filename")
+
     return None
 
 
@@ -205,10 +228,30 @@ async def webhook(
     if text.startswith("/"):
         reply = await dispatch_command(db, user, chat_id, text, payload)
 
+    msg_id = (
+        payload.get("id")
+        or payload.get("messageId")
+        or (payload.get("key") or {}).get("id")
+        if isinstance(payload, dict)
+        else None
+    )
     media = _extract_media(payload)
-    if media:
-        url, mime, fname = media
-        media_reply = await handle_media(db, user, chat_id, url, mime, fname)
+    is_media_msg = bool(media or payload.get("hasMedia") or payload.get("type") in (
+        "image", "video", "document", "audio"
+    ))
+    if is_media_msg:
+        url, mime, fname = (media if media else (None, None, None))
+        if not media:
+            # Tidak ada URL/data di payload, tapi ada indikasi media. Log
+            # struktur payload supaya bisa di-debug, lalu coba fallback
+            # download via message id.
+            logger.warning(
+                "WAHA webhook media without url; msg_id=%s payload=%s",
+                msg_id, _sanitize_for_log(payload),
+            )
+        media_reply = await handle_media(
+            db, user, chat_id, url, mime, fname, message_id=str(msg_id) if msg_id else None
+        )
         if reply and media_reply:
             reply = f"{reply}\n\n{media_reply}"
         else:

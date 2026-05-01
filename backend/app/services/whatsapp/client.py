@@ -16,6 +16,7 @@ Disabled (tidak dikonfigurasi) -> semua fungsi return None secara aman.
 """
 from __future__ import annotations
 
+import base64
 import logging
 from typing import Any
 
@@ -103,24 +104,99 @@ async def send_image_url(chat_id: str, url: str, caption: str | None = None) -> 
 
 
 async def download_media(media_url: str) -> tuple[bytes, str | None] | None:
-    """Download file yang dirujuk webhook WAHA (`message.media.url`).
-    Return (bytes, mime). WAHA biasa kasih URL absolut yang nunjuk ke
-    dirinya sendiri, jadi kita pakai apa adanya.
+    """Download file yang dirujuk webhook WAHA. Mendukung 3 bentuk:
+    1) URL absolut http(s) — di-fetch apa adanya (dengan API key kalau set).
+    2) Path relatif "/api/files/..." — di-prefiks base URL WAHA.
+    3) data URI "data:image/...;base64,..." — di-decode langsung.
+    Return (bytes, mime) atau None kalau gagal.
     """
     if not is_enabled():
         return None
-    # URL kadang relatif ("/api/files/..."); prefiks dengan base URL.
+    if media_url.startswith("data:"):
+        try:
+            header, b64 = media_url.split(",", 1)
+            mime = header.split(":", 1)[1].split(";", 1)[0] or "application/octet-stream"
+            return base64.b64decode(b64), mime
+        except Exception as e:
+            logger.warning("whatsapp data URI parse failed: %s", e)
+            return None
     url = media_url
     if url.startswith("/"):
         url = _base_url() + url
     try:
         async with httpx.AsyncClient(timeout=30.0) as cli:
             r = await cli.get(url, headers=_headers())
+            if r.status_code >= 400:
+                logger.warning(
+                    "WAHA download_media %s url=%s body=%s",
+                    r.status_code, url, r.text[:300],
+                )
             r.raise_for_status()
             return r.content, r.headers.get("content-type")
     except Exception as e:
-        logger.warning("whatsapp download_media failed: %s", e)
+        logger.warning("whatsapp download_media failed url=%s err=%s", url, e)
         return None
+
+
+async def download_message_media(message_id: str) -> tuple[bytes, str | None, str | None] | None:
+    """Fallback: kalau payload webhook tidak punya URL media (mis. WAHA
+    Core dengan auto-download dimatikan), kita minta WAHA mengambilkan
+    file-nya berdasarkan message id.
+
+    Return (bytes, mime, filename) atau None.
+    """
+    if not is_enabled():
+        return None
+    # Variasi path tergantung versi/engine WAHA. Coba GET dulu, lalu POST.
+    base = _base_url()
+    sess = _session()
+    get_urls = [
+        f"{base}/api/{sess}/messages/{message_id}/download",
+        f"{base}/api/messages/{message_id}/download",
+        f"{base}/api/{sess}/messages/{message_id}/media",
+    ]
+    post_urls = [
+        f"{base}/api/{sess}/files/{message_id}/download",
+        f"{base}/api/files/{sess}/{message_id}/download",
+    ]
+    async with httpx.AsyncClient(timeout=30.0) as cli:
+        for url in get_urls:
+            try:
+                r = await cli.get(url, headers=_headers())
+                if r.status_code == 404:
+                    continue
+                if r.status_code >= 400:
+                    logger.warning(
+                        "WAHA GET %s -> %s body=%s",
+                        url, r.status_code, r.text[:300],
+                    )
+                    continue
+                return _parse_download_response(r)
+            except Exception as e:
+                logger.warning("whatsapp GET %s err=%s", url, e)
+        for url in post_urls:
+            try:
+                r = await cli.post(url, headers=_headers())
+                if r.status_code == 404:
+                    continue
+                if r.status_code >= 400:
+                    logger.warning(
+                        "WAHA POST %s -> %s body=%s",
+                        url, r.status_code, r.text[:300],
+                    )
+                    continue
+                return _parse_download_response(r)
+            except Exception as e:
+                logger.warning("whatsapp POST %s err=%s", url, e)
+    return None
+
+
+def _parse_download_response(r: httpx.Response) -> tuple[bytes, str | None, str | None]:
+    disp = r.headers.get("content-disposition", "")
+    fname = None
+    if "filename=" in disp:
+        fname = disp.split("filename=", 1)[1].strip("\"' ;")
+    return r.content, r.headers.get("content-type"), fname
 
 
 async def session_status() -> dict | None:

@@ -351,11 +351,17 @@ async def handle_media(
     db,
     user,
     chat_id: str,
-    media_url: str,
+    media_url: str | None,
     mime: str | None,
     file_name: str | None,
+    message_id: str | None = None,
 ) -> str:
-    """Download media dari WAHA, simpan, attach ke transaksi pending terakhir."""
+    """Download media dari WAHA, simpan, attach ke transaksi pending terakhir.
+
+    Coba dua strategi:
+    1. Direct dari `media_url` (URL/path/data URI yg dikirim webhook).
+    2. Fallback ke `/api/{session}/messages/{id}/download` kalau (1) gagal.
+    """
     if not user:
         return ""
     now = datetime.now(timezone.utc)
@@ -374,11 +380,32 @@ async def handle_media(
             "Foto diterima tapi belum ada transaksi yang menunggu lampiran.\n"
             "Buat transaksi dulu lewat /keluar atau /masuk, lalu kirim foto."
         )
-    payload = await wa.download_media(media_url)
-    if not payload:
-        return "Gagal download foto dari WhatsApp. Coba lagi."
-    content, ct = payload
-    name = file_name or f"whatsapp-{int(now.timestamp())}.jpg"
+
+    content: bytes | None = None
+    ct: str | None = None
+    fname_hdr: str | None = None
+    if media_url:
+        payload = await wa.download_media(media_url)
+        if payload:
+            content, ct = payload
+
+    if content is None and message_id:
+        logger.info("whatsapp: fallback to messages/download for id=%s", message_id)
+        payload2 = await wa.download_message_media(message_id)
+        if payload2:
+            content, ct, fname_hdr = payload2
+
+    if content is None:
+        logger.warning(
+            "whatsapp handle_media gagal — media_url=%s message_id=%s",
+            media_url, message_id,
+        )
+        return (
+            "Gagal download foto dari WhatsApp. Pastikan WAHA dikonfigurasi "
+            "dengan media auto-download aktif, lalu kirim ulang."
+        )
+
+    name = file_name or fname_hdr or f"whatsapp-{int(now.timestamp())}.jpg"
     final_mime = mime or ct or "image/jpeg"
     meta = await save_bytes(
         content,
