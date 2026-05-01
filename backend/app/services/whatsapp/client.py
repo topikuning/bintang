@@ -19,6 +19,7 @@ from __future__ import annotations
 import base64
 import logging
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 
@@ -44,6 +45,28 @@ def _headers() -> dict[str, str]:
 
 def _session() -> str:
     return settings.WHATSAPP_SESSION or "default"
+
+
+def _rewrite_to_external(url: str) -> str:
+    """WAHA sering kirim URL versi internal-nya sendiri (mis.
+    `http://localhost:3000/api/files/...`) yang tidak resolvable dari
+    backend kita. Kalau host URL adalah localhost/127.0.0.1 -- atau
+    sama persis dengan host WAHA yg kita kenal -- timpa dengan
+    WHATSAPP_BASE_URL biar request keluar ke alamat yg benar.
+
+    Path + query dipertahankan apa adanya.
+    """
+    if not url or not url.startswith(("http://", "https://")):
+        return url
+    try:
+        u = urlparse(url)
+    except Exception:
+        return url
+    host = (u.hostname or "").lower()
+    if host in {"localhost", "127.0.0.1", "0.0.0.0", "host.docker.internal"}:
+        base = urlparse(_base_url())
+        return urlunparse(u._replace(scheme=base.scheme, netloc=base.netloc))
+    return url
 
 
 async def send_text(chat_id: str, text: str) -> dict | None:
@@ -123,6 +146,7 @@ async def download_media(media_url: str) -> tuple[bytes, str | None] | None:
     url = media_url
     if url.startswith("/"):
         url = _base_url() + url
+    url = _rewrite_to_external(url)
     try:
         async with httpx.AsyncClient(timeout=30.0) as cli:
             r = await cli.get(url, headers=_headers())
