@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.core.deps import get_current_user
 from app.db.session import get_db
 from app.models.models import TelegramLinkCode, User
+from app.services import messaging
 from app.services.telegram import client as tg
 from app.services.telegram.commands import dispatch_command, handle_photo
 from app.services.telegram.linking import LINK_TTL_MINUTES, issue_code
@@ -30,9 +31,12 @@ router = APIRouter()
 
 
 @router.get("/health")
-async def health() -> dict:
+async def health(db: AsyncSession = Depends(get_db)) -> dict:
+    cfg = await messaging.get_config(db)
+    await db.commit()
     return {
-        "enabled": tg.is_enabled(),
+        "configured": tg.is_enabled(),
+        "enabled_toggle": cfg.telegram_enabled,
         "webhook_secret_set": bool(settings.TELEGRAM_WEBHOOK_SECRET),
     }
 
@@ -46,6 +50,10 @@ async def webhook(
 ) -> dict:
     if not tg.is_enabled():
         raise HTTPException(503, "telegram_disabled")
+    cfg = await messaging.get_config(db)
+    if not cfg.telegram_enabled:
+        # toggle dimatikan admin: terima 200 supaya Telegram tidak retry
+        return {"ok": True, "skipped": "telegram_disabled_via_toggle"}
     expected = settings.TELEGRAM_WEBHOOK_SECRET
     if expected:
         provided = x_telegram_bot_api_secret_token or secret
@@ -104,6 +112,9 @@ async def issue_my_link_code(
     """Generate kode 6 digit; user ketik `/link <kode>` di bot Telegram."""
     if not tg.is_enabled():
         raise HTTPException(503, "telegram_disabled")
+    cfg = await messaging.get_config(db)
+    if not cfg.telegram_enabled:
+        raise HTTPException(503, "telegram_disabled_by_admin")
     row = await issue_code(db, user)
     await db.commit()
     return {
@@ -126,9 +137,13 @@ async def unlink_me(
 
 @router.get("/me/status")
 async def my_telegram_status(
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
+    cfg = await messaging.get_config(db)
+    await db.commit()
     return {
         "linked": bool(user.telegram_chat_id),
-        "enabled": tg.is_enabled(),
+        "enabled": tg.is_enabled() and cfg.telegram_enabled,
+        "configured": tg.is_enabled(),
     }

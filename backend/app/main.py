@@ -20,6 +20,8 @@ async def _sync_pg_columns(conn) -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS scope_all_projects BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id VARCHAR(40)",
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_telegram_chat_id ON users (telegram_chat_id) WHERE telegram_chat_id IS NOT NULL",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_chat_id VARCHAR(64)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_whatsapp_chat_id ON users (whatsapp_chat_id) WHERE whatsapp_chat_id IS NOT NULL",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_value NUMERIC(18,2) NOT NULL DEFAULT 0",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS tax_ppn_pct NUMERIC(5,2) NOT NULL DEFAULT 11",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS tax_pph_pct NUMERIC(5,2) NOT NULL DEFAULT 2",
@@ -82,6 +84,16 @@ async def lifespan(_app: FastAPI):
             print(f"[startup] telegram setWebhook {url} -> ok={ok}")
         except Exception as e:  # noqa: BLE001
             print(f"[startup] telegram setWebhook failed: {e}")
+
+    # Register WAHA webhook kalau base URL + PUBLIC_BASE_URL tersedia.
+    if settings.WHATSAPP_BASE_URL and settings.PUBLIC_BASE_URL:
+        try:
+            from app.services.whatsapp import client as wa
+            url = settings.PUBLIC_BASE_URL.rstrip("/") + "/api/v1/whatsapp/webhook"
+            ok = await wa.set_webhook(url)
+            print(f"[startup] WAHA setWebhook {url} -> ok={ok}")
+        except Exception as e:  # noqa: BLE001
+            print(f"[startup] WAHA setWebhook failed: {e}")
 
     yield
 

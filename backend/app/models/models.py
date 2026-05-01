@@ -134,6 +134,8 @@ class User(TimestampMixin, Base):
     scope_all_projects: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Telegram bot integration: chat_id user setelah berhasil /link
     telegram_chat_id: Mapped[str | None] = mapped_column(String(40), unique=True, nullable=True)
+    # WhatsApp via WAHA: nomor WA user dlm format internal WAHA "<msisdn>@c.us"
+    whatsapp_chat_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
 
     project_links: Mapped[list[ProjectUser]] = relationship(back_populates="user", cascade="all,delete-orphan")
 
@@ -165,6 +167,39 @@ class TelegramPendingCommand(TimestampMixin, Base):
     chat_id: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
     transaction_id: Mapped[int] = mapped_column(ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class WhatsAppLinkCode(TimestampMixin, Base):
+    """Mirror TelegramLinkCode untuk channel WhatsApp via WAHA."""
+    __tablename__ = "whatsapp_link_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    code: Mapped[str] = mapped_column(String(12), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WhatsAppPendingCommand(TimestampMixin, Base):
+    """Mirror TelegramPendingCommand untuk channel WhatsApp."""
+    __tablename__ = "whatsapp_pending_attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    transaction_id: Mapped[int] = mapped_column(ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MessagingConfig(TimestampMixin, Base):
+    """Singleton row (id=1) menyimpan toggle on/off untuk tiap channel.
+    Detail koneksi (token, URL) tetap di env -- ini hanya master switch yg
+    bisa diubah dari halaman Pengaturan tanpa redeploy.
+    """
+    __tablename__ = "messaging_config"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    telegram_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    whatsapp_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
 class Company(TimestampMixin, Base):

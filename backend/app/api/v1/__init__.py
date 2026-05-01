@@ -10,6 +10,7 @@ from app.api.v1 import (
     dashboard,
     imports,
     invoices,
+    messaging,
     ocr,
     projects,
     purchase_orders,
@@ -18,6 +19,7 @@ from app.api.v1 import (
     transactions,
     users,
     vendors_clients,
+    whatsapp,
 )
 
 api_router = APIRouter()
@@ -41,6 +43,8 @@ api_router.include_router(audit_logs.router, prefix="/audit-logs", tags=["audit-
 api_router.include_router(imports.router, prefix="/imports", tags=["imports"])
 api_router.include_router(ocr.router, prefix="/ocr", tags=["ocr"])
 api_router.include_router(telegram.router, prefix="/telegram", tags=["telegram"])
+api_router.include_router(whatsapp.router, prefix="/whatsapp", tags=["whatsapp"])
+api_router.include_router(messaging.router, prefix="/messaging", tags=["messaging"])
 # allocations dipasang di prefix root karena rutenya bercampur:
 #   /invoices/{id}/allocations, /transactions/{id}/allocations, /allocations/{id}
 api_router.include_router(allocations.router, tags=["allocations"])

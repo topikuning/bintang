@@ -243,8 +243,8 @@ async def submit_transaction(
               action=AuditAction.UPDATE, before=before, after=snapshot(t),
               note="submitted")
     await db.commit()
-    # Notif Telegram (best-effort, tidak blok response)
-    from app.services.telegram.notify import notify_transaction_submitted
+    # Notif multi-channel (Telegram + WhatsApp), best-effort.
+    from app.services.messaging import notify_transaction_submitted
     await notify_transaction_submitted(db, t)
     res = await db.execute(
         select(Transaction).options(selectinload(Transaction.attachments)).where(Transaction.id == t.id)
@@ -274,7 +274,7 @@ async def verify_transaction(
     await log(db, user_id=admin.id, entity="transaction", entity_id=t.id,
               action=AuditAction.VERIFY, before=before, after=snapshot(t))
     await db.commit()
-    from app.services.telegram.notify import notify_transaction_verified
+    from app.services.messaging import notify_transaction_verified
     await notify_transaction_verified(db, t)
     res = await db.execute(
         select(Transaction).options(selectinload(Transaction.attachments)).where(Transaction.id == t.id)
@@ -300,7 +300,7 @@ async def reject_transaction(
     await log(db, user_id=admin.id, entity="transaction", entity_id=t.id,
               action=AuditAction.UPDATE, before=before, after=snapshot(t), note="rejected")
     await db.commit()
-    from app.services.telegram.notify import notify_transaction_rejected
+    from app.services.messaging import notify_transaction_rejected
     await notify_transaction_rejected(db, t)
     res = await db.execute(
         select(Transaction).options(selectinload(Transaction.attachments)).where(Transaction.id == t.id)

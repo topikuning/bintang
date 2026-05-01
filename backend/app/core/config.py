@@ -29,6 +29,19 @@ class Settings(BaseSettings):
     # Contoh: https://api.bintang.me
     PUBLIC_BASE_URL: str = ""
 
+    # --- WhatsApp via WAHA ---
+    # Base URL WAHA-server (TANPA trailing slash). KOSONG = integrasi off.
+    # Contoh: http://172.105.116.245:3000
+    WHATSAPP_BASE_URL: str = ""
+    # Nama session WAHA, default "default". WAHA Core hanya 1 session.
+    WHATSAPP_SESSION: str = "default"
+    # API key WAHA (header X-Api-Key). Boleh kosong untuk WAHA Core tanpa auth.
+    WHATSAPP_API_KEY: str = ""
+    # Secret yang dipasang di WAHA -> webhook header X-Webhook-Hmac dipakai
+    # untuk verifikasi sumber. Boleh kosong (skip verifikasi) -- tidak disarankan
+    # di prod.
+    WHATSAPP_WEBHOOK_SECRET: str = ""
+
     @property
     def allowed_origins_list(self) -> list[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
