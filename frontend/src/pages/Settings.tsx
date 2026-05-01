@@ -13,7 +13,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
-import { isAdmin, isSuper, useAuthStore } from "@/store/auth";
+import { isSuper, useAuthStore } from "@/store/auth";
 
 interface ChannelStatus {
   linked: boolean;
@@ -45,7 +45,6 @@ interface WahaSession {
 
 export default function SettingsPage() {
   const user = useAuthStore((s) => s.user);
-  const admin = isAdmin(user);
   const sup = isSuper(user);
 
   return (
@@ -61,7 +60,7 @@ export default function SettingsPage() {
 
       {sup && <MessagingConfigCard />}
       <TelegramCard />
-      <WhatsAppCard admin={admin} />
+      <WhatsAppCard superadmin={sup} />
 
       <Card className="mt-3">
         <div className="text-sm font-semibold mb-1">Tentang Bintang</div>
@@ -310,7 +309,7 @@ function TelegramCard() {
 // WhatsApp link card (per-user) + admin session controls
 // ---------------------------------------------------------------------------
 
-function WhatsAppCard({ admin }: { admin: boolean }) {
+function WhatsAppCard({ superadmin }: { superadmin: boolean }) {
   const qc = useQueryClient();
   const statusQ = useQuery({
     queryKey: ["whatsapp-status"],
@@ -320,7 +319,7 @@ function WhatsAppCard({ admin }: { admin: boolean }) {
   const sessionQ = useQuery({
     queryKey: ["whatsapp-session"],
     queryFn: async () => (await api.get<WahaSession>("/whatsapp/session")).data,
-    enabled: admin && !!statusQ.data?.configured,
+    enabled: superadmin && !!statusQ.data?.configured,
     refetchInterval: 8000,
     retry: false,
   });
@@ -424,7 +423,7 @@ function WhatsAppCard({ admin }: { admin: boolean }) {
         </div>
       ) : (
         <>
-          {admin && (
+          {superadmin && (
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 mb-3 space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <div>

@@ -25,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.deps import get_current_user, require_admin
+from app.core.deps import get_current_user, require_superadmin
 from app.db.session import get_db
 from app.models.models import MessagingConfig, User
 from app.services import messaging
@@ -56,7 +56,7 @@ async def health(db: AsyncSession = Depends(get_db)) -> dict:
 
 
 @router.get("/session")
-async def whatsapp_session(_: User = Depends(require_admin)) -> dict:
+async def whatsapp_session(_: User = Depends(require_superadmin)) -> dict:
     if not wa.is_enabled():
         raise HTTPException(503, "whatsapp_not_configured")
     info = await wa.session_status()
@@ -66,7 +66,7 @@ async def whatsapp_session(_: User = Depends(require_admin)) -> dict:
 
 
 @router.get("/qr")
-async def whatsapp_qr(_: User = Depends(require_admin)) -> Response:
+async def whatsapp_qr(_: User = Depends(require_superadmin)) -> Response:
     if not wa.is_enabled():
         raise HTTPException(503, "whatsapp_not_configured")
     payload = await wa.fetch_qr()
@@ -77,7 +77,7 @@ async def whatsapp_qr(_: User = Depends(require_admin)) -> Response:
 
 
 @router.post("/restart")
-async def whatsapp_restart(_: User = Depends(require_admin)) -> dict:
+async def whatsapp_restart(_: User = Depends(require_superadmin)) -> dict:
     if not wa.is_enabled():
         raise HTTPException(503, "whatsapp_not_configured")
     ok = await wa.restart_session()
@@ -85,7 +85,7 @@ async def whatsapp_restart(_: User = Depends(require_admin)) -> dict:
 
 
 @router.post("/logout")
-async def whatsapp_logout(_: User = Depends(require_admin)) -> dict:
+async def whatsapp_logout(_: User = Depends(require_superadmin)) -> dict:
     if not wa.is_enabled():
         raise HTTPException(503, "whatsapp_not_configured")
     ok = await wa.logout_session()
