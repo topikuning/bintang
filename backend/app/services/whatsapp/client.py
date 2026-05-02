@@ -48,25 +48,35 @@ def _session() -> str:
 
 
 def _rewrite_to_external(url: str) -> str:
-    """WAHA sering kirim URL versi internal-nya sendiri (mis.
-    `http://localhost:3000/api/files/...`) yang tidak resolvable dari
-    backend kita. Kalau host URL adalah localhost/127.0.0.1 -- atau
-    sama persis dengan host WAHA yg kita kenal -- timpa dengan
-    WHATSAPP_BASE_URL biar request keluar ke alamat yg benar.
+    """Rewrite host URL media WAHA ke `WHATSAPP_BASE_URL`.
 
-    Path + query dipertahankan apa adanya.
+    WAHA selalu mencantumkan URL media versi internal-nya sendiri di
+    payload webhook (mis. `http://localhost:3000/...`,
+    `http://devlikeaprowaha.railway.internal/...`, atau hostname Docker
+    lainnya). Backend kita tidak punya routing ke alamat itu, jadi
+    request gagal "All connection attempts failed".
+
+    Karena `download_media` hanya dipanggil dengan URL dari webhook WAHA
+    -- yang selalu nunjuk ke WAHA itu sendiri -- kita aman timpa
+    scheme+host+port dengan `WHATSAPP_BASE_URL` (URL publik yang sudah
+    di-set admin). Path + query dipertahankan.
+
+    PINDAH SERVER WAHA: ubah env `WHATSAPP_BASE_URL` saja, tidak perlu
+    ubah kode.
     """
     if not url or not url.startswith(("http://", "https://")):
         return url
+    base = settings.WHATSAPP_BASE_URL
+    if not base:
+        return url
     try:
         u = urlparse(url)
+        b = urlparse(base.rstrip("/"))
     except Exception:
         return url
-    host = (u.hostname or "").lower()
-    if host in {"localhost", "127.0.0.1", "0.0.0.0", "host.docker.internal"}:
-        base = urlparse(_base_url())
-        return urlunparse(u._replace(scheme=base.scheme, netloc=base.netloc))
-    return url
+    if not b.netloc:
+        return url
+    return urlunparse(u._replace(scheme=b.scheme, netloc=b.netloc))
 
 
 async def send_text(chat_id: str, text: str) -> dict | None:
