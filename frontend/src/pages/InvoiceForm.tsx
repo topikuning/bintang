@@ -333,9 +333,11 @@ export default function InvoiceForm() {
             value={data.project_id ?? null}
             onChange={(v) => setData({ ...data, project_id: v == null ? undefined : Number(v) })}
             options={(projectsQ.data?.items || []).map((p) => ({
-              value: p.id, label: p.name, hint: p.code,
+              value: p.id,
+              label: p.name,
+              hint: p.company_name ? `${p.code} · ${p.company_name}` : p.code,
             }))}
-            placeholder="Cari proyek..."
+            placeholder="Cari nama proyek / kode / perusahaan..."
             clearable={false}
           />
         </Field>

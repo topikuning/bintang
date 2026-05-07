@@ -2,8 +2,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.deps import (
     ensure_project_access,
@@ -38,6 +39,13 @@ from app.models.models import (  # extra imports for stats endpoint
 router = APIRouter()
 
 
+def _to_out(p: Project) -> ProjectOut:
+    """Serialize Project + isi company_name dari relasi (perlu sudah eager-loaded)."""
+    out = ProjectOut.model_validate(p)
+    out.company_name = p.company.name if getattr(p, "company", None) else None
+    return out
+
+
 @router.get("", response_model=Page[ProjectOut])
 async def list_projects(
     q: str | None = None,
@@ -56,15 +64,27 @@ async def list_projects(
         stmt = stmt.where(Project.id.in_(pids))
     if q:
         like = f"%{q}%"
-        stmt = stmt.where((Project.name.ilike(like)) | (Project.code.ilike(like)))
+        # Cari di nama proyek, kode proyek, dan nama perusahaan.
+        stmt = stmt.join(_Company, Project.company_id == _Company.id, isouter=True).where(
+            or_(
+                Project.name.ilike(like),
+                Project.code.ilike(like),
+                _Company.name.ilike(like),
+            )
+        )
     if status:
         stmt = stmt.where(Project.status == status)
     if company_id:
         stmt = stmt.where(Project.company_id == company_id)
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
-    stmt = stmt.order_by(Project.id.desc()).offset((page - 1) * size).limit(size)
+    stmt = (
+        stmt.options(selectinload(Project.company))
+        .order_by(Project.id.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    )
     items = (await db.execute(stmt)).scalars().all()
-    return Page(items=[ProjectOut.model_validate(p) for p in items], total=total, page=page, size=size)
+    return Page(items=[_to_out(p) for p in items], total=total, page=page, size=size)
 
 
 @router.get("/stats")
@@ -174,6 +194,13 @@ async def list_projects_with_stats(
     return out
 
 
+async def _load_with_company(db: AsyncSession, pid: int) -> Project | None:
+    res = await db.execute(
+        select(Project).options(selectinload(Project.company)).where(Project.id == pid)
+    )
+    return res.scalar_one_or_none()
+
+
 @router.post("", response_model=ProjectOut, status_code=201)
 async def create_project(
     payload: ProjectCreate,
@@ -191,8 +218,8 @@ async def create_project(
     await log(db, user_id=admin.id, entity="project", entity_id=p.id,
               action=AuditAction.CREATE, after=snapshot(p))
     await db.commit()
-    await db.refresh(p)
-    return ProjectOut.model_validate(p)
+    p = await _load_with_company(db, p.id)
+    return _to_out(p)
 
 
 @router.get("/{pid}", response_model=ProjectOut)
@@ -201,11 +228,11 @@ async def get_project(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ProjectOut:
-    p = await db.get(Project, pid)
+    p = await _load_with_company(db, pid)
     if not p or p.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, pid)
-    return ProjectOut.model_validate(p)
+    return _to_out(p)
 
 
 @router.patch("/{pid}", response_model=ProjectOut)
@@ -224,8 +251,8 @@ async def update_project(
     await log(db, user_id=admin.id, entity="project", entity_id=p.id,
               action=AuditAction.UPDATE, before=before, after=snapshot(p))
     await db.commit()
-    await db.refresh(p)
-    return ProjectOut.model_validate(p)
+    p = await _load_with_company(db, p.id)
+    return _to_out(p)
 
 
 @router.delete("/{pid}", status_code=204)

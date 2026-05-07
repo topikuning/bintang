@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Input";
+import Combobox from "@/components/ui/Combobox";
 import AttachmentStrip from "@/components/AttachmentStrip";
 import { formatDate, formatIDR } from "@/lib/utils";
 import { Link2, Plus } from "lucide-react";
@@ -58,24 +59,32 @@ export default function TransactionsPage() {
         }
       />
 
-      <div className="grid grid-cols-3 gap-2 mb-3">
-        <Select value={projectId} onChange={(e) => setQ("project_id", e.target.value)}>
-          <option value="">Semua Proyek</option>
-          {projects?.items.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </Select>
-        <Select value={type} onChange={(e) => setQ("type", e.target.value)}>
-          <option value="">Semua Tipe</option>
-          <option value="IN">Masuk</option>
-          <option value="OUT">Keluar</option>
-        </Select>
-        <Select value={status} onChange={(e) => setQ("status", e.target.value)}>
-          <option value="">Semua Status</option>
-          <option value="DRAFT">Draft</option>
-          <option value="SUBMITTED">Submitted</option>
-          <option value="VERIFIED">Verified</option>
-          <option value="REJECTED">Rejected</option>
-          <option value="CANCELLED">Cancelled</option>
-        </Select>
+      <div className="mb-3 space-y-2">
+        <Combobox
+          value={projectId || null}
+          onChange={(v) => setQ("project_id", v == null ? "" : String(v))}
+          options={(projects?.items || []).map((p) => ({
+            value: p.id,
+            label: p.name,
+            hint: p.company_name ? `${p.code} · ${p.company_name}` : p.code,
+          }))}
+          placeholder="Semua Proyek (cari nama / kode / perusahaan)"
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <Select value={type} onChange={(e) => setQ("type", e.target.value)}>
+            <option value="">Semua Tipe</option>
+            <option value="IN">Masuk</option>
+            <option value="OUT">Keluar</option>
+          </Select>
+          <Select value={status} onChange={(e) => setQ("status", e.target.value)}>
+            <option value="">Semua Status</option>
+            <option value="DRAFT">Draft</option>
+            <option value="SUBMITTED">Submitted</option>
+            <option value="VERIFIED">Verified</option>
+            <option value="REJECTED">Rejected</option>
+            <option value="CANCELLED">Cancelled</option>
+          </Select>
+        </div>
       </div>
 
       {isLoading ? (

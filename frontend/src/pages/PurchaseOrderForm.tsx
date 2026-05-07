@@ -134,9 +134,11 @@ export default function POForm() {
                 setData({ ...data, project_id: pid, company_id: proj?.company_id });
               }}
               options={(projectsQ.data?.items || []).map((p) => ({
-                value: p.id, label: p.name, hint: p.code,
+                value: p.id,
+                label: p.name,
+                hint: p.company_name ? `${p.code} · ${p.company_name}` : p.code,
               }))}
-              placeholder="Cari proyek..."
+              placeholder="Cari nama proyek / kode / perusahaan..."
               clearable={false}
             />
           </Field>

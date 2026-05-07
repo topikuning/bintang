@@ -5,6 +5,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Input";
+import Combobox from "@/components/ui/Combobox";
 import { Badge, statusTone } from "@/components/ui/Badge";
 import { formatDate, formatIDR } from "@/lib/utils";
 import { Plus } from "lucide-react";
@@ -55,25 +56,33 @@ export default function InvoicesPage() {
         }
       />
 
-      <div className="grid grid-cols-3 gap-2 mb-3">
-        <Select value={projectId} onChange={(e) => setQ("project_id", e.target.value)}>
-          <option value="">Semua Proyek</option>
-          {projects?.items.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </Select>
-        <Select value={type} onChange={(e) => setQ("type", e.target.value)}>
-          <option value="">Semua Tipe</option>
-          <option value="OUT">Piutang (uang akan masuk)</option>
-          <option value="IN">Hutang (uang akan keluar)</option>
-        </Select>
-        <Select value={status} onChange={(e) => setQ("status", e.target.value)}>
-          <option value="">Semua Status</option>
-          <option value="DRAFT">Draft</option>
-          <option value="ISSUED">Issued</option>
-          <option value="PARTIALLY_PAID">Partially Paid</option>
-          <option value="PAID">Paid</option>
-          <option value="OVERDUE">Overdue</option>
-          <option value="CANCELLED">Cancelled</option>
-        </Select>
+      <div className="mb-3 space-y-2">
+        <Combobox
+          value={projectId || null}
+          onChange={(v) => setQ("project_id", v == null ? "" : String(v))}
+          options={(projects?.items || []).map((p) => ({
+            value: p.id,
+            label: p.name,
+            hint: p.company_name ? `${p.code} · ${p.company_name}` : p.code,
+          }))}
+          placeholder="Semua Proyek (cari nama / kode / perusahaan)"
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <Select value={type} onChange={(e) => setQ("type", e.target.value)}>
+            <option value="">Semua Tipe</option>
+            <option value="OUT">Piutang (uang akan masuk)</option>
+            <option value="IN">Hutang (uang akan keluar)</option>
+          </Select>
+          <Select value={status} onChange={(e) => setQ("status", e.target.value)}>
+            <option value="">Semua Status</option>
+            <option value="DRAFT">Draft</option>
+            <option value="ISSUED">Issued</option>
+            <option value="PARTIALLY_PAID">Partially Paid</option>
+            <option value="PAID">Paid</option>
+            <option value="OVERDUE">Overdue</option>
+            <option value="CANCELLED">Cancelled</option>
+          </Select>
+        </div>
       </div>
 
       {isLoading ? (

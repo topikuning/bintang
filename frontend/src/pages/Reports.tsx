@@ -4,7 +4,8 @@ import { api } from "@/lib/api";
 import PageHeader from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Field, Input, Select } from "@/components/ui/Input";
+import { Field, Input } from "@/components/ui/Input";
+import Combobox from "@/components/ui/Combobox";
 import { useAuthStore } from "@/store/auth";
 import type { Page, Project } from "@/types";
 import { Download, Loader2 } from "lucide-react";
@@ -83,20 +84,22 @@ export default function ReportsPage() {
     <div>
       <PageHeader back title="Laporan" subtitle="Ekspor PDF atau Excel" />
 
-      <Card className="mb-3">
+      <Card className="mb-3 space-y-2">
+        <Field label="Proyek">
+          <Combobox
+            value={filters.project_id || null}
+            onChange={(v) =>
+              setFilters({ ...filters, project_id: v == null ? undefined : String(v) })
+            }
+            options={(projectsQ.data?.items || []).map((p) => ({
+              value: p.id,
+              label: p.name,
+              hint: p.company_name ? `${p.code} · ${p.company_name}` : p.code,
+            }))}
+            placeholder="Semua (cari nama / kode / perusahaan)"
+          />
+        </Field>
         <div className="grid grid-cols-2 gap-2">
-          <Field label="Proyek">
-            <Select
-              value={filters.project_id || ""}
-              onChange={(e) => setFilters({ ...filters, project_id: e.target.value })}
-            >
-              <option value="">Semua</option>
-              {projectsQ.data?.items.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </Select>
-          </Field>
-          <div />
           <Field label="Dari Tanggal">
             <Input
               type="date"

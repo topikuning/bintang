@@ -91,6 +91,9 @@ class ProjectUpdate(BaseModel):
 
 class ProjectOut(ProjectBase):
     id: int
+    # Diisi dari relasi Project.company (selectinload di endpoint).
+    # Membantu UI menampilkan dan mencari proyek berdasarkan perusahaan.
+    company_name: str | None = None
 
     class Config:
         from_attributes = True
