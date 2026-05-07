@@ -99,6 +99,25 @@ async def _resolve_company(db: AsyncSession, project_id: int | None) -> Company 
     return res.scalar_one_or_none()
 
 
+_REPORT_PAGE_CSS_TEMPLATE = """
+@page {{
+  size: A4 {orientation};
+  margin: 14mm 12mm 16mm 12mm;
+  @bottom-left {{
+    content: "Dokumen rahasia. Untuk penggunaan internal & pihak yang berwenang.";
+    font-size: 7px;
+    color: #737373;
+    font-style: italic;
+  }}
+  @bottom-right {{
+    content: "Halaman " counter(page) " dari " counter(pages);
+    font-size: 7px;
+    color: #525252;
+  }}
+}}
+"""
+
+
 def _output(
     format: str,
     *,
@@ -112,13 +131,24 @@ def _output(
     cols: list[dict] | None = None,
     subtitle: str | None = None,
     landscape: bool = False,
+    summary: list[dict] | None = None,
+    scope_line: str | None = None,
+    detail_label: str | None = None,
+    footer_row: list | None = None,
+    doc_no: str | None = None,
 ) -> Response:
-    """Render laporan ke PDF/XLSX.
+    """Render laporan ke PDF/XLSX (enterprise / minimalist style).
 
-    `cols` adalah list paralel dgn `headers`; tiap dict bisa berisi:
-      - "align": "left" | "right" | "center" | "num"
-      - "width": CSS width (mis. "70px", "10%")
-    `landscape=True` membuat halaman A4 landscape (utk tabel banyak kolom).
+    Parameter:
+      cols        list paralel dgn headers; {"align": "...", "width": "..."}.
+      subtitle    teks subjudul opsional.
+      landscape   True utk A4 landscape (default portrait).
+      summary     list[{"label","value","sub"}] -- executive summary cards
+                  di atas tabel detail.
+      scope_line  satu baris ringkasan periode/scope di bawah judul.
+      detail_label  judul section tabel utama (default "Detail").
+      footer_row  list cell utk tfoot tabel (Total row di tabel itu sendiri).
+      doc_no      nomor referensi dokumen utk header kanan-atas.
     """
     if format == "xlsx":
         data = build_xlsx(title, headers, rows, filters=filters, totals=totals)
@@ -128,18 +158,22 @@ def _output(
             headers={"Content-Disposition": f'attachment; filename="{title}.xlsx"'},
         )
     base_css = (Path(__file__).parent.parent.parent / "services/pdf/templates/_base.css").read_text(encoding="utf-8")
-    if landscape:
-        # Override @page utk halaman ini saja; aturan terakhir menang di WeasyPrint.
-        base_css = base_css + "\n@page { size: A4 landscape; margin: 12mm 12mm 14mm 12mm; }\n"
+    # Override @page utk laporan saja (page-numbering + confidential footer).
+    base_css += _REPORT_PAGE_CSS_TEMPLATE.format(
+        orientation="landscape" if landscape else "portrait"
+    )
     logo_data = inline_image(company.logo_url) if company else None
     html = render_html(
         "report.html",
         title=title, subtitle=subtitle,
         headers=headers, rows=rows, cols=cols or [],
         filters=filters, totals=totals,
+        summary=summary or [], scope_line=scope_line,
+        detail_label=detail_label, footer_row=footer_row,
+        doc_no=doc_no,
         company=company, app_name="Bintang",
         logo_data=logo_data,
-        printed_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+        printed_at=datetime.now().strftime("%d %b %Y, %H:%M"),
         printed_by=printed_by,
         base_css=base_css,
     )
@@ -182,42 +216,64 @@ async def cashflow(
     proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
     headers = ["Tanggal", "Proyek", "Tipe", "Pihak", "Deskripsi", "Masuk (Rp)", "Keluar (Rp)"]
     cols = [
-        {"align": "center", "width": "60px"},
+        {"align": "center", "width": "62px"},
         {"align": "left",   "width": "18%"},
         {"align": "center", "width": "55px"},
         {"align": "left",   "width": "18%"},
         {"align": "left"},
-        {"align": "num",    "width": "85px"},
-        {"align": "num",    "width": "85px"},
+        {"align": "num",    "width": "92px"},
+        {"align": "num",    "width": "92px"},
     ]
     rows: list[list] = []
     sum_in = Decimal("0")
     sum_out = Decimal("0")
+    n_in = n_out = 0
     for t in txs:
         proj_name = proj_map.get(t.project_id).name if proj_map.get(t.project_id) else "-"
-        if t.type == TxnType.IN:
-            sum_in += Decimal(t.amount)
+        # Defensive: terima TxnType enum maupun string mentah dari DB.
+        is_in = (t.type == TxnType.IN) or (getattr(t.type, "value", t.type) == "IN")
+        if is_in:
+            sum_in += Decimal(t.amount or 0)
+            n_in += 1
             rows.append([t.tx_date.isoformat(), proj_name, "MASUK",
                          t.party_name or "-", t.description or "-", _fmt_idr(t.amount), ""])
         else:
-            sum_out += Decimal(t.amount)
+            sum_out += Decimal(t.amount or 0)
+            n_out += 1
             rows.append([t.tx_date.isoformat(), proj_name, "KELUAR",
                          t.party_name or "-", t.description or "-", "", _fmt_idr(t.amount)])
 
-    totals = {
-        "Total Masuk": _fmt_idr(sum_in),
-        "Total Keluar": _fmt_idr(sum_out),
-        "Saldo": _fmt_idr(sum_in - sum_out),
-    }
+    saldo = sum_in - sum_out
+    summary = [
+        {"label": "Total Pemasukan", "value": f"Rp {_fmt_idr(sum_in)}", "sub": f"{n_in} transaksi"},
+        {"label": "Total Pengeluaran", "value": f"Rp {_fmt_idr(sum_out)}", "sub": f"{n_out} transaksi"},
+        {"label": "Saldo Bersih", "value": f"Rp {_fmt_idr(saldo)}",
+         "sub": "Surplus" if saldo >= 0 else "Defisit"},
+        {"label": "Total Transaksi", "value": str(n_in + n_out), "sub": "Tervalidasi"},
+    ]
+    proj_label = (proj_map.get(project_id).name
+                  if project_id and proj_map.get(project_id) else "Semua proyek")
+    period_label = f"{date_from or 'awal'} s/d {date_to or 'sekarang'}"
+    scope_line = f"Periode {period_label} · {proj_label} · Hanya transaksi terverifikasi"
     filters = {
-        "Periode": f"{date_from or '-'} s/d {date_to or '-'}",
-        "Proyek": proj_map.get(project_id).name if project_id and proj_map.get(project_id) else "Semua",
+        "Periode": period_label,
+        "Proyek": proj_label,
+        "Status": "VERIFIED (terverifikasi)",
     }
+    footer_row = [
+        "TOTAL", "", "", "", "",
+        _fmt_idr(sum_in), _fmt_idr(sum_out),
+    ]
     company = await _resolve_company(db, project_id)
     title = "Laporan Arus Kas"
-    return _output(format, title=title, headers=headers, rows=rows, cols=cols,
-                   filters=filters, totals=totals, company=company,
-                   printed_by=user.name, landscape=True)
+    return _output(
+        format, title=title, headers=headers, rows=rows, cols=cols,
+        filters=filters, totals={}, company=company,
+        printed_by=user.name, landscape=True,
+        summary=summary, scope_line=scope_line,
+        detail_label="Detail Transaksi", footer_row=footer_row,
+        doc_no=f"AKAS-{datetime.now().strftime('%Y%m%d%H%M')}",
+    )
 
 
 # ---------- Transactions IN/OUT ----------
@@ -256,18 +312,21 @@ async def report_transactions(
     cat_map = {c.id: c for c in (await db.execute(select(Category))).scalars().all()}
     headers = ["Tanggal", "Proyek", "Kategori", "Pihak", "Metode", "Status", "Nominal (Rp)"]
     cols = [
-        {"align": "center", "width": "60px"},
+        {"align": "center", "width": "62px"},
         {"align": "left",   "width": "18%"},
         {"align": "left",   "width": "13%"},
         {"align": "left"},
-        {"align": "center", "width": "65px"},
-        {"align": "center", "width": "70px"},
-        {"align": "num",    "width": "95px"},
+        {"align": "center", "width": "68px"},
+        {"align": "center", "width": "72px"},
+        {"align": "num",    "width": "100px"},
     ]
     rows: list[list] = []
     total = Decimal("0")
+    n_verified = 0
     for t in txs:
-        total += Decimal(t.amount)
+        total += Decimal(t.amount or 0)
+        if t.status == TxnStatus.VERIFIED:
+            n_verified += 1
         rows.append([
             t.tx_date.isoformat(),
             proj_map.get(t.project_id).name if proj_map.get(t.project_id) else "-",
@@ -277,18 +336,38 @@ async def report_transactions(
             t.status.value,
             _fmt_idr(t.amount),
         ])
-    totals = {"Total": _fmt_idr(total), "Jumlah Transaksi": str(len(txs))}
+    avg = (total / len(txs)) if txs else Decimal("0")
+    arah_label = "Pemasukan" if type == TxnType.IN else "Pengeluaran"
+    summary = [
+        {"label": f"Total {arah_label}", "value": f"Rp {_fmt_idr(total)}",
+         "sub": f"{len(txs)} transaksi"},
+        {"label": "Rata-rata / Transaksi", "value": f"Rp {_fmt_idr(avg)}", "sub": ""},
+        {"label": "Status Tervalidasi", "value": str(n_verified),
+         "sub": f"dari {len(txs)} transaksi"},
+        {"label": "Periode", "value": str((date_to or date_from or "—")),
+         "sub": f"sejak {date_from or 'awal'}" if date_from else "tanpa batas"},
+    ]
+    proj_label = (proj_map.get(project_id).name
+                  if project_id and proj_map.get(project_id) else "Semua proyek")
+    period_label = f"{date_from or 'awal'} s/d {date_to or 'sekarang'}"
+    scope_line = f"Periode {period_label} · {proj_label} · {arah_label}"
     filters = {
-        "Tipe": type.value,
-        "Periode": f"{date_from or '-'} s/d {date_to or '-'}",
-        "Proyek": proj_map.get(project_id).name if project_id and proj_map.get(project_id) else "Semua",
+        "Arah Kas": f"{type.value} ({arah_label})",
+        "Periode": period_label,
+        "Proyek": proj_label,
         "Status": status.value if status else "Semua",
     }
+    footer_row = ["TOTAL", "", "", "", "", "", _fmt_idr(total)]
     company = await _resolve_company(db, project_id)
     title = f"Laporan Transaksi {'Masuk' if type == TxnType.IN else 'Keluar'}"
-    return _output(format, title=title, headers=headers, rows=rows, cols=cols,
-                   filters=filters, totals=totals, company=company,
-                   printed_by=user.name, landscape=True)
+    return _output(
+        format, title=title, headers=headers, rows=rows, cols=cols,
+        filters=filters, totals={}, company=company,
+        printed_by=user.name, landscape=True,
+        summary=summary, scope_line=scope_line,
+        detail_label="Detail Transaksi", footer_row=footer_row,
+        doc_no=f"TXN-{type.value}-{datetime.now().strftime('%Y%m%d%H%M')}",
+    )
 
 
 # ---------- Invoices ----------
@@ -323,35 +402,59 @@ async def report_invoices(
     proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
     headers = ["No Invoice", "Tanggal", "Jatuh Tempo", "Proyek", "Pihak", "Total (Rp)", "Status"]
     cols = [
-        {"align": "left",   "width": "120px"},
-        {"align": "center", "width": "60px"},
-        {"align": "center", "width": "65px"},
+        {"align": "left",   "width": "130px"},
+        {"align": "center", "width": "62px"},
+        {"align": "center", "width": "68px"},
         {"align": "left",   "width": "18%"},
         {"align": "left"},
-        {"align": "num",    "width": "95px"},
+        {"align": "num",    "width": "100px"},
         {"align": "center", "width": "75px"},
     ]
     rows: list[list] = []
     total = Decimal("0")
+    n_paid = n_open = 0
     for inv in rows_inv:
         total += Decimal(inv.total or 0)
+        if inv.status == InvoiceStatus.PAID:
+            n_paid += 1
+        elif inv.status in (InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE):
+            n_open += 1
         rows.append([
             inv.number, inv.invoice_date.isoformat(), inv.due_date.isoformat() if inv.due_date else "-",
             proj_map.get(inv.project_id).name if proj_map.get(inv.project_id) else "-",
             inv.party_name or "-", _fmt_idr(inv.total), inv.status.value,
         ])
-    totals = {"Total Nilai": _fmt_idr(total), "Jumlah Invoice": str(len(rows_inv))}
+    arah = "Hutang" if type == InvoiceType.IN else "Piutang"
+    summary = [
+        {"label": f"Total Nilai {arah}", "value": f"Rp {_fmt_idr(total)}",
+         "sub": f"{len(rows_inv)} invoice"},
+        {"label": "Sudah Lunas", "value": str(n_paid),
+         "sub": f"{(n_paid/len(rows_inv)*100 if rows_inv else 0):.0f}% dari total"},
+        {"label": "Belum Tertutup", "value": str(n_open), "sub": "Issued / Partial / Overdue"},
+        {"label": "Periode", "value": str((date_to or date_from or "—")),
+         "sub": f"sejak {date_from or 'awal'}" if date_from else "tanpa batas"},
+    ]
+    proj_label = (proj_map.get(project_id).name
+                  if project_id and proj_map.get(project_id) else "Semua proyek")
+    period_label = f"{date_from or 'awal'} s/d {date_to or 'sekarang'}"
+    scope_line = f"Periode {period_label} · {proj_label} · {arah}"
     filters = {
-        "Tipe": type.value,
-        "Periode": f"{date_from or '-'} s/d {date_to or '-'}",
-        "Proyek": proj_map.get(project_id).name if project_id and proj_map.get(project_id) else "Semua",
+        "Tipe Invoice": f"{type.value} ({arah})",
+        "Periode": period_label,
+        "Proyek": proj_label,
         "Status": status.value if status else "Semua",
     }
+    footer_row = ["TOTAL", "", "", "", "", _fmt_idr(total), ""]
     company = await _resolve_company(db, project_id)
-    title = f"Laporan Invoice {'Masuk' if type == InvoiceType.IN else 'Keluar'}"
-    return _output(format, title=title, headers=headers, rows=rows, cols=cols,
-                   filters=filters, totals=totals, company=company,
-                   printed_by=user.name, landscape=True)
+    title = f"Laporan Invoice {'Masuk (Hutang)' if type == InvoiceType.IN else 'Keluar (Piutang)'}"
+    return _output(
+        format, title=title, headers=headers, rows=rows, cols=cols,
+        filters=filters, totals={}, company=company,
+        printed_by=user.name, landscape=True,
+        summary=summary, scope_line=scope_line,
+        detail_label="Daftar Invoice", footer_row=footer_row,
+        doc_no=f"INV-{type.value}-{datetime.now().strftime('%Y%m%d%H%M')}",
+    )
 
 
 # ---------- Hutang/Piutang (open invoices) ----------
@@ -380,19 +483,20 @@ async def report_debts(
     headers = ["No Invoice", "Tipe", "Jatuh Tempo", "Proyek", "Pihak",
                "Total (Rp)", "Dibayar (Rp)", "Sisa (Rp)", "Status"]
     cols = [
-        {"align": "left",   "width": "105px"},
-        {"align": "center", "width": "55px"},
-        {"align": "center", "width": "65px"},
+        {"align": "left",   "width": "115px"},
+        {"align": "center", "width": "58px"},
+        {"align": "center", "width": "68px"},
         {"align": "left",   "width": "14%"},
         {"align": "left"},
-        {"align": "num",    "width": "82px"},
-        {"align": "num",    "width": "82px"},
-        {"align": "num",    "width": "82px"},
-        {"align": "center", "width": "70px"},
+        {"align": "num",    "width": "85px"},
+        {"align": "num",    "width": "85px"},
+        {"align": "num",    "width": "85px"},
+        {"align": "center", "width": "72px"},
     ]
     rows: list[list] = []
-    sum_remaining_in = Decimal("0")
-    sum_remaining_out = Decimal("0")
+    sum_total_in = sum_total_out = Decimal("0")
+    sum_paid_in = sum_paid_out = Decimal("0")
+    sum_remaining_in = sum_remaining_out = Decimal("0")
     for inv in invs:
         paid_q = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
             Transaction.invoice_id == inv.id,
@@ -400,10 +504,15 @@ async def report_debts(
             Transaction.deleted_at.is_(None),
         )
         paid = Decimal((await db.execute(paid_q)).scalar_one() or 0)
-        remaining = max(Decimal(inv.total or 0) - paid, Decimal("0"))
+        total_inv = Decimal(inv.total or 0)
+        remaining = max(total_inv - paid, Decimal("0"))
         if inv.type == InvoiceType.IN:
+            sum_total_in += total_inv
+            sum_paid_in += paid
             sum_remaining_in += remaining
         else:
+            sum_total_out += total_inv
+            sum_paid_out += paid
             sum_remaining_out += remaining
         rows.append([
             inv.number, "Hutang" if inv.type == InvoiceType.IN else "Piutang",
@@ -412,14 +521,35 @@ async def report_debts(
             inv.party_name or "-",
             _fmt_idr(inv.total), _fmt_idr(paid), _fmt_idr(remaining), inv.status.value,
         ])
-    totals = {
-        "Total Hutang (sisa)": _fmt_idr(sum_remaining_in),
-        "Total Piutang (sisa)": _fmt_idr(sum_remaining_out),
-    }
+    summary = [
+        {"label": "Sisa Hutang", "value": f"Rp {_fmt_idr(sum_remaining_in)}",
+         "sub": f"dari Rp {_fmt_idr(sum_total_in)} ({len([i for i in invs if i.type == InvoiceType.IN])} invoice)"},
+        {"label": "Sisa Piutang", "value": f"Rp {_fmt_idr(sum_remaining_out)}",
+         "sub": f"dari Rp {_fmt_idr(sum_total_out)} ({len([i for i in invs if i.type == InvoiceType.OUT])} invoice)"},
+        {"label": "Net Position", "value": f"Rp {_fmt_idr(sum_remaining_out - sum_remaining_in)}",
+         "sub": "Piutang minus Hutang"},
+        {"label": "Total Invoice Aktif", "value": str(len(invs)),
+         "sub": "Issued / Partial / Overdue"},
+    ]
+    proj_label = (proj_map.get(project_id).name
+                  if project_id and proj_map.get(project_id) else "Semua proyek")
+    scope_line = f"{proj_label} · Per tanggal {datetime.now().strftime('%d %b %Y')}"
+    footer_row = [
+        "TOTAL", "", "", "", "",
+        _fmt_idr(sum_total_in + sum_total_out),
+        _fmt_idr(sum_paid_in + sum_paid_out),
+        _fmt_idr(sum_remaining_in + sum_remaining_out),
+        "",
+    ]
     company = await _resolve_company(db, project_id)
-    return _output(format, title="Laporan Hutang & Piutang", headers=headers, rows=rows, cols=cols,
-                   filters={"Proyek": proj_map.get(project_id).name if project_id and proj_map.get(project_id) else "Semua"},
-                   totals=totals, company=company, printed_by=user.name, landscape=True)
+    return _output(
+        format, title="Laporan Hutang & Piutang", headers=headers, rows=rows, cols=cols,
+        filters={"Proyek": proj_label, "Status": "Aktif (Issued, Partial, Overdue)"},
+        totals={}, company=company, printed_by=user.name, landscape=True,
+        summary=summary, scope_line=scope_line,
+        detail_label="Daftar Invoice Aktif", footer_row=footer_row,
+        doc_no=f"AGE-{datetime.now().strftime('%Y%m%d%H%M')}",
+    )
 
 
 # ---------- Budget control ----------
@@ -441,18 +571,19 @@ async def report_budget(
     headers = ["Kode", "Proyek", "Perusahaan", "Budget (Rp)", "Pemakaian (Rp)",
                "Pakai", "Sisa (Rp)", "Status"]
     cols = [
-        {"align": "center", "width": "70px"},
+        {"align": "center", "width": "72px"},
         {"align": "left",   "width": "20%"},
         {"align": "left",   "width": "18%"},
-        {"align": "num",    "width": "90px"},
-        {"align": "num",    "width": "90px"},
-        {"align": "num",    "width": "55px"},
-        {"align": "num",    "width": "90px"},
-        {"align": "center", "width": "80px"},
+        {"align": "num",    "width": "95px"},
+        {"align": "num",    "width": "95px"},
+        {"align": "num",    "width": "58px"},
+        {"align": "num",    "width": "95px"},
+        {"align": "center", "width": "85px"},
     ]
     rows: list[list] = []
     total_budget = Decimal("0")
     total_spent = Decimal("0")
+    n_aman = n_warn = n_over = n_no = 0
     for p in projects:
         out_q = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
             Transaction.project_id == p.id,
@@ -467,28 +598,44 @@ async def report_budget(
         total_budget += budget
         total_spent += spent
         if budget <= 0:
-            status = "no_budget"
+            status = "Tanpa Budget"; n_no += 1
         elif pct <= 80:
-            status = "aman"
+            status = "Aman"; n_aman += 1
         elif pct <= 100:
-            status = "mendekati_batas"
+            status = "Waspada"; n_warn += 1
         else:
-            status = "overbudget"
+            status = "Overbudget"; n_over += 1
         rows.append([
             p.code, p.name,
             company_map.get(p.company_id).name if company_map.get(p.company_id) else "-",
             _fmt_idr(budget), _fmt_idr(spent), f"{pct:.1f}%",
             _fmt_idr(remaining), status,
         ])
-    totals = {
-        "Total Budget": _fmt_idr(total_budget),
-        "Total Pemakaian": _fmt_idr(total_spent),
-        "Total Sisa": _fmt_idr(total_budget - total_spent),
-    }
+    overall_pct = (total_spent / total_budget * 100) if total_budget > 0 else Decimal("0")
+    summary = [
+        {"label": "Total Anggaran", "value": f"Rp {_fmt_idr(total_budget)}",
+         "sub": f"{len(projects)} proyek"},
+        {"label": "Pemakaian", "value": f"Rp {_fmt_idr(total_spent)}",
+         "sub": f"{overall_pct:.1f}% dari anggaran"},
+        {"label": "Sisa Anggaran", "value": f"Rp {_fmt_idr(total_budget - total_spent)}", "sub": ""},
+        {"label": "Status Risiko", "value": f"{n_over} overbudget",
+         "sub": f"{n_warn} waspada · {n_aman} aman · {n_no} tanpa budget"},
+    ]
+    scope_line = f"Snapshot per {datetime.now().strftime('%d %b %Y')} · Realisasi VERIFIED saja"
     company = await _resolve_company(db, None)
-    return _output(format, title="Laporan Budget Control", headers=headers, rows=rows, cols=cols,
-                   filters={}, totals=totals, company=company,
-                   printed_by=user.name, landscape=True)
+    return _output(
+        format, title="Laporan Budget Control", headers=headers, rows=rows, cols=cols,
+        filters={}, totals={}, company=company, printed_by=user.name, landscape=True,
+        summary=summary, scope_line=scope_line,
+        detail_label="Detail per Proyek",
+        footer_row=[
+            "TOTAL", "", "",
+            _fmt_idr(total_budget), _fmt_idr(total_spent),
+            f"{overall_pct:.1f}%",
+            _fmt_idr(total_budget - total_spent), "",
+        ],
+        doc_no=f"BGT-{datetime.now().strftime('%Y%m%d%H%M')}",
+    )
 
 
 # ---------- Purchase Orders ----------
@@ -521,31 +668,54 @@ async def report_pos(
     proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
     headers = ["No PO", "Tanggal", "Proyek", "Vendor", "Total (Rp)", "Status"]
     cols = [
-        {"align": "left",   "width": "120px"},
-        {"align": "center", "width": "65px"},
+        {"align": "left",   "width": "130px"},
+        {"align": "center", "width": "68px"},
         {"align": "left",   "width": "20%"},
         {"align": "left"},
-        {"align": "num",    "width": "100px"},
-        {"align": "center", "width": "85px"},
+        {"align": "num",    "width": "105px"},
+        {"align": "center", "width": "90px"},
     ]
     rows: list[list] = []
     total = Decimal("0")
+    n_approved = n_open = 0
     for po in pos:
         total += Decimal(po.total or 0)
+        if po.status == POStatus.APPROVED:
+            n_approved += 1
+        elif po.status in (POStatus.ISSUED, POStatus.DRAFT):
+            n_open += 1
         rows.append([
             po.number, po.po_date.isoformat(),
             proj_map.get(po.project_id).name if proj_map.get(po.project_id) else "-",
             po.vendor_name or "-", _fmt_idr(po.total), po.status.value,
         ])
+    summary = [
+        {"label": "Total Nilai PO", "value": f"Rp {_fmt_idr(total)}",
+         "sub": f"{len(pos)} dokumen"},
+        {"label": "Disetujui", "value": str(n_approved),
+         "sub": f"{(n_approved/len(pos)*100 if pos else 0):.0f}% dari total"},
+        {"label": "Belum Diproses", "value": str(n_open), "sub": "Draft / Issued"},
+        {"label": "Periode", "value": str((date_to or date_from or "—")),
+         "sub": f"sejak {date_from or 'awal'}" if date_from else "tanpa batas"},
+    ]
+    proj_label = (proj_map.get(project_id).name
+                  if project_id and proj_map.get(project_id) else "Semua proyek")
+    period_label = f"{date_from or 'awal'} s/d {date_to or 'sekarang'}"
+    scope_line = f"Periode {period_label} · {proj_label}"
     company = await _resolve_company(db, project_id)
-    return _output(format, title="Laporan Purchase Order", headers=headers, rows=rows, cols=cols,
-                   filters={
-                       "Periode": f"{date_from or '-'} s/d {date_to or '-'}",
-                       "Proyek": proj_map.get(project_id).name if project_id and proj_map.get(project_id) else "Semua",
-                       "Status": status.value if status else "Semua",
-                   },
-                   totals={"Total Nilai PO": _fmt_idr(total), "Jumlah PO": str(len(pos))},
-                   company=company, printed_by=user.name, landscape=True)
+    return _output(
+        format, title="Laporan Purchase Order", headers=headers, rows=rows, cols=cols,
+        filters={
+            "Periode": period_label,
+            "Proyek": proj_label,
+            "Status": status.value if status else "Semua",
+        },
+        totals={}, company=company, printed_by=user.name, landscape=True,
+        summary=summary, scope_line=scope_line,
+        detail_label="Daftar Purchase Order",
+        footer_row=["TOTAL", "", "", "", _fmt_idr(total), ""],
+        doc_no=f"PO-RPT-{datetime.now().strftime('%Y%m%d%H%M')}",
+    )
 
 
 # ---------- Audit log ----------
@@ -576,25 +746,43 @@ async def report_audit(
     user_map = {u.id: u for u in (await db.execute(select(User))).scalars().all()}
     headers = ["Waktu", "User", "Entity", "ID", "Aksi", "Catatan"]
     cols = [
-        {"align": "center", "width": "110px"},
+        {"align": "center", "width": "115px"},
         {"align": "left",   "width": "18%"},
         {"align": "left",   "width": "13%"},
         {"align": "center", "width": "55px"},
-        {"align": "center", "width": "75px"},
+        {"align": "center", "width": "78px"},
         {"align": "left"},
     ]
     rows: list[list] = []
+    actions_count: dict[str, int] = {}
     for l in logs:
+        actions_count[l.action.value] = actions_count.get(l.action.value, 0) + 1
         rows.append([
             l.created_at.strftime("%Y-%m-%d %H:%M:%S"),
             user_map.get(l.user_id).name if user_map.get(l.user_id) else "-",
             l.entity, str(l.entity_id), l.action.value, l.note or "-",
         ])
+    summary = [
+        {"label": "Total Entri", "value": str(len(rows)),
+         "sub": "max 2.000 entri terbaru"},
+        {"label": "User Unik", "value": str(len({l.user_id for l in logs})), "sub": ""},
+        {"label": "Entity Unik", "value": str(len({l.entity for l in logs})), "sub": ""},
+        {"label": "Aksi Terbanyak",
+         "value": (max(actions_count, key=actions_count.get) if actions_count else "—"),
+         "sub": (f"{max(actions_count.values())}× tercatat" if actions_count else "")},
+    ]
+    period_label = f"{date_from or 'awal'} s/d {date_to or 'sekarang'}"
+    scope_line = f"Periode {period_label}"
     company = await _resolve_company(db, None)
-    return _output(format, title="Laporan Audit Log", headers=headers, rows=rows, cols=cols,
-                   filters={
-                       "Periode": f"{date_from or '-'} s/d {date_to or '-'}",
-                       "Entity": entity or "Semua",
-                   },
-                   totals={"Jumlah Entri": str(len(rows))},
-                   company=company, printed_by=admin.name)
+    return _output(
+        format, title="Laporan Audit Log", headers=headers, rows=rows, cols=cols,
+        filters={
+            "Periode": period_label,
+            "Entity": entity or "Semua",
+            "User": user_map.get(user_id).name if user_id and user_map.get(user_id) else "Semua",
+        },
+        totals={}, company=company, printed_by=admin.name,
+        summary=summary, scope_line=scope_line,
+        detail_label="Riwayat Aktivitas",
+        doc_no=f"AUD-{datetime.now().strftime('%Y%m%d%H%M')}",
+    )

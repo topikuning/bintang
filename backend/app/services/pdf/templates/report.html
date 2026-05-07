@@ -7,43 +7,72 @@
 </head>
 <body>
 
-<!-- KOP / LETTERHEAD -->
-<div class="kop row">
-  <div>
+<!-- LETTERHEAD -->
+<div class="rpt-letterhead">
+  <div class="left">
     {% if logo_data %}<img src="{{ logo_data }}" alt="logo">{% endif %}
-  </div>
-  <div style="flex:1; padding-left:10px;">
-    <div class="brand">{{ company.name if company else app_name }}</div>
-    {% if company %}
-      {% if company.address %}<div class="muted">{{ company.address }}</div>{% endif %}
-      <div class="muted">
-        {% if company.phone %}Telp: {{ company.phone }}{% endif %}
+    <div>
+      <div class="company-name">{{ company.name if company else app_name }}</div>
+      {% if company and company.address %}
+      <div class="company-meta">{{ company.address }}</div>
+      {% endif %}
+      {% if company %}
+      <div class="company-meta">
+        {% if company.phone %}{{ company.phone }}{% endif %}
         {% if company.email %} &nbsp;&middot;&nbsp; {{ company.email }}{% endif %}
-        {% if company.npwp %} &nbsp;&middot;&nbsp; NPWP: {{ company.npwp }}{% endif %}
+        {% if company.npwp %} &nbsp;&middot;&nbsp; NPWP {{ company.npwp }}{% endif %}
       </div>
-    {% endif %}
+      {% endif %}
+    </div>
   </div>
   <div class="right">
-    <div class="muted small">Dicetak: {{ printed_at }}</div>
-    <div class="muted small">Oleh: {{ printed_by }}</div>
+    Tanggal cetak: <b>{{ printed_at }}</b><br>
+    Dicetak oleh: <b>{{ printed_by }}</b><br>
+    Referensi: <b>{{ doc_no or '—' }}</b>
   </div>
 </div>
 
-<!-- TITLE BAR -->
-<div class="title-bar">
-  <div class="line1">{{ title|upper }}</div>
-  {% if subtitle %}<div class="line2">{{ subtitle }}</div>{% endif %}
+<!-- TITLE -->
+<div class="rpt-title">
+  <h1>{{ title }}</h1>
+  {% if scope_line %}<div class="scope">{{ scope_line }}</div>{% endif %}
 </div>
 
-<!-- FILTERS -->
-{% if filters %}
-<div class="filter-strip">
-  {% for k, v in filters.items() %}<b>{{ k }}:</b> {{ v }}{% if not loop.last %} &nbsp;&middot;&nbsp; {% endif %}{% endfor %}
+<!-- EXECUTIVE SUMMARY -->
+{% if summary %}
+<div class="rpt-section">
+  <h2>Ringkasan Eksekutif</h2>
+</div>
+<div class="exec-cards">
+  {% for card in summary %}
+  <div class="exec-card">
+    <div class="label">{{ card.label }}</div>
+    <div class="value">{{ card.value }}</div>
+    {% if card.sub %}<div class="sub">{{ card.sub }}</div>{% endif %}
+  </div>
+  {% endfor %}
 </div>
 {% endif %}
 
-<!-- DATA TABLE -->
-<table class="report">
+<!-- PARAMETER (filter laporan) -->
+{% if filters %}
+<div class="rpt-section">
+  <h2>Parameter Laporan</h2>
+</div>
+<table class="rpt-params">
+  {% for k, v in filters.items() %}
+  <tr><td class="k">{{ k }}</td><td>{{ v }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<!-- DETAIL -->
+<div class="rpt-section">
+  <h2>{{ detail_label or 'Detail' }}</h2>
+  {% if rows %}<span class="caption" style="float:right;">{{ rows|length }} baris</span>{% endif %}
+</div>
+
+<table class="rpt-table">
   <thead>
     <tr>
       {% for h in headers %}
@@ -58,25 +87,41 @@
     <tr>
       {% for cell in row %}
         {%- set col = cols[loop.index0] if cols and cols|length > loop.index0 else {} -%}
-        <td class="{{ col.align or 'left' }}">{{ cell }}</td>
+        <td class="{{ col.align or 'left' }}{% if cell == '' or cell is none %} empty-cell{% endif %}">{% if cell == '' or cell is none %}&mdash;{% else %}{{ cell }}{% endif %}</td>
       {% endfor %}
     </tr>
   {% else %}
-    <tr><td colspan="{{ headers|length }}" class="center muted">Tidak ada data.</td></tr>
+    <tr><td colspan="{{ headers|length }}" class="rpt-empty">Tidak ada data dalam periode &amp; kriteria yang dipilih.</td></tr>
   {% endfor %}
   </tbody>
+  {% if footer_row %}
+  <tfoot>
+    <tr>
+      {% for cell in footer_row %}
+        {%- set col = cols[loop.index0] if cols and cols|length > loop.index0 else {} -%}
+        <td class="{{ col.align or 'left' }}">{{ cell }}</td>
+      {% endfor %}
+    </tr>
+  </tfoot>
+  {% endif %}
 </table>
 
-{% if totals %}
-<table class="totals report-totals">
+<!-- TOTALS BLOCK (hanya kalau tidak pakai summary cards) -->
+{% if totals and not summary %}
+<div class="rpt-section" style="margin-top: 12px;">
+  <h2>Total</h2>
+</div>
+<table class="rpt-params">
   {% for k, v in totals.items() %}
-  <tr><td class="label">{{ k }}</td><td class="value">{{ v }}</td></tr>
+  <tr><td class="k">{{ k }}</td><td style="text-align:right; font-weight:700; font-variant-numeric: tabular-nums;">{{ v }}</td></tr>
   {% endfor %}
 </table>
 {% endif %}
 
-<div class="foot-note">
-  Dokumen diterbitkan oleh sistem {{ company.name if company else app_name }} &mdash; {{ printed_at }}.
+<!-- FOOTER (di body, di atas footer @page) -->
+<div class="rpt-footer">
+  <div class="conf">Dokumen ini disusun oleh sistem keuangan {{ company.name if company else app_name }}.</div>
+  <div>Validasi otentisitas: <b>{{ printed_at }}</b></div>
 </div>
 
 </body></html>

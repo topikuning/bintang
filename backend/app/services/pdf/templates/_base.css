@@ -236,70 +236,211 @@ table.legacy th { background: #f4f4f4; text-align: left; font-weight: 600; }
 .hr { border-top: 1px solid #d4d4d4; margin: 10px 0; }
 .title { font-size: 18px; font-weight: 700; letter-spacing: 1px; }
 
-/* ---- Laporan (ringkas, professional, header navy) ---- */
-table.report {
+/* =========================================================================
+   LAPORAN -- Enterprise / minimalist (SAP / NetSuite / Big-4 style)
+   Dirancang utk laporan keuangan: white-dominant, monochrome, thin
+   borders, strong typographic hierarchy, tabular numerics, no chrome.
+   ========================================================================= */
+
+/* Letterhead: logo + identitas perusahaan (kiri), metadata cetak (kanan).
+   Ditutup garis hitam tipis sebagai pemisah formal. */
+.rpt-letterhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 1.5px solid #0a0a0a;
+  padding-bottom: 6px;
+}
+.rpt-letterhead .left {
+  display: flex; gap: 10px; align-items: center;
+}
+.rpt-letterhead img { max-height: 38px; max-width: 90px; }
+.rpt-letterhead .company-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0a0a0a;
+  letter-spacing: 0.2px;
+}
+.rpt-letterhead .company-meta {
+  font-size: 8px;
+  color: #525252;
+  line-height: 1.45;
+}
+.rpt-letterhead .right {
+  text-align: right;
+  font-size: 8px;
+  color: #525252;
+  line-height: 1.55;
+}
+.rpt-letterhead .right b { color: #0a0a0a; font-weight: 700; }
+
+/* Title block */
+.rpt-title { margin-top: 14px; margin-bottom: 4px; }
+.rpt-title h1 {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #0a0a0a;
+  margin: 0;
+}
+.rpt-title .scope {
+  font-size: 9px;
+  color: #404040;
+  margin-top: 3px;
+  letter-spacing: 0.1px;
+}
+
+/* Section heading: garis bawah tipis + caption uppercase (Big-4 style). */
+.rpt-section {
+  margin-top: 16px;
+  margin-bottom: 6px;
+  border-bottom: 0.5px solid #d4d4d4;
+  padding-bottom: 3px;
+}
+.rpt-section h2 {
+  font-size: 8.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: #0a0a0a;
+  margin: 0;
+}
+.rpt-section .caption {
+  font-size: 7.5px;
+  color: #737373;
+  letter-spacing: 0.4px;
+}
+
+/* Executive summary cards di atas tabel detail. Minimal: white bg,
+   single border, label kecil uppercase, value besar tabular. */
+.exec-cards {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+.exec-card {
+  flex: 1;
+  border: 1px solid #d4d4d4;
+  padding: 7px 9px;
+  background: #fff;
+}
+.exec-card .label {
+  font-size: 7.2px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: #525252;
+}
+.exec-card .value {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0a0a0a;
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.exec-card .sub {
+  font-size: 7.5px;
+  color: #737373;
+  margin-top: 3px;
+  letter-spacing: 0.1px;
+}
+
+/* Parameter strip (filter laporan, key-value compact) */
+.rpt-params {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 8px;
-  border: 1px solid var(--border);
-  table-layout: fixed;
+  margin: 4px 0 6px;
+  font-size: 8.2px;
 }
-table.report th, table.report td {
-  border: 1px solid var(--border);
+.rpt-params td {
+  padding: 2px 8px 2px 0;
+  vertical-align: top;
+  color: #404040;
+}
+.rpt-params td.k {
+  font-weight: 700;
+  color: #0a0a0a;
+  width: 1%;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+
+/* Tabel laporan utama: thin gray borders, header light gray w/ rule,
+   tabular numerics, no row banding (or very subtle). Tfoot pakai
+   double-rule (audit standard). */
+table.rpt-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin-top: 4px;
+  font-size: 8.5px;
+  color: #1a1a1a;
+}
+table.rpt-table thead th {
+  background: #fafafa;
+  font-weight: 700;
+  font-size: 7.8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #0a0a0a;
+  text-align: center;
+  padding: 5px 5px;
+  border-top: 1px solid #0a0a0a;
+  border-bottom: 1px solid #0a0a0a;
+}
+table.rpt-table tbody td {
   padding: 3px 5px;
-  vertical-align: middle;
-  line-height: 1.25;
-  font-size: 8.8px;
+  border-bottom: 0.5px solid #ededed;
+  vertical-align: top;
+  line-height: 1.4;
   word-wrap: break-word;
   overflow-wrap: break-word;
 }
-table.report thead th {
-  background: var(--navy);
-  color: #fff;
-  font-weight: 700;
-  font-size: 8.6px;
-  letter-spacing: 0.3px;
-  text-align: center;
-  border-color: var(--navy);
+table.rpt-table tbody tr:last-child td {
+  border-bottom: 0.5px solid #d4d4d4;
+}
+table.rpt-table td.num,
+table.rpt-table th.num   { text-align: right; font-variant-numeric: tabular-nums; }
+table.rpt-table td.center,
+table.rpt-table th.center { text-align: center; }
+table.rpt-table td.left,
+table.rpt-table th.left   { text-align: left; }
+table.rpt-table td.muted  { color: #737373; }
+table.rpt-table td.empty-cell { color: #d4d4d4; text-align: right; }
+
+table.rpt-table tfoot td {
+  border-top: 1.2px solid #0a0a0a;
+  border-bottom: 2px double #0a0a0a;
   padding: 5px 5px;
-  text-transform: uppercase;
-}
-table.report tbody tr:nth-child(even) td { background: var(--row-alt); }
-table.report td.num,
-table.report th.num   { text-align: right; font-variant-numeric: tabular-nums; }
-table.report td.center,
-table.report th.center { text-align: center; }
-table.report td.left,
-table.report th.left   { text-align: left; }
-table.report td.bold   { font-weight: 700; }
-table.report td.muted  { color: var(--muted); }
-
-/* Filter strip (rangkuman parameter laporan) */
-.filter-strip {
-  background: var(--blue-soft);
-  border: 1px solid #dbeafe;
-  border-radius: 4px;
-  padding: 5px 8px;
-  margin-top: 6px;
+  font-weight: 700;
   font-size: 9px;
-  color: #1e3a8a;
-  line-height: 1.5;
+  background: #fafafa;
 }
-.filter-strip b { color: #0f172a; font-weight: 700; }
 
-/* Variant totals untuk laporan -- lebih compact */
-.totals.report-totals {
-  width: 280px;
-  margin-top: 10px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  overflow: hidden;
-}
-.totals.report-totals td {
-  padding: 5px 10px;
+/* No-data placeholder */
+.rpt-empty {
+  text-align: center;
+  font-style: italic;
+  color: #737373;
+  padding: 14px 0;
   font-size: 9px;
-  border-bottom: 1px solid #e2e8f0;
 }
-.totals.report-totals tr:last-child td { border-bottom: none; }
-.totals.report-totals td.label { color: var(--muted); }
-.totals.report-totals td.value { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Footer dokumen (notis confidential di kiri, halaman via @page) */
+.rpt-footer {
+  margin-top: 16px;
+  border-top: 0.5px solid #d4d4d4;
+  padding-top: 5px;
+  font-size: 7.5px;
+  color: #737373;
+  display: flex;
+  justify-content: space-between;
+  letter-spacing: 0.2px;
+}
+.rpt-footer .conf { font-style: italic; }
+
+/* Page-numbering & footer untuk laporan di-inject lewat _output() di
+   reports.py (override @page hanya saat render laporan, supaya tidak
+   mempengaruhi invoice/PO). */
