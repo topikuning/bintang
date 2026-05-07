@@ -73,6 +73,9 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "  /masuk <kode> <jumlah> <deskripsi>\n"
         "  Contoh: ```/keluar PRJ-001 5000000 Beli semen 50 sak```\n"
         "  Foto yang dikirim setelahnya jadi attachment otomatis.\n"
+        "\n*Lampirkan bukti ke transaksi yang sudah ada:*\n"
+        "  /buktitx <id> — buka jendela 5 menit utk attach foto/PDF\n"
+        "  Contoh: ```/buktitx 123``` lalu kirim foto/file.\n"
         "\n*Akun:*\n"
         "  /link <kode> — hubungkan akun web (kode 6 digit dari menu Pengaturan)\n"
         "  /unlink — putuskan akun\n"
@@ -343,6 +346,45 @@ async def cmd_masuk(db, user, chat_id, args, msg) -> str:
     return await _make_transaction(db, user, chat_id, args, TxnType.IN, msg)
 
 
+async def cmd_buktitx(db, user, chat_id, args, msg) -> str:
+    """Buka jendela attach untuk transaksi yang SUDAH ada.
+    Cara pakai: /buktitx <id transaksi>. Setelah itu, semua foto/file
+    yang dikirim dalam 5 menit akan di-lampirkan ke transaksi tsb.
+    """
+    if not user:
+        return "Akun belum ter-link."
+    if not args:
+        return (
+            "Cara pakai: ```/buktitx 123```\n"
+            "(_123_ = nomor/ID transaksi yang mau dilampiri bukti)"
+        )
+    try:
+        tid = int(args[0])
+    except ValueError:
+        return f"Nomor transaksi tidak valid: `{args[0]}`"
+    tx = await db.get(Transaction, tid)
+    if not tx or tx.deleted_at is not None:
+        return f"Transaksi #{tid} tidak ditemukan."
+    accessible = await _accessible_projects(db, user)
+    if tx.project_id not in {p.id for p in accessible}:
+        return "Kamu tidak punya akses ke transaksi ini."
+    proj = await db.get(Project, tx.project_id)
+    pa = WhatsAppPendingCommand(
+        chat_id=str(chat_id),
+        transaction_id=tid,
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=ATTACH_WINDOW_MINUTES),
+    )
+    db.add(pa)
+    sym = "−" if tx.type == TxnType.OUT else "+"
+    return (
+        f"📎 Siap menerima bukti untuk transaksi *#{tid}*\n"
+        f"`{proj.code if proj else '-'}` "
+        f"{sym}Rp {_fmt_idr(tx.amount)} — "
+        f"_{(tx.description or tx.party_name or '')[:60]}_\n"
+        f"Kirim foto / file (PDF) dalam *{ATTACH_WINDOW_MINUTES} menit* ke depan."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Photo handler
 # ---------------------------------------------------------------------------
@@ -377,8 +419,9 @@ async def handle_media(
     pending = (await db.execute(q)).scalar_one_or_none()
     if not pending:
         return (
-            "Foto diterima tapi belum ada transaksi yang menunggu lampiran.\n"
-            "Buat transaksi dulu lewat /keluar atau /masuk, lalu kirim foto."
+            "Lampiran diterima tapi belum ada transaksi yang menunggu.\n"
+            "Buat transaksi dulu (/keluar atau /masuk), atau buka jendela "
+            "lampiran utk transaksi yg sudah ada dgn /buktitx <id>."
         )
 
     content: bytes | None = None
@@ -440,6 +483,9 @@ REGISTRY: dict[str, CommandHandler] = {
     "out": cmd_keluar,
     "masuk": cmd_masuk,
     "in": cmd_masuk,
+    "buktitx": cmd_buktitx,
+    "bukti": cmd_buktitx,
+    "lampiran": cmd_buktitx,
 }
 
 

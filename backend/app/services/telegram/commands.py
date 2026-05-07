@@ -94,6 +94,9 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "  /masuk &lt;kode&gt; &lt;jumlah&gt; &lt;deskripsi&gt;\n"
         "  Contoh: <code>/keluar PRJ-001 5000000 Beli semen 50 sak</code>\n"
         "  Foto yang dikirim setelahnya jadi attachment otomatis.\n"
+        "\n<b>Lampirkan bukti ke transaksi yang sudah ada:</b>\n"
+        "  /buktitx &lt;id&gt; — buka jendela 5 menit utk attach foto/PDF\n"
+        "  Contoh: <code>/buktitx 123</code> lalu kirim foto/file.\n"
         "\n<b>Akun:</b>\n"
         "  /link &lt;kode&gt; — hubungkan akun web (kode 6 digit dari menu Pengaturan)\n"
         "  /unlink — putuskan akun\n"
@@ -374,15 +377,62 @@ async def cmd_masuk(db, user, chat_id, args, msg) -> str:
     return await _make_transaction(db, user, chat_id, args, TxnType.IN, msg)
 
 
+async def cmd_buktitx(db, user, chat_id, args, msg) -> str:
+    """Buka jendela attach untuk transaksi yang SUDAH ada.
+    Cara pakai: /buktitx <id transaksi>. Setelah itu, semua foto/file
+    yang dikirim dalam 5 menit akan di-lampirkan ke transaksi tsb.
+    """
+    if not user:
+        return "Akun belum ter-link."
+    if not args:
+        return (
+            "Cara pakai: <code>/buktitx 123</code>\n"
+            "(<i>123</i> = nomor/ID transaksi yang mau dilampiri bukti)"
+        )
+    try:
+        tid = int(args[0])
+    except ValueError:
+        return f"Nomor transaksi tidak valid: <code>{_esc(args[0])}</code>"
+    tx = await db.get(Transaction, tid)
+    if not tx or tx.deleted_at is not None:
+        return f"Transaksi #{tid} tidak ditemukan."
+    accessible = await _accessible_projects(db, user)
+    if tx.project_id not in {p.id for p in accessible}:
+        return "Kamu tidak punya akses ke transaksi ini."
+    proj = await db.get(Project, tx.project_id)
+    pa = TelegramPendingCommand(
+        chat_id=str(chat_id),
+        transaction_id=tid,
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=ATTACH_WINDOW_MINUTES),
+    )
+    db.add(pa)
+    sym = "−" if tx.type == TxnType.OUT else "+"
+    return (
+        f"📎 Siap menerima bukti untuk transaksi <b>#{tid}</b>\n"
+        f"<code>{_esc(proj.code if proj else '-')}</code> "
+        f"{sym}Rp {_fmt_idr(tx.amount)} — "
+        f"<i>{_esc((tx.description or tx.party_name or '')[:60])}</i>\n"
+        f"Kirim foto / file (PDF) dalam <b>{ATTACH_WINDOW_MINUTES} menit</b> ke depan."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Photo handler — attach ke transaksi pending terbaru milik chat ini
 # ---------------------------------------------------------------------------
 
-async def handle_photo(db, user, chat_id, file_id: str, caption: str | None) -> str:
-    """Download foto dari Telegram, simpan, dan attach ke transaksi pending."""
+async def handle_photo(
+    db,
+    user,
+    chat_id,
+    file_id: str,
+    caption: str | None,
+    file_name: str | None = None,
+) -> str:
+    """Download lampiran (foto/PDF/video) dari Telegram, simpan, attach
+    ke transaksi pending terbaru milik chat ini.
+    """
     if not user:
-        return ""  # tidak balas spam ke user yg belum link
-    # cari pending terakhir milik chat ini yang belum kadaluwarsa
+        return ""
     now = datetime.now(timezone.utc)
     q = (
         select(TelegramPendingCommand)
@@ -396,21 +446,37 @@ async def handle_photo(db, user, chat_id, file_id: str, caption: str | None) -> 
     pending = (await db.execute(q)).scalar_one_or_none()
     if not pending:
         return (
-            "Foto diterima tapi belum ada transaksi yang menunggu lampiran.\n"
-            "Buat transaksi dulu lewat /keluar atau /masuk, lalu kirim foto."
+            "Lampiran diterima tapi belum ada transaksi yang menunggu.\n"
+            "Buat transaksi dulu (/keluar atau /masuk), atau buka jendela "
+            "lampiran utk transaksi yg sudah ada dgn /buktitx &lt;id&gt;."
         )
     payload = await tg.download_file(file_id)
     if not payload:
-        return "Gagal download foto dari Telegram. Coba lagi."
+        return "Gagal download lampiran dari Telegram. Coba lagi."
     content, file_path = payload
-    name = file_path.split("/")[-1] or f"telegram-{file_id}.jpg"
-    ext = name.rsplit(".", 1)[-1] if "." in name else "jpg"
-    # save_bytes: simpan ke uploads dengan optimasi gambar yg sudah ada
+    name = file_name or file_path.split("/")[-1] or f"telegram-{file_id}.bin"
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    # Tebak mime dari ekstensi; fallback ke jpeg utk foto tanpa ekstensi
+    mime = None
+    if ext in ("jpg", "jpeg"):
+        mime = "image/jpeg"
+    elif ext == "png":
+        mime = "image/png"
+    elif ext == "webp":
+        mime = "image/webp"
+    elif ext == "pdf":
+        mime = "application/pdf"
+    elif ext in ("mp4", "mov"):
+        mime = "video/mp4"
+    elif not ext:
+        # Foto Telegram biasanya tanpa ekstensi -> jpeg
+        name = name + ".jpg"
+        mime = "image/jpeg"
     meta = await save_bytes(
         content,
         original_name=name,
         subdir=f"transactions/{pending.transaction_id}",
-        mime_hint=f"image/{'jpeg' if ext.lower() in ('jpg','jpeg') else ext.lower()}",
+        mime_hint=mime,
     )
     att = TransactionAttachment(
         transaction_id=pending.transaction_id,
@@ -418,7 +484,7 @@ async def handle_photo(db, user, chat_id, file_id: str, caption: str | None) -> 
         **meta,
     )
     db.add(att)
-    return f"📎 Foto dilampirkan ke transaksi #{pending.transaction_id}."
+    return f"📎 Lampiran disimpan ke transaksi #{pending.transaction_id}."
 
 
 # ---------------------------------------------------------------------------
@@ -439,6 +505,9 @@ REGISTRY: dict[str, CommandHandler] = {
     "out": cmd_keluar,
     "masuk": cmd_masuk,
     "in": cmd_masuk,
+    "buktitx": cmd_buktitx,
+    "bukti": cmd_buktitx,           # alias
+    "lampiran": cmd_buktitx,        # alias
 }
 
 

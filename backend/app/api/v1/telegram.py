@@ -80,15 +80,32 @@ async def webhook(
 
     if text.startswith("/"):
         reply = await dispatch_command(db, user, chat_id, text, message)
+
+    # Lampiran: foto, dokumen (PDF/dll), atau video. Telegram membungkus
+    # masing-masing tipe di field berbeda; semua punya `file_id` yg bisa
+    # di-download dengan endpoint yg sama.
+    file_id: str | None = None
+    file_name: str | None = None
     photos = message.get("photo")
+    document = message.get("document")
+    video = message.get("video")
     if photos:
-        # Telegram kirim multiple resolusi; ambil yang paling besar (terakhir)
-        biggest = photos[-1]
+        biggest = photos[-1]  # resolusi tertinggi
         file_id = biggest.get("file_id")
+    elif isinstance(document, dict):
+        file_id = document.get("file_id")
+        file_name = document.get("file_name")
+    elif isinstance(video, dict):
+        file_id = video.get("file_id")
+        file_name = video.get("file_name")
+
+    if file_id:
         cap = message.get("caption") or ""
-        # kalau caption-nya juga command (/keluar dst), proses command dulu,
-        # baru photo handler nempel ke transaksi yang baru dibuat.
-        photo_reply = await handle_photo(db, user, chat_id, file_id, cap)
+        # Kalau caption-nya juga command (/keluar dst), command sudah
+        # diproses di atas — di sini kita tinggal nempel attachment ke
+        # transaksi pending (baru dibuat oleh command, atau dibuka oleh
+        # /buktitx sebelumnya).
+        photo_reply = await handle_photo(db, user, chat_id, file_id, cap, file_name=file_name)
         if reply and photo_reply:
             reply = f"{reply}\n\n{photo_reply}"
         else:
