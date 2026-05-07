@@ -7,48 +7,76 @@
 </head>
 <body>
 
+<!-- KOP / LETTERHEAD -->
 <div class="kop row">
   <div>
-    {% if company and company.logo_url %}<img src="{{ company.logo_url }}" alt="logo">{% endif %}
+    {% if logo_data %}<img src="{{ logo_data }}" alt="logo">{% endif %}
   </div>
-  <div style="flex:1; padding-left:12px;">
+  <div style="flex:1; padding-left:10px;">
     <div class="brand">{{ company.name if company else app_name }}</div>
-    {% if company %}<div class="muted">{{ company.address or "" }}</div>{% endif %}
+    {% if company %}
+      {% if company.address %}<div class="muted">{{ company.address }}</div>{% endif %}
+      <div class="muted">
+        {% if company.phone %}Telp: {{ company.phone }}{% endif %}
+        {% if company.email %} &nbsp;&middot;&nbsp; {{ company.email }}{% endif %}
+        {% if company.npwp %} &nbsp;&middot;&nbsp; NPWP: {{ company.npwp }}{% endif %}
+      </div>
+    {% endif %}
   </div>
   <div class="right">
-    <div class="muted">Dicetak: {{ printed_at }}</div>
-    <div class="muted">Oleh: {{ printed_by }}</div>
+    <div class="muted small">Dicetak: {{ printed_at }}</div>
+    <div class="muted small">Oleh: {{ printed_by }}</div>
   </div>
 </div>
-<div class="hr"></div>
 
-<h2>{{ title }}</h2>
-{% if subtitle %}<div class="muted">{{ subtitle }}</div>{% endif %}
+<!-- TITLE BAR -->
+<div class="title-bar">
+  <div class="line1">{{ title|upper }}</div>
+  {% if subtitle %}<div class="line2">{{ subtitle }}</div>{% endif %}
+</div>
+
+<!-- FILTERS -->
 {% if filters %}
-  <div class="muted" style="margin-top:4px;">
-    Filter: {% for k, v in filters.items() %}<b>{{ k }}</b>: {{ v }}{% if not loop.last %} &middot; {% endif %}{% endfor %}
-  </div>
+<div class="filter-strip">
+  {% for k, v in filters.items() %}<b>{{ k }}:</b> {{ v }}{% if not loop.last %} &nbsp;&middot;&nbsp; {% endif %}{% endfor %}
+</div>
 {% endif %}
 
-<table style="margin-top:10px;">
+<!-- DATA TABLE -->
+<table class="report">
   <thead>
-    <tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}</tr>
+    <tr>
+      {% for h in headers %}
+        {%- set col = cols[loop.index0] if cols and cols|length > loop.index0 else {} -%}
+        <th class="{{ col.align or 'center' }}"
+            {% if col.width %}style="width:{{ col.width }};"{% endif %}>{{ h }}</th>
+      {% endfor %}
+    </tr>
   </thead>
   <tbody>
   {% for row in rows %}
-    <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+    <tr>
+      {% for cell in row %}
+        {%- set col = cols[loop.index0] if cols and cols|length > loop.index0 else {} -%}
+        <td class="{{ col.align or 'left' }}">{{ cell }}</td>
+      {% endfor %}
+    </tr>
+  {% else %}
+    <tr><td colspan="{{ headers|length }}" class="center muted">Tidak ada data.</td></tr>
   {% endfor %}
   </tbody>
 </table>
 
 {% if totals %}
-<table style="margin-top:10px; width:50%; margin-left:auto;">
-  <tbody>
+<table class="totals report-totals">
   {% for k, v in totals.items() %}
-    <tr><th>{{ k }}</th><td class="right">{{ v }}</td></tr>
+  <tr><td class="label">{{ k }}</td><td class="value">{{ v }}</td></tr>
   {% endfor %}
-  </tbody>
 </table>
 {% endif %}
+
+<div class="foot-note">
+  Dokumen diterbitkan oleh sistem {{ company.name if company else app_name }} &mdash; {{ printed_at }}.
+</div>
 
 </body></html>

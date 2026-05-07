@@ -235,3 +235,71 @@ table.legacy th { background: #f4f4f4; text-align: left; font-weight: 600; }
 .no-border, .no-border td, .no-border th { border: none; }
 .hr { border-top: 1px solid #d4d4d4; margin: 10px 0; }
 .title { font-size: 18px; font-weight: 700; letter-spacing: 1px; }
+
+/* ---- Laporan (ringkas, professional, header navy) ---- */
+table.report {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  table-layout: fixed;
+}
+table.report th, table.report td {
+  border: 1px solid var(--border);
+  padding: 3px 5px;
+  vertical-align: middle;
+  line-height: 1.25;
+  font-size: 8.8px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+table.report thead th {
+  background: var(--navy);
+  color: #fff;
+  font-weight: 700;
+  font-size: 8.6px;
+  letter-spacing: 0.3px;
+  text-align: center;
+  border-color: var(--navy);
+  padding: 5px 5px;
+  text-transform: uppercase;
+}
+table.report tbody tr:nth-child(even) td { background: var(--row-alt); }
+table.report td.num,
+table.report th.num   { text-align: right; font-variant-numeric: tabular-nums; }
+table.report td.center,
+table.report th.center { text-align: center; }
+table.report td.left,
+table.report th.left   { text-align: left; }
+table.report td.bold   { font-weight: 700; }
+table.report td.muted  { color: var(--muted); }
+
+/* Filter strip (rangkuman parameter laporan) */
+.filter-strip {
+  background: var(--blue-soft);
+  border: 1px solid #dbeafe;
+  border-radius: 4px;
+  padding: 5px 8px;
+  margin-top: 6px;
+  font-size: 9px;
+  color: #1e3a8a;
+  line-height: 1.5;
+}
+.filter-strip b { color: #0f172a; font-weight: 700; }
+
+/* Variant totals untuk laporan -- lebih compact */
+.totals.report-totals {
+  width: 280px;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.totals.report-totals td {
+  padding: 5px 10px;
+  font-size: 9px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.totals.report-totals tr:last-child td { border-bottom: none; }
+.totals.report-totals td.label { color: var(--muted); }
+.totals.report-totals td.value { font-weight: 700; font-variant-numeric: tabular-nums; }

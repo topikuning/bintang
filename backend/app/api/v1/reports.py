@@ -31,7 +31,7 @@ from app.models.models import (
     VendorClient,
 )
 from app.services.excel.builder import build_xlsx
-from app.services.pdf.render import html_to_pdf, render_html
+from app.services.pdf.render import html_to_pdf, inline_image, render_html
 
 router = APIRouter()
 
@@ -81,8 +81,45 @@ async def _company_for_project(db: AsyncSession, pid: int | None) -> Company | N
     return await db.get(Company, p.company_id)
 
 
-def _output(format: str, *, title: str, headers: list[str], rows: list[list], filters: dict,
-            totals: dict, company: Company | None, printed_by: str) -> Response:
+async def _resolve_company(db: AsyncSession, project_id: int | None) -> Company | None:
+    """Pilih company untuk header laporan.
+
+    1. Kalau ada filter project_id -> pakai company milik proyek tsb.
+    2. Kalau tidak, ambil company pertama (kebanyakan tenant punya 1
+       perusahaan utama; pakai yang punya logo lebih dulu).
+    """
+    if project_id:
+        return await _company_for_project(db, project_id)
+    res = await db.execute(
+        select(Company)
+        .where(Company.deleted_at.is_(None))
+        .order_by(Company.logo_url.is_(None), Company.id)
+        .limit(1)
+    )
+    return res.scalar_one_or_none()
+
+
+def _output(
+    format: str,
+    *,
+    title: str,
+    headers: list[str],
+    rows: list[list],
+    filters: dict,
+    totals: dict,
+    company: Company | None,
+    printed_by: str,
+    cols: list[dict] | None = None,
+    subtitle: str | None = None,
+    landscape: bool = False,
+) -> Response:
+    """Render laporan ke PDF/XLSX.
+
+    `cols` adalah list paralel dgn `headers`; tiap dict bisa berisi:
+      - "align": "left" | "right" | "center" | "num"
+      - "width": CSS width (mis. "70px", "10%")
+    `landscape=True` membuat halaman A4 landscape (utk tabel banyak kolom).
+    """
     if format == "xlsx":
         data = build_xlsx(title, headers, rows, filters=filters, totals=totals)
         return Response(
@@ -91,11 +128,17 @@ def _output(format: str, *, title: str, headers: list[str], rows: list[list], fi
             headers={"Content-Disposition": f'attachment; filename="{title}.xlsx"'},
         )
     base_css = (Path(__file__).parent.parent.parent / "services/pdf/templates/_base.css").read_text(encoding="utf-8")
+    if landscape:
+        # Override @page utk halaman ini saja; aturan terakhir menang di WeasyPrint.
+        base_css = base_css + "\n@page { size: A4 landscape; margin: 12mm 12mm 14mm 12mm; }\n"
+    logo_data = inline_image(company.logo_url) if company else None
     html = render_html(
         "report.html",
-        title=title, headers=headers, rows=rows,
+        title=title, subtitle=subtitle,
+        headers=headers, rows=rows, cols=cols or [],
         filters=filters, totals=totals,
         company=company, app_name="Bintang",
+        logo_data=logo_data,
         printed_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
         printed_by=printed_by,
         base_css=base_css,
@@ -137,19 +180,29 @@ async def cashflow(
     txs = (await db.execute(stmt)).scalars().all()
 
     proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
-    headers = ["Tanggal", "Proyek", "Tipe", "Pihak", "Deskripsi", "Masuk", "Keluar"]
+    headers = ["Tanggal", "Proyek", "Tipe", "Pihak", "Deskripsi", "Masuk (Rp)", "Keluar (Rp)"]
+    cols = [
+        {"align": "center", "width": "60px"},
+        {"align": "left",   "width": "18%"},
+        {"align": "center", "width": "55px"},
+        {"align": "left",   "width": "18%"},
+        {"align": "left"},
+        {"align": "num",    "width": "85px"},
+        {"align": "num",    "width": "85px"},
+    ]
     rows: list[list] = []
     sum_in = Decimal("0")
     sum_out = Decimal("0")
     for t in txs:
+        proj_name = proj_map.get(t.project_id).name if proj_map.get(t.project_id) else "-"
         if t.type == TxnType.IN:
             sum_in += Decimal(t.amount)
-            rows.append([t.tx_date.isoformat(), proj_map.get(t.project_id).name if proj_map.get(t.project_id) else "-",
-                         "MASUK", t.party_name or "-", t.description or "-", _fmt_idr(t.amount), ""])
+            rows.append([t.tx_date.isoformat(), proj_name, "MASUK",
+                         t.party_name or "-", t.description or "-", _fmt_idr(t.amount), ""])
         else:
             sum_out += Decimal(t.amount)
-            rows.append([t.tx_date.isoformat(), proj_map.get(t.project_id).name if proj_map.get(t.project_id) else "-",
-                         "KELUAR", t.party_name or "-", t.description or "-", "", _fmt_idr(t.amount)])
+            rows.append([t.tx_date.isoformat(), proj_name, "KELUAR",
+                         t.party_name or "-", t.description or "-", "", _fmt_idr(t.amount)])
 
     totals = {
         "Total Masuk": _fmt_idr(sum_in),
@@ -160,10 +213,11 @@ async def cashflow(
         "Periode": f"{date_from or '-'} s/d {date_to or '-'}",
         "Proyek": proj_map.get(project_id).name if project_id and proj_map.get(project_id) else "Semua",
     }
-    company = await _company_for_project(db, project_id)
+    company = await _resolve_company(db, project_id)
     title = "Laporan Arus Kas"
-    return _output(format, title=title, headers=headers, rows=rows,
-                   filters=filters, totals=totals, company=company, printed_by=user.name)
+    return _output(format, title=title, headers=headers, rows=rows, cols=cols,
+                   filters=filters, totals=totals, company=company,
+                   printed_by=user.name, landscape=True)
 
 
 # ---------- Transactions IN/OUT ----------
@@ -200,7 +254,16 @@ async def report_transactions(
 
     proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
     cat_map = {c.id: c for c in (await db.execute(select(Category))).scalars().all()}
-    headers = ["Tanggal", "Proyek", "Kategori", "Pihak", "Metode", "Status", "Nominal"]
+    headers = ["Tanggal", "Proyek", "Kategori", "Pihak", "Metode", "Status", "Nominal (Rp)"]
+    cols = [
+        {"align": "center", "width": "60px"},
+        {"align": "left",   "width": "18%"},
+        {"align": "left",   "width": "13%"},
+        {"align": "left"},
+        {"align": "center", "width": "65px"},
+        {"align": "center", "width": "70px"},
+        {"align": "num",    "width": "95px"},
+    ]
     rows: list[list] = []
     total = Decimal("0")
     for t in txs:
@@ -221,10 +284,11 @@ async def report_transactions(
         "Proyek": proj_map.get(project_id).name if project_id and proj_map.get(project_id) else "Semua",
         "Status": status.value if status else "Semua",
     }
-    company = await _company_for_project(db, project_id)
+    company = await _resolve_company(db, project_id)
     title = f"Laporan Transaksi {'Masuk' if type == TxnType.IN else 'Keluar'}"
-    return _output(format, title=title, headers=headers, rows=rows,
-                   filters=filters, totals=totals, company=company, printed_by=user.name)
+    return _output(format, title=title, headers=headers, rows=rows, cols=cols,
+                   filters=filters, totals=totals, company=company,
+                   printed_by=user.name, landscape=True)
 
 
 # ---------- Invoices ----------
@@ -257,7 +321,16 @@ async def report_invoices(
     rows_inv = (await db.execute(stmt)).scalars().all()
 
     proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
-    headers = ["No Invoice", "Tanggal", "Jatuh Tempo", "Proyek", "Pihak", "Total", "Status"]
+    headers = ["No Invoice", "Tanggal", "Jatuh Tempo", "Proyek", "Pihak", "Total (Rp)", "Status"]
+    cols = [
+        {"align": "left",   "width": "120px"},
+        {"align": "center", "width": "60px"},
+        {"align": "center", "width": "65px"},
+        {"align": "left",   "width": "18%"},
+        {"align": "left"},
+        {"align": "num",    "width": "95px"},
+        {"align": "center", "width": "75px"},
+    ]
     rows: list[list] = []
     total = Decimal("0")
     for inv in rows_inv:
@@ -274,10 +347,11 @@ async def report_invoices(
         "Proyek": proj_map.get(project_id).name if project_id and proj_map.get(project_id) else "Semua",
         "Status": status.value if status else "Semua",
     }
-    company = await _company_for_project(db, project_id)
+    company = await _resolve_company(db, project_id)
     title = f"Laporan Invoice {'Masuk' if type == InvoiceType.IN else 'Keluar'}"
-    return _output(format, title=title, headers=headers, rows=rows,
-                   filters=filters, totals=totals, company=company, printed_by=user.name)
+    return _output(format, title=title, headers=headers, rows=rows, cols=cols,
+                   filters=filters, totals=totals, company=company,
+                   printed_by=user.name, landscape=True)
 
 
 # ---------- Hutang/Piutang (open invoices) ----------
@@ -303,7 +377,19 @@ async def report_debts(
     invs = (await db.execute(stmt)).scalars().all()
 
     proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
-    headers = ["No Invoice", "Tipe", "Jatuh Tempo", "Proyek", "Pihak", "Total", "Sudah Dibayar", "Sisa", "Status"]
+    headers = ["No Invoice", "Tipe", "Jatuh Tempo", "Proyek", "Pihak",
+               "Total (Rp)", "Dibayar (Rp)", "Sisa (Rp)", "Status"]
+    cols = [
+        {"align": "left",   "width": "105px"},
+        {"align": "center", "width": "55px"},
+        {"align": "center", "width": "65px"},
+        {"align": "left",   "width": "14%"},
+        {"align": "left"},
+        {"align": "num",    "width": "82px"},
+        {"align": "num",    "width": "82px"},
+        {"align": "num",    "width": "82px"},
+        {"align": "center", "width": "70px"},
+    ]
     rows: list[list] = []
     sum_remaining_in = Decimal("0")
     sum_remaining_out = Decimal("0")
@@ -316,9 +402,9 @@ async def report_debts(
         paid = Decimal((await db.execute(paid_q)).scalar_one() or 0)
         remaining = max(Decimal(inv.total or 0) - paid, Decimal("0"))
         if inv.type == InvoiceType.IN:
-            sum_remaining_in += remaining  # hutang
+            sum_remaining_in += remaining
         else:
-            sum_remaining_out += remaining  # piutang
+            sum_remaining_out += remaining
         rows.append([
             inv.number, "Hutang" if inv.type == InvoiceType.IN else "Piutang",
             inv.due_date.isoformat() if inv.due_date else "-",
@@ -330,10 +416,10 @@ async def report_debts(
         "Total Hutang (sisa)": _fmt_idr(sum_remaining_in),
         "Total Piutang (sisa)": _fmt_idr(sum_remaining_out),
     }
-    company = await _company_for_project(db, project_id)
-    return _output(format, title="Laporan Hutang & Piutang", headers=headers, rows=rows,
+    company = await _resolve_company(db, project_id)
+    return _output(format, title="Laporan Hutang & Piutang", headers=headers, rows=rows, cols=cols,
                    filters={"Proyek": proj_map.get(project_id).name if project_id and proj_map.get(project_id) else "Semua"},
-                   totals=totals, company=company, printed_by=user.name)
+                   totals=totals, company=company, printed_by=user.name, landscape=True)
 
 
 # ---------- Budget control ----------
@@ -352,8 +438,21 @@ async def report_budget(
     projects = (await db.execute(stmt)).scalars().all()
     company_map = {c.id: c for c in (await db.execute(select(Company))).scalars().all()}
 
-    headers = ["Kode", "Proyek", "Perusahaan", "Budget", "Pemakaian", "Persentase", "Sisa", "Status"]
+    headers = ["Kode", "Proyek", "Perusahaan", "Budget (Rp)", "Pemakaian (Rp)",
+               "Pakai", "Sisa (Rp)", "Status"]
+    cols = [
+        {"align": "center", "width": "70px"},
+        {"align": "left",   "width": "20%"},
+        {"align": "left",   "width": "18%"},
+        {"align": "num",    "width": "90px"},
+        {"align": "num",    "width": "90px"},
+        {"align": "num",    "width": "55px"},
+        {"align": "num",    "width": "90px"},
+        {"align": "center", "width": "80px"},
+    ]
     rows: list[list] = []
+    total_budget = Decimal("0")
+    total_spent = Decimal("0")
     for p in projects:
         out_q = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
             Transaction.project_id == p.id,
@@ -365,6 +464,8 @@ async def report_budget(
         budget = Decimal(p.budget_amount or 0)
         pct = (spent / budget * 100) if budget > 0 else Decimal("0")
         remaining = budget - spent
+        total_budget += budget
+        total_spent += spent
         if budget <= 0:
             status = "no_budget"
         elif pct <= 80:
@@ -376,11 +477,18 @@ async def report_budget(
         rows.append([
             p.code, p.name,
             company_map.get(p.company_id).name if company_map.get(p.company_id) else "-",
-            _fmt_idr(budget), _fmt_idr(spent), f"{pct:.2f}%",
+            _fmt_idr(budget), _fmt_idr(spent), f"{pct:.1f}%",
             _fmt_idr(remaining), status,
         ])
-    return _output(format, title="Laporan Budget Control", headers=headers, rows=rows,
-                   filters={}, totals={}, company=None, printed_by=user.name)
+    totals = {
+        "Total Budget": _fmt_idr(total_budget),
+        "Total Pemakaian": _fmt_idr(total_spent),
+        "Total Sisa": _fmt_idr(total_budget - total_spent),
+    }
+    company = await _resolve_company(db, None)
+    return _output(format, title="Laporan Budget Control", headers=headers, rows=rows, cols=cols,
+                   filters={}, totals=totals, company=company,
+                   printed_by=user.name, landscape=True)
 
 
 # ---------- Purchase Orders ----------
@@ -411,7 +519,15 @@ async def report_pos(
     pos = (await db.execute(stmt)).scalars().all()
 
     proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
-    headers = ["No PO", "Tanggal", "Proyek", "Vendor", "Total", "Status"]
+    headers = ["No PO", "Tanggal", "Proyek", "Vendor", "Total (Rp)", "Status"]
+    cols = [
+        {"align": "left",   "width": "120px"},
+        {"align": "center", "width": "65px"},
+        {"align": "left",   "width": "20%"},
+        {"align": "left"},
+        {"align": "num",    "width": "100px"},
+        {"align": "center", "width": "85px"},
+    ]
     rows: list[list] = []
     total = Decimal("0")
     for po in pos:
@@ -421,10 +537,15 @@ async def report_pos(
             proj_map.get(po.project_id).name if proj_map.get(po.project_id) else "-",
             po.vendor_name or "-", _fmt_idr(po.total), po.status.value,
         ])
-    company = await _company_for_project(db, project_id)
-    return _output(format, title="Laporan Purchase Order", headers=headers, rows=rows,
-                   filters={"Periode": f"{date_from or '-'} s/d {date_to or '-'}"},
-                   totals={"Total Nilai PO": _fmt_idr(total)}, company=company, printed_by=user.name)
+    company = await _resolve_company(db, project_id)
+    return _output(format, title="Laporan Purchase Order", headers=headers, rows=rows, cols=cols,
+                   filters={
+                       "Periode": f"{date_from or '-'} s/d {date_to or '-'}",
+                       "Proyek": proj_map.get(project_id).name if project_id and proj_map.get(project_id) else "Semua",
+                       "Status": status.value if status else "Semua",
+                   },
+                   totals={"Total Nilai PO": _fmt_idr(total), "Jumlah PO": str(len(pos))},
+                   company=company, printed_by=user.name, landscape=True)
 
 
 # ---------- Audit log ----------
@@ -454,6 +575,14 @@ async def report_audit(
 
     user_map = {u.id: u for u in (await db.execute(select(User))).scalars().all()}
     headers = ["Waktu", "User", "Entity", "ID", "Aksi", "Catatan"]
+    cols = [
+        {"align": "center", "width": "110px"},
+        {"align": "left",   "width": "18%"},
+        {"align": "left",   "width": "13%"},
+        {"align": "center", "width": "55px"},
+        {"align": "center", "width": "75px"},
+        {"align": "left"},
+    ]
     rows: list[list] = []
     for l in logs:
         rows.append([
@@ -461,6 +590,11 @@ async def report_audit(
             user_map.get(l.user_id).name if user_map.get(l.user_id) else "-",
             l.entity, str(l.entity_id), l.action.value, l.note or "-",
         ])
-    return _output(format, title="Laporan Audit Log", headers=headers, rows=rows,
-                   filters={"Periode": f"{date_from or '-'} s/d {date_to or '-'}"},
-                   totals={"Jumlah Entri": str(len(rows))}, company=None, printed_by=admin.name)
+    company = await _resolve_company(db, None)
+    return _output(format, title="Laporan Audit Log", headers=headers, rows=rows, cols=cols,
+                   filters={
+                       "Periode": f"{date_from or '-'} s/d {date_to or '-'}",
+                       "Entity": entity or "Semua",
+                   },
+                   totals={"Jumlah Entri": str(len(rows))},
+                   company=company, printed_by=admin.name)
