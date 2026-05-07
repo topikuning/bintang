@@ -54,18 +54,6 @@
 </div>
 {% endif %}
 
-<!-- PARAMETER (filter laporan) -->
-{% if filters %}
-<div class="rpt-section">
-  <h2>Parameter Laporan</h2>
-</div>
-<table class="rpt-params">
-  {% for k, v in filters.items() %}
-  <tr><td class="k">{{ k }}</td><td>{{ v }}</td></tr>
-  {% endfor %}
-</table>
-{% endif %}
-
 <!-- DETAIL -->
 <div class="rpt-section">
   <h2>{{ detail_label or 'Detail' }}</h2>

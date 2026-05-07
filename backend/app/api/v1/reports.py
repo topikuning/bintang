@@ -72,6 +72,32 @@ def _fmt_idr(v) -> str:
     return s.replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+_BULAN_ID_SHORT = (
+    "", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+    "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
+)
+_BULAN_ID_FULL = (
+    "", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+)
+
+
+def _fmt_date(d, *, full_month: bool = False) -> str:
+    """Format tanggal Indonesia: '01 Sep 2026' (default) atau
+    '01 September 2026' (full_month=True). Toleran terhadap None."""
+    if not d:
+        return "-"
+    months = _BULAN_ID_FULL if full_month else _BULAN_ID_SHORT
+    return f"{d.day:02d} {months[d.month]} {d.year:04d}"
+
+
+def _fmt_datetime(dt) -> str:
+    """Format '01 Sep 2026 14:35' utk audit-log dll."""
+    if not dt:
+        return "-"
+    return f"{_fmt_date(dt)} {dt.hour:02d}:{dt.minute:02d}"
+
+
 async def _company_for_project(db: AsyncSession, pid: int | None) -> Company | None:
     if not pid:
         return None
@@ -174,7 +200,7 @@ def _output(
         doc_no=doc_no, diagnostic=diagnostic,
         company=company, app_name="Bintang",
         logo_data=logo_data,
-        printed_at=datetime.now().strftime("%d %b %Y, %H:%M"),
+        printed_at=_fmt_datetime(datetime.now()),
         printed_by=printed_by,
         base_css=base_css,
     )
@@ -244,12 +270,12 @@ async def cashflow(
         if is_in:
             sum_in += Decimal(t.amount or 0)
             n_in += 1
-            rows.append([t.tx_date.isoformat(), proj_name,
+            rows.append([_fmt_date(t.tx_date), proj_name,
                          t.party_name or "-", t.description or "-", _fmt_idr(t.amount), ""])
         else:
             sum_out += Decimal(t.amount or 0)
             n_out += 1
-            rows.append([t.tx_date.isoformat(), proj_name,
+            rows.append([_fmt_date(t.tx_date), proj_name,
                          t.party_name or "-", t.description or "-", "", _fmt_idr(t.amount)])
 
     saldo = sum_in - sum_out
@@ -262,7 +288,7 @@ async def cashflow(
     ]
     proj_label = (proj_map.get(project_id).name
                   if project_id and proj_map.get(project_id) else "Semua proyek")
-    period_label = f"{date_from or 'awal'} s/d {date_to or 'sekarang'}"
+    period_label = f"{_fmt_date(date_from) if date_from else 'awal'} s/d {_fmt_date(date_to) if date_to else 'sekarang'}"
     scope_line = f"Periode {period_label} · {proj_label} · Hanya transaksi terverifikasi"
     filters = {
         "Periode": period_label,
@@ -352,7 +378,7 @@ async def report_transactions(
         if t.status == TxnStatus.VERIFIED:
             n_verified += 1
         rows.append([
-            t.tx_date.isoformat(),
+            _fmt_date(t.tx_date),
             proj_map.get(t.project_id).name if proj_map.get(t.project_id) else "-",
             cat_map.get(t.category_id).name if cat_map.get(t.category_id) else "-",
             t.party_name or "-",
@@ -368,13 +394,14 @@ async def report_transactions(
         {"label": "Rata-rata / Transaksi", "value": f"Rp {_fmt_idr(avg)}", "sub": ""},
         {"label": "Status Tervalidasi", "value": str(n_verified),
          "sub": f"dari {len(txs)} transaksi"},
-        {"label": "Periode", "value": str((date_to or date_from or "—")),
-         "sub": f"sejak {date_from or 'awal'}" if date_from else "tanpa batas"},
+        {"label": "Periode", "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "—",
+         "sub": f"sejak {_fmt_date(date_from)}" if date_from else "tanpa batas"},
     ]
     proj_label = (proj_map.get(project_id).name
                   if project_id and proj_map.get(project_id) else "Semua proyek")
-    period_label = f"{date_from or 'awal'} s/d {date_to or 'sekarang'}"
-    scope_line = f"Periode {period_label} · {proj_label} · {arah_label}"
+    period_label = f"{_fmt_date(date_from) if date_from else 'awal'} s/d {_fmt_date(date_to) if date_to else 'sekarang'}"
+    status_label = status.value if status else "semua status"
+    scope_line = f"Periode {period_label} · {proj_label} · {arah_label} · {status_label}"
     filters = {
         "Arah Kas": f"{type.value} ({arah_label})",
         "Periode": period_label,
@@ -444,7 +471,7 @@ async def report_invoices(
         elif inv.status in (InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE):
             n_open += 1
         rows.append([
-            inv.number, inv.invoice_date.isoformat(), inv.due_date.isoformat() if inv.due_date else "-",
+            inv.number, _fmt_date(inv.invoice_date), _fmt_date(inv.due_date),
             proj_map.get(inv.project_id).name if proj_map.get(inv.project_id) else "-",
             inv.party_name or "-", _fmt_idr(inv.total), inv.status.value,
         ])
@@ -455,13 +482,14 @@ async def report_invoices(
         {"label": "Sudah Lunas", "value": str(n_paid),
          "sub": f"{(n_paid/len(rows_inv)*100 if rows_inv else 0):.0f}% dari total"},
         {"label": "Belum Tertutup", "value": str(n_open), "sub": "Issued / Partial / Overdue"},
-        {"label": "Periode", "value": str((date_to or date_from or "—")),
-         "sub": f"sejak {date_from or 'awal'}" if date_from else "tanpa batas"},
+        {"label": "Periode", "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "—",
+         "sub": f"sejak {_fmt_date(date_from)}" if date_from else "tanpa batas"},
     ]
     proj_label = (proj_map.get(project_id).name
                   if project_id and proj_map.get(project_id) else "Semua proyek")
-    period_label = f"{date_from or 'awal'} s/d {date_to or 'sekarang'}"
-    scope_line = f"Periode {period_label} · {proj_label} · {arah}"
+    period_label = f"{_fmt_date(date_from) if date_from else 'awal'} s/d {_fmt_date(date_to) if date_to else 'sekarang'}"
+    status_label = status.value if status else "semua status"
+    scope_line = f"Periode {period_label} · {proj_label} · {arah} · {status_label}"
     filters = {
         "Tipe Invoice": f"{type.value} ({arah})",
         "Periode": period_label,
@@ -540,7 +568,7 @@ async def report_debts(
             sum_remaining_out += remaining
         rows.append([
             inv.number, "Hutang" if inv.type == InvoiceType.IN else "Piutang",
-            inv.due_date.isoformat() if inv.due_date else "-",
+            _fmt_date(inv.due_date),
             proj_map.get(inv.project_id).name if proj_map.get(inv.project_id) else "-",
             inv.party_name or "-",
             _fmt_idr(inv.total), _fmt_idr(paid), _fmt_idr(remaining), inv.status.value,
@@ -557,7 +585,7 @@ async def report_debts(
     ]
     proj_label = (proj_map.get(project_id).name
                   if project_id and proj_map.get(project_id) else "Semua proyek")
-    scope_line = f"{proj_label} · Per tanggal {datetime.now().strftime('%d %b %Y')}"
+    scope_line = f"{proj_label} · Per tanggal {_fmt_date(datetime.now().date())} · Status aktif (Issued, Partial, Overdue)"
     footer_row = [
         "TOTAL", "", "", "", "",
         _fmt_idr(sum_total_in + sum_total_out),
@@ -645,7 +673,7 @@ async def report_budget(
         {"label": "Status Risiko", "value": f"{n_over} overbudget",
          "sub": f"{n_warn} waspada · {n_aman} aman · {n_no} tanpa budget"},
     ]
-    scope_line = f"Snapshot per {datetime.now().strftime('%d %b %Y')} · Realisasi VERIFIED saja"
+    scope_line = f"Snapshot per {_fmt_date(datetime.now().date())} · Realisasi VERIFIED saja · Semua proyek"
     company = await _resolve_company(db, None)
     return _output(
         format, title="Laporan Budget Control", headers=headers, rows=rows, cols=cols,
@@ -709,7 +737,7 @@ async def report_pos(
         elif po.status in (POStatus.ISSUED, POStatus.DRAFT):
             n_open += 1
         rows.append([
-            po.number, po.po_date.isoformat(),
+            po.number, _fmt_date(po.po_date),
             proj_map.get(po.project_id).name if proj_map.get(po.project_id) else "-",
             po.vendor_name or "-", _fmt_idr(po.total), po.status.value,
         ])
@@ -719,13 +747,14 @@ async def report_pos(
         {"label": "Disetujui", "value": str(n_approved),
          "sub": f"{(n_approved/len(pos)*100 if pos else 0):.0f}% dari total"},
         {"label": "Belum Diproses", "value": str(n_open), "sub": "Draft / Issued"},
-        {"label": "Periode", "value": str((date_to or date_from or "—")),
-         "sub": f"sejak {date_from or 'awal'}" if date_from else "tanpa batas"},
+        {"label": "Periode", "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "—",
+         "sub": f"sejak {_fmt_date(date_from)}" if date_from else "tanpa batas"},
     ]
     proj_label = (proj_map.get(project_id).name
                   if project_id and proj_map.get(project_id) else "Semua proyek")
-    period_label = f"{date_from or 'awal'} s/d {date_to or 'sekarang'}"
-    scope_line = f"Periode {period_label} · {proj_label}"
+    period_label = f"{_fmt_date(date_from) if date_from else 'awal'} s/d {_fmt_date(date_to) if date_to else 'sekarang'}"
+    status_label = status.value if status else "semua status"
+    scope_line = f"Periode {period_label} · {proj_label} · {status_label}"
     company = await _resolve_company(db, project_id)
     return _output(
         format, title="Laporan Purchase Order", headers=headers, rows=rows, cols=cols,
@@ -782,7 +811,7 @@ async def report_audit(
     for l in logs:
         actions_count[l.action.value] = actions_count.get(l.action.value, 0) + 1
         rows.append([
-            l.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            _fmt_datetime(l.created_at),
             user_map.get(l.user_id).name if user_map.get(l.user_id) else "-",
             l.entity, str(l.entity_id), l.action.value, l.note or "-",
         ])
@@ -795,8 +824,10 @@ async def report_audit(
          "value": (max(actions_count, key=actions_count.get) if actions_count else "—"),
          "sub": (f"{max(actions_count.values())}× tercatat" if actions_count else "")},
     ]
-    period_label = f"{date_from or 'awal'} s/d {date_to or 'sekarang'}"
-    scope_line = f"Periode {period_label}"
+    period_label = f"{_fmt_date(date_from) if date_from else 'awal'} s/d {_fmt_date(date_to) if date_to else 'sekarang'}"
+    user_label = user_map.get(user_id).name if user_id and user_map.get(user_id) else "semua user"
+    entity_label = entity or "semua entity"
+    scope_line = f"Periode {period_label} · {entity_label} · {user_label}"
     company = await _resolve_company(db, None)
     return _output(
         format, title="Laporan Audit Log", headers=headers, rows=rows, cols=cols,
