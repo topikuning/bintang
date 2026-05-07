@@ -108,7 +108,7 @@
 
 <!-- TOTALS BLOCK (hanya kalau tidak pakai summary cards) -->
 {% if totals and not summary %}
-<div class="rpt-section" style="margin-top: 12px;">
+<div class="rpt-section" style="margin-top: 8px;">
   <h2>Total</h2>
 </div>
 <table class="rpt-params">
@@ -116,6 +116,53 @@
   <tr><td class="k">{{ k }}</td><td style="text-align:right; font-weight:700; font-variant-numeric: tabular-nums;">{{ v }}</td></tr>
   {% endfor %}
 </table>
+{% endif %}
+
+<!-- DIAGNOSTIK (cashflow): jumlah transaksi per status, supaya user
+     bisa lihat kalau IN-nya masih SUBMITTED/DRAFT (tidak masuk laporan). -->
+{% if diagnostic %}
+<div class="rpt-section" style="margin-top: 8px;">
+  <h2>Diagnostik Data</h2>
+  <span class="caption" style="float:right;">Catatan: laporan hanya menampilkan status VERIFIED.</span>
+</div>
+<table class="rpt-table" style="font-size: 7.5px;">
+  <thead>
+    <tr>
+      <th class="left" style="width:18%">Arah</th>
+      <th class="num">DRAFT</th>
+      <th class="num">SUBMITTED</th>
+      <th class="num">VERIFIED</th>
+      <th class="num">REJECTED</th>
+      <th class="num">CANCELLED</th>
+      <th class="num">Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="left"><b>Pemasukan (IN)</b></td>
+      {% for s in ['DRAFT','SUBMITTED','VERIFIED','REJECTED','CANCELLED'] -%}
+      {% set v = diagnostic.in_per_status.get(s) -%}
+      <td class="num">{{ v[0] if v else 0 }}</td>
+      {%- endfor %}
+      <td class="num"><b>{{ diagnostic.in_total }}</b></td>
+    </tr>
+    <tr>
+      <td class="left"><b>Pengeluaran (OUT)</b></td>
+      {% for s in ['DRAFT','SUBMITTED','VERIFIED','REJECTED','CANCELLED'] -%}
+      {% set v = diagnostic.out_per_status.get(s) -%}
+      <td class="num">{{ v[0] if v else 0 }}</td>
+      {%- endfor %}
+      <td class="num"><b>{{ diagnostic.out_total }}</b></td>
+    </tr>
+  </tbody>
+</table>
+{% if diagnostic.in_total > 0 and (diagnostic.in_per_status.get('VERIFIED')[0] if diagnostic.in_per_status.get('VERIFIED') else 0) == 0 %}
+<div style="margin-top:4px; padding:4px 6px; border-left: 2px solid #0a0a0a; font-size: 7.8px; color:#0a0a0a;">
+  <b>Perhatian:</b> ada {{ diagnostic.in_total }} transaksi pemasukan pada periode/proyek ini,
+  namun belum ada yang berstatus VERIFIED. Verifikasi terlebih dahulu di halaman Transaksi
+  agar masuk ke laporan arus kas.
+</div>
+{% endif %}
 {% endif %}
 
 <!-- FOOTER (di body, di atas footer @page) -->

@@ -248,102 +248,102 @@ table.legacy th { background: #f4f4f4; text-align: left; font-weight: 600; }
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  border-bottom: 1.5px solid #0a0a0a;
-  padding-bottom: 6px;
+  border-bottom: 1px solid #0a0a0a;
+  padding-bottom: 4px;
 }
 .rpt-letterhead .left {
-  display: flex; gap: 10px; align-items: center;
+  display: flex; gap: 8px; align-items: center;
 }
-.rpt-letterhead img { max-height: 38px; max-width: 90px; }
+.rpt-letterhead img { max-height: 28px; max-width: 70px; }
 .rpt-letterhead .company-name {
-  font-size: 11px;
+  font-size: 9.5px;
   font-weight: 700;
   color: #0a0a0a;
   letter-spacing: 0.2px;
 }
 .rpt-letterhead .company-meta {
-  font-size: 8px;
+  font-size: 7.2px;
   color: #525252;
-  line-height: 1.45;
+  line-height: 1.35;
 }
 .rpt-letterhead .right {
   text-align: right;
-  font-size: 8px;
+  font-size: 7.2px;
   color: #525252;
-  line-height: 1.55;
+  line-height: 1.4;
 }
 .rpt-letterhead .right b { color: #0a0a0a; font-weight: 700; }
 
 /* Title block */
-.rpt-title { margin-top: 14px; margin-bottom: 4px; }
+.rpt-title { margin-top: 6px; margin-bottom: 2px; }
 .rpt-title h1 {
-  font-size: 16px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
   text-transform: uppercase;
   color: #0a0a0a;
   margin: 0;
 }
 .rpt-title .scope {
-  font-size: 9px;
+  font-size: 7.8px;
   color: #404040;
-  margin-top: 3px;
+  margin-top: 1px;
   letter-spacing: 0.1px;
 }
 
 /* Section heading: garis bawah tipis + caption uppercase (Big-4 style). */
 .rpt-section {
-  margin-top: 16px;
-  margin-bottom: 6px;
+  margin-top: 8px;
+  margin-bottom: 3px;
   border-bottom: 0.5px solid #d4d4d4;
-  padding-bottom: 3px;
+  padding-bottom: 2px;
 }
 .rpt-section h2 {
-  font-size: 8.5px;
+  font-size: 7.8px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 1.2px;
+  letter-spacing: 1px;
   color: #0a0a0a;
   margin: 0;
 }
 .rpt-section .caption {
-  font-size: 7.5px;
+  font-size: 7px;
   color: #737373;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.3px;
 }
 
 /* Executive summary cards di atas tabel detail. Minimal: white bg,
    single border, label kecil uppercase, value besar tabular. */
 .exec-cards {
   display: flex;
-  gap: 6px;
-  margin: 4px 0 8px;
+  gap: 5px;
+  margin: 3px 0 4px;
 }
 .exec-card {
   flex: 1;
   border: 1px solid #d4d4d4;
-  padding: 7px 9px;
+  padding: 4px 6px;
   background: #fff;
 }
 .exec-card .label {
-  font-size: 7.2px;
+  font-size: 6.6px;
   font-weight: 700;
-  letter-spacing: 0.7px;
+  letter-spacing: 0.5px;
   text-transform: uppercase;
   color: #525252;
 }
 .exec-card .value {
-  font-size: 13px;
+  font-size: 10.5px;
   font-weight: 700;
   color: #0a0a0a;
-  margin-top: 3px;
+  margin-top: 1px;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
 .exec-card .sub {
-  font-size: 7.5px;
+  font-size: 6.8px;
   color: #737373;
-  margin-top: 3px;
+  margin-top: 1px;
   letter-spacing: 0.1px;
 }
 
@@ -351,11 +351,11 @@ table.legacy th { background: #f4f4f4; text-align: left; font-weight: 600; }
 .rpt-params {
   width: 100%;
   border-collapse: collapse;
-  margin: 4px 0 6px;
-  font-size: 8.2px;
+  margin: 2px 0 3px;
+  font-size: 7.6px;
 }
 .rpt-params td {
-  padding: 2px 8px 2px 0;
+  padding: 1px 8px 1px 0;
   vertical-align: top;
   color: #404040;
 }

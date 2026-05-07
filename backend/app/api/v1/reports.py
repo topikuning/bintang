@@ -102,7 +102,7 @@ async def _resolve_company(db: AsyncSession, project_id: int | None) -> Company 
 _REPORT_PAGE_CSS_TEMPLATE = """
 @page {{
   size: A4 {orientation};
-  margin: 14mm 12mm 16mm 12mm;
+  margin: 9mm 10mm 11mm 10mm;
   @bottom-left {{
     content: "Dokumen rahasia. Untuk penggunaan internal & pihak yang berwenang.";
     font-size: 7px;
@@ -136,6 +136,7 @@ def _output(
     detail_label: str | None = None,
     footer_row: list | None = None,
     doc_no: str | None = None,
+    diagnostic: dict | None = None,
 ) -> Response:
     """Render laporan ke PDF/XLSX (enterprise / minimalist style).
 
@@ -170,7 +171,7 @@ def _output(
         filters=filters, totals=totals,
         summary=summary or [], scope_line=scope_line,
         detail_label=detail_label, footer_row=footer_row,
-        doc_no=doc_no,
+        doc_no=doc_no, diagnostic=diagnostic,
         company=company, app_name="Bintang",
         logo_data=logo_data,
         printed_at=datetime.now().strftime("%d %b %Y, %H:%M"),
@@ -200,29 +201,38 @@ async def cashflow(
     if pids is not None and not pids:
         raise HTTPException(403, "no_project_access")
 
-    stmt = select(Transaction).where(
-        Transaction.deleted_at.is_(None),
-        Transaction.status == TxnStatus.VERIFIED,
-    )
+    base_filters = [Transaction.deleted_at.is_(None)]
     if pids is not None:
-        stmt = stmt.where(Transaction.project_id.in_(pids))
+        base_filters.append(Transaction.project_id.in_(pids))
     if date_from:
-        stmt = stmt.where(Transaction.tx_date >= date_from)
+        base_filters.append(Transaction.tx_date >= date_from)
     if date_to:
-        stmt = stmt.where(Transaction.tx_date <= date_to)
-    stmt = stmt.order_by(Transaction.tx_date.asc())
+        base_filters.append(Transaction.tx_date <= date_to)
+
+    # Diagnostik: hitung jumlah & nominal per (type, status) tanpa filter
+    # status -- agar user bisa lihat kalau IN-nya masih SUBMITTED/DRAFT,
+    # bukan VERIFIED, sehingga tidak masuk ke arus kas.
+    diag_q = select(
+        Transaction.type, Transaction.status,
+        func.count(Transaction.id), func.coalesce(func.sum(Transaction.amount), 0),
+    ).where(*base_filters).group_by(Transaction.type, Transaction.status)
+    diag_rows = (await db.execute(diag_q)).all()
+
+    # Data utama: hanya VERIFIED
+    stmt = select(Transaction).where(*base_filters,
+                                     Transaction.status == TxnStatus.VERIFIED
+                                     ).order_by(Transaction.tx_date.asc())
     txs = (await db.execute(stmt)).scalars().all()
 
     proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
-    headers = ["Tanggal", "Proyek", "Tipe", "Pihak", "Deskripsi", "Masuk (Rp)", "Keluar (Rp)"]
+    headers = ["Tanggal", "Proyek", "Pihak", "Deskripsi", "Masuk (Rp)", "Keluar (Rp)"]
     cols = [
-        {"align": "center", "width": "62px"},
-        {"align": "left",   "width": "18%"},
-        {"align": "center", "width": "55px"},
-        {"align": "left",   "width": "18%"},
+        {"align": "center", "width": "60px"},
+        {"align": "left",   "width": "20%"},
+        {"align": "left",   "width": "20%"},
         {"align": "left"},
-        {"align": "num",    "width": "92px"},
-        {"align": "num",    "width": "92px"},
+        {"align": "num",    "width": "100px"},
+        {"align": "num",    "width": "100px"},
     ]
     rows: list[list] = []
     sum_in = Decimal("0")
@@ -230,17 +240,16 @@ async def cashflow(
     n_in = n_out = 0
     for t in txs:
         proj_name = proj_map.get(t.project_id).name if proj_map.get(t.project_id) else "-"
-        # Defensive: terima TxnType enum maupun string mentah dari DB.
         is_in = (t.type == TxnType.IN) or (getattr(t.type, "value", t.type) == "IN")
         if is_in:
             sum_in += Decimal(t.amount or 0)
             n_in += 1
-            rows.append([t.tx_date.isoformat(), proj_name, "MASUK",
+            rows.append([t.tx_date.isoformat(), proj_name,
                          t.party_name or "-", t.description or "-", _fmt_idr(t.amount), ""])
         else:
             sum_out += Decimal(t.amount or 0)
             n_out += 1
-            rows.append([t.tx_date.isoformat(), proj_name, "KELUAR",
+            rows.append([t.tx_date.isoformat(), proj_name,
                          t.party_name or "-", t.description or "-", "", _fmt_idr(t.amount)])
 
     saldo = sum_in - sum_out
@@ -260,8 +269,22 @@ async def cashflow(
         "Proyek": proj_label,
         "Status": "VERIFIED (terverifikasi)",
     }
+    # Diagnostik per (type, status) -- supaya user lihat kalau ada IN
+    # yang masih DRAFT/SUBMITTED dan oleh sebab itu tidak masuk laporan.
+    diag_in: dict[str, tuple[int, Decimal]] = {}
+    diag_out: dict[str, tuple[int, Decimal]] = {}
+    for tp, st, cnt, total in diag_rows:
+        bucket = diag_in if (tp == TxnType.IN or getattr(tp, "value", tp) == "IN") else diag_out
+        sv = st.value if hasattr(st, "value") else str(st)
+        bucket[sv] = (int(cnt), Decimal(total or 0))
+    diag = {
+        "in_total": sum(c for c, _ in diag_in.values()),
+        "in_per_status": diag_in,
+        "out_total": sum(c for c, _ in diag_out.values()),
+        "out_per_status": diag_out,
+    }
     footer_row = [
-        "TOTAL", "", "", "", "",
+        "TOTAL", "", "", "",
         _fmt_idr(sum_in), _fmt_idr(sum_out),
     ]
     company = await _resolve_company(db, project_id)
@@ -273,6 +296,7 @@ async def cashflow(
         summary=summary, scope_line=scope_line,
         detail_label="Detail Transaksi", footer_row=footer_row,
         doc_no=f"AKAS-{datetime.now().strftime('%Y%m%d%H%M')}",
+        diagnostic=diag,
     )
 
 
