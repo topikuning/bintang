@@ -253,9 +253,9 @@ async def cashflow(
     proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
     headers = ["Tanggal", "Proyek", "Pihak", "Deskripsi", "Masuk (Rp)", "Keluar (Rp)"]
     cols = [
-        {"align": "center", "width": "60px"},
+        {"align": "center", "width": "78px"},
         {"align": "left",   "width": "20%"},
-        {"align": "left",   "width": "20%"},
+        {"align": "left",   "width": "18%"},
         {"align": "left"},
         {"align": "num",    "width": "100px"},
         {"align": "num",    "width": "100px"},
@@ -362,12 +362,12 @@ async def report_transactions(
     cat_map = {c.id: c for c in (await db.execute(select(Category))).scalars().all()}
     headers = ["Tanggal", "Proyek", "Kategori", "Pihak", "Metode", "Status", "Nominal (Rp)"]
     cols = [
-        {"align": "center", "width": "62px"},
-        {"align": "left",   "width": "18%"},
-        {"align": "left",   "width": "13%"},
+        {"align": "center", "width": "78px"},
+        {"align": "left",   "width": "17%"},
+        {"align": "left",   "width": "12%"},
         {"align": "left"},
-        {"align": "center", "width": "68px"},
         {"align": "center", "width": "72px"},
+        {"align": "center", "width": "82px"},
         {"align": "num",    "width": "100px"},
     ]
     rows: list[list] = []
@@ -453,13 +453,13 @@ async def report_invoices(
     proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
     headers = ["No Invoice", "Tanggal", "Jatuh Tempo", "Proyek", "Pihak", "Total (Rp)", "Status"]
     cols = [
-        {"align": "left",   "width": "130px"},
-        {"align": "center", "width": "62px"},
-        {"align": "center", "width": "68px"},
-        {"align": "left",   "width": "18%"},
+        {"align": "left",   "width": "120px"},
+        {"align": "center", "width": "78px"},
+        {"align": "center", "width": "78px"},
+        {"align": "left",   "width": "16%"},
         {"align": "left"},
         {"align": "num",    "width": "100px"},
-        {"align": "center", "width": "75px"},
+        {"align": "center", "width": "82px"},
     ]
     rows: list[list] = []
     total = Decimal("0")
@@ -535,15 +535,15 @@ async def report_debts(
     headers = ["No Invoice", "Tipe", "Jatuh Tempo", "Proyek", "Pihak",
                "Total (Rp)", "Dibayar (Rp)", "Sisa (Rp)", "Status"]
     cols = [
-        {"align": "left",   "width": "115px"},
-        {"align": "center", "width": "58px"},
-        {"align": "center", "width": "68px"},
-        {"align": "left",   "width": "14%"},
+        {"align": "left",   "width": "110px"},
+        {"align": "center", "width": "65px"},
+        {"align": "center", "width": "78px"},
+        {"align": "left",   "width": "13%"},
         {"align": "left"},
         {"align": "num",    "width": "85px"},
         {"align": "num",    "width": "85px"},
         {"align": "num",    "width": "85px"},
-        {"align": "center", "width": "72px"},
+        {"align": "center", "width": "82px"},
     ]
     rows: list[list] = []
     sum_total_in = sum_total_out = Decimal("0")
@@ -720,8 +720,8 @@ async def report_pos(
     proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
     headers = ["No PO", "Tanggal", "Proyek", "Vendor", "Total (Rp)", "Status"]
     cols = [
-        {"align": "left",   "width": "130px"},
-        {"align": "center", "width": "68px"},
+        {"align": "left",   "width": "125px"},
+        {"align": "center", "width": "78px"},
         {"align": "left",   "width": "20%"},
         {"align": "left"},
         {"align": "num",    "width": "105px"},

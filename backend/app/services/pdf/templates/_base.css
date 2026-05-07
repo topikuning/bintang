@@ -402,9 +402,9 @@ table.rpt-table tbody tr:last-child td {
   border-bottom: 0.5px solid #d4d4d4;
 }
 table.rpt-table td.num,
-table.rpt-table th.num   { text-align: right; font-variant-numeric: tabular-nums; }
+table.rpt-table th.num   { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 table.rpt-table td.center,
-table.rpt-table th.center { text-align: center; }
+table.rpt-table th.center { text-align: center; white-space: nowrap; }
 table.rpt-table td.left,
 table.rpt-table th.left   { text-align: left; }
 table.rpt-table td.muted  { color: #737373; }
