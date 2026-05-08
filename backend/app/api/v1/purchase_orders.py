@@ -31,7 +31,7 @@ from app.models.models import (
 from app.schemas.common import Page
 from app.schemas.finance import CancelIn, POCreate, POOut, POUpdate
 from app.services.audit import log, snapshot
-from app.services.pdf.render import html_to_pdf, inline_image, render_html
+from app.services.pdf.render import html_to_pdf_async, inline_image, render_html
 
 router = APIRouter()
 
@@ -357,7 +357,7 @@ async def po_pdf(
         logo_data=logo_data, letterhead_data=letterhead_data,
         base_css=base_css,
     )
-    pdf = html_to_pdf(html)
+    pdf = await html_to_pdf_async(html)
     return Response(
         pdf,
         media_type="application/pdf",

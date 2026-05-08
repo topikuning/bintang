@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import mimetypes
 from io import BytesIO
@@ -66,10 +67,29 @@ def inline_image(url: str | None) -> str | None:
     return f"data:{mime};base64,{b64}"
 
 
-def html_to_pdf(html: str) -> bytes:
+def _html_to_pdf_sync(html: str) -> bytes:
     # Lazy import: weasyprint pulls native deps which may not exist at import time.
     from weasyprint import HTML
 
     buf = BytesIO()
     HTML(string=html).write_pdf(buf)
     return buf.getvalue()
+
+
+def html_to_pdf(html: str) -> bytes:
+    """Render PDF di event-loop saat ini. Sync API yg tetap dipertahankan
+    utk pemanggil non-async (CLI, test). Untuk endpoint async pakai
+    `html_to_pdf_async()` -- ia melepas event loop selama WeasyPrint
+    bekerja sehingga request lain tidak terblok.
+    """
+    return _html_to_pdf_sync(html)
+
+
+async def html_to_pdf_async(html: str) -> bytes:
+    """Async wrapper -- jalankan WeasyPrint di threadpool default.
+
+    WeasyPrint adalah pure-Python yg CPU-heavy (bisa 200ms-2s untuk
+    laporan multi-halaman). Kalau dijalankan langsung di event loop,
+    seluruh proses tidak bisa melayani request lain selama itu.
+    """
+    return await asyncio.to_thread(_html_to_pdf_sync, html)

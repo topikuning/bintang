@@ -48,7 +48,7 @@ from app.schemas.finance import (
 )
 from app.services.audit import log, snapshot
 from app.services.invoice_status import linked_amount, paid_amount, recompute_invoice_status
-from app.services.pdf.render import html_to_pdf, inline_image, render_html
+from app.services.pdf.render import html_to_pdf_async, inline_image, render_html
 from app.services.storage.links import normalize_external_link
 from app.services.storage.local import save_upload
 
@@ -64,8 +64,64 @@ def _compute_totals(items: list[InvoiceItem], tax: Decimal) -> tuple[Decimal, De
     return subtotal, total
 
 
-async def _to_out(db: AsyncSession, inv: Invoice) -> InvoiceOut:
-    paid = await paid_amount(db, inv.id)
+async def _bulk_paid_amounts(
+    db: AsyncSession, invoice_ids: list[int]
+) -> dict[int, Decimal]:
+    """1 query SUM(allocated_amount) GROUP BY invoice_id utk N invoice."""
+    if not invoice_ids:
+        return {}
+    q = (
+        select(
+            InvoiceAllocation.invoice_id,
+            func.coalesce(func.sum(InvoiceAllocation.allocated_amount), 0),
+        )
+        .where(
+            InvoiceAllocation.invoice_id.in_(invoice_ids),
+            InvoiceAllocation.deleted_at.is_(None),
+        )
+        .group_by(InvoiceAllocation.invoice_id)
+    )
+    rows = (await db.execute(q)).all()
+    return {inv_id: Decimal(amt or 0) for inv_id, amt in rows}
+
+
+async def _bulk_payment_rows(
+    db: AsyncSession, invoice_ids: list[int]
+) -> dict[int, list[tuple[InvoiceAllocation, Transaction]]]:
+    """1 query utk semua payment-row (allocation + txn) milik N invoice."""
+    if not invoice_ids:
+        return {}
+    pq = (
+        select(InvoiceAllocation, Transaction)
+        .join(Transaction, Transaction.id == InvoiceAllocation.transaction_id)
+        .where(
+            InvoiceAllocation.invoice_id.in_(invoice_ids),
+            InvoiceAllocation.deleted_at.is_(None),
+            Transaction.deleted_at.is_(None),
+        )
+        .order_by(Transaction.tx_date.asc(), InvoiceAllocation.id.asc())
+    )
+    rows = (await db.execute(pq)).all()
+    grouped: dict[int, list[tuple[InvoiceAllocation, Transaction]]] = {}
+    for a, t in rows:
+        grouped.setdefault(a.invoice_id, []).append((a, t))
+    return grouped
+
+
+async def _to_out(
+    db: AsyncSession,
+    inv: Invoice,
+    *,
+    paid_override: Decimal | None = None,
+    payment_rows: list[tuple[InvoiceAllocation, Transaction]] | None = None,
+) -> InvoiceOut:
+    """Serialize 1 invoice. Bila `paid_override` & `payment_rows`
+    diberikan (mis. dari bulk-loader di list endpoint), tidak ada
+    query tambahan -- ini menghilangkan N+1 di list_invoices."""
+    if paid_override is not None:
+        paid = paid_override
+    else:
+        paid = await paid_amount(db, inv.id)
     out = InvoiceOut.model_validate(inv)
     out.attachments = [AttachmentOut.model_validate(a) for a in inv.attachments]
     out.items = [InvoiceItemOut.model_validate(it) for it in inv.items]
@@ -74,18 +130,19 @@ async def _to_out(db: AsyncSession, inv: Invoice) -> InvoiceOut:
     out.remaining = outstanding
     out.outstanding_amount = outstanding
 
-    # payments dirakit dari allocation rows: 1 baris = 1 alokasi.
-    pq = (
-        select(InvoiceAllocation, Transaction)
-        .join(Transaction, Transaction.id == InvoiceAllocation.transaction_id)
-        .where(
-            InvoiceAllocation.invoice_id == inv.id,
-            InvoiceAllocation.deleted_at.is_(None),
-            Transaction.deleted_at.is_(None),
+    if payment_rows is None:
+        pq = (
+            select(InvoiceAllocation, Transaction)
+            .join(Transaction, Transaction.id == InvoiceAllocation.transaction_id)
+            .where(
+                InvoiceAllocation.invoice_id == inv.id,
+                InvoiceAllocation.deleted_at.is_(None),
+                Transaction.deleted_at.is_(None),
+            )
+            .order_by(Transaction.tx_date.asc(), InvoiceAllocation.id.asc())
         )
-        .order_by(Transaction.tx_date.asc(), InvoiceAllocation.id.asc())
-    )
-    rows = (await db.execute(pq)).all()
+        payment_rows = (await db.execute(pq)).all()
+
     out.payments = [
         InvoicePayment(
             id=t.id,
@@ -100,7 +157,7 @@ async def _to_out(db: AsyncSession, inv: Invoice) -> InvoiceOut:
             description=t.description,
             created_at=a.created_at,
         )
-        for a, t in rows
+        for a, t in payment_rows
     ]
     return out
 
@@ -153,7 +210,19 @@ async def list_invoices(
         .limit(size)
     )
     items = (await db.execute(stmt)).scalars().all()
-    out_items = [await _to_out(db, i) for i in items]
+    # Bulk-load paid amount + payment rows utk seluruh invoice di page,
+    # bukan 2 query per invoice (N+1).
+    inv_ids = [i.id for i in items]
+    paid_map = await _bulk_paid_amounts(db, inv_ids)
+    payments_map = await _bulk_payment_rows(db, inv_ids)
+    out_items = [
+        await _to_out(
+            db, i,
+            paid_override=paid_map.get(i.id, Decimal("0")),
+            payment_rows=payments_map.get(i.id, []),
+        )
+        for i in items
+    ]
     return Page(items=out_items, total=total, page=page, size=size)
 
 
@@ -551,7 +620,7 @@ async def invoice_pdf(
         logo_data=logo_data, letterhead_data=letterhead_data,
         base_css=base_css,
     )
-    pdf = html_to_pdf(html)
+    pdf = await html_to_pdf_async(html)
     safe_name = (inv.number or f"INV-{inv.id}").replace("/", "-")
     return Response(
         pdf,

@@ -31,7 +31,7 @@ from app.models.models import (
     VendorClient,
 )
 from app.services.excel.builder import build_xlsx
-from app.services.pdf.render import html_to_pdf, inline_image, render_html
+from app.services.pdf.render import html_to_pdf_async, inline_image, render_html
 
 router = APIRouter()
 
@@ -125,6 +125,18 @@ async def _resolve_company(db: AsyncSession, project_id: int | None) -> Company 
     return res.scalar_one_or_none()
 
 
+async def _project_map_for_ids(
+    db: AsyncSession, project_ids: set[int]
+) -> dict[int, Project]:
+    """Hanya load Project yang id-nya ada di set; hindari SELECT * di reports."""
+    if not project_ids:
+        return {}
+    res = await db.execute(
+        select(Project).where(Project.id.in_(project_ids))
+    )
+    return {p.id: p for p in res.scalars().all()}
+
+
 _REPORT_PAGE_CSS_TEMPLATE = """
 @page {{
   size: A4 {orientation};
@@ -144,7 +156,7 @@ _REPORT_PAGE_CSS_TEMPLATE = """
 """
 
 
-def _output(
+async def _output(
     format: str,
     *,
     title: str,
@@ -204,7 +216,7 @@ def _output(
         printed_by=printed_by,
         base_css=base_css,
     )
-    pdf = html_to_pdf(html)
+    pdf = await html_to_pdf_async(html)
     return Response(
         pdf,
         media_type="application/pdf",
@@ -250,7 +262,10 @@ async def cashflow(
                                      ).order_by(Transaction.tx_date.asc())
     txs = (await db.execute(stmt)).scalars().all()
 
-    proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
+    proj_ids = {t.project_id for t in txs}
+    if project_id:
+        proj_ids.add(project_id)
+    proj_map = await _project_map_for_ids(db, proj_ids)
     headers = ["Tanggal", "Proyek", "Pihak", "Deskripsi", "Masuk (Rp)", "Keluar (Rp)"]
     cols = [
         {"align": "center", "width": "78px"},
@@ -315,7 +330,7 @@ async def cashflow(
     ]
     company = await _resolve_company(db, project_id)
     title = "Laporan Arus Kas"
-    return _output(
+    return await _output(
         format, title=title, headers=headers, rows=rows, cols=cols,
         filters=filters, totals={}, company=company,
         printed_by=user.name, landscape=True,
@@ -358,8 +373,16 @@ async def report_transactions(
     stmt = stmt.order_by(Transaction.tx_date.asc())
     txs = (await db.execute(stmt)).scalars().all()
 
-    proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
-    cat_map = {c.id: c for c in (await db.execute(select(Category))).scalars().all()}
+    proj_ids = {t.project_id for t in txs}
+    if project_id:
+        proj_ids.add(project_id)
+    proj_map = await _project_map_for_ids(db, proj_ids)
+    cat_ids = {t.category_id for t in txs if t.category_id}
+    cat_map: dict[int, Category] = {}
+    if cat_ids:
+        cat_map = {c.id: c for c in
+                   (await db.execute(select(Category).where(Category.id.in_(cat_ids))))
+                   .scalars().all()}
     headers = ["Tanggal", "Proyek", "Kategori", "Pihak", "Metode", "Status", "Nominal (Rp)"]
     cols = [
         {"align": "center", "width": "78px"},
@@ -411,7 +434,7 @@ async def report_transactions(
     footer_row = ["TOTAL", "", "", "", "", "", _fmt_idr(total)]
     company = await _resolve_company(db, project_id)
     title = f"Laporan Transaksi {'Masuk' if type == TxnType.IN else 'Keluar'}"
-    return _output(
+    return await _output(
         format, title=title, headers=headers, rows=rows, cols=cols,
         filters=filters, totals={}, company=company,
         printed_by=user.name, landscape=True,
@@ -450,7 +473,10 @@ async def report_invoices(
     stmt = stmt.order_by(Invoice.invoice_date.asc())
     rows_inv = (await db.execute(stmt)).scalars().all()
 
-    proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
+    proj_ids = {inv.project_id for inv in rows_inv}
+    if project_id:
+        proj_ids.add(project_id)
+    proj_map = await _project_map_for_ids(db, proj_ids)
     headers = ["No Invoice", "Tanggal", "Jatuh Tempo", "Proyek", "Pihak", "Total (Rp)", "Status"]
     cols = [
         {"align": "left",   "width": "120px"},
@@ -499,7 +525,7 @@ async def report_invoices(
     footer_row = ["TOTAL", "", "", "", "", _fmt_idr(total), ""]
     company = await _resolve_company(db, project_id)
     title = f"Laporan Invoice {'Masuk (Hutang)' if type == InvoiceType.IN else 'Keluar (Piutang)'}"
-    return _output(
+    return await _output(
         format, title=title, headers=headers, rows=rows, cols=cols,
         filters=filters, totals={}, company=company,
         printed_by=user.name, landscape=True,
@@ -531,7 +557,10 @@ async def report_debts(
     stmt = stmt.order_by(Invoice.due_date.asc().nulls_last())
     invs = (await db.execute(stmt)).scalars().all()
 
-    proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
+    proj_ids = {inv.project_id for inv in invs}
+    if project_id:
+        proj_ids.add(project_id)
+    proj_map = await _project_map_for_ids(db, proj_ids)
     headers = ["No Invoice", "Tipe", "Jatuh Tempo", "Proyek", "Pihak",
                "Total (Rp)", "Dibayar (Rp)", "Sisa (Rp)", "Status"]
     cols = [
@@ -549,13 +578,29 @@ async def report_debts(
     sum_total_in = sum_total_out = Decimal("0")
     sum_paid_in = sum_paid_out = Decimal("0")
     sum_remaining_in = sum_remaining_out = Decimal("0")
-    for inv in invs:
-        paid_q = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-            Transaction.invoice_id == inv.id,
-            Transaction.status == TxnStatus.VERIFIED,
-            Transaction.deleted_at.is_(None),
+    # Bulk paid_amount per invoice -- SUM Transaction.amount GROUP BY invoice_id
+    # menghindari N query (1 per invoice) di loop bawah.
+    inv_ids = [inv.id for inv in invs]
+    paid_map_debts: dict[int, Decimal] = {}
+    if inv_ids:
+        bulk_q = (
+            select(
+                Transaction.invoice_id,
+                func.coalesce(func.sum(Transaction.amount), 0),
+            )
+            .where(
+                Transaction.invoice_id.in_(inv_ids),
+                Transaction.status == TxnStatus.VERIFIED,
+                Transaction.deleted_at.is_(None),
+            )
+            .group_by(Transaction.invoice_id)
         )
-        paid = Decimal((await db.execute(paid_q)).scalar_one() or 0)
+        paid_map_debts = {
+            iid: Decimal(amt or 0)
+            for iid, amt in (await db.execute(bulk_q)).all()
+        }
+    for inv in invs:
+        paid = paid_map_debts.get(inv.id, Decimal("0"))
         total_inv = Decimal(inv.total or 0)
         remaining = max(total_inv - paid, Decimal("0"))
         if inv.type == InvoiceType.IN:
@@ -594,7 +639,7 @@ async def report_debts(
         "",
     ]
     company = await _resolve_company(db, project_id)
-    return _output(
+    return await _output(
         format, title="Laporan Hutang & Piutang", headers=headers, rows=rows, cols=cols,
         filters={"Proyek": proj_label, "Status": "Aktif (Issued, Partial, Overdue)"},
         totals={}, company=company, printed_by=user.name, landscape=True,
@@ -618,7 +663,12 @@ async def report_budget(
             raise HTTPException(403, "no_project_access")
         stmt = stmt.where(Project.id.in_(ids))
     projects = (await db.execute(stmt)).scalars().all()
-    company_map = {c.id: c for c in (await db.execute(select(Company))).scalars().all()}
+    co_ids = {p.company_id for p in projects if p.company_id}
+    company_map: dict[int, Company] = {}
+    if co_ids:
+        company_map = {c.id: c for c in
+                       (await db.execute(select(Company).where(Company.id.in_(co_ids))))
+                       .scalars().all()}
 
     headers = ["Kode", "Proyek", "Perusahaan", "Budget (Rp)", "Pemakaian (Rp)",
                "Pakai", "Sisa (Rp)", "Status"]
@@ -636,14 +686,29 @@ async def report_budget(
     total_budget = Decimal("0")
     total_spent = Decimal("0")
     n_aman = n_warn = n_over = n_no = 0
-    for p in projects:
-        out_q = select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-            Transaction.project_id == p.id,
-            Transaction.type == TxnType.OUT,
-            Transaction.status == TxnStatus.VERIFIED,
-            Transaction.deleted_at.is_(None),
+    # Bulk-load realisasi (SUM amount) per proyek -- ganti 1 query per project.
+    proj_ids_list = [p.id for p in projects]
+    spent_map: dict[int, Decimal] = {}
+    if proj_ids_list:
+        bulk = (
+            select(
+                Transaction.project_id,
+                func.coalesce(func.sum(Transaction.amount), 0),
+            )
+            .where(
+                Transaction.project_id.in_(proj_ids_list),
+                Transaction.type == TxnType.OUT,
+                Transaction.status == TxnStatus.VERIFIED,
+                Transaction.deleted_at.is_(None),
+            )
+            .group_by(Transaction.project_id)
         )
-        spent = Decimal((await db.execute(out_q)).scalar_one() or 0)
+        spent_map = {
+            pid: Decimal(amt or 0)
+            for pid, amt in (await db.execute(bulk)).all()
+        }
+    for p in projects:
+        spent = spent_map.get(p.id, Decimal("0"))
         budget = Decimal(p.budget_amount or 0)
         pct = (spent / budget * 100) if budget > 0 else Decimal("0")
         remaining = budget - spent
@@ -675,7 +740,7 @@ async def report_budget(
     ]
     scope_line = f"Snapshot per {_fmt_date(datetime.now().date())} · Realisasi VERIFIED saja · Semua proyek"
     company = await _resolve_company(db, None)
-    return _output(
+    return await _output(
         format, title="Laporan Budget Control", headers=headers, rows=rows, cols=cols,
         filters={}, totals={}, company=company, printed_by=user.name, landscape=True,
         summary=summary, scope_line=scope_line,
@@ -717,7 +782,10 @@ async def report_pos(
     stmt = stmt.order_by(PurchaseOrder.po_date.asc())
     pos = (await db.execute(stmt)).scalars().all()
 
-    proj_map = {p.id: p for p in (await db.execute(select(Project))).scalars().all()}
+    proj_ids = {po.project_id for po in pos}
+    if project_id:
+        proj_ids.add(project_id)
+    proj_map = await _project_map_for_ids(db, proj_ids)
     headers = ["No PO", "Tanggal", "Proyek", "Vendor", "Total (Rp)", "Status"]
     cols = [
         {"align": "left",   "width": "125px"},
@@ -756,7 +824,7 @@ async def report_pos(
     status_label = status.value if status else "semua status"
     scope_line = f"Periode {period_label} · {proj_label} · {status_label}"
     company = await _resolve_company(db, project_id)
-    return _output(
+    return await _output(
         format, title="Laporan Purchase Order", headers=headers, rows=rows, cols=cols,
         filters={
             "Periode": period_label,
@@ -796,7 +864,14 @@ async def report_audit(
     stmt = stmt.order_by(AuditLog.id.desc()).limit(2000)
     logs = (await db.execute(stmt)).scalars().all()
 
-    user_map = {u.id: u for u in (await db.execute(select(User))).scalars().all()}
+    user_ids = {l.user_id for l in logs if l.user_id}
+    if user_id:
+        user_ids.add(user_id)
+    user_map: dict[int, User] = {}
+    if user_ids:
+        user_map = {u.id: u for u in
+                    (await db.execute(select(User).where(User.id.in_(user_ids))))
+                    .scalars().all()}
     headers = ["Waktu", "User", "Entity", "ID", "Aksi", "Catatan"]
     cols = [
         {"align": "center", "width": "115px"},
@@ -829,7 +904,7 @@ async def report_audit(
     entity_label = entity or "semua entity"
     scope_line = f"Periode {period_label} · {entity_label} · {user_label}"
     company = await _resolve_company(db, None)
-    return _output(
+    return await _output(
         format, title="Laporan Audit Log", headers=headers, rows=rows, cols=cols,
         filters={
             "Periode": period_label,
