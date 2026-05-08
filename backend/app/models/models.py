@@ -275,7 +275,11 @@ class ProjectAttachment(TimestampMixin, Base):
 
 class ProjectUser(TimestampMixin, Base):
     __tablename__ = "project_users"
-    __table_args__ = (UniqueConstraint("project_id", "user_id", name="uq_project_user"),)
+    __table_args__ = (
+        UniqueConstraint("project_id", "user_id", name="uq_project_user"),
+        # Scope check di setiap request user_project_ids() WHERE user_id=?.
+        Index("ix_project_users_user_id", "user_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
@@ -315,13 +319,21 @@ class Transaction(TimestampMixin, Base):
     __tablename__ = "transactions"
     __table_args__ = (
         Index("ix_transactions_project_date", "project_id", "tx_date"),
+        # Hot-path filter combos di reports/cashflow/transactions list:
+        # (project, status, type) -- arus kas verified per proyek/arah.
+        Index("ix_transactions_project_status_type", "project_id", "status", "type"),
+        # Soft-delete filter ada di hampir semua query.
+        Index("ix_transactions_deleted_at", "deleted_at"),
+        # Lookup dari invoice_allocations / detail invoice.
+        Index("ix_transactions_invoice_id", "invoice_id"),
+        Index("ix_transactions_vendor_client", "vendor_client_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
     tx_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
-    type: Mapped[TxnType] = mapped_column(Enum(TxnType), nullable=False)
-    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
+    type: Mapped[TxnType] = mapped_column(Enum(TxnType), nullable=False, index=True)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True, index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
 
     party_type: Mapped[PartyType | None] = mapped_column(Enum(PartyType), nullable=True)
@@ -339,7 +351,7 @@ class Transaction(TimestampMixin, Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     usage_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    status: Mapped[TxnStatus] = mapped_column(Enum(TxnStatus), default=TxnStatus.DRAFT)
+    status: Mapped[TxnStatus] = mapped_column(Enum(TxnStatus), default=TxnStatus.DRAFT, index=True)
     cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     invoice_id: Mapped[int | None] = mapped_column(ForeignKey("invoices.id"), nullable=True)
@@ -375,15 +387,23 @@ class TransactionAttachment(TimestampMixin, Base):
 # --- Invoice ---
 class Invoice(TimestampMixin, Base):
     __tablename__ = "invoices"
+    __table_args__ = (
+        # Filter umum: per proyek + status (laporan, list invoices).
+        Index("ix_invoices_project_status", "project_id", "status"),
+        # Soft-delete + due-date scan utk hutang/piutang aging.
+        Index("ix_invoices_deleted_at", "deleted_at"),
+        Index("ix_invoices_due_date", "due_date"),
+        Index("ix_invoices_invoice_date", "invoice_date"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     number: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
-    type: Mapped[InvoiceType] = mapped_column(Enum(InvoiceType), nullable=False)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    type: Mapped[InvoiceType] = mapped_column(Enum(InvoiceType), nullable=False, index=True)
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     vendor_client_id: Mapped[int | None] = mapped_column(
-        ForeignKey("vendors_clients.id"), nullable=True
+        ForeignKey("vendors_clients.id"), nullable=True, index=True
     )
     party_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
@@ -391,7 +411,7 @@ class Invoice(TimestampMixin, Base):
     tax: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
     total: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
 
-    status: Mapped[InvoiceStatus] = mapped_column(Enum(InvoiceStatus), default=InvoiceStatus.DRAFT)
+    status: Mapped[InvoiceStatus] = mapped_column(Enum(InvoiceStatus), default=InvoiceStatus.DRAFT, index=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
@@ -475,13 +495,18 @@ class InvoiceAttachment(TimestampMixin, Base):
 # --- Purchase Order ---
 class PurchaseOrder(TimestampMixin, Base):
     __tablename__ = "purchase_orders"
+    __table_args__ = (
+        Index("ix_po_project_status", "project_id", "status"),
+        Index("ix_po_deleted_at", "deleted_at"),
+        Index("ix_po_po_date", "po_date"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     number: Mapped[str] = mapped_column(String(80), unique=True, nullable=False, index=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), nullable=False, index=True)
     vendor_client_id: Mapped[int | None] = mapped_column(
-        ForeignKey("vendors_clients.id"), nullable=True
+        ForeignKey("vendors_clients.id"), nullable=True, index=True
     )
     vendor_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
@@ -496,7 +521,7 @@ class PurchaseOrder(TimestampMixin, Base):
     payment_terms: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    status: Mapped[POStatus] = mapped_column(Enum(POStatus), default=POStatus.DRAFT)
+    status: Mapped[POStatus] = mapped_column(Enum(POStatus), default=POStatus.DRAFT, index=True)
     cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
@@ -525,7 +550,12 @@ class POItem(TimestampMixin, Base):
 # --- Audit + AI ---
 class AuditLog(TimestampMixin, Base):
     __tablename__ = "audit_logs"
-    __table_args__ = (Index("ix_audit_entity", "entity", "entity_id"),)
+    __table_args__ = (
+        Index("ix_audit_entity", "entity", "entity_id"),
+        # Laporan audit-log selalu ORDER BY created_at DESC + filter user_id.
+        Index("ix_audit_created_at", "created_at"),
+        Index("ix_audit_user_id", "user_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

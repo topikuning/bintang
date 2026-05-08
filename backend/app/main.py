@@ -34,6 +34,52 @@ async def _sync_pg_columns(conn) -> None:
             print(f"[startup] column add warning: {e}")
 
 
+# Indeks performa yg ditambahkan setelah tabel sudah berisi data.
+# `CREATE INDEX IF NOT EXISTS` valid di SQLite 3.8+ dan Postgres 9.5+,
+# jadi statement ini idempoten dan aman untuk dev maupun prod.
+_PERF_INDEXES = [
+    # transactions: hot-path filter di reports/cashflow/transactions list
+    "CREATE INDEX IF NOT EXISTS ix_transactions_project_id ON transactions (project_id)",
+    "CREATE INDEX IF NOT EXISTS ix_transactions_type ON transactions (type)",
+    "CREATE INDEX IF NOT EXISTS ix_transactions_status ON transactions (status)",
+    "CREATE INDEX IF NOT EXISTS ix_transactions_category_id ON transactions (category_id)",
+    "CREATE INDEX IF NOT EXISTS ix_transactions_deleted_at ON transactions (deleted_at)",
+    "CREATE INDEX IF NOT EXISTS ix_transactions_invoice_id ON transactions (invoice_id)",
+    "CREATE INDEX IF NOT EXISTS ix_transactions_vendor_client ON transactions (vendor_client_id)",
+    "CREATE INDEX IF NOT EXISTS ix_transactions_project_status_type ON transactions (project_id, status, type)",
+    # invoices
+    "CREATE INDEX IF NOT EXISTS ix_invoices_project_id ON invoices (project_id)",
+    "CREATE INDEX IF NOT EXISTS ix_invoices_type ON invoices (type)",
+    "CREATE INDEX IF NOT EXISTS ix_invoices_status ON invoices (status)",
+    "CREATE INDEX IF NOT EXISTS ix_invoices_deleted_at ON invoices (deleted_at)",
+    "CREATE INDEX IF NOT EXISTS ix_invoices_due_date ON invoices (due_date)",
+    "CREATE INDEX IF NOT EXISTS ix_invoices_invoice_date ON invoices (invoice_date)",
+    "CREATE INDEX IF NOT EXISTS ix_invoices_vendor_client_id ON invoices (vendor_client_id)",
+    "CREATE INDEX IF NOT EXISTS ix_invoices_project_status ON invoices (project_id, status)",
+    # purchase orders
+    "CREATE INDEX IF NOT EXISTS ix_po_project_id ON purchase_orders (project_id)",
+    "CREATE INDEX IF NOT EXISTS ix_po_company_id ON purchase_orders (company_id)",
+    "CREATE INDEX IF NOT EXISTS ix_po_status ON purchase_orders (status)",
+    "CREATE INDEX IF NOT EXISTS ix_po_deleted_at ON purchase_orders (deleted_at)",
+    "CREATE INDEX IF NOT EXISTS ix_po_po_date ON purchase_orders (po_date)",
+    "CREATE INDEX IF NOT EXISTS ix_po_vendor_client ON purchase_orders (vendor_client_id)",
+    "CREATE INDEX IF NOT EXISTS ix_po_project_status ON purchase_orders (project_id, status)",
+    # audit logs
+    "CREATE INDEX IF NOT EXISTS ix_audit_created_at ON audit_logs (created_at)",
+    "CREATE INDEX IF NOT EXISTS ix_audit_user_id ON audit_logs (user_id)",
+    # project_users
+    "CREATE INDEX IF NOT EXISTS ix_project_users_user_id ON project_users (user_id)",
+]
+
+
+async def _ensure_perf_indexes(conn) -> None:
+    for sql in _PERF_INDEXES:
+        try:
+            await conn.execute(text(sql))
+        except Exception as e:  # noqa: BLE001
+            print(f"[startup] index ensure warning: {e}")
+
+
 async def _sync_pg_enums(conn) -> None:
     """Postgres: pastikan tiap nilai enum di model ada di type DB.
     `create_all` tidak update enum yang sudah ada, sehingga value baru
@@ -73,6 +119,13 @@ async def lifespan(_app: FastAPI):
         except Exception as e:  # noqa: BLE001
             # jangan blok startup; cetak warning saja
             print(f"[startup] schema sync warning: {e}")
+    # Indeks performa: idempoten utk SQLite & Postgres. create_all di atas
+    # tidak menambahkan indeks baru ke tabel yg sudah ada di DB lama.
+    try:
+        async with engine.begin() as conn:
+            await _ensure_perf_indexes(conn)
+    except Exception as e:  # noqa: BLE001
+        print(f"[startup] perf index warning: {e}")
     Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
 
     # Register Telegram webhook kalau token + base URL tersedia.
