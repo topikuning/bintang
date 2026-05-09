@@ -291,12 +291,18 @@ table.legacy th { background: #f4f4f4; text-align: left; font-weight: 600; }
   letter-spacing: 0.1px;
 }
 
-/* Section heading: garis bawah tipis + caption uppercase (Big-4 style). */
+/* Section heading: garis bawah tipis + caption uppercase (Big-4 style).
+   Pakai flex (bukan float) supaya WeasyPrint tidak salah hitung
+   page-break -- float pada caption pernah memaksa seluruh tabel di
+   bawahnya pindah ke halaman berikutnya. */
 .rpt-section {
   margin-top: 8px;
   margin-bottom: 3px;
   border-bottom: 0.5px solid #d4d4d4;
   padding-bottom: 2px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
 }
 .rpt-section h2 {
   font-size: 7.8px;
