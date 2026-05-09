@@ -57,7 +57,7 @@
 <!-- DETAIL -->
 <div class="rpt-section">
   <h2>{{ detail_label or 'Detail' }}</h2>
-  {% if rows %}<span class="caption" style="float:right;">{{ rows|length }} baris</span>{% endif %}
+  {% if rows %}<span class="caption">{{ rows|length }} baris</span>{% endif %}
 </div>
 
 <table class="rpt-table">
@@ -111,7 +111,7 @@
 {% if diagnostic %}
 <div class="rpt-section" style="margin-top: 8px;">
   <h2>Diagnostik Data</h2>
-  <span class="caption" style="float:right;">Catatan: laporan hanya menampilkan status VERIFIED.</span>
+  <span class="caption">Catatan: laporan hanya menampilkan status VERIFIED.</span>
 </div>
 <table class="rpt-table" style="font-size: 7.5px;">
   <thead>
