@@ -12,6 +12,7 @@ import {
   ScanLine,
   ShieldCheck,
   Sparkles,
+  Stethoscope,
   Upload,
   X,
   XCircle,
@@ -21,6 +22,7 @@ import {
   useOcrExtract,
   useOcrExtractUpload,
   useOcrReview,
+  useOcrTestConnection,
   type OcrDraft,
 } from "@/hooks/useOcr"
 import { useAuthStore } from "@/store/auth"
@@ -71,6 +73,7 @@ export function OcrPage() {
   const extract = useOcrExtract()
   const extractUpload = useOcrExtractUpload()
   const review = useOcrReview()
+  const testConn = useOcrTestConnection()
 
   const [mode, setMode] = useState<Mode>("upload")
   const [fileUrl, setFileUrl] = useState("")
@@ -156,6 +159,25 @@ export function OcrPage() {
     }
   }
 
+  const handleTestConnection = async () => {
+    try {
+      const r = await testConn.mutateAsync()
+      if (r.ok) {
+        toast.success("Koneksi Claude API OK", {
+          description: `${r.model} -- ${r.latency_ms}ms`,
+        })
+      } else {
+        toast.error("Koneksi gagal", {
+          description: r.hint ?? r.detail ?? r.error ?? "unknown",
+        })
+      }
+    } catch (err) {
+      toast.error("Test koneksi error", {
+        description: apiErrorMessage(err),
+      })
+    }
+  }
+
   const handleReview = async (id: number, approved: boolean) => {
     try {
       await review.mutateAsync({ id, approved })
@@ -185,16 +207,31 @@ export function OcrPage() {
         </div>
       </div>
 
-      {/* Banner: Claude Vision */}
-      <div className="rounded-md border border-info-200 bg-info-50 p-3 sm:p-4 flex items-start gap-2">
+      {/* Banner: Claude Vision + Test koneksi */}
+      <div className="rounded-md border border-info-200 bg-info-50 p-3 sm:p-4 flex items-start gap-2 flex-wrap">
         <Sparkles className="h-4 w-4 text-info-600 mt-0.5 shrink-0" />
-        <div className="text-[12px] text-info-800 leading-relaxed">
+        <div className="text-[12px] text-info-800 leading-relaxed flex-1 min-w-[200px]">
           <strong>Powered by Claude Vision.</strong> Mendukung dokumen cetak
           maupun tulisan tangan, ekstrak nomor, tanggal, vendor, total, dan
           tiap baris item. Confidence rendah otomatis ditandai untuk review
           manual.
         </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleTestConnection}
+          disabled={testConn.isPending}
+          className="border-info-300 text-info-700 hover:bg-info-100 shrink-0"
+        >
+          {testConn.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Stethoscope className="h-3.5 w-3.5" />
+          )}
+          Test Koneksi
+        </Button>
       </div>
+      {testConn.data && <TestConnectionResultCard result={testConn.data} />}
 
       {/* Submit form */}
       <div className="rounded-md border bg-surface p-4 sm:p-5 space-y-3">
@@ -655,6 +692,59 @@ function FieldCell({
         )}
       >
         {value == null || value === "" ? "—" : value}
+      </div>
+    </div>
+  )
+}
+
+function TestConnectionResultCard({
+  result,
+}: {
+  result: import("@/hooks/useOcr").OcrTestConnectionResult
+}) {
+  if (result.ok) {
+    return (
+      <div className="rounded-md border border-success-200 bg-success-50 p-3 text-[12px] text-success-800 flex items-start gap-2">
+        <CheckCircle2 className="h-4 w-4 text-success-600 mt-0.5 shrink-0" />
+        <div className="space-y-0.5">
+          <div>
+            <strong>Koneksi OK.</strong> Model {result.model}, latency{" "}
+            {result.latency_ms}ms.
+          </div>
+          {result.reply && (
+            <div className="font-mono text-[11px] text-success-700">
+              Reply: {result.reply}
+            </div>
+          )}
+          {(result.input_tokens != null || result.output_tokens != null) && (
+            <div className="font-mono text-[11px] text-success-700">
+              Tokens: in={result.input_tokens} out={result.output_tokens}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="rounded-md border border-danger-200 bg-danger-50 p-3 text-[12px] text-danger-800 flex items-start gap-2">
+      <XCircle className="h-4 w-4 text-danger-600 mt-0.5 shrink-0" />
+      <div className="space-y-0.5 flex-1 min-w-0">
+        <div>
+          <strong>Koneksi gagal:</strong> {result.error ?? "unknown"}
+        </div>
+        {result.hint && (
+          <div className="text-danger-700">💡 {result.hint}</div>
+        )}
+        {result.detail && (
+          <details className="text-[11px]">
+            <summary className="cursor-pointer text-danger-600 hover:text-danger-800">
+              Detail teknis
+            </summary>
+            <pre className="mt-1 font-mono whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+              {result.detail}
+            </pre>
+          </details>
+        )}
       </div>
     </div>
   )

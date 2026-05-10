@@ -87,6 +87,31 @@ export function useOcrExtractUpload() {
   })
 }
 
+export interface OcrTestConnectionResult {
+  ok: boolean
+  engine?: string
+  model?: string
+  latency_ms?: number
+  reply?: string
+  error?: string
+  detail?: string
+  hint?: string
+  input_tokens?: number
+  output_tokens?: number
+}
+
+export function useOcrTestConnection() {
+  return useMutation({
+    mutationFn: async (): Promise<OcrTestConnectionResult> => {
+      const { data } = await api.get<OcrTestConnectionResult>(
+        "/ocr/test-connection",
+        { timeout: 70_000 },
+      )
+      return data
+    },
+  })
+}
+
 export function useOcrReview() {
   const qc = useQueryClient()
   return useMutation({
