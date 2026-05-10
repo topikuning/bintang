@@ -107,10 +107,20 @@
   </thead>
   <tbody>
   {% for it in invoice.items %}
+    {# Pisah deskripsi jadi name + spec kalau ada separator em-dash.
+       Kalau tidak ada separator (atau spec sama dgn name), merge kolom
+       'Deskripsi' + 'Spesifikasi' jadi satu (colspan=2) supaya lebih
+       rapi -- jangan duplikat unit yang sudah ada di kolom 'Sat.'. #}
+    {% set _name = it.description.split('—')[0]|trim if '—' in it.description else it.description %}
+    {% set _spec = it.description.split('—')[1]|trim if '—' in it.description else '' %}
     <tr>
       <td class="center">{{ loop.index }}</td>
-      <td><span class="name">{{ it.description.split('—')[0]|trim if '—' in it.description else it.description }}</span></td>
-      <td class="spec">{{ it.description.split('—')[1]|trim if '—' in it.description else (it.unit or '') }}</td>
+      {% if _spec and _spec != _name %}
+      <td><span class="name">{{ _name }}</span></td>
+      <td class="spec">{{ _spec }}</td>
+      {% else %}
+      <td colspan="2"><span class="name">{{ _name }}</span></td>
+      {% endif %}
       <td>{{ it.unit or "" }}</td>
       <td class="right">{{ it.quantity|idr }}</td>
       <td class="right">{{ it.unit_price|idr }}</td>
