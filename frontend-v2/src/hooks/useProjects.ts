@@ -1,13 +1,14 @@
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query-keys"
-import type { Page, Project } from "@/types/api"
+import type { Page, Project, ProjectStatus } from "@/types/api"
 
 interface ListParams {
   page?: number
   size?: number
   q?: string
-  is_active?: boolean
+  status?: ProjectStatus
+  company_id?: number
 }
 
 export function useProjects(params: ListParams = {}) {

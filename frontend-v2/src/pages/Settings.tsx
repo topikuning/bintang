@@ -58,7 +58,7 @@ export function SettingsPage() {
   const navigate = useNavigate()
 
   const update = useUpdateUser(user?.id ?? 0)
-  const projectsQ = useProjects({ is_active: true })
+  const projectsQ = useProjects({ status: "AKTIF" })
   const { defaultProjectId, setDefaultProject } = useUIPrefs()
 
   const profileForm = useForm<ProfileForm>({

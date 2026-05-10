@@ -106,11 +106,20 @@ export function ProjectDetailPage() {
             </h1>
             <div className="flex items-center gap-2 flex-wrap mt-0.5">
               <span className="font-mono text-[12px] text-ink-500">{project.code}</span>
-              {project.is_active ? (
-                <Badge tone="success">Aktif</Badge>
-              ) : (
-                <Badge tone="neutral">Nonaktif</Badge>
-              )}
+              {(() => {
+                const s = project.status ?? "AKTIF"
+                const tone =
+                  s === "AKTIF" ? "success"
+                  : s === "DITAHAN" ? "warning"
+                  : s === "DIBATALKAN" ? "danger"
+                  : "neutral"
+                const label =
+                  s === "AKTIF" ? "Aktif"
+                  : s === "SELESAI" ? "Selesai"
+                  : s === "DITAHAN" ? "Ditahan"
+                  : "Dibatalkan"
+                return <Badge tone={tone}>{label}</Badge>
+              })()}
             </div>
           </div>
         </div>
@@ -130,7 +139,14 @@ export function ProjectDetailPage() {
             }
             mono
           />
-          <InfoRow label="Mata Uang" value={(project as { currency?: string }).currency ?? "IDR"} />
+          <InfoRow label="Mata Uang" value={project.currency ?? "IDR"} />
+          {project.location && <InfoRow label="Lokasi" value={project.location} />}
+          {(project.start_date || project.end_date) && (
+            <InfoRow
+              label="Periode"
+              value={`${project.start_date ?? "—"} s/d ${project.end_date ?? "—"}`}
+            />
+          )}
         </dl>
       </div>
 

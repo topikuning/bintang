@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Building2, Loader2, Pencil, Trash2 } from "lucide-react"
 import { z } from "zod"
@@ -37,9 +37,27 @@ const schema = z.object({
     .union([z.string().email("Email tidak valid"), z.literal(""), z.null()])
     .optional(),
   address: z.string().nullable().optional(),
+  director_name: z.string().nullable().optional(),
+  bank_account: z.string().nullable().optional(),
+  logo_url: z.string().nullable().optional(),
+  letterhead_url: z.string().nullable().optional(),
 })
 
 type FormValues = z.infer<typeof schema>
+
+function buildDefaults(c: Company | null): FormValues {
+  return {
+    name: c?.name ?? "",
+    npwp: c?.npwp ?? "",
+    phone: c?.phone ?? "",
+    email: c?.email ?? "",
+    address: c?.address ?? "",
+    director_name: c?.director_name ?? "",
+    bank_account: c?.bank_account ?? "",
+    logo_url: c?.logo_url ?? "",
+    letterhead_url: c?.letterhead_url ?? "",
+  }
+}
 
 export function CompaniesPage() {
   const q = useCompanies()
@@ -70,6 +88,14 @@ export function CompaniesPage() {
         <span className="font-mono text-[13px]">{row.original.npwp || "—"}</span>
       ),
       meta: { align: "left", width: "180px" },
+    },
+    {
+      id: "director",
+      header: "Direktur",
+      cell: ({ row }) => (
+        <span className="text-[13px]">{row.original.director_name || "—"}</span>
+      ),
+      meta: { align: "left", width: "200px" },
     },
     {
       id: "address",
@@ -150,6 +176,11 @@ export function CompaniesPage() {
             {c.npwp && (
               <div className="font-mono text-[11px] text-ink-500">NPWP {c.npwp}</div>
             )}
+            {c.director_name && (
+              <div className="text-[11px] text-ink-500 truncate">
+                Direktur: {c.director_name}
+              </div>
+            )}
             {c.address && <div className="text-[11px] text-ink-500 truncate">{c.address}</div>}
             <div className="flex justify-end mt-1">
               <button
@@ -226,14 +257,12 @@ function CompanyForm({
     reset,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    defaultValues: {
-      name: company?.name ?? "",
-      npwp: company?.npwp ?? "",
-      phone: company?.phone ?? "",
-      email: company?.email ?? "",
-      address: company?.address ?? "",
-    },
+    defaultValues: buildDefaults(company),
   })
+
+  useEffect(() => {
+    if (open) reset(buildDefaults(company))
+  }, [company, open, reset])
 
   const onSubmit = async (raw: FormValues) => {
     const parsed = schema.safeParse(raw)
@@ -248,6 +277,10 @@ function CompanyForm({
         phone: parsed.data.phone?.trim() || null,
         email: parsed.data.email?.trim() || null,
         address: parsed.data.address?.trim() || null,
+        director_name: parsed.data.director_name?.trim() || null,
+        bank_account: parsed.data.bank_account?.trim() || null,
+        logo_url: parsed.data.logo_url?.trim() || null,
+        letterhead_url: parsed.data.letterhead_url?.trim() || null,
       }
       if (isEdit) {
         await update.mutateAsync(payload)
@@ -278,9 +311,14 @@ function CompanyForm({
           autoFocus
         />
       </Field>
-      <Field label="NPWP">
-        <Input {...register("npwp")} placeholder="01.234.567.8-901.000" className="font-mono" />
-      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="NPWP">
+          <Input {...register("npwp")} placeholder="01.234.567.8-901.000" className="font-mono" />
+        </Field>
+        <Field label="Direktur">
+          <Input {...register("director_name")} placeholder="Nama direktur" />
+        </Field>
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Telepon">
           <Input {...register("phone")} inputMode="tel" className="font-mono" />
@@ -292,6 +330,17 @@ function CompanyForm({
       <Field label="Alamat">
         <Textarea {...register("address")} rows={3} placeholder="Alamat lengkap" />
       </Field>
+      <Field label="Rekening Bank" hint="Tampil di footer invoice (mis. BCA 1234567890 a.n. PT ...)">
+        <Input {...register("bank_account")} placeholder="BCA 1234567890 a.n. PT ABC" />
+      </Field>
+      <div className="grid grid-cols-1 gap-3">
+        <Field label="URL Logo" hint="Logo perusahaan utk PDF (opsional)">
+          <Input {...register("logo_url")} placeholder="https://..." />
+        </Field>
+        <Field label="URL Kop Surat" hint="Header letterhead utk PDF (opsional)">
+          <Input {...register("letterhead_url")} placeholder="https://..." />
+        </Field>
+      </div>
     </form>
   )
 
@@ -336,11 +385,13 @@ function CompanyForm({
 function Field({
   label,
   required,
+  hint,
   error,
   children,
 }: {
   label: string
   required?: boolean
+  hint?: string
   error?: string
   children: React.ReactNode
 }) {
@@ -351,6 +402,7 @@ function Field({
         {required && <span className="text-danger-600 ml-0.5">*</span>}
       </Label>
       {children}
+      {hint && !error && <p className="text-[11px] text-ink-500">{hint}</p>}
       {error && <p className="text-[11px] text-danger-600">{error}</p>}
     </div>
   )

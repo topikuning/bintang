@@ -30,13 +30,27 @@ export interface TokenResponse {
   token_type: "bearer"
 }
 
+export type ProjectStatus = "AKTIF" | "SELESAI" | "DITAHAN" | "DIBATALKAN"
+
 export interface Project {
   id: number
   code: string
   name: string
+  location: string | null
   company_id: number
+  company_name?: string | null
+  pic_user_id: number | null
+  start_date: string | null
+  end_date: string | null
+  status: ProjectStatus
+  notes: string | null
+  project_value: string | number
   budget_amount: string | number
-  is_active: boolean
+  currency: string
+  overbudget_tolerance_pct: string | number
+  tax_ppn_pct: string | number
+  tax_pph_pct: string | number
+  marketing_pct: string | number
 }
 
 export interface Page<T> {
@@ -251,7 +265,9 @@ export interface Company {
   phone?: string | null
   email?: string | null
   logo_url?: string | null
-  is_active: boolean
+  letterhead_url?: string | null
+  director_name?: string | null
+  bank_account?: string | null
 }
 
 export interface CompanyInput {
@@ -260,21 +276,31 @@ export interface CompanyInput {
   npwp?: string | null
   phone?: string | null
   email?: string | null
+  logo_url?: string | null
+  letterhead_url?: string | null
+  director_name?: string | null
+  bank_account?: string | null
 }
+
+export type CategoryType = "IN" | "OUT" | "BOTH"
 
 export interface CategoryInput {
   name: string
-  parent_id?: number | null
-  type?: "IN" | "OUT" | "BOTH"
+  type: CategoryType
+  description?: string | null
 }
+
+export type VendorClientType = "VENDOR" | "CLIENT" | "BOTH"
 
 export interface VendorClientInput {
   name: string
+  type: VendorClientType
+  address?: string | null
   npwp?: string | null
-  party_kind?: "VENDOR" | "CLIENT" | "BOTH"
+  contact?: string | null
   phone?: string | null
   email?: string | null
-  address?: string | null
+  bank_account?: string | null
 }
 
 // Audit log

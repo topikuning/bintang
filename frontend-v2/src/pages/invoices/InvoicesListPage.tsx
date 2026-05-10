@@ -61,7 +61,7 @@ export function InvoicesListPage() {
   )
 
   const invQuery = useInvoices(params)
-  const projectsQuery = useProjects({ is_active: true })
+  const projectsQuery = useProjects({ status: "AKTIF" })
   const detailQuery = useInvoice(selectedId)
 
   const projectMap = useMemo(() => {

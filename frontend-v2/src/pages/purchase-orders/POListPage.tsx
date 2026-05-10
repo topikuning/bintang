@@ -51,7 +51,7 @@ export function POListPage() {
   )
 
   const poQuery = usePOs(params)
-  const projectsQuery = useProjects({ is_active: true })
+  const projectsQuery = useProjects({ status: "AKTIF" })
   const detailQuery = usePO(selectedId)
 
   const projectMap = useMemo(() => {

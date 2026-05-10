@@ -62,7 +62,7 @@ export function TransactionsListPage() {
   )
 
   const txQuery = useTransactions(params)
-  const projectsQuery = useProjects({ is_active: true })
+  const projectsQuery = useProjects({ status: "AKTIF" })
   const catQuery = useCategories()
   const detailQuery = useTransaction(selectedId)
 

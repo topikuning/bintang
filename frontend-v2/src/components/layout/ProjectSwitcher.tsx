@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils"
 export function ProjectSwitcher() {
   const bp = useBreakpoint()
   const { defaultProjectId, setDefaultProject } = useUIPrefs()
-  const { data, isLoading } = useProjects({ is_active: true })
+  const { data, isLoading } = useProjects({ status: "AKTIF" })
   const [sheetOpen, setSheetOpen] = useState(false)
 
   const projects = data?.items ?? []
