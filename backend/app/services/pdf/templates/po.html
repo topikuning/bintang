@@ -7,6 +7,11 @@
 </head>
 <body>
 
+{# Enum value -- bukan {{ po.status }} langsung karena SQLAlchemy
+   Enum.__str__ menghasilkan 'POStatus.DRAFT' (uppercase via CSS jadi
+   'POSTATUS.DRAFT') -- pakai .value supaya cuma 'DRAFT'. #}
+{% set _status = po.status.value %}
+
 <!-- KOP / LETTERHEAD (kecil, opsional) -->
 <div class="kop row">
   <div>
@@ -67,12 +72,12 @@
     <td class="label">Status</td>
     <td class="value">
       <span class="badge
-        {% if po.status == 'APPROVED' %}badge-paid
-        {% elif po.status == 'CANCELLED' %}badge-cancelled
-        {% elif po.status == 'PARTIALLY_FULFILLED' %}badge-partial
-        {% elif po.status == 'FULFILLED' %}badge-paid
-        {% elif po.status == 'ISSUED' %}badge-issued
-        {% else %}badge-draft{% endif %}">{{ po.status }}</span>
+        {% if _status == 'APPROVED' %}badge-paid
+        {% elif _status == 'CANCELLED' %}badge-cancelled
+        {% elif _status == 'PARTIALLY_FULFILLED' %}badge-partial
+        {% elif _status == 'FULFILLED' %}badge-paid
+        {% elif _status == 'ISSUED' %}badge-issued
+        {% else %}badge-draft{% endif %}">{{ _status }}</span>
     </td>
   </tr>
 </table>
