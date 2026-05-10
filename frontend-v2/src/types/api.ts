@@ -153,6 +153,52 @@ export interface Invoice {
   payments?: InvoicePayment[]
 }
 
+// Allocation (sambungan transaksi pembayaran <-> invoice)
+export interface AllocatableTransactionRow {
+  id: number
+  tx_date: string
+  type: TxnType
+  party_name: string | null
+  payment_method: PaymentMethod
+  reference_no: string | null
+  description: string | null
+  status: TxnStatus
+  total_amount: string
+  allocated_amount: string
+  remaining_amount: string
+}
+
+export interface AllocatableInvoiceRow {
+  id: number
+  number: string
+  invoice_date: string
+  due_date: string | null
+  type: InvoiceType
+  party_name: string | null
+  status: InvoiceStatus
+  total_amount: string
+  paid_amount: string
+  outstanding_amount: string
+}
+
+export interface AllocationOut {
+  id: number
+  transaction_id: number
+  invoice_id: number
+  allocated_amount: string
+  note: string | null
+  created_at: string
+}
+
+export interface AllocationApplyResult {
+  applied: AllocationOut[]
+  total_applied: string
+  leftover_requested: string
+  invoice_paid: string
+  invoice_outstanding: string
+  invoice_status: InvoiceStatus
+}
+
 export type POStatus = "DRAFT" | "ISSUED" | "APPROVED" | "CANCELLED"
 
 export interface PurchaseOrder {

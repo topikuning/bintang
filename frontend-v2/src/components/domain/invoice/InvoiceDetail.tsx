@@ -1,12 +1,33 @@
-import { Calendar, FileMinus, FilePlus, FileText, Hash, Paperclip, User } from "lucide-react"
-import type { Invoice, Project } from "@/types/api"
+import { useState } from "react"
+import {
+  Calendar,
+  FileMinus,
+  FilePlus,
+  FileText,
+  Hash,
+  Loader2,
+  Paperclip,
+  Trash2,
+  User,
+} from "lucide-react"
+import type { Invoice, InvoicePayment, Project } from "@/types/api"
 import { useDeleteInvoiceAttachment } from "@/hooks/useInvoiceMutations"
+import { useDeleteAllocation } from "@/hooks/useAllocations"
 import { useAuthStore } from "@/store/auth"
 import { apiErrorMessage } from "@/lib/api"
 import { fmtDate, fmtDateTime, fmtIDR } from "@/lib/format"
 import { AttachmentList } from "@/components/domain/shared/AttachmentList"
 import { StatusBadge } from "@/components/domain/shared/StatusBadge"
 import { AttachmentUploader } from "@/components/forms/AttachmentUploader"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "@/components/ui/sonner"
@@ -191,34 +212,7 @@ export function InvoiceDetail({ invoice, isLoading, project }: InvoiceDetailProp
       {inv.payments && inv.payments.length > 0 && (
         <>
           <Separator />
-          <div className="p-5 space-y-2">
-            <div className="text-[12px] uppercase tracking-wider text-ink-500">
-              Riwayat Pembayaran ({inv.payments.length})
-            </div>
-            <ul className="flex flex-col divide-y rounded-md border bg-surface">
-              {inv.payments.map((pm) => (
-                <li
-                  key={pm.allocation_id}
-                  className="grid grid-cols-[1fr_auto] items-center gap-2 px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">
-                      {pm.description || pm.reference_no || `Transaksi #${pm.id}`}
-                    </div>
-                    <div className="text-[11px] text-ink-500">
-                      {fmtDate(pm.tx_date)} · {pm.payment_method}
-                    </div>
-                  </div>
-                  <span
-                    data-num
-                    className="font-mono text-sm font-semibold text-success-700 [font-variant-numeric:tabular-nums]"
-                  >
-                    {fmtIDR(pm.amount)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <PaymentsSection invoice={inv} payments={inv.payments} />
         </>
       )}
 
@@ -294,6 +288,116 @@ function AttachmentSection({ invoice }: { invoice: Invoice }) {
           Hanya SUPERADMIN yang dapat memodifikasi lampiran.
         </p>
       )}
+    </div>
+  )
+}
+
+/**
+ * List riwayat pembayaran (allocations) dgn tombol delete per row.
+ * Permission delete: admin (require_admin) -- backend allocations
+ * delete butuh akses ke project, frontend gating sederhana role.
+ * Locked saat invoice PAID/CANCELLED kecuali SUPERADMIN.
+ */
+function PaymentsSection({
+  invoice,
+  payments,
+}: {
+  invoice: Invoice
+  payments: InvoicePayment[]
+}) {
+  const role = useAuthStore((s) => s.user?.role)
+  const isSuperAdmin = role === "SUPERADMIN"
+  const isAdmin = role === "SUPERADMIN" || role === "CENTRAL_ADMIN"
+  // Hapus alokasi: admin, atau SUPER kalau invoice locked PAID/CANCELLED
+  const lockedByStatus =
+    (invoice.status === "PAID" || invoice.status === "CANCELLED") && !isSuperAdmin
+  const canDelete = isAdmin && !lockedByStatus
+
+  const del = useDeleteAllocation()
+  const [confirmId, setConfirmId] = useState<number | null>(null)
+
+  const handleDelete = async () => {
+    if (!confirmId) return
+    try {
+      await del.mutateAsync({
+        allocationId: confirmId,
+        invoiceId: invoice.id,
+      })
+      toast.success("Alokasi pembayaran dihapus", {
+        description: "Sisa transaksi pembayaran kembali tersedia.",
+      })
+      setConfirmId(null)
+    } catch (err) {
+      toast.error("Gagal menghapus alokasi", { description: apiErrorMessage(err) })
+    }
+  }
+
+  return (
+    <div className="p-5 space-y-2">
+      <div className="text-[12px] uppercase tracking-wider text-ink-500">
+        Riwayat Pembayaran ({payments.length})
+      </div>
+      <ul className="flex flex-col divide-y rounded-md border bg-surface">
+        {payments.map((pm) => (
+          <li
+            key={pm.allocation_id}
+            className="grid grid-cols-[1fr_auto_auto] items-center gap-2 px-3 py-2"
+          >
+            <div className="min-w-0">
+              <div className="text-sm font-medium truncate">
+                {pm.description || pm.reference_no || `Transaksi #${pm.id}`}
+              </div>
+              <div className="text-[11px] text-ink-500">
+                {fmtDate(pm.tx_date)} · {pm.payment_method}
+                {pm.reference_no && pm.description && ` · ${pm.reference_no}`}
+              </div>
+            </div>
+            <span
+              data-num
+              className="font-mono text-sm font-semibold text-success-700 [font-variant-numeric:tabular-nums]"
+            >
+              {fmtIDR(pm.amount)}
+            </span>
+            {canDelete && (
+              <button
+                type="button"
+                onClick={() => setConfirmId(pm.allocation_id)}
+                className="flex h-8 w-8 items-center justify-center rounded text-ink-400 hover:bg-danger-50 hover:text-danger-700"
+                aria-label="Hapus alokasi"
+                disabled={del.isPending}
+              >
+                {del.isPending && del.variables?.allocationId === pm.allocation_id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      <Dialog open={confirmId != null} onOpenChange={(o) => !o && setConfirmId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Hapus alokasi pembayaran?</DialogTitle>
+            <DialogDescription>
+              Sisa transaksi pembayaran akan kembali tersedia dan bisa
+              dialokasikan ulang ke invoice lain. Status invoice akan
+              dihitung ulang otomatis.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setConfirmId(null)}>
+              Batal
+            </Button>
+            <Button variant="danger" onClick={handleDelete} disabled={del.isPending}>
+              {del.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Hapus Alokasi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

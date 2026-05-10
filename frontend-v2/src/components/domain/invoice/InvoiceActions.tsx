@@ -3,11 +3,13 @@ import {
   Ban,
   CheckCircle2,
   Flame,
+  Link2,
   Loader2,
   Pencil,
   Send,
   Trash2,
 } from "lucide-react"
+import { AllocationManager } from "./AllocationManager"
 import {
   useCancelInvoice,
   useDeleteInvoice,
@@ -77,6 +79,7 @@ export function InvoiceActions({
     | { kind: "issue" | "markPaid" | "cancel" | "delete" }
     | { kind: "hardDelete"; typed: string }
   const [confirm, setConfirm] = useState<Confirm>(null)
+  const [allocOpen, setAllocOpen] = useState(false)
 
   const status = invoice.status
   const id = invoice.id
@@ -86,6 +89,13 @@ export function InvoiceActions({
     isAdmin && (status === "ISSUED" || status === "PARTIALLY_PAID" || status === "OVERDUE")
   const canCancel =
     isAdmin && (status === "ISSUED" || status === "PARTIALLY_PAID" || status === "OVERDUE")
+
+  // Sambungkan pembayaran: butuh write, status outstanding, dan masih ada sisa
+  const remaining = Number(invoice.outstanding_amount ?? invoice.remaining ?? 0)
+  const canAllocate =
+    !isReadOnly &&
+    remaining > 0 &&
+    (status === "ISSUED" || status === "PARTIALLY_PAID" || status === "OVERDUE")
 
   // Edit DRAFT/ISSUED/PARTIALLY_PAID/OVERDUE: write-capable
   // Edit PAID: SUPERADMIN only (audit-kuat)
@@ -173,6 +183,7 @@ export function InvoiceActions({
     canIssue ||
     canMarkPaid ||
     canCancel ||
+    canAllocate ||
     canEdit ||
     canSoftDelete ||
     canHardDelete
@@ -202,6 +213,18 @@ export function InvoiceActions({
           >
             <CheckCircle2 className="h-3.5 w-3.5" />
             Tandai Lunas
+          </Button>
+        )}
+        {canAllocate && (
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={isBusy}
+            onClick={() => setAllocOpen(true)}
+            className="bg-success-500 hover:bg-success-600 active:bg-success-700"
+          >
+            <Link2 className="h-3.5 w-3.5" />
+            Sambungkan
           </Button>
         )}
         {canCancel && (
@@ -383,6 +406,13 @@ export function InvoiceActions({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AllocationManager
+        open={allocOpen}
+        onClose={() => setAllocOpen(false)}
+        invoice={invoice}
+        onApplied={() => onAfterMutate?.()}
+      />
     </>
   )
 }
