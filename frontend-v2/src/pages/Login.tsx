@@ -76,7 +76,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-brand-50 via-surface to-ink-50">
+    <div className="min-h-[100dvh] flex flex-col bg-gradient-to-br from-brand-50 via-surface to-ink-50">
       {/* Brand strip */}
       <div className="flex items-center gap-2 p-4 sm:p-6">
         <div className="flex h-9 w-9 items-center justify-center rounded bg-brand-500 text-white font-bold">
