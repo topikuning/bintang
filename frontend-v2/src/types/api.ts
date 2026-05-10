@@ -20,12 +20,15 @@ export interface User {
   role: UserRole
   scope_all_projects: boolean
   is_active: boolean
+  phone?: string | null
+  /** Project IDs yg boleh diakses; [] berarti akses semua (kalau scope_all_projects=true). */
+  project_ids?: number[]
 }
 
-export interface LoginResponse {
+/** Backend /auth/login (OAuth2 password flow) hanya return token. */
+export interface TokenResponse {
   access_token: string
   token_type: "bearer"
-  user: User
 }
 
 export interface Project {

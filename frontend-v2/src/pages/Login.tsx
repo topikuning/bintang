@@ -5,7 +5,7 @@ import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { z } from "zod"
 import { api, apiErrorMessage } from "@/lib/api"
 import { useAuthStore } from "@/store/auth"
-import type { LoginResponse } from "@/types/api"
+import type { TokenResponse, User } from "@/types/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -46,11 +46,30 @@ export function LoginPage() {
     }
     setSubmitting(true)
     try {
-      const { data } = await api.post<LoginResponse>("/auth/login", parsed.data)
-      setSession(data.access_token, data.user)
+      // Backend pakai OAuth2PasswordRequestForm -- WAJIB form-encoded
+      // body dgn field 'username' (bukan 'email') + 'password'.
+      const form = new URLSearchParams()
+      form.set("username", parsed.data.email)
+      form.set("password", parsed.data.password)
+      const { data: token } = await api.post<TokenResponse>(
+        "/auth/login",
+        form,
+        { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
+      )
+      // Token lulus -> simpan dulu (interceptor akan attach Authorization)
+      // lalu fetch profile user dr /auth/me.
+      setSession(token.access_token, {
+        // Placeholder user supaya guard tidak redirect; akan di-overwrite.
+        id: 0, email: parsed.data.email, name: "",
+        role: "VIEWER", scope_all_projects: false, is_active: true,
+      })
+      const { data: me } = await api.get<User>("/auth/me")
+      setSession(token.access_token, me)
       navigate(next, { replace: true })
     } catch (err) {
       toast.error("Login gagal", { description: apiErrorMessage(err) })
+      // Bersihkan token kalau /auth/me gagal setelah login berhasil.
+      useAuthStore.getState().logout()
     } finally {
       setSubmitting(false)
     }
