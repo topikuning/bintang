@@ -224,6 +224,7 @@ class InvoiceCreate(InvoiceBase):
 
 class InvoiceUpdate(BaseModel):
     number: str | None = None
+    type: InvoiceType | None = None  # ubah Hutang/Piutang -- gated SUPERADMIN bila status >= ISSUED
     invoice_date: date | None = None
     due_date: date | None = None
     vendor_client_id: int | None = None

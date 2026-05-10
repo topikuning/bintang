@@ -19,6 +19,8 @@ export interface InvoiceCreateInput {
 
 export interface InvoiceUpdateInput {
   number?: string
+  /** Hutang/Piutang. Bila status sudah ISSUED+, butuh SUPERADMIN. */
+  type?: InvoiceType
   invoice_date?: string
   due_date?: string | null
   vendor_client_id?: number | null

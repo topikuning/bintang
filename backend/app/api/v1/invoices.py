@@ -290,6 +290,22 @@ async def update_invoice(
     before = snapshot(inv)
     data = payload.model_dump(exclude_unset=True)
     items_data = data.pop("items", None)
+
+    # Type change: aman bila masih DRAFT (siapa pun yg can_write).
+    # Setelah ISSUED+ (sudah masuk laporan keuangan), butuh SUPERADMIN
+    # karena efek samping ke piutang/hutang aging report cukup besar.
+    new_type = data.pop("type", None)
+    if new_type is not None and new_type != inv.type:
+        if (
+            inv.status != InvoiceStatus.DRAFT
+            and user.role != UserRole.SUPERADMIN
+        ):
+            raise HTTPException(
+                403,
+                f"type_change_after_{inv.status.value.lower()}_requires_superadmin",
+            )
+        inv.type = new_type
+
     for k, v in data.items():
         setattr(inv, k, v)
     if items_data:
