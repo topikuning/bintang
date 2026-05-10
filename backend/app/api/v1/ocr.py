@@ -3,7 +3,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,11 +38,6 @@ router = APIRouter()
 class ExtractIn(BaseModel):
     file_url: str
     entity: str = "invoice"
-
-
-class ReviewIn(BaseModel):
-    approved: bool
-    note: str | None = None
 
 
 @router.get("/test-connection")
@@ -256,23 +251,34 @@ async def list_drafts(
     ]
 
 
-@router.post("/drafts/{eid}/review")
-async def review_draft(
+@router.delete("/drafts/{eid}", status_code=204)
+async def discard_draft(
     eid: int,
-    body: ReviewIn = Body(...),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_admin),
-) -> dict:
+) -> None:
+    """Hapus (soft-delete) draft OCR -- biasanya kalau hasil ekstraksi
+    salah/blur dan tidak perlu dipakai. Tidak bisa dihapus kalau sudah
+    linked ke invoice (entity_id ter-set) supaya audit trail tetap utuh.
+    """
     rec = await db.get(AIExtraction, eid)
-    if not rec:
-        raise HTTPException(404, "not_found")
-    rec.status = AIExtractionStatus.REVIEWED
-    rec.reviewed_by_id = user.id
-    rec.reviewed_at = datetime.now(timezone.utc)
-    await log(db, user_id=user.id, entity="ai_extraction", entity_id=rec.id,
-              action=AuditAction.UPDATE, note=f"reviewed approved={body.approved}")
+    if not rec or rec.deleted_at is not None:
+        raise HTTPException(404, "draft_not_found")
+    if rec.entity_id is not None:
+        raise HTTPException(
+            409,
+            f"draft_already_linked_to_invoice_{rec.entity_id}_cannot_discard",
+        )
+    rec.deleted_at = datetime.now(timezone.utc)
+    await log(
+        db,
+        user_id=user.id,
+        entity="ai_extraction",
+        entity_id=rec.id,
+        action=AuditAction.DELETE,
+        note="ocr draft discarded",
+    )
     await db.commit()
-    return {"id": rec.id, "approved": body.approved}
 
 
 class CreateInvoiceFromDraftIn(BaseModel):
@@ -310,21 +316,25 @@ async def create_invoice_from_draft(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_can_write),
 ) -> dict:
-    """Bikin Invoice DRAFT dari hasil OCR yang sudah direview.
+    """Bikin Invoice DRAFT langsung dari hasil OCR.
 
     Flow:
-      1. Ambil draft (harus REVIEWED + belum pernah linked: entity_id IS NULL)
+      1. Ambil draft (belum pernah linked: entity_id IS NULL)
       2. Build Invoice dari extracted_data + body (project, type, vendor)
+         -- user koreksi field-field di InvoiceForm setelahnya bila perlu
       3. Auto-attach file source (gambar yg diupload) sebagai
          InvoiceAttachment -- tidak copy file, cuma reference URL yang sama
       4. Set draft.entity_id = invoice.id supaya tidak bisa dipakai dua kali
       5. Audit log create invoice + update draft
+
+    Catatan: dulu ada gating 'status must be REVIEWED' tapi proses approve
+    itu kosmetik (tidak ada koreksi data) -- dihapus. Edit data terjadi di
+    InvoiceForm yang muncul setelah submit (status=DRAFT, semua field
+    editable sebelum diterbitkan).
     """
     rec = await db.get(AIExtraction, eid)
     if not rec or rec.deleted_at is not None:
         raise HTTPException(404, "draft_not_found")
-    if rec.status != AIExtractionStatus.REVIEWED:
-        raise HTTPException(409, "draft_must_be_reviewed_first")
     if rec.entity_id is not None:
         raise HTTPException(
             409, f"draft_already_linked_to_invoice_{rec.entity_id}"
