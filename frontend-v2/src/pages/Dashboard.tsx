@@ -189,6 +189,19 @@ function GlobalDashboard() {
   const bp = useBreakpoint()
   const q = useGlobalDashboard()
 
+  // PENTING: hook harus dipanggil di setiap render utk menjaga urutan
+  // sama. Kalau ditaruh setelah early-return, React error #310 (more
+  // hooks than prev render) akan muncul saat data datang.
+  const sortedProjects = useMemo(
+    () =>
+      [...(q.data?.projects ?? [])].sort((a, b) => {
+        if (a.balance < 0 && b.balance >= 0) return -1
+        if (b.balance < 0 && a.balance >= 0) return 1
+        return b.balance - a.balance
+      }),
+    [q.data?.projects],
+  )
+
   if (q.isLoading) return <DashboardSkeleton />
   if (q.error) {
     return (
@@ -199,17 +212,6 @@ function GlobalDashboard() {
   }
   if (!q.data) return null
   const d = q.data
-
-  // Sort proyek: minus dulu, lalu balance descending
-  const sortedProjects = useMemo(
-    () =>
-      [...d.projects].sort((a, b) => {
-        if (a.balance < 0 && b.balance >= 0) return -1
-        if (b.balance < 0 && a.balance >= 0) return 1
-        return b.balance - a.balance
-      }),
-    [d.projects],
-  )
 
   return (
     <Page>
