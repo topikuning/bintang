@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/AppShell"
 import { RequireAuth } from "@/components/auth/RequireAuth"
 import { LoginPage } from "@/pages/Login"
 import { Placeholder } from "@/pages/Placeholder"
+import { TransactionsListPage } from "@/pages/transactions/TransactionsListPage"
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -19,7 +20,7 @@ export const router = createBrowserRouter([
           },
           {
             path: "transactions",
-            element: <Placeholder title="Transaksi" description="List transaksi cross-project + filter + tambah." />,
+            element: <TransactionsListPage />,
           },
           {
             path: "invoices",

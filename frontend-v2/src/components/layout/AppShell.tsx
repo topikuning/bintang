@@ -3,6 +3,7 @@ import { Sidebar } from "./Sidebar"
 import { NavRail } from "./NavRail"
 import { BottomNav } from "./BottomNav"
 import { Topbar } from "./Topbar"
+import { ProjectSwitcher } from "./ProjectSwitcher"
 
 /**
  * Layout shell tunggal yg adaptif lewat CSS responsive utilities --
@@ -16,7 +17,7 @@ export function AppShell() {
       <NavRail />
 
       <div className="flex flex-1 flex-col min-w-0">
-        <Topbar />
+        <Topbar leftSlot={<ProjectSwitcher />} />
 
         {/* Main content. Padding bottom utk mobile bottom nav (56px + safe). */}
         <main className="flex-1 overflow-x-hidden pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">
