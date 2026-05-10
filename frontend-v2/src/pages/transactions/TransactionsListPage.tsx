@@ -12,11 +12,13 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { TransactionCard } from "@/components/domain/transaction/TransactionCard"
 import { TransactionDetail } from "@/components/domain/transaction/TransactionDetail"
+import { TransactionForm } from "@/components/domain/transaction/TransactionForm"
+import { TransactionActions } from "@/components/domain/transaction/TransactionActions"
 import { buildTransactionColumns } from "@/components/domain/transaction/transaction-columns"
 import { fmtCompact, fmtIDR } from "@/lib/format"
 import { apiErrorMessage } from "@/lib/api"
 import { useBreakpoint } from "@/lib/breakpoint"
-import type { Project, TxnStatus, TxnType } from "@/types/api"
+import type { Project, Transaction, TxnStatus, TxnType } from "@/types/api"
 import type { Category } from "@/hooks/useCategories"
 
 type StatusFilter = "ALL" | TxnStatus
@@ -44,6 +46,8 @@ export function TransactionsListPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL")
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [formOpen, setFormOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<Transaction | null>(null)
 
   const params: TransactionListParams = useMemo(
     () => ({
@@ -117,7 +121,14 @@ export function TransactionsListPage() {
               Catat dan kelola pemasukan & pengeluaran proyek.
             </p>
           </div>
-          <Button size={bp === "mobile" ? "md" : "lg"} className="hidden sm:inline-flex">
+          <Button
+            size={bp === "mobile" ? "md" : "lg"}
+            className="hidden sm:inline-flex"
+            onClick={() => {
+              setEditTarget(null)
+              setFormOpen(true)
+            }}
+          >
             <Plus className="h-4 w-4" />
             Tambah Transaksi
           </Button>
@@ -228,6 +239,10 @@ export function TransactionsListPage() {
         size="icon"
         className="sm:hidden fixed bottom-[calc(64px+env(safe-area-inset-bottom)+12px)] right-4 z-30 h-14 w-14 rounded-full shadow-lg"
         aria-label="Tambah transaksi"
+        onClick={() => {
+          setEditTarget(null)
+          setFormOpen(true)
+        }}
       >
         <Plus className="h-6 w-6" />
       </Button>
@@ -251,8 +266,34 @@ export function TransactionsListPage() {
               }
             />
           </div>
+          {detailQuery.data && (
+            <TransactionActions
+              transaction={detailQuery.data}
+              onEdit={() => {
+                setEditTarget(detailQuery.data!)
+                setSelectedId(null)
+                setFormOpen(true)
+              }}
+              onAfterMutate={() => {
+                // detailQuery auto-invalidate; tutup sheet kalau delete
+                if (detailQuery.data?.status === "CANCELLED") {
+                  setSelectedId(null)
+                }
+              }}
+            />
+          )}
         </SheetContent>
       </Sheet>
+
+      {/* Create/edit form sheet */}
+      <TransactionForm
+        open={formOpen}
+        onClose={() => {
+          setFormOpen(false)
+          setEditTarget(null)
+        }}
+        transaction={editTarget}
+      />
     </>
   )
 }
