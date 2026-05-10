@@ -1,7 +1,8 @@
 import { useState } from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Controller, useForm } from "react-hook-form"
-import { FolderKanban, Loader2, Pencil, Trash2 } from "lucide-react"
+import { ExternalLink, FolderKanban, Loader2, Pencil, Trash2 } from "lucide-react"
+import { Link as RouterLink } from "react-router-dom"
 import { z } from "zod"
 import { useProjects } from "@/hooks/useProjects"
 import {
@@ -112,6 +113,15 @@ export function ProjectsPage() {
       header: "",
       cell: ({ row }) => (
         <div className="flex justify-end gap-1">
+          <RouterLink
+            to={`/master/projects/${row.original.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="flex h-8 w-8 items-center justify-center rounded text-info-600 hover:bg-info-50"
+            aria-label="Detail"
+            title="Detail proyek (tim, lampiran)"
+          >
+            <ExternalLink className="h-4 w-4" />
+          </RouterLink>
           <button
             type="button"
             onClick={(e) => {
@@ -137,7 +147,7 @@ export function ProjectsPage() {
           </button>
         </div>
       ),
-      meta: { align: "right", width: "90px" },
+      meta: { align: "right", width: "120px" },
     },
   ]
 
@@ -194,7 +204,15 @@ export function ProjectsPage() {
             >
               Budget {fmtIDR(p.budget_amount)}
             </div>
-            <div className="flex justify-end mt-1">
+            <div className="flex items-center justify-end gap-1 mt-1">
+              <RouterLink
+                to={`/master/projects/${p.id}`}
+                onClick={(e) => e.stopPropagation()}
+                className="flex h-8 w-8 items-center justify-center rounded text-info-600 hover:bg-info-50"
+                aria-label="Detail"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </RouterLink>
               <button
                 type="button"
                 onClick={(e) => {

@@ -8,6 +8,7 @@ import {
   BarChart3,
   Building2,
   ClipboardList,
+  Database,
   FolderKanban,
   History,
   Home,
@@ -65,7 +66,10 @@ export const DESKTOP_NAV: NavGroup[] = [
   },
   {
     label: "Sistem",
-    items: [{ label: "Pengaturan", to: "/settings", icon: Settings }],
+    items: [
+      { label: "Import Data", to: "/imports", icon: Database },
+      { label: "Pengaturan", to: "/settings", icon: Settings },
+    ],
   },
 ]
 
@@ -105,7 +109,10 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
   },
   {
     label: "Sistem",
-    items: [{ label: "Pengaturan", to: "/settings", icon: Settings }],
+    items: [
+      { label: "Import Data", to: "/imports", icon: Database },
+      { label: "Pengaturan", to: "/settings", icon: Settings },
+    ],
   },
 ]
 
