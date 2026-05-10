@@ -382,21 +382,20 @@ function GlobalDashboard() {
         </div>
       )}
 
-      {/* 2-col grid: cashflow di kiri, breakdown di kanan */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Section title="Cashflow 12 Bulan" icon={TrendingUp}>
-            <div className="rounded-md border bg-surface p-3">
-              <CashflowChart
-                data={d.monthly_cashflow}
-                height={bp === "mobile" ? 200 : 320}
-                compact={bp === "mobile"}
-              />
-            </div>
-          </Section>
+      {/* Cashflow chart -- full width */}
+      <Section title="Cashflow 12 Bulan" icon={TrendingUp}>
+        <div className="rounded-md border bg-surface p-3">
+          <CashflowChart
+            data={d.monthly_cashflow}
+            height={bp === "mobile" ? 200 : 280}
+            compact={bp === "mobile"}
+          />
         </div>
+      </Section>
 
-        <div className="space-y-4">
+      {/* Breakdown charts -- side-by-side di lg, stack di mobile/tablet */}
+      {(d.spending_by_project.length > 0 || d.spending_by_category.length > 0) && (
+        <div className="grid gap-4 lg:grid-cols-2">
           {d.spending_by_project.length > 0 && (
             <Section title="Pengeluaran per Proyek" icon={PieIcon}>
               <div className="rounded-md border bg-surface p-4">
@@ -406,7 +405,7 @@ function GlobalDashboard() {
                     name: s.name,
                     value: s.total,
                   }))}
-                  chartHeight={bp === "mobile" ? 160 : 180}
+                  chartHeight={bp === "mobile" ? 160 : 200}
                   limit={6}
                 />
               </div>
@@ -421,14 +420,14 @@ function GlobalDashboard() {
                     name: c.category,
                     value: c.total,
                   }))}
-                  chartHeight={bp === "mobile" ? 160 : 180}
+                  chartHeight={bp === "mobile" ? 160 : 200}
                   limit={6}
                 />
               </div>
             </Section>
           )}
         </div>
-      </div>
+      )}
 
       {/* Ringkasan per proyek */}
       <Section title="Ringkasan per Proyek" icon={FolderKanban}>
