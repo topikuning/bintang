@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import { ArrowDownLeft, ArrowUpRight, Loader2, Pencil, Trash2 } from "lucide-react"
 import { z } from "zod"
@@ -25,21 +25,38 @@ import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { DraggableSheet } from "@/components/ui/draggable-sheet"
+import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/sonner"
 import { apiErrorMessage } from "@/lib/api"
 import { useBreakpoint } from "@/lib/breakpoint"
-import type { CategoryInput } from "@/types/api"
+import type { CategoryInput, CategoryType } from "@/types/api"
 
 const schema = z.object({
   name: z.string().min(1, "Nama wajib"),
   type: z.enum(["IN", "OUT", "BOTH"]),
-  parent_id: z.number().nullable().optional(),
+  description: z.string().nullable().optional(),
 })
 
 type FormValues = z.infer<typeof schema>
 
-const TYPE_LABEL = { IN: "Pemasukan", OUT: "Pengeluaran", BOTH: "Keduanya" } as const
-const TYPE_TONE = { IN: "success", OUT: "danger", BOTH: "neutral" } as const
+const TYPE_LABEL: Record<CategoryType, string> = {
+  IN: "Pemasukan",
+  OUT: "Pengeluaran",
+  BOTH: "Keduanya",
+}
+const TYPE_TONE: Record<CategoryType, "success" | "danger" | "neutral"> = {
+  IN: "success",
+  OUT: "danger",
+  BOTH: "neutral",
+}
+
+function buildDefaults(c: Category | null): FormValues {
+  return {
+    name: c?.name ?? "",
+    type: (c?.type as CategoryType) ?? "OUT",
+    description: c?.description ?? "",
+  }
+}
 
 export function CategoriesPage() {
   const q = useCategories()
@@ -63,13 +80,19 @@ export function CategoriesPage() {
       header: "Jenis",
       cell: ({ row }) => {
         const t = row.original.type
-        return (
-          <Badge tone={TYPE_TONE[t] as "success" | "danger" | "neutral"}>
-            {TYPE_LABEL[t]}
-          </Badge>
-        )
+        return <Badge tone={TYPE_TONE[t]}>{TYPE_LABEL[t]}</Badge>
       },
       meta: { align: "center", width: "150px" },
+    },
+    {
+      id: "description",
+      header: "Deskripsi",
+      cell: ({ row }) => (
+        <span className="text-[13px] text-ink-700 truncate">
+          {row.original.description || "—"}
+        </span>
+      ),
+      meta: { align: "left" },
     },
     {
       id: "actions",
@@ -145,7 +168,9 @@ export function CategoriesPage() {
               )}
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium">{c.name}</div>
-                <div className="text-[11px] text-ink-500">{TYPE_LABEL[c.type]}</div>
+                <div className="text-[11px] text-ink-500 truncate">
+                  {c.description || TYPE_LABEL[c.type]}
+                </div>
               </div>
             </div>
             <div className="flex gap-1">
@@ -224,17 +249,12 @@ function CategoryForm({
     reset,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    defaultValues: {
-      name: category?.name ?? "",
-      type: category?.type ?? "OUT",
-      parent_id: category?.parent_id ?? null,
-    },
+    defaultValues: buildDefaults(category),
   })
 
-  // Reset saat target berubah
-  if (open && (category?.id ?? -1) !== ((category?.id as unknown) as number)) {
-    // noop -- useEffect would be cleaner; tapi RHF handle reset di onSubmit
-  }
+  useEffect(() => {
+    if (open) reset(buildDefaults(category))
+  }, [category, open, reset])
 
   const onSubmit = async (raw: FormValues) => {
     const parsed = schema.safeParse(raw)
@@ -246,7 +266,7 @@ function CategoryForm({
       const payload: CategoryInput = {
         name: parsed.data.name,
         type: parsed.data.type,
-        parent_id: parsed.data.parent_id ?? null,
+        description: parsed.data.description?.trim() || null,
       }
       if (isEdit) {
         await update.mutateAsync(payload)
@@ -283,6 +303,9 @@ function CategoryForm({
           <option value="OUT">Pengeluaran</option>
           <option value="BOTH">Keduanya</option>
         </Select>
+      </Field>
+      <Field label="Deskripsi" hint="Penjelasan singkat (opsional)">
+        <Textarea {...register("description")} rows={2} placeholder="Mis. Pembelian semen, batu, pasir" />
       </Field>
     </form>
   )
@@ -328,11 +351,13 @@ function CategoryForm({
 function Field({
   label,
   required,
+  hint,
   error,
   children,
 }: {
   label: string
   required?: boolean
+  hint?: string
   error?: string
   children: React.ReactNode
 }) {
@@ -343,6 +368,7 @@ function Field({
         {required && <span className="text-danger-600 ml-0.5">*</span>}
       </Label>
       {children}
+      {hint && !error && <p className="text-[11px] text-ink-500">{hint}</p>}
       {error && <p className="text-[11px] text-danger-600">{error}</p>}
     </div>
   )

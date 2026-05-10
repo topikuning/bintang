@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { useState } from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Controller, useForm } from "react-hook-form"
@@ -25,8 +26,10 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { DraggableSheet } from "@/components/ui/draggable-sheet"
+import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/sonner"
 import { AmountInput } from "@/components/forms/AmountInput"
 import { CompanyPicker } from "@/components/forms/CompanyPicker"
@@ -34,21 +37,43 @@ import { fmtCompact, fmtIDR } from "@/lib/format"
 import { apiErrorMessage } from "@/lib/api"
 import { useBreakpoint } from "@/lib/breakpoint"
 import { cn } from "@/lib/utils"
-import type { Project } from "@/types/api"
+import type { Project, ProjectStatus } from "@/types/api"
+
+const STATUS_VALUES = ["AKTIF", "SELESAI", "DITAHAN", "DIBATALKAN"] as const
 
 const schema = z.object({
   code: z.string().min(1, "Kode wajib"),
   name: z.string().min(1, "Nama wajib"),
   company_id: z.number().min(1, "Pilih perusahaan"),
+  location: z.string().nullable().optional(),
+  start_date: z.string().nullable().optional(),
+  end_date: z.string().nullable().optional(),
+  status: z.enum(STATUS_VALUES),
+  notes: z.string().nullable().optional(),
   budget_amount: z.number().nonnegative(),
   project_value: z.number().nonnegative(),
+  currency: z.string().min(1),
+  overbudget_tolerance_pct: z.number().min(0).max(100),
   tax_ppn_pct: z.number().min(0).max(100),
   tax_pph_pct: z.number().min(0).max(100),
   marketing_pct: z.number().min(0).max(100),
-  is_active: z.boolean(),
 })
 
 type FormValues = z.infer<typeof schema>
+
+const STATUS_LABEL: Record<ProjectStatus, string> = {
+  AKTIF: "Aktif",
+  SELESAI: "Selesai",
+  DITAHAN: "Ditahan",
+  DIBATALKAN: "Dibatalkan",
+}
+
+const STATUS_TONE: Record<ProjectStatus, "success" | "neutral" | "warning" | "danger"> = {
+  AKTIF: "success",
+  SELESAI: "neutral",
+  DITAHAN: "warning",
+  DIBATALKAN: "danger",
+}
 
 export function ProjectsPage() {
   const q = useProjects({ size: 200 })
@@ -83,7 +108,9 @@ export function ProjectsPage() {
       id: "company",
       header: "Perusahaan",
       cell: ({ row }) => (
-        <span className="text-[13px]">{companyMap.get(row.original.company_id) || "—"}</span>
+        <span className="text-[13px]">
+          {row.original.company_name || companyMap.get(row.original.company_id) || "—"}
+        </span>
       ),
       meta: { align: "left", width: "200px" },
     },
@@ -98,15 +125,13 @@ export function ProjectsPage() {
       meta: { align: "num", width: "140px" },
     },
     {
-      id: "active",
+      id: "status",
       header: "Status",
-      cell: ({ row }) =>
-        row.original.is_active ? (
-          <Badge tone="success">Aktif</Badge>
-        ) : (
-          <Badge tone="neutral">Nonaktif</Badge>
-        ),
-      meta: { align: "center", width: "100px" },
+      cell: ({ row }) => {
+        const s = row.original.status ?? "AKTIF"
+        return <Badge tone={STATUS_TONE[s]}>{STATUS_LABEL[s]}</Badge>
+      },
+      meta: { align: "center", width: "110px" },
     },
     {
       id: "actions",
@@ -172,61 +197,60 @@ export function ProjectsPage() {
         onRetry={() => q.refetch()}
         items={items}
         columns={columns}
-        renderCard={(p) => (
-          <button
-            type="button"
-            onClick={() => {
-              setTarget(p)
-              setFormOpen(true)
-            }}
-            className="flex w-full flex-col gap-1.5 rounded-md border bg-surface p-3 text-left active:bg-ink-100"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <FolderKanban className="h-4 w-4 text-ink-500 shrink-0" />
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold truncate">{p.name}</div>
-                  <div className="font-mono text-[11px] text-ink-500">{p.code}</div>
-                </div>
-              </div>
-              {p.is_active ? (
-                <Badge tone="success">Aktif</Badge>
-              ) : (
-                <Badge tone="neutral">Nonaktif</Badge>
-              )}
-            </div>
-            <div className="text-[11px] text-ink-500">
-              {companyMap.get(p.company_id) || "—"}
-            </div>
-            <div
-              data-num
-              className="text-[12px] text-ink-700 font-mono [font-variant-numeric:tabular-nums]"
+        renderCard={(p) => {
+          const s = p.status ?? "AKTIF"
+          return (
+            <button
+              type="button"
+              onClick={() => {
+                setTarget(p)
+                setFormOpen(true)
+              }}
+              className="flex w-full flex-col gap-1.5 rounded-md border bg-surface p-3 text-left active:bg-ink-100"
             >
-              Budget {fmtIDR(p.budget_amount)}
-            </div>
-            <div className="flex items-center justify-end gap-1 mt-1">
-              <RouterLink
-                to={`/master/projects/${p.id}`}
-                onClick={(e) => e.stopPropagation()}
-                className="flex h-8 w-8 items-center justify-center rounded text-info-600 hover:bg-info-50"
-                aria-label="Detail"
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FolderKanban className="h-4 w-4 text-ink-500 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold truncate">{p.name}</div>
+                    <div className="font-mono text-[11px] text-ink-500">{p.code}</div>
+                  </div>
+                </div>
+                <Badge tone={STATUS_TONE[s]}>{STATUS_LABEL[s]}</Badge>
+              </div>
+              <div className="text-[11px] text-ink-500">
+                {p.company_name || companyMap.get(p.company_id) || "—"}
+              </div>
+              <div
+                data-num
+                className="text-[12px] text-ink-700 font-mono [font-variant-numeric:tabular-nums]"
               >
-                <ExternalLink className="h-4 w-4" />
-              </RouterLink>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setConfirmDel(p)
-                }}
-                className="flex h-8 w-8 items-center justify-center rounded text-danger-500 hover:bg-danger-50"
-                aria-label="Hapus"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-          </button>
-        )}
+                Budget {fmtIDR(p.budget_amount)}
+              </div>
+              <div className="flex items-center justify-end gap-1 mt-1">
+                <RouterLink
+                  to={`/master/projects/${p.id}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex h-8 w-8 items-center justify-center rounded text-info-600 hover:bg-info-50"
+                  aria-label="Detail"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </RouterLink>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setConfirmDel(p)
+                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded text-danger-500 hover:bg-danger-50"
+                  aria-label="Hapus"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            </button>
+          )
+        }}
         onAdd={() => {
           setTarget(null)
           setFormOpen(true)
@@ -268,6 +292,26 @@ export function ProjectsPage() {
   )
 }
 
+function buildDefaults(project: Project | null): FormValues {
+  return {
+    code: project?.code ?? "",
+    name: project?.name ?? "",
+    company_id: project?.company_id ?? 0,
+    location: project?.location ?? "",
+    start_date: project?.start_date ?? "",
+    end_date: project?.end_date ?? "",
+    status: (project?.status as ProjectStatus) ?? "AKTIF",
+    notes: project?.notes ?? "",
+    budget_amount: project ? Number(project.budget_amount ?? 0) : 0,
+    project_value: project ? Number(project.project_value ?? 0) : 0,
+    currency: project?.currency ?? "IDR",
+    overbudget_tolerance_pct: project ? Number(project.overbudget_tolerance_pct ?? 0) : 0,
+    tax_ppn_pct: project ? Number(project.tax_ppn_pct ?? 11) : 11,
+    tax_pph_pct: project ? Number(project.tax_pph_pct ?? 2) : 2,
+    marketing_pct: project ? Number(project.marketing_pct ?? 15) : 15,
+  }
+}
+
 function ProjectForm({
   open,
   onClose,
@@ -289,18 +333,14 @@ function ProjectForm({
     reset,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    defaultValues: {
-      code: project?.code ?? "",
-      name: project?.name ?? "",
-      company_id: project?.company_id ?? 0,
-      budget_amount: project ? Number(project.budget_amount) : 0,
-      project_value: 0,
-      tax_ppn_pct: 11,
-      tax_pph_pct: 0,
-      marketing_pct: 0,
-      is_active: project?.is_active ?? true,
-    },
+    defaultValues: buildDefaults(project),
   })
+
+  // Reset form values whenever target changes -- defaultValues hanya
+  // dipakai sekali saat mount, jadi edit-row ke edit-row lain perlu reset.
+  useEffect(() => {
+    if (open) reset(buildDefaults(project))
+  }, [project, open, reset])
 
   const onSubmit = async (raw: FormValues) => {
     const parsed = schema.safeParse(raw)
@@ -309,7 +349,23 @@ function ProjectForm({
       return
     }
     try {
-      const payload: ProjectInput = parsed.data
+      const payload: ProjectInput = {
+        code: parsed.data.code,
+        name: parsed.data.name,
+        company_id: parsed.data.company_id,
+        location: parsed.data.location?.trim() || null,
+        start_date: parsed.data.start_date?.trim() || null,
+        end_date: parsed.data.end_date?.trim() || null,
+        status: parsed.data.status,
+        notes: parsed.data.notes?.trim() || null,
+        budget_amount: parsed.data.budget_amount,
+        project_value: parsed.data.project_value,
+        currency: parsed.data.currency,
+        overbudget_tolerance_pct: parsed.data.overbudget_tolerance_pct,
+        tax_ppn_pct: parsed.data.tax_ppn_pct,
+        tax_pph_pct: parsed.data.tax_pph_pct,
+        marketing_pct: parsed.data.marketing_pct,
+      }
       if (isEdit) {
         await update.mutateAsync(payload)
         toast.success("Proyek diperbarui")
@@ -336,15 +392,14 @@ function ProjectForm({
         <Field label="Kode" required error={errors.code?.message}>
           <Input {...register("code")} placeholder="Mis. KNMP-MTR" autoFocus className="font-mono" />
         </Field>
-        <Field label="Status">
-          <label className="flex h-10 items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              {...register("is_active")}
-              className="h-4 w-4 accent-brand-600"
-            />
-            <span className="text-sm">Proyek aktif</span>
-          </label>
+        <Field label="Status" required>
+          <Select {...register("status")}>
+            {STATUS_VALUES.map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABEL[s]}
+              </option>
+            ))}
+          </Select>
         </Field>
       </div>
       <Field label="Nama Proyek" required error={errors.name?.message}>
@@ -359,15 +414,17 @@ function ProjectForm({
           )}
         />
       </Field>
-      <Field label="Budget Pengeluaran">
-        <Controller
-          control={control}
-          name="budget_amount"
-          render={({ field }) => (
-            <AmountInput value={field.value || null} onChange={(v) => field.onChange(v ?? 0)} />
-          )}
-        />
+      <Field label="Lokasi">
+        <Input {...register("location")} placeholder="Mis. Mataram, NTB" />
       </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Tanggal Mulai">
+          <Input type="date" {...register("start_date")} />
+        </Field>
+        <Field label="Tanggal Selesai">
+          <Input type="date" {...register("end_date")} />
+        </Field>
+      </div>
       <Field label="Nilai Kontrak" hint="Untuk hitung Nilai Cair / Profit di Dashboard.">
         <Controller
           control={control}
@@ -377,6 +434,23 @@ function ProjectForm({
           )}
         />
       </Field>
+      <Field label="Budget Pengeluaran">
+        <Controller
+          control={control}
+          name="budget_amount"
+          render={({ field }) => (
+            <AmountInput value={field.value || null} onChange={(v) => field.onChange(v ?? 0)} />
+          )}
+        />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Mata Uang">
+          <Input {...register("currency")} placeholder="IDR" className="font-mono" />
+        </Field>
+        <Field label="Toleransi Overbudget (%)">
+          <PctInput control={control} name="overbudget_tolerance_pct" />
+        </Field>
+      </div>
       <div className="grid grid-cols-3 gap-3">
         <Field label="PPn (%)">
           <PctInput control={control} name="tax_ppn_pct" />
@@ -388,6 +462,9 @@ function ProjectForm({
           <PctInput control={control} name="marketing_pct" />
         </Field>
       </div>
+      <Field label="Catatan">
+        <Textarea {...register("notes")} rows={2} placeholder="Catatan internal (opsional)" />
+      </Field>
     </form>
   )
 
@@ -434,7 +511,7 @@ function PctInput({
   name,
 }: {
   control: ReturnType<typeof useForm<FormValues>>["control"]
-  name: "tax_ppn_pct" | "tax_pph_pct" | "marketing_pct"
+  name: "tax_ppn_pct" | "tax_pph_pct" | "marketing_pct" | "overbudget_tolerance_pct"
 }) {
   return (
     <Controller

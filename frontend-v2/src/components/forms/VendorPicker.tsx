@@ -1,12 +1,13 @@
 import { useMemo } from "react"
-import { useVendors, type VendorClient } from "@/hooks/useVendors"
+import { useVendors } from "@/hooks/useVendors"
+import type { VendorClientType } from "@/types/api"
 import { Combobox, type ComboboxOption } from "./Combobox"
 
 interface VendorPickerProps {
   value: number | null | undefined
   onChange: (id: number | null) => void
-  /** Filter party_kind: vendor, client, atau keduanya. */
-  kind?: VendorClient["party_kind"]
+  /** Filter by type: VENDOR (supplier), CLIENT (pemberi pekerjaan), atau BOTH. */
+  kind?: VendorClientType
   placeholder?: string
   disabled?: boolean
 }
@@ -18,7 +19,7 @@ export function VendorPicker({
   placeholder = "Pilih vendor / klien",
   disabled,
 }: VendorPickerProps) {
-  const { data, isLoading } = useVendors(kind ? { party_kind: kind } : {})
+  const { data, isLoading } = useVendors(kind ? { type: kind } : {})
   const options = useMemo<ComboboxOption[]>(() => {
     return (data?.items ?? []).map((v) => ({
       value: v.id,

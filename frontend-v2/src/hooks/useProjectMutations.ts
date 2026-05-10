@@ -1,15 +1,22 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query-keys"
-import type { Project } from "@/types/api"
+import type { Project, ProjectStatus } from "@/types/api"
 
 export interface ProjectInput {
   code: string
   name: string
   company_id: number
-  budget_amount?: number
-  is_active?: boolean
+  location?: string | null
+  pic_user_id?: number | null
+  start_date?: string | null
+  end_date?: string | null
+  status?: ProjectStatus
+  notes?: string | null
   project_value?: number
+  budget_amount?: number
+  currency?: string
+  overbudget_tolerance_pct?: number
   tax_ppn_pct?: number
   tax_pph_pct?: number
   marketing_pct?: number

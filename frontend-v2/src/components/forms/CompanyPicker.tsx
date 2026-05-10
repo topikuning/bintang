@@ -15,7 +15,7 @@ export function CompanyPicker({
   placeholder = "Pilih perusahaan",
   disabled,
 }: CompanyPickerProps) {
-  const { data, isLoading } = useCompanies({ is_active: true })
+  const { data, isLoading } = useCompanies()
   const options = useMemo<ComboboxOption[]>(() => {
     return (data?.items ?? []).map((c) => ({
       value: c.id,

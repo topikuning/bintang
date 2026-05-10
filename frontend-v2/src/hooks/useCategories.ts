@@ -1,16 +1,16 @@
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query-keys"
-import type { Page } from "@/types/api"
+import type { CategoryType, Page } from "@/types/api"
 
 export interface Category {
   id: number
   name: string
-  parent_id: number | null
-  type: "IN" | "OUT" | "BOTH"
+  type: CategoryType
+  description: string | null
 }
 
-export function useCategories(params: { type?: "IN" | "OUT" | "BOTH" } = {}) {
+export function useCategories(params: { type?: CategoryType; q?: string } = {}) {
   return useQuery({
     queryKey: queryKeys.categories.list(params),
     queryFn: async (): Promise<Page<Category>> => {

@@ -18,7 +18,7 @@ export function ProjectPicker({
   disabled,
   activeOnly = true,
 }: ProjectPickerProps) {
-  const { data, isLoading } = useProjects(activeOnly ? { is_active: true } : {})
+  const { data, isLoading } = useProjects(activeOnly ? { status: "AKTIF" } : {})
   const options = useMemo<ComboboxOption[]>(() => {
     return (data?.items ?? []).map((p) => ({
       value: p.id,

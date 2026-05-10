@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Loader2, Pencil, Trash2 } from "lucide-react"
 import { z } from "zod"
@@ -29,22 +29,41 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/sonner"
 import { apiErrorMessage } from "@/lib/api"
 import { useBreakpoint } from "@/lib/breakpoint"
-import type { VendorClientInput } from "@/types/api"
+import type { VendorClientInput, VendorClientType } from "@/types/api"
 
 const schema = z.object({
   name: z.string().min(1, "Nama wajib"),
-  party_kind: z.enum(["VENDOR", "CLIENT", "BOTH"]),
+  type: z.enum(["VENDOR", "CLIENT", "BOTH"]),
   npwp: z.string().nullable().optional(),
+  contact: z.string().nullable().optional(),
   phone: z.string().nullable().optional(),
   email: z
     .union([z.string().email("Email tidak valid"), z.literal(""), z.null()])
     .optional(),
   address: z.string().nullable().optional(),
+  bank_account: z.string().nullable().optional(),
 })
 
 type FormValues = z.infer<typeof schema>
 
-const KIND_LABEL = { VENDOR: "Vendor", CLIENT: "Klien", BOTH: "Keduanya" } as const
+const KIND_LABEL: Record<VendorClientType, string> = {
+  VENDOR: "Vendor",
+  CLIENT: "Klien",
+  BOTH: "Keduanya",
+}
+
+function buildDefaults(v: VendorClient | null): FormValues {
+  return {
+    name: v?.name ?? "",
+    type: (v?.type as VendorClientType) ?? "VENDOR",
+    npwp: v?.npwp ?? "",
+    contact: v?.contact ?? "",
+    phone: v?.phone ?? "",
+    email: v?.email ?? "",
+    address: v?.address ?? "",
+    bank_account: v?.bank_account ?? "",
+  }
+}
 
 export function VendorsPage() {
   const q = useVendors()
@@ -64,9 +83,9 @@ export function VendorsPage() {
       meta: { align: "left", sticky: true },
     },
     {
-      id: "party_kind",
+      id: "type",
       header: "Jenis",
-      cell: ({ row }) => <Badge tone="neutral">{KIND_LABEL[row.original.party_kind]}</Badge>,
+      cell: ({ row }) => <Badge tone="neutral">{KIND_LABEL[row.original.type]}</Badge>,
       meta: { align: "center", width: "120px" },
     },
     {
@@ -77,6 +96,13 @@ export function VendorsPage() {
         <span className="font-mono text-[13px]">{getValue<string>() || "—"}</span>
       ),
       meta: { align: "left", width: "180px" },
+    },
+    {
+      id: "contact",
+      header: "Kontak",
+      accessorKey: "contact",
+      cell: ({ getValue }) => <span className="text-[13px]">{getValue<string>() || "—"}</span>,
+      meta: { align: "left", width: "150px" },
     },
     {
       id: "phone",
@@ -165,10 +191,12 @@ export function VendorsPage() {
                   <div className="font-mono text-[11px] text-ink-500">NPWP {v.npwp}</div>
                 )}
               </div>
-              <Badge tone="neutral">{KIND_LABEL[v.party_kind]}</Badge>
+              <Badge tone="neutral">{KIND_LABEL[v.type]}</Badge>
             </div>
-            {(v.phone || v.email) && (
+            {(v.contact || v.phone || v.email) && (
               <div className="text-[11px] text-ink-500 truncate">
+                {v.contact && <span>{v.contact}</span>}
+                {v.contact && (v.phone || v.email) && " · "}
                 {v.phone && <span className="font-mono">{v.phone}</span>}
                 {v.phone && v.email && " · "}
                 {v.email}
@@ -249,15 +277,12 @@ function VendorForm({
     reset,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    defaultValues: {
-      name: vendor?.name ?? "",
-      party_kind: vendor?.party_kind ?? "VENDOR",
-      npwp: vendor?.npwp ?? "",
-      phone: vendor?.phone ?? "",
-      email: vendor?.email ?? "",
-      address: "",
-    },
+    defaultValues: buildDefaults(vendor),
   })
+
+  useEffect(() => {
+    if (open) reset(buildDefaults(vendor))
+  }, [vendor, open, reset])
 
   const onSubmit = async (raw: FormValues) => {
     const parsed = schema.safeParse(raw)
@@ -268,11 +293,13 @@ function VendorForm({
     try {
       const payload: VendorClientInput = {
         name: parsed.data.name,
-        party_kind: parsed.data.party_kind,
+        type: parsed.data.type,
         npwp: parsed.data.npwp?.trim() || null,
+        contact: parsed.data.contact?.trim() || null,
         phone: parsed.data.phone?.trim() || null,
         email: parsed.data.email?.trim() || null,
         address: parsed.data.address?.trim() || null,
+        bank_account: parsed.data.bank_account?.trim() || null,
       }
       if (isEdit) {
         await update.mutateAsync(payload)
@@ -299,15 +326,20 @@ function VendorForm({
       <Field label="Nama" required error={errors.name?.message}>
         <Input {...register("name")} placeholder="Mis. PT Beton Jaya" autoFocus />
       </Field>
-      <Field label="Jenis" required>
-        <Select {...register("party_kind")}>
-          <option value="VENDOR">Vendor</option>
-          <option value="CLIENT">Klien</option>
-          <option value="BOTH">Keduanya</option>
-        </Select>
-      </Field>
-      <Field label="NPWP">
-        <Input {...register("npwp")} placeholder="01.234.567.8-901.000" className="font-mono" />
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Jenis" required>
+          <Select {...register("type")}>
+            <option value="VENDOR">Vendor</option>
+            <option value="CLIENT">Klien</option>
+            <option value="BOTH">Keduanya</option>
+          </Select>
+        </Field>
+        <Field label="NPWP">
+          <Input {...register("npwp")} placeholder="01.234.567.8-901.000" className="font-mono" />
+        </Field>
+      </div>
+      <Field label="Nama Kontak" hint="PIC / contact person (opsional)">
+        <Input {...register("contact")} placeholder="Mis. Bapak Andi" />
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Telepon">
@@ -329,6 +361,9 @@ function VendorForm({
       </div>
       <Field label="Alamat">
         <Textarea {...register("address")} rows={2} placeholder="Alamat lengkap" />
+      </Field>
+      <Field label="Rekening Bank" hint="Mis. BCA 1234567890 a.n. PT Beton Jaya">
+        <Input {...register("bank_account")} placeholder="BCA 1234567890 a.n. ..." />
       </Field>
     </form>
   )
@@ -374,11 +409,13 @@ function VendorForm({
 function Field({
   label,
   required,
+  hint,
   error,
   children,
 }: {
   label: string
   required?: boolean
+  hint?: string
   error?: string
   children: React.ReactNode
 }) {
@@ -389,6 +426,7 @@ function Field({
         {required && <span className="text-danger-600 ml-0.5">*</span>}
       </Label>
       {children}
+      {hint && !error && <p className="text-[11px] text-ink-500">{hint}</p>}
       {error && <p className="text-[11px] text-danger-600">{error}</p>}
     </div>
   )

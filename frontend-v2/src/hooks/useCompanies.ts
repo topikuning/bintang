@@ -4,7 +4,7 @@ import type { Company, CompanyInput, Page } from "@/types/api"
 
 const KEY = ["companies"] as const
 
-export function useCompanies(params: { is_active?: boolean } = {}) {
+export function useCompanies(params: { q?: string } = {}) {
   return useQuery({
     queryKey: [...KEY, "list", params],
     queryFn: async (): Promise<Page<Company>> => {

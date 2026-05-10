@@ -1,18 +1,21 @@
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query-keys"
-import type { Page } from "@/types/api"
+import type { Page, VendorClientType } from "@/types/api"
 
 export interface VendorClient {
   id: number
   name: string
+  type: VendorClientType
+  address: string | null
   npwp: string | null
-  party_kind: "VENDOR" | "CLIENT" | "BOTH"
-  phone?: string | null
-  email?: string | null
+  contact: string | null
+  phone: string | null
+  email: string | null
+  bank_account: string | null
 }
 
-export function useVendors(params: { party_kind?: VendorClient["party_kind"] } = {}) {
+export function useVendors(params: { type?: VendorClientType; q?: string } = {}) {
   return useQuery({
     queryKey: queryKeys.vendors.list(params),
     queryFn: async (): Promise<Page<VendorClient>> => {
