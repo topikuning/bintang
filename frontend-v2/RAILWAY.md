@@ -9,10 +9,16 @@ Setup minimal untuk service Railway baru yang men-serve `frontend-v2`.
 | **Service Source** | GitHub repo `topikuning/bintang` |
 | **Branch** | `claude/pengembangan` |
 | **Root Directory** | `frontend-v2` ← penting (monorepo) |
-| **Builder** | Otomatis dibaca dari `railway.toml` (Nixpacks) |
-| **Build Command** | Otomatis dari `railway.toml` (`npm ci && npm run build`) |
-| **Start Command** | Otomatis dari `railway.toml` (`npm run start`) |
-| **Healthcheck Path** | Otomatis dari `railway.toml` (`/`) |
+| **Builder** | Otomatis dari `railway.toml` (DOCKERFILE) |
+| **Healthcheck Path** | Otomatis dari `railway.toml` (`/healthz`) |
+
+Build pakai `Dockerfile` multi-stage di folder ini:
+1. Stage 1: Node 20 alpine build SPA dgn `npm run build` → `dist/`
+2. Stage 2: nginx alpine serve `dist/` dgn:
+   - SPA fallback (semua route → `index.html`, refresh tidak 404)
+   - Cache headers tepat (`/assets/*` immutable, `index.html` no-cache)
+   - Gzip + security headers
+   - Healthcheck `/healthz`
 
 Setelah set Root Directory, Railway hanya akan men-trigger build kalau file di dalam `frontend-v2/` berubah. Push ke `backend/` tidak akan men-deploy frontend service.
 
@@ -69,9 +75,11 @@ Setelah deploy selesai:
 | Login gagal "Network Error" | `VITE_API_BASE_URL` salah. Cek nilai di Variables, redeploy. |
 | Login berhasil tapi list kosong dan ada error 401 di console | Token tidak ke-attach. Cek apakah login response mengandung `access_token`. |
 | Login error "CORS policy" di console | URL frontend belum masuk `ALLOWED_ORIGINS` backend. Tambahkan, restart backend. |
-| Refresh `/transactions` jadi 404 | `npm run start` tidak pakai `-s` flag. Cek `package.json` script `start` ada `-s dist`. |
-| Build gagal "package not found" | `npm ci` gagal karena lockfile out-of-sync. Hapus `package-lock.json` dari `.gitignore` lalu commit lockfile. |
-| Asset 404 setelah deploy | Build sukses tapi static files tidak ter-serve. Cek log Railway, pastikan `serve` jalan dan `dist/` ada. |
+| Refresh `/transactions` jadi 404 | nginx config rusak. Cek `nginx.conf` ada blok `try_files $uri $uri/ /index.html;` |
+| Build gagal "package not found" | `npm ci` gagal karena lockfile out-of-sync. Pastikan `package-lock.json` ter-commit (sudah di-allow lewat `.gitignore` override). |
+| `Build Failed: ... "/nginx.conf": not found` | Railway pakai static-site auto-Dockerfile yg cari nginx.conf. Pastikan file `nginx.conf` ada di root `frontend-v2/` (sudah ada via commit). |
+| Build pakai Nixpacks padahal mau Dockerfile | Railway service settings override railway.toml. Set Builder ke "Dockerfile" di Settings → Build, atau hapus override di UI. |
+| Asset 404 setelah deploy | Cek log Railway -- nginx access log akan tampil. Pastikan `/usr/share/nginx/html/` berisi file dari `dist/`. |
 | Bundle size warning di build log | Wajar (753KB), gzip 232KB masih sehat. Code-splitting bisa dikerjakan nanti. |
 
 ## 7. Custom domain (opsional)
