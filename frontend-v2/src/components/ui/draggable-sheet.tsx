@@ -130,7 +130,9 @@ export function DraggableSheet({
             touchAction: "none",
           }}
         >
-          {/* Header sticky -- juga drag handle area */}
+          {/* Header sticky -- juga drag handle area.
+              Compact layout: drag bar + title row digabung jadi 1 row
+              utk hemat vertical space (mobile real estate berharga). */}
           <div
             className="relative shrink-0 select-none"
             onPointerDown={onHandlePointerDown}
@@ -139,15 +141,15 @@ export function DraggableSheet({
             onPointerCancel={onPointerUp}
             style={{ touchAction: "none" }}
           >
-            {/* Drag bar visual */}
-            <div className="flex justify-center pt-2 pb-1.5">
-              <div className="h-1 w-10 rounded-full bg-ink-300" />
+            {/* Drag bar visual -- minimal vertical padding */}
+            <div className="flex justify-center pt-1.5 pb-1">
+              <div className="h-1 w-9 rounded-full bg-ink-300" />
             </div>
 
-            {/* Title row + close button */}
-            <div className="flex items-center gap-2 px-4 pb-3 border-b">
+            {/* Title row + close button -- compact */}
+            <div className="flex items-center gap-2 px-3 pb-2 border-b">
               {title && (
-                <DialogPrimitive.Title className="flex-1 text-base font-semibold text-ink-900 truncate">
+                <DialogPrimitive.Title className="flex-1 text-[15px] font-semibold text-ink-900 truncate">
                   {title}
                 </DialogPrimitive.Title>
               )}
@@ -155,9 +157,9 @@ export function DraggableSheet({
               {headerAction}
               <DialogPrimitive.Close
                 aria-label="Tutup"
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-ink-100 text-ink-700 transition-colors hover:bg-ink-200 active:bg-ink-300"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-100 text-ink-700 transition-colors hover:bg-ink-200 active:bg-ink-300"
               >
-                <X className="h-5 w-5" />
+                <X className="h-[18px] w-[18px]" />
               </DialogPrimitive.Close>
             </div>
           </div>

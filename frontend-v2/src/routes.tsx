@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom"
 import { AppShell } from "@/components/layout/AppShell"
 import { RequireAuth } from "@/components/auth/RequireAuth"
 import { DashboardPage } from "@/pages/Dashboard"
+import { InvoicesListPage } from "@/pages/invoices/InvoicesListPage"
 import { LoginPage } from "@/pages/Login"
 import { Placeholder } from "@/pages/Placeholder"
 import { TransactionsListPage } from "@/pages/transactions/TransactionsListPage"
@@ -25,7 +26,7 @@ export const router = createBrowserRouter([
           },
           {
             path: "invoices",
-            element: <Placeholder title="Invoice" description="Hutang & piutang dengan tracking pembayaran." />,
+            element: <InvoicesListPage />,
           },
           {
             path: "purchase-orders",

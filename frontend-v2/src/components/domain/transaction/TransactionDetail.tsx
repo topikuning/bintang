@@ -1,7 +1,11 @@
 import { Calendar, CreditCard, FileText, Hash, Paperclip, User } from "lucide-react"
 import type { Project, Transaction } from "@/types/api"
 import type { Category } from "@/hooks/useCategories"
-import { useDeleteTransactionAttachment } from "@/hooks/useTransactionAttachments"
+import {
+  useDeleteTransactionAttachment,
+  useLinkTransactionAttachment,
+  useUploadTransactionAttachment,
+} from "@/hooks/useTransactionAttachments"
 import { useAuthStore } from "@/store/auth"
 import { apiErrorMessage } from "@/lib/api"
 import { fmtDate, fmtDateTime, fmtIDR } from "@/lib/format"
@@ -113,6 +117,8 @@ function AttachmentSection({ transaction }: { transaction: Transaction }) {
   const lockedByVerified = transaction.status === "VERIFIED" && !isSuperAdmin
   const canModifyAttachments = !isReadOnly && !lockedByVerified
 
+  const upload = useUploadTransactionAttachment()
+  const link = useLinkTransactionAttachment()
   const del = useDeleteTransactionAttachment()
   const attachments = transaction.attachments ?? []
 
@@ -150,7 +156,15 @@ function AttachmentSection({ transaction }: { transaction: Transaction }) {
       />
 
       {canModifyAttachments && (
-        <AttachmentUploader transactionId={transaction.id} />
+        <AttachmentUploader
+          uploadFile={(file, onProgress) =>
+            upload.mutateAsync({ transactionId: transaction.id, file, onProgress }).then(() => undefined)
+          }
+          linkExternal={(url, label) =>
+            link.mutateAsync({ transactionId: transaction.id, url, label }).then(() => undefined)
+          }
+          isLinking={link.isPending}
+        />
       )}
 
       {lockedByVerified && (

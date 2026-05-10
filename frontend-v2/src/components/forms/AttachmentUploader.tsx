@@ -9,10 +9,6 @@ import {
   X,
 } from "lucide-react"
 import { z } from "zod"
-import {
-  useLinkTransactionAttachment,
-  useUploadTransactionAttachment,
-} from "@/hooks/useTransactionAttachments"
 import { apiErrorMessage } from "@/lib/api"
 import { fmtFileSize, validateFile } from "@/lib/file"
 import { cn } from "@/lib/utils"
@@ -30,12 +26,16 @@ import { Label } from "@/components/ui/label"
 import { toast } from "@/components/ui/sonner"
 
 interface AttachmentUploaderProps {
-  transactionId: number
-  /** Disable upload (mis. transaksi VERIFIED & user bukan SUPERADMIN). */
+  /** Callback upload satu file. Implementasi-spesifik (transaction/invoice/po). */
+  uploadFile: (file: File, onProgress: (pct: number) => void) => Promise<void>
+  /** Callback link eksternal. Optional -- kalau tidak ada, tombol Link hilang. */
+  linkExternal?: (url: string, label?: string) => Promise<void>
+  isLinking?: boolean
+  /** Disable upload (mis. status terkunci). */
   disabled?: boolean
-  /** Pesan saat disabled, ditampilkan di bagian atas. */
+  /** Pesan saat disabled. */
   disabledReason?: string
-  /** Maksimum ukuran file MB, default 25. */
+  /** Maks ukuran MB, default 25. */
   maxSizeMB?: number
 }
 
@@ -53,23 +53,22 @@ const linkSchema = z.object({
 })
 
 /**
- * Komponen upload bukti transaksi:
+ * Komponen upload bukti/lampiran -- generic untuk transaksi/invoice/PO.
  *  - Drag-drop area + file picker
  *  - Multi-file dgn queue + progress per item
- *  - Tombol "Link Eksternal" -> dialog paste URL Drive/Dropbox
+ *  - Tombol "Link Eksternal" (opsional via linkExternal)
  *
- * Setiap upload sukses akan auto-invalidate cache transaksi (lihat
- * hook useUploadTransactionAttachment), jadi parent tidak perlu refetch
- * manual.
+ * Caller bertanggung jawab implement upload mutation -- hook ini hanya
+ * UI + queue management.
  */
 export function AttachmentUploader({
-  transactionId,
+  uploadFile,
+  linkExternal,
+  isLinking,
   disabled,
   disabledReason,
   maxSizeMB = 25,
 }: AttachmentUploaderProps) {
-  const upload = useUploadTransactionAttachment()
-  const link = useLinkTransactionAttachment()
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragActive, setDragActive] = useState(false)
   const [queue, setQueue] = useState<QueueItem[]>([])
@@ -83,7 +82,6 @@ export function AttachmentUploader({
     const arr = Array.from(files)
     if (arr.length === 0) return
 
-    // Validate dulu, masukan ke queue dgn status awal queued/error.
     const newItems: QueueItem[] = arr.map((file) => {
       const err = validateFile(file, { maxSizeMB })
       return {
@@ -96,56 +94,48 @@ export function AttachmentUploader({
     })
     setQueue((prev) => [...prev, ...newItems])
 
-    // Upload sequential supaya progress per file jelas + tidak overload server.
+    // Upload sequential supaya progress jelas + tidak overload server.
     for (const item of newItems) {
       if (item.status === "error") continue
       setQueue((prev) =>
         prev.map((q) => (q.id === item.id ? { ...q, status: "uploading" } : q)),
       )
       try {
-        await upload.mutateAsync({
-          transactionId,
-          file: item.file,
-          onProgress: (pct) =>
-            setQueue((prev) =>
-              prev.map((q) => (q.id === item.id ? { ...q, progress: pct } : q)),
-            ),
-        })
+        await uploadFile(item.file, (pct) =>
+          setQueue((prev) =>
+            prev.map((q) => (q.id === item.id ? { ...q, progress: pct } : q)),
+          ),
+        )
         setQueue((prev) =>
           prev.map((q) => (q.id === item.id ? { ...q, status: "done", progress: 100 } : q)),
         )
-        // Auto-clear sukses setelah 2 detik
         setTimeout(() => {
           setQueue((prev) => prev.filter((q) => q.id !== item.id))
         }, 2000)
       } catch (err) {
         setQueue((prev) =>
           prev.map((q) =>
-            q.id === item.id
-              ? { ...q, status: "error", error: apiErrorMessage(err) }
-              : q,
+            q.id === item.id ? { ...q, status: "error", error: apiErrorMessage(err) } : q,
           ),
         )
-        toast.error(`Gagal upload ${item.file.name}`, {
-          description: apiErrorMessage(err),
-        })
+        toast.error(`Gagal upload ${item.file.name}`, { description: apiErrorMessage(err) })
       }
     }
   }
 
   const handleSubmitLink = async () => {
+    if (!linkExternal) return
     setLinkError(null)
-    const parsed = linkSchema.safeParse({ url: linkUrl.trim(), label: linkLabel.trim() || undefined })
+    const parsed = linkSchema.safeParse({
+      url: linkUrl.trim(),
+      label: linkLabel.trim() || undefined,
+    })
     if (!parsed.success) {
       setLinkError(parsed.error.issues[0]?.message ?? "URL tidak valid")
       return
     }
     try {
-      await link.mutateAsync({
-        transactionId,
-        url: parsed.data.url,
-        label: parsed.data.label,
-      })
+      await linkExternal(parsed.data.url, parsed.data.label)
       toast.success("Link eksternal ditambahkan")
       setLinkOpen(false)
       setLinkUrl("")
@@ -218,36 +208,34 @@ export function AttachmentUploader({
           }}
         />
 
-        <div className="mt-3 flex justify-center">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={disabled}
-            onClick={() => setLinkOpen(true)}
-          >
-            <Link2 className="h-3.5 w-3.5" />
-            Link eksternal (Drive / Dropbox)
-          </Button>
-        </div>
+        {linkExternal && (
+          <div className="mt-3 flex justify-center">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={disabled}
+              onClick={() => setLinkOpen(true)}
+            >
+              <Link2 className="h-3.5 w-3.5" />
+              Link eksternal (Drive / Dropbox)
+            </Button>
+          </div>
+        )}
       </div>
 
-      {/* Queue */}
       {queue.length > 0 && (
         <div className="flex flex-col gap-1.5">
           {queue.map((item) => (
             <QueueItemRow
               key={item.id}
               item={item}
-              onRemove={() =>
-                setQueue((prev) => prev.filter((q) => q.id !== item.id))
-              }
+              onRemove={() => setQueue((prev) => prev.filter((q) => q.id !== item.id))}
             />
           ))}
         </div>
       )}
 
-      {/* Link external dialog */}
       <Dialog
         open={linkOpen}
         onOpenChange={(o) => {
@@ -261,9 +249,9 @@ export function AttachmentUploader({
           <DialogHeader>
             <DialogTitle>Tambah Link Eksternal</DialogTitle>
             <DialogDescription>
-              Tempel URL bukti transaksi yang sudah di-host di Google Drive,
-              Dropbox, OneDrive, atau platform lain. Pastikan link bisa
-              diakses oleh tim yang berwenang.
+              Tempel URL bukti yang sudah di-host di Google Drive, Dropbox,
+              OneDrive, atau platform lain. Pastikan link bisa diakses oleh
+              tim yang berwenang.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3">
@@ -288,9 +276,7 @@ export function AttachmentUploader({
                 onChange={(e) => setLinkLabel(e.target.value)}
               />
             </div>
-            {linkError && (
-              <p className="text-[12px] text-danger-600">{linkError}</p>
-            )}
+            {linkError && <p className="text-[12px] text-danger-600">{linkError}</p>}
           </div>
           <DialogFooter>
             <Button
@@ -302,8 +288,8 @@ export function AttachmentUploader({
             >
               Batal
             </Button>
-            <Button onClick={handleSubmitLink} disabled={link.isPending}>
-              {link.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            <Button onClick={handleSubmitLink} disabled={isLinking}>
+              {isLinking && <Loader2 className="h-4 w-4 animate-spin" />}
               <Plus className="h-4 w-4" />
               Tambahkan
             </Button>

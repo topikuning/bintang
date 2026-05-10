@@ -98,6 +98,36 @@ export type InvoiceStatus =
   | "OVERDUE"
   | "CANCELLED"
 
+export interface InvoiceItem {
+  id: number
+  description: string
+  quantity: string
+  unit: string | null
+  unit_price: string
+  subtotal: string
+}
+
+export interface InvoiceItemInput {
+  description: string
+  quantity: number | string
+  unit?: string | null
+  unit_price: number | string
+}
+
+export interface InvoicePayment {
+  id: number              // transaction_id
+  allocation_id: number
+  tx_date: string
+  type: TxnType
+  amount: string          // nilai yg dialokasikan ke invoice ini
+  transaction_total: string
+  status: TxnStatus
+  payment_method: PaymentMethod
+  reference_no: string | null
+  description: string | null
+  created_at: string
+}
+
 export interface Invoice {
   id: number
   number: string
@@ -107,15 +137,20 @@ export interface Invoice {
   due_date: string | null
   party_name: string | null
   vendor_client_id: number | null
-  subtotal: string
   tax: string
+  notes?: string | null
+  subtotal: string
   total: string
   status: InvoiceStatus
   paid_amount?: string
   outstanding_amount?: string
   remaining?: string
+  created_by_id?: number
   created_at: string
-  updated_at: string
+  updated_at?: string
+  attachments?: Attachment[]
+  items?: InvoiceItem[]
+  payments?: InvoicePayment[]
 }
 
 export type POStatus = "DRAFT" | "ISSUED" | "APPROVED" | "CANCELLED"

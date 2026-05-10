@@ -191,47 +191,60 @@ export function TransactionActions({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 p-5 border-t bg-surface">
+      {/* Footer aksi: compact mobile (px-3 py-2 + size sm), spacious desktop. */}
+      <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 sm:gap-2 sm:p-4 border-t bg-surface">
         {canSubmit && (
-          <Button variant="primary" disabled={isBusy} onClick={() => setConfirm({ kind: "submit" })}>
-            <Send className="h-4 w-4" />
-            Ajukan Validasi
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={isBusy}
+            onClick={() => setConfirm({ kind: "submit" })}
+          >
+            <Send className="h-3.5 w-3.5" />
+            Ajukan
           </Button>
         )}
         {canVerify && (
-          <Button variant="primary" disabled={isBusy} onClick={() => setConfirm({ kind: "verify" })}>
-            <BadgeCheck className="h-4 w-4" />
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={isBusy}
+            onClick={() => setConfirm({ kind: "verify" })}
+          >
+            <BadgeCheck className="h-3.5 w-3.5" />
             Validasi
           </Button>
         )}
         {canReject && (
           <Button
+            size="sm"
             variant="outline"
             disabled={isBusy}
             onClick={() => setConfirm({ kind: "reject", reason: "" })}
             className="border-danger-300 text-danger-700 hover:bg-danger-50"
           >
-            <XCircle className="h-4 w-4" />
+            <XCircle className="h-3.5 w-3.5" />
             Tolak
           </Button>
         )}
         {canCancel && (
           <Button
+            size="sm"
             variant="outline"
             disabled={isBusy}
             onClick={() => setConfirm({ kind: "cancel", reason: "" })}
             className="border-warning-300 text-warning-700 hover:bg-warning-50"
           >
-            <Ban className="h-4 w-4" />
+            <Ban className="h-3.5 w-3.5" />
             Batalkan
           </Button>
         )}
         {canEdit && onEdit && (
-          <Button variant="secondary" onClick={onEdit} disabled={isBusy}>
-            <Pencil className="h-4 w-4" />
+          <Button size="sm" variant="secondary" onClick={onEdit} disabled={isBusy}>
+            <Pencil className="h-3.5 w-3.5" />
             Edit
             {status === "VERIFIED" && (
-              <span className="ml-1 rounded bg-warning-100 text-warning-700 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+              <span className="ml-1 rounded bg-warning-100 text-warning-700 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider leading-none">
                 God
               </span>
             )}
@@ -239,24 +252,26 @@ export function TransactionActions({
         )}
         {canSoftDelete && (
           <Button
+            size="icon-sm"
             variant="ghost"
             disabled={isBusy}
             onClick={() => setConfirm({ kind: "delete" })}
             className="text-danger-600 hover:bg-danger-50 hover:text-danger-700 ml-auto"
+            aria-label="Hapus"
           >
             <Trash2 className="h-4 w-4" />
-            Hapus
           </Button>
         )}
         {canHardDelete && (
           <Button
+            size="icon-sm"
             variant="ghost"
             disabled={isBusy}
             onClick={() => setConfirm({ kind: "hardDelete", typed: "" })}
             className="text-danger-700 hover:bg-danger-100 ml-auto"
+            aria-label="Hapus Permanen"
           >
             <Flame className="h-4 w-4" />
-            Hapus Permanen
           </Button>
         )}
       </div>
