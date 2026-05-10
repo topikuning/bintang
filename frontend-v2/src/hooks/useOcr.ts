@@ -17,6 +17,7 @@ export interface OcrExtractResult {
   confidence_score: number
   extracted_data: Record<string, unknown> | null
   needs_review: boolean
+  source_url?: string
 }
 
 export function useOcrDrafts() {
@@ -43,6 +44,42 @@ export function useOcrExtract() {
         file_url,
         entity,
       })
+      return data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ocr", "drafts"] }),
+  })
+}
+
+export function useOcrExtractUpload() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      file,
+      entity = "invoice",
+      onProgress,
+    }: {
+      file: File
+      entity?: string
+      onProgress?: (pct: number) => void
+    }): Promise<OcrExtractResult> => {
+      const fd = new FormData()
+      fd.append("file", file)
+      fd.append("entity", entity)
+      const { data } = await api.post<OcrExtractResult>(
+        "/ocr/extract-upload",
+        fd,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+          // Backend OCR call (Claude) bisa makan 10-30 detik utk dokumen
+          // ramai. Kasih timeout longgar.
+          timeout: 90_000,
+          onUploadProgress: (e) => {
+            if (onProgress && e.total) {
+              onProgress(Math.round((e.loaded / e.total) * 100))
+            }
+          },
+        },
+      )
       return data
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ocr", "drafts"] }),
