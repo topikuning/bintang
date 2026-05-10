@@ -10,6 +10,7 @@ import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
 import { ErrorState } from "@/components/data/ErrorState"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { DraggableSheet } from "@/components/ui/draggable-sheet"
 import { TransactionCard } from "@/components/domain/transaction/TransactionCard"
 import { TransactionDetail } from "@/components/domain/transaction/TransactionDetail"
 import { TransactionForm } from "@/components/domain/transaction/TransactionForm"
@@ -247,38 +248,72 @@ export function TransactionsListPage() {
         <Plus className="h-6 w-6" />
       </Button>
 
-      {/* Detail sheet -- desktop side, mobile bottom-fullscreen */}
-      <Sheet open={detailOpen} onOpenChange={(open) => !open && closeDetail()}>
-        <SheetContent
-          side={bp === "mobile" ? "bottom" : "right"}
-          className={bp === "mobile" ? "h-[90vh] flex flex-col p-0" : "w-full sm:max-w-md flex flex-col p-0"}
+      {/* Detail sheet:
+          Mobile: DraggableSheet (drag handle + swipe-down to close +
+            tombol close 44x44 di header).
+          Desktop: side panel kanan (Sheet biasa). */}
+      {bp === "mobile" ? (
+        <DraggableSheet
+          open={detailOpen}
+          onOpenChange={(o) => !o && closeDetail()}
+          title="Detail Transaksi"
+          maxHeight="92vh"
+          footer={
+            detailQuery.data && (
+              <TransactionActions
+                transaction={detailQuery.data}
+                onEdit={() => {
+                  setEditTarget(detailQuery.data!)
+                  setSelectedId(null)
+                  setFormOpen(true)
+                }}
+                onAfterDestroy={closeDetail}
+              />
+            )
+          }
         >
-          <SheetHeader className="border-b">
-            <SheetTitle>Detail Transaksi</SheetTitle>
-          </SheetHeader>
-          <div className="flex-1 overflow-y-auto">
-            <TransactionDetail
-              transaction={detailQuery.data}
-              isLoading={detailQuery.isLoading}
-              project={detailQuery.data ? projectMap.get(detailQuery.data.project_id) : undefined}
-              category={
-                detailQuery.data?.category_id ? categoryMap.get(detailQuery.data.category_id) : undefined
-              }
-            />
-          </div>
-          {detailQuery.data && (
-            <TransactionActions
-              transaction={detailQuery.data}
-              onEdit={() => {
-                setEditTarget(detailQuery.data!)
-                setSelectedId(null)
-                setFormOpen(true)
-              }}
-              onAfterDestroy={closeDetail}
-            />
-          )}
-        </SheetContent>
-      </Sheet>
+          <TransactionDetail
+            transaction={detailQuery.data}
+            isLoading={detailQuery.isLoading}
+            project={detailQuery.data ? projectMap.get(detailQuery.data.project_id) : undefined}
+            category={
+              detailQuery.data?.category_id ? categoryMap.get(detailQuery.data.category_id) : undefined
+            }
+          />
+        </DraggableSheet>
+      ) : (
+        <Sheet open={detailOpen} onOpenChange={(open) => !open && closeDetail()}>
+          <SheetContent
+            side="right"
+            className="w-full sm:max-w-md flex flex-col p-0"
+          >
+            <SheetHeader className="border-b">
+              <SheetTitle>Detail Transaksi</SheetTitle>
+            </SheetHeader>
+            <div className="flex-1 overflow-y-auto">
+              <TransactionDetail
+                transaction={detailQuery.data}
+                isLoading={detailQuery.isLoading}
+                project={detailQuery.data ? projectMap.get(detailQuery.data.project_id) : undefined}
+                category={
+                  detailQuery.data?.category_id ? categoryMap.get(detailQuery.data.category_id) : undefined
+                }
+              />
+            </div>
+            {detailQuery.data && (
+              <TransactionActions
+                transaction={detailQuery.data}
+                onEdit={() => {
+                  setEditTarget(detailQuery.data!)
+                  setSelectedId(null)
+                  setFormOpen(true)
+                }}
+                onAfterDestroy={closeDetail}
+              />
+            )}
+          </SheetContent>
+        </Sheet>
+      )}
 
       {/* Create/edit form sheet */}
       <TransactionForm

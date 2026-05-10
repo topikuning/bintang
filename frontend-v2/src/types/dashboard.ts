@@ -23,6 +23,23 @@ export interface ProjectBudget {
   status: BudgetStatus
 }
 
+/** Rincian keuangan kontrak proyek (DPP, PPn, PPh, profit). */
+export interface ProjectFinance {
+  nilai_kontrak: number
+  ppn_pct: number
+  pph_pct: number
+  marketing_pct: number
+  dpp: number
+  ppn: number
+  pph: number
+  nilai_cair: number
+  marketing: number
+  biaya_aktual: number
+  biaya_proyeksi: number
+  profit_now: number
+  profit_proj: number
+}
+
 export interface MonthlyCashflowPoint {
   /** ISO YYYY-MM */
   month: string
@@ -58,6 +75,12 @@ export interface CategoryBreakdownItem {
   total: number
 }
 
+export interface ProjectSpendingItem {
+  project_id: number
+  name: string
+  total: number
+}
+
 export interface ProjectDashboardResponse {
   project: {
     id: number
@@ -69,7 +92,8 @@ export interface ProjectDashboardResponse {
   }
   totals: ProjectTotals
   budget: ProjectBudget
-  health: { status: HealthStatus; label?: string }
+  finance?: ProjectFinance
+  health: HealthStatus | { status: HealthStatus; label?: string }
   expense_to_income_ratio_pct: number | null
   invoice_open_total: number
   invoice_paid_total: number
@@ -88,20 +112,38 @@ export interface GlobalDashboardProjectSummary {
   id: number
   code: string
   name: string
+  company: string | null
+  status: string
+  currency: string
   total_in: number
   total_out: number
   balance: number
-  budget_amount: number
-  budget_usage_pct: number
-  budget_status: BudgetStatus
-  status: string
+  pending_in: number
+  pending_out: number
+  budget: ProjectBudget
+  health: HealthStatus
 }
 
 export interface GlobalDashboardResponse {
-  totals: { in: number; out: number; balance: number }
+  totals: {
+    in: number
+    out: number
+    balance: number
+    pending_in: number
+    pending_out: number
+  }
   active_projects: number
+  total_projects: number
   minus_projects: number
-  biggest_project: GlobalDashboardProjectSummary | null
+  pending_count: number
+  pending_total: number
+  unlinked_out_count: number
+  unlinked_out_total: number
+  overdue_invoices: number
+  biggest_project: { id: number; name: string; total: number } | null
+  top_spender: ProjectSpendingItem | null
+  spending_by_project: ProjectSpendingItem[]
+  spending_by_category: CategoryBreakdownItem[]
   monthly_cashflow: MonthlyCashflowPoint[]
   projects: GlobalDashboardProjectSummary[]
   warnings: string[]
