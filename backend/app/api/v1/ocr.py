@@ -31,6 +31,60 @@ class ReviewIn(BaseModel):
     note: str | None = None
 
 
+@router.get("/test-connection")
+async def test_connection(
+    user: User = Depends(require_admin),
+) -> dict:
+    """Verifikasi koneksi ke Anthropic API tanpa upload file.
+
+    Pakai untuk:
+    - Cek apakah ANTHROPIC_API_KEY valid setelah set di Railway
+    - Cek apakah OCR_MODEL bisa di-akses (404 = model name salah)
+    - Ukur latency baseline Railway -> api.anthropic.com
+    - Diagnose timeout: kalau test-connection sukses tapi /extract timeout,
+      problemnya di image/payload, bukan auth/network
+    """
+    from app.core.config import settings
+
+    engine = (settings.OCR_ENGINE or "stub").lower()
+    if engine != "claude":
+        return {
+            "ok": False,
+            "engine": engine,
+            "error": "engine_not_claude",
+            "hint": "Set OCR_ENGINE=claude di Railway env vars dulu.",
+        }
+    if not settings.ANTHROPIC_API_KEY:
+        return {
+            "ok": False,
+            "engine": "claude",
+            "error": "missing_api_key",
+            "hint": "Set ANTHROPIC_API_KEY di Railway env vars.",
+        }
+
+    # Lazy import (sama dgn factory) -- supaya error import muncul jelas
+    try:
+        from app.services.ocr.claude_adapter import ClaudeVisionOCRAdapter
+    except ImportError as e:
+        return {
+            "ok": False,
+            "error": "anthropic_not_installed",
+            "detail": str(e),
+            "hint": "Restart deploy supaya pip install anthropic dijalankan.",
+        }
+
+    adapter = ClaudeVisionOCRAdapter(
+        api_key=settings.ANTHROPIC_API_KEY,
+        model=settings.OCR_MODEL,
+    )
+    result = await adapter.test_connection()
+    return {
+        "engine": "claude",
+        "model": settings.OCR_MODEL,
+        **result,
+    }
+
+
 def _persist_extraction(
     *, entity: str, source_url: str, result: dict[str, Any]
 ) -> AIExtraction:
