@@ -297,11 +297,14 @@ async def update_invoice(
         # Pola clear()+cascade='all,delete-orphan' di async session bisa
         # trigger MissingGreenlet karena verifikasi collection state internal
         # mencoba lazy-load di luar greenlet context.
-        # Trade-off: kita harus expire collection in-memory supaya iterasi
-        # selanjutnya akurat -- pakai db.expire(inv, ['items']) lalu re-load
-        # via append baru.
+        # synchronize_session=False supaya SQLAlchemy tidak coba sinkronisasi
+        # in-memory state -- default 'auto' bisa expire kolom Invoice yg
+        # related, lalu snapshot(inv) berikutnya trigger lazy-load di luar
+        # greenlet context (MissingGreenlet pas line 'after=snapshot(inv)').
         await db.execute(
-            delete(InvoiceItem).where(InvoiceItem.invoice_id == inv.id)
+            delete(InvoiceItem)
+            .where(InvoiceItem.invoice_id == inv.id)
+            .execution_options(synchronize_session=False)
         )
         # Putus link ke object lama yg sudah dihapus, lalu fresh start.
         inv.items[:] = []
