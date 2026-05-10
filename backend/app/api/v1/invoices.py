@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -293,7 +293,18 @@ async def update_invoice(
     for k, v in data.items():
         setattr(inv, k, v)
     if items_data:
-        inv.items.clear()
+        # Pakai explicit DELETE statement, BUKAN inv.items.clear() + cascade.
+        # Pola clear()+cascade='all,delete-orphan' di async session bisa
+        # trigger MissingGreenlet karena verifikasi collection state internal
+        # mencoba lazy-load di luar greenlet context.
+        # Trade-off: kita harus expire collection in-memory supaya iterasi
+        # selanjutnya akurat -- pakai db.expire(inv, ['items']) lalu re-load
+        # via append baru.
+        await db.execute(
+            delete(InvoiceItem).where(InvoiceItem.invoice_id == inv.id)
+        )
+        # Putus link ke object lama yg sudah dihapus, lalu fresh start.
+        inv.items[:] = []
         await db.flush()
         for it in items_data:
             inv.items.append(InvoiceItem(
