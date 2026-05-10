@@ -1,0 +1,39 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { api } from "@/lib/api"
+
+export interface MessagingConfig {
+  telegram_enabled: boolean
+  whatsapp_enabled: boolean
+  telegram_configured: boolean
+  whatsapp_configured: boolean
+  whatsapp_base_url: string | null
+  whatsapp_session: string | null
+}
+
+export interface MessagingConfigPatch {
+  telegram_enabled?: boolean
+  whatsapp_enabled?: boolean
+}
+
+const KEY = ["messaging", "config"] as const
+
+export function useMessagingConfig() {
+  return useQuery({
+    queryKey: KEY,
+    queryFn: async (): Promise<MessagingConfig> => {
+      const { data } = await api.get<MessagingConfig>("/messaging/config")
+      return data
+    },
+  })
+}
+
+export function useUpdateMessagingConfig() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: MessagingConfigPatch): Promise<MessagingConfig> => {
+      const { data } = await api.patch<MessagingConfig>("/messaging/config", payload)
+      return data
+    },
+    onSuccess: (data) => qc.setQueryData(KEY, data),
+  })
+}

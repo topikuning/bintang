@@ -29,6 +29,16 @@ class Settings(BaseSettings):
     # Contoh: https://api.bintang.me
     PUBLIC_BASE_URL: str = ""
 
+    # --- OCR / Claude Vision ---
+    # Pilih engine: "stub" (default, dummy data) atau "claude" (Claude vision API).
+    OCR_ENGINE: str = "stub"
+    # Model Claude untuk OCR. Haiku 4.5 paling murah & cepat -- cukup utk
+    # invoice/struk/tulisan tangan. Bisa di-upgrade ke claude-sonnet-4-6 kalau
+    # akurasi kurang.
+    OCR_MODEL: str = "claude-haiku-4-5"
+    # API key Anthropic. Wajib kalau OCR_ENGINE="claude". Kosong = stub mode.
+    ANTHROPIC_API_KEY: str = ""
+
     # --- WhatsApp via WAHA ---
     # Base URL WAHA-server (TANPA trailing slash). KOSONG = integrasi off.
     # Contoh: http://172.105.116.245:3000

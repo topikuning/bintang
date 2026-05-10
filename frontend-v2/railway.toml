@@ -1,0 +1,14 @@
+# Konfigurasi Railway utk service frontend-v2.
+# Dipakai oleh Railway saat Root Directory service di-set ke `frontend-v2`.
+# Doc: https://docs.railway.com/reference/config-as-code
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# nginx (di Dockerfile) listen di env $PORT. Railway inject otomatis.
+healthcheckPath = "/healthz"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

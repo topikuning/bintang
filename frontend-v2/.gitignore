@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.env.local
+.DS_Store
+*.log
+.vite
+*.tsbuildinfo
+
+# Override root .gitignore -- lockfile WAJIB ada utk `npm ci` di Railway
+# build supaya reproducible.
+!package-lock.json

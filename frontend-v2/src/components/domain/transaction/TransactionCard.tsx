@@ -1,0 +1,81 @@
+import { ChevronRight, Paperclip } from "lucide-react"
+import type { Transaction } from "@/types/api"
+import { fmtDate } from "@/lib/format"
+import { AmountDisplay } from "@/components/domain/shared/AmountDisplay"
+import { StatusBadge } from "@/components/domain/shared/StatusBadge"
+import { cn } from "@/lib/utils"
+
+interface TransactionCardProps {
+  transaction: Transaction
+  /** Nama proyek (lookup dari proj_map di parent). */
+  projectName?: string
+  /** Nama kategori (lookup dari cat_map di parent). */
+  categoryName?: string
+  hasAttachment?: boolean
+  onClick?: () => void
+  className?: string
+}
+
+export function TransactionCard({
+  transaction: t,
+  projectName,
+  categoryName,
+  hasAttachment,
+  onClick,
+  className,
+}: TransactionCardProps) {
+  const isIn = t.type === "IN"
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group flex w-full flex-col gap-2 rounded-md border bg-surface p-3 text-left transition-colors active:bg-ink-100",
+        "hover:bg-surface-muted hover:border-border-strong",
+        className,
+      )}
+    >
+      {/* Row 1: tanggal + nominal */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col leading-tight">
+          <span className="text-[12px] text-ink-500">{fmtDate(t.tx_date)}</span>
+          <span className="text-[11px] uppercase tracking-wider text-ink-400 mt-0.5">
+            {isIn ? "Pemasukan" : "Pengeluaran"}
+          </span>
+        </div>
+        <AmountDisplay
+          value={t.amount}
+          type={t.type}
+          colored
+          size="lg"
+        />
+      </div>
+
+      {/* Row 2: pihak / proyek */}
+      <div className="flex flex-col gap-0.5 min-w-0">
+        <div className="text-sm font-medium text-ink-900 truncate">
+          {t.party_name || "—"}
+        </div>
+        <div className="text-[12px] text-ink-500 truncate">
+          {projectName ? `${projectName}${categoryName ? ` · ${categoryName}` : ""}` : categoryName || "—"}
+        </div>
+      </div>
+
+      {/* Row 3: deskripsi (kalau ada, max 1 baris) */}
+      {t.description && (
+        <div className="text-[12px] text-ink-600 line-clamp-1">{t.description}</div>
+      )}
+
+      {/* Footer: status + attachment + chevron */}
+      <div className="flex items-center justify-between mt-1">
+        <div className="flex items-center gap-2">
+          <StatusBadge domain="transaction" status={t.status} />
+          {hasAttachment && (
+            <Paperclip className="h-3.5 w-3.5 text-ink-400" />
+          )}
+        </div>
+        <ChevronRight className="h-4 w-4 text-ink-300 group-hover:text-ink-500" />
+      </div>
+    </button>
+  )
+}

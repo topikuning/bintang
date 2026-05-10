@@ -1,0 +1,155 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Bintang Design Tokens
+   - Brand: navy biru profesional (target audience: direksi/PPK)
+   - Status: 4 warna saja (success/warning/danger/info)
+   - Netral: surface + ink scale
+   - Typography: Inter (UI) + JetBrains Mono (numerik)
+   ============================================================ */
+
+@theme {
+  /* Brand */
+  --color-brand-50:  #f0f7ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #3b82f6;
+  --color-brand-500: #0a5dc2;
+  --color-brand-600: #054a9e;
+  --color-brand-700: #063a7a;
+  --color-brand-800: #042c5c;
+  --color-brand-900: #022554;
+
+  /* Status — sukses */
+  --color-success-50:  #f0fdf4;
+  --color-success-100: #dcfce7;
+  --color-success-500: #16a34a;
+  --color-success-600: #15803d;
+  --color-success-700: #166534;
+
+  /* Status — warning */
+  --color-warning-50:  #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-500: #d97706;
+  --color-warning-600: #b45309;
+  --color-warning-700: #92400e;
+
+  /* Status — danger */
+  --color-danger-50:  #fef2f2;
+  --color-danger-100: #fee2e2;
+  --color-danger-500: #dc2626;
+  --color-danger-600: #b91c1c;
+  --color-danger-700: #991b1b;
+
+  /* Status — info */
+  --color-info-50:  #eff6ff;
+  --color-info-100: #dbeafe;
+  --color-info-500: #2563eb;
+  --color-info-600: #1d4ed8;
+  --color-info-700: #1e40af;
+
+  /* Netral (ink) */
+  --color-ink-50:  #fafafa;
+  --color-ink-100: #f5f5f5;
+  --color-ink-200: #e5e5e5;
+  --color-ink-300: #d4d4d4;
+  --color-ink-400: #a3a3a3;
+  --color-ink-500: #737373;
+  --color-ink-600: #525252;
+  --color-ink-700: #404040;
+  --color-ink-800: #262626;
+  --color-ink-900: #0a0a0a;
+
+  /* Surface */
+  --color-surface:        #ffffff;
+  --color-surface-muted:  #fafafa;
+  --color-surface-sunken: #f4f4f5;
+
+  /* Border */
+  --color-border:         #e5e5e5;
+  --color-border-strong:  #d4d4d4;
+
+  /* Typography */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+
+  /* Breakpoints (override Tailwind default supaya match design system) */
+  --breakpoint-sm: 480px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+
+  /* Radius — konservatif (finance app) */
+  --radius-sm: 4px;
+  --radius:    6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+/* ============================================================
+   Globals
+   ============================================================ */
+
+* {
+  border-color: var(--color-border);
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-ink-900);
+  background: var(--color-surface-muted);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tabular numerics utk semua angka di app keuangan */
+.font-mono, [data-num], table.data-grid td.num, td.num, th.num {
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Scrollbar yg lebih tipis utk app dense */
+@media (pointer: fine) {
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--color-ink-300); border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-ink-400); }
+}
+
+/* Touch target minimum 44x44 utk mobile */
+@media (pointer: coarse) {
+  button, a[role="button"], [role="tab"] {
+    min-height: 44px;
+  }
+}
+
+/* Safe area helpers (untuk perangkat dgn notch / gesture bar) */
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+@utility pl-safe {
+  padding-left: env(safe-area-inset-left);
+}
+@utility pr-safe {
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Focus ring konsisten */
+*:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
