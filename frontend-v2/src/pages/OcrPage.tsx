@@ -1,14 +1,19 @@
 import { useRef, useState, type DragEvent } from "react"
+import { Link as RouterLink } from "react-router-dom"
 import {
   AlertTriangle,
+  ArrowDownToLine,
+  ArrowUpFromLine,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  ExternalLink,
   FileText,
   Image as ImageIcon,
   Link2,
   Loader2,
   PenLine,
+  Receipt,
   ScanLine,
   ShieldCheck,
   Sparkles,
@@ -18,6 +23,7 @@ import {
   XCircle,
 } from "lucide-react"
 import {
+  useOcrCreateInvoice,
   useOcrDrafts,
   useOcrExtract,
   useOcrExtractUpload,
@@ -25,6 +31,8 @@ import {
   useOcrTestConnection,
   type OcrDraft,
 } from "@/hooks/useOcr"
+import { ProjectPicker } from "@/components/forms/ProjectPicker"
+import { VendorPicker } from "@/components/forms/VendorPicker"
 import { useAuthStore } from "@/store/auth"
 import { apiErrorMessage } from "@/lib/api"
 import { fmtDateTime, fmtPct } from "@/lib/format"
@@ -656,15 +664,195 @@ function DraftCard({
               </Button>
             </div>
           )}
-          {isReviewed && (
-            <p className="text-[11px] text-ink-500 italic text-right">
-              Draft sudah direview. Gunakan datanya utk buat invoice/PO secara
-              manual.
-            </p>
+          {isReviewed && draft.entity_id != null && (
+            <div className="rounded-md border border-success-200 bg-success-50 p-3 flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 text-[12px] text-success-800">
+                <CheckCircle2 className="h-4 w-4 text-success-600 shrink-0" />
+                <span>
+                  Sudah dibuat menjadi <strong>Invoice #{draft.entity_id}</strong>
+                  {" "}-- file lampiran ikut ter-attach.
+                </span>
+              </div>
+              <RouterLink
+                to="/invoices"
+                className="inline-flex items-center gap-1 text-[12px] text-brand-600 hover:underline"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Lihat invoice
+              </RouterLink>
+            </div>
+          )}
+          {isReviewed && draft.entity_id == null && (
+            <CreateInvoiceFromDraftPanel draft={draft} />
           )}
         </div>
       )}
     </li>
+  )
+}
+
+function CreateInvoiceFromDraftPanel({ draft }: { draft: OcrDraft }) {
+  const create = useOcrCreateInvoice()
+  const [open, setOpen] = useState(false)
+  const [projectId, setProjectId] = useState<number | null>(null)
+  const [type, setType] = useState<"IN" | "OUT">("IN")
+  const [vendorId, setVendorId] = useState<number | null>(null)
+
+  const data = (draft.extracted_data ?? {}) as Record<string, unknown>
+  const itemsCount = Array.isArray(data["items"])
+    ? (data["items"] as unknown[]).length
+    : 0
+  const totalNum =
+    typeof data["total"] === "number"
+      ? (data["total"] as number)
+      : Number(data["total"])
+  const totalLabel = Number.isFinite(totalNum)
+    ? `Rp ${Number(totalNum).toLocaleString("id-ID")}`
+    : "—"
+
+  const handleSubmit = async () => {
+    if (!projectId) {
+      toast.error("Proyek wajib dipilih")
+      return
+    }
+    try {
+      const result = await create.mutateAsync({
+        draft_id: draft.id,
+        project_id: projectId,
+        type,
+        vendor_client_id: vendorId,
+      })
+      toast.success(`Invoice ${result.invoice_number} berhasil dibuat`, {
+        description: `${result.items_count} item · Rp ${result.total.toLocaleString("id-ID")} · ${result.attachments_count} lampiran. Status: ${result.status}.`,
+      })
+      // Form di-collapse otomatis karena draft.entity_id ke-update via
+      // invalidate query -> komponen ini hilang, replaced dgn linked badge.
+      setOpen(false)
+    } catch (err) {
+      toast.error("Gagal buat invoice", { description: apiErrorMessage(err) })
+    }
+  }
+
+  if (!open) {
+    return (
+      <div className="rounded-md border bg-surface p-3 space-y-2">
+        <div className="flex items-start gap-2 text-[12px] text-ink-700">
+          <Receipt className="h-4 w-4 text-brand-600 shrink-0 mt-0.5" />
+          <div>
+            Draft sudah direview. Buat <strong>Invoice DRAFT</strong> dengan{" "}
+            <span className="font-mono">{itemsCount}</span> item ({totalLabel}) +
+            file gambar otomatis ter-attach sebagai lampiran.
+          </div>
+        </div>
+        <div className="flex justify-end">
+          <Button size="sm" onClick={() => setOpen(true)}>
+            <Receipt className="h-3.5 w-3.5" />
+            Buat Invoice
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-md border border-brand-200 bg-brand-50/30 p-3 space-y-3">
+      <div className="text-[12px] font-semibold text-ink-900 flex items-center gap-1.5">
+        <Receipt className="h-4 w-4 text-brand-600" />
+        Buat Invoice dari Draft
+      </div>
+
+      {/* Type IN/OUT segment */}
+      <div className="space-y-1">
+        <Label className="text-[11px] uppercase tracking-wider">
+          Jenis Invoice <span className="text-danger-600">*</span>
+        </Label>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setType("IN")}
+            className={cn(
+              "flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-[12px] transition-colors",
+              type === "IN"
+                ? "border-brand-500 bg-brand-50 text-brand-700 font-medium"
+                : "border-ink-200 bg-surface text-ink-600 hover:border-ink-300",
+            )}
+          >
+            <ArrowDownToLine className="h-3.5 w-3.5" />
+            IN (tagihan masuk)
+          </button>
+          <button
+            type="button"
+            onClick={() => setType("OUT")}
+            className={cn(
+              "flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-[12px] transition-colors",
+              type === "OUT"
+                ? "border-brand-500 bg-brand-50 text-brand-700 font-medium"
+                : "border-ink-200 bg-surface text-ink-600 hover:border-ink-300",
+            )}
+          >
+            <ArrowUpFromLine className="h-3.5 w-3.5" />
+            OUT (tagihan kita)
+          </button>
+        </div>
+      </div>
+
+      {/* Project */}
+      <div className="space-y-1">
+        <Label className="text-[11px] uppercase tracking-wider">
+          Proyek <span className="text-danger-600">*</span>
+        </Label>
+        <ProjectPicker
+          value={projectId}
+          onChange={setProjectId}
+          placeholder="Pilih proyek tujuan invoice"
+        />
+        <p className="text-[11px] text-ink-500">
+          Proyek tidak ada di OCR -- harus dipilih manual.
+        </p>
+      </div>
+
+      {/* Vendor */}
+      <div className="space-y-1">
+        <Label className="text-[11px] uppercase tracking-wider">
+          Vendor / Klien <span className="text-ink-400">(opsional)</span>
+        </Label>
+        <VendorPicker
+          value={vendorId}
+          onChange={setVendorId}
+          kind={type === "IN" ? "VENDOR" : "CLIENT"}
+          placeholder={
+            type === "IN" ? "Pilih vendor (kalau sudah terdaftar)" : "Pilih klien"
+          }
+        />
+        <p className="text-[11px] text-ink-500">
+          Kalau kosong, nama dari OCR (
+          <span className="font-mono">
+            {(data["vendor_name"] as string) ?? "—"}
+          </span>
+          ) dipakai sebagai <em>party_name</em> bebas.
+        </p>
+      </div>
+
+      <div className="flex justify-end gap-2 pt-1">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setOpen(false)}
+          disabled={create.isPending}
+        >
+          Batal
+        </Button>
+        <Button
+          size="sm"
+          onClick={handleSubmit}
+          disabled={!projectId || create.isPending}
+        >
+          {create.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          <Receipt className="h-3.5 w-3.5" />
+          Buat Invoice
+        </Button>
+      </div>
+    </div>
   )
 }
 
