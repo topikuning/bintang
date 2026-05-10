@@ -7,8 +7,13 @@
 </head>
 <body>
 
-{% if invoice.status == 'PAID' %}<div class="watermark">LUNAS</div>{% endif %}
-{% if invoice.status == 'CANCELLED' %}<div class="watermark" style="color: rgba(185, 28, 28, 0.08);">DIBATALKAN</div>{% endif %}
+{# Enum value -- bukan {{ invoice.status }} langsung karena SQLAlchemy
+   Enum.__str__ menghasilkan 'InvoiceStatus.DRAFT' (uppercase via CSS jadi
+   'INVOICESTATUS.DRAFT') -- pakai .value supaya cuma 'DRAFT'. #}
+{% set _status = invoice.status.value %}
+{% set _type = invoice.type.value %}
+{% if _status == 'PAID' %}<div class="watermark">LUNAS</div>{% endif %}
+{% if _status == 'CANCELLED' %}<div class="watermark" style="color: rgba(185, 28, 28, 0.08);">DIBATALKAN</div>{% endif %}
 
 <!-- KOP / LETTERHEAD -->
 <div class="kop row">
@@ -30,7 +35,7 @@
 <div class="title-bar">
   <div class="line1">
     INVOICE &mdash;
-    {% if invoice.type == 'OUT' %}TAGIHAN ATAS PEKERJAAN/PROYEK
+    {% if _type == 'OUT' %}TAGIHAN ATAS PEKERJAAN/PROYEK
     {% else %}PENGAJUAN PEMBAYARAN
     {% endif %}
   </div>
@@ -55,7 +60,7 @@
   {% endif %}
   <tr>
     <td class="label">
-      {% if invoice.type == 'OUT' %}Kepada Client{% else %}Kepada / Pembayar{% endif %}
+      {% if _type == 'OUT' %}Kepada Client{% else %}Kepada / Pembayar{% endif %}
     </td>
     <td class="value">{{ invoice.party_name or (vendor.name if vendor else "-") }}</td>
   </tr>
@@ -77,12 +82,12 @@
     <td class="label">Status</td>
     <td class="value">
       <span class="badge
-        {% if invoice.status == 'PAID' %}badge-paid
-        {% elif invoice.status == 'OVERDUE' %}badge-overdue
-        {% elif invoice.status == 'PARTIALLY_PAID' %}badge-partial
-        {% elif invoice.status == 'CANCELLED' %}badge-cancelled
-        {% elif invoice.status == 'ISSUED' %}badge-issued
-        {% else %}badge-draft{% endif %}">{{ invoice.status }}</span>
+        {% if _status == 'PAID' %}badge-paid
+        {% elif _status == 'OVERDUE' %}badge-overdue
+        {% elif _status == 'PARTIALLY_PAID' %}badge-partial
+        {% elif _status == 'CANCELLED' %}badge-cancelled
+        {% elif _status == 'ISSUED' %}badge-issued
+        {% else %}badge-draft{% endif %}">{{ _status }}</span>
     </td>
   </tr>
 </table>
