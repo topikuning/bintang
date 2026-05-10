@@ -71,8 +71,9 @@ export function useOcrExtractUpload() {
         {
           headers: { "Content-Type": "multipart/form-data" },
           // Backend OCR call (Claude) bisa makan 10-30 detik utk dokumen
-          // ramai. Kasih timeout longgar.
-          timeout: 90_000,
+          // ramai (handwriting + banyak items). Backend SDK timeout 75s,
+          // beri buffer jaringan/proxy -> 110s di sini.
+          timeout: 110_000,
           onUploadProgress: (e) => {
             if (onProgress && e.total) {
               onProgress(Math.round((e.loaded / e.total) * 100))
