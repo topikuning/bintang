@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from "react-router-dom"
 import { AppShell } from "@/components/layout/AppShell"
 import { RequireAuth } from "@/components/auth/RequireAuth"
+import { DashboardPage } from "@/pages/Dashboard"
 import { LoginPage } from "@/pages/Login"
 import { Placeholder } from "@/pages/Placeholder"
 import { TransactionsListPage } from "@/pages/transactions/TransactionsListPage"
@@ -16,7 +17,7 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="/dashboard" replace /> },
           {
             path: "dashboard",
-            element: <Placeholder title="Dashboard" description="Ringkasan multi-proyek akan tampil di sini." />,
+            element: <DashboardPage />,
           },
           {
             path: "transactions",

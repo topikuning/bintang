@@ -46,6 +46,16 @@ export interface Page<T> {
   size: number
 }
 
+export interface Attachment {
+  id: number
+  file_name: string
+  file_size: number
+  mime_type: string
+  /** Relative path (mis. "transactions/123/foo.pdf") atau URL absolut external (https://...). */
+  url: string
+  created_at: string
+}
+
 export type TxnType = "IN" | "OUT"
 export type TxnStatus =
   | "DRAFT"
@@ -73,8 +83,10 @@ export interface Transaction {
   created_by_id: number
   verified_by_id: number | null
   verified_at: string | null
+  cancel_reason?: string | null
   created_at: string
   updated_at: string
+  attachments?: Attachment[]
 }
 
 export type InvoiceType = "IN" | "OUT"

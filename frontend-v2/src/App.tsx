@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { RouterProvider } from "react-router-dom"
+import { Lightbox } from "@/components/domain/shared/Lightbox"
 import { Toaster } from "@/components/ui/sonner"
 import { router } from "./routes"
 
@@ -22,6 +23,7 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
       <Toaster />
+      <Lightbox />
     </QueryClientProvider>
   )
 }
