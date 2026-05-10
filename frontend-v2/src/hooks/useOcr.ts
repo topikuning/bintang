@@ -4,11 +4,34 @@ import { api } from "@/lib/api"
 export interface OcrDraft {
   id: number
   entity: string
+  entity_id: number | null  // invoice id kalau sudah dijadikan invoice
   status: string
   confidence_score: number
   extracted_data: Record<string, unknown> | null
   source_url: string
   reviewed_at: string | null
+}
+
+export interface OcrCreateInvoiceInput {
+  draft_id: number
+  project_id: number
+  type: "IN" | "OUT"
+  vendor_client_id?: number | null
+  override_number?: string
+  override_party_name?: string
+  override_notes?: string
+}
+
+export interface OcrCreateInvoiceResult {
+  invoice_id: number
+  invoice_number: string
+  project_id: number
+  type: "IN" | "OUT"
+  status: string
+  total: number
+  items_count: number
+  attachments_count: number
+  draft_id: number
 }
 
 export interface OcrExtractResult {
@@ -98,6 +121,26 @@ export interface OcrTestConnectionResult {
   hint?: string
   input_tokens?: number
   output_tokens?: number
+}
+
+export function useOcrCreateInvoice() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (
+      input: OcrCreateInvoiceInput,
+    ): Promise<OcrCreateInvoiceResult> => {
+      const { draft_id, ...body } = input
+      const { data } = await api.post<OcrCreateInvoiceResult>(
+        `/ocr/drafts/${draft_id}/create-invoice`,
+        body,
+      )
+      return data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ocr", "drafts"] })
+      qc.invalidateQueries({ queryKey: ["invoices"] })
+    },
+  })
 }
 
 export function useOcrTestConnection() {
