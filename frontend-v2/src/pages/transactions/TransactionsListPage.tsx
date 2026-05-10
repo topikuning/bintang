@@ -274,12 +274,7 @@ export function TransactionsListPage() {
                 setSelectedId(null)
                 setFormOpen(true)
               }}
-              onAfterMutate={() => {
-                // detailQuery auto-invalidate; tutup sheet kalau delete
-                if (detailQuery.data?.status === "CANCELLED") {
-                  setSelectedId(null)
-                }
-              }}
+              onAfterDestroy={closeDetail}
             />
           )}
         </SheetContent>

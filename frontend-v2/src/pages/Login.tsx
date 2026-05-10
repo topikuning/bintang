@@ -61,7 +61,7 @@ export function LoginPage() {
       setSession(token.access_token, {
         // Placeholder user supaya guard tidak redirect; akan di-overwrite.
         id: 0, email: parsed.data.email, name: "",
-        role: "VIEWER", scope_all_projects: false, is_active: true,
+        role: "EXECUTIVE", scope_all_projects: false, is_active: true,
       })
       const { data: me } = await api.get<User>("/auth/me")
       setSession(token.access_token, me)

@@ -91,3 +91,21 @@ export function useDeleteTransaction() {
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.transactions.all() }),
   })
 }
+
+/**
+ * GOD-MODE: hapus permanen (bypass status). Hanya SUPERADMIN.
+ * Endpoint backend `DELETE /transactions/:id/hard` -- juga membersihkan
+ * alokasi invoice yang menunjuk ke transaksi ini.
+ */
+export function useHardDeleteTransaction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: number): Promise<void> => {
+      await api.delete(`/transactions/${id}/hard`)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.transactions.all() })
+      qc.invalidateQueries({ queryKey: queryKeys.invoices.all() })
+    },
+  })
+}

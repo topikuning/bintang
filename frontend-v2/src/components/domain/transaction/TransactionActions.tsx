@@ -1,10 +1,12 @@
 import { useState } from "react"
-import { BadgeCheck, Loader2, Send, XCircle, Pencil, Trash2 } from "lucide-react"
+import { BadgeCheck, Ban, Flame, Loader2, Pencil, Send, Trash2, XCircle } from "lucide-react"
 import {
+  useCancelTransaction,
+  useDeleteTransaction,
+  useHardDeleteTransaction,
+  useRejectTransaction,
   useSubmitTransaction,
   useVerifyTransaction,
-  useRejectTransaction,
-  useDeleteTransaction,
 } from "@/hooks/useTransactionMutations"
 import { useAuthStore } from "@/store/auth"
 import { apiErrorMessage } from "@/lib/api"
@@ -18,44 +20,93 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/sonner"
 
 interface TransactionActionsProps {
   transaction: Transaction
   onEdit?: () => void
+  /** Dipanggil setelah aksi yang menutup detail (delete/hard-delete). */
+  onAfterDestroy?: () => void
+  /** Dipanggil setelah mutasi yg tidak destruktif (submit/verify/reject/cancel). */
   onAfterMutate?: () => void
 }
 
+/**
+ * Permission matrix (sesuai rule disepakati):
+ *
+ *                     | DRAFT | SUBMITTED | VERIFIED | REJECTED | CANCELLED
+ * --------------------|-------|-----------|----------|----------|-----------
+ * Submit              |  CW   |    -      |    -     |   CW     |    -
+ * Verify              |  -    |   ADMIN   |    -     |   -      |    -
+ * Reject              |  -    |   ADMIN   |    -     |   -      |    -
+ * Cancel              |  -    |    -      |  ADMIN   |   -      |    -
+ * Edit                |  CW   |    -      |  SUPER   |   CW     |    -
+ * Soft-delete         |  ADM  |   ADMIN   |    -     |  ADMIN   |   ADMIN
+ * Hard-delete (god)   |  -    |    -      |  SUPER   |   -      |    -
+ *
+ * Legend:
+ *   CW    = require_can_write (semua role kecuali EXECUTIVE)
+ *   ADMIN = SUPERADMIN + CENTRAL_ADMIN (require_admin di backend)
+ *   SUPER = SUPERADMIN only (god-mode -- hanya endpoint /hard)
+ */
 export function TransactionActions({
   transaction,
   onEdit,
+  onAfterDestroy,
   onAfterMutate,
 }: TransactionActionsProps) {
   const role = useAuthStore((s) => s.user?.role)
-  const isVerifier = role === "SUPERADMIN" || role === "CENTRAL_ADMIN"
+  const isSuperAdmin = role === "SUPERADMIN"
+  const isAdmin = role === "SUPERADMIN" || role === "CENTRAL_ADMIN"
+  const isReadOnly = role === "EXECUTIVE"
 
   const submit = useSubmitTransaction()
   const verify = useVerifyTransaction()
   const reject = useRejectTransaction()
+  const cancel = useCancelTransaction()
   const del = useDeleteTransaction()
-  const [confirm, setConfirm] = useState<
+  const hardDel = useHardDeleteTransaction()
+
+  type Confirm =
     | null
     | { kind: "submit" | "verify" | "delete" }
     | { kind: "reject"; reason: string }
-  >(null)
+    | { kind: "cancel"; reason: string }
+    | { kind: "hardDelete"; typed: string }
+  const [confirm, setConfirm] = useState<Confirm>(null)
 
   const status = transaction.status
   const id = transaction.id
 
-  const canSubmit = status === "DRAFT" || status === "REJECTED"
-  const canVerify = status === "SUBMITTED" && isVerifier
-  const canReject = status === "SUBMITTED" && isVerifier
-  const canEdit = status === "DRAFT" || status === "REJECTED" || (status === "VERIFIED" && isVerifier)
-  const canDelete = status !== "VERIFIED" || isVerifier
+  const canSubmit = !isReadOnly && (status === "DRAFT" || status === "REJECTED")
+  const canVerify = isAdmin && status === "SUBMITTED"
+  const canReject = isAdmin && status === "SUBMITTED"
+  const canCancel = isAdmin && status === "VERIFIED"
+
+  // Edit: DRAFT/REJECTED utk semua write-capable role; VERIFIED hanya
+  // SUPERADMIN (god-mode). Sengaja TIDAK include CENTRAL_ADMIN pada
+  // VERIFIED -- audit trail keuangan harus kuat.
+  const canEdit =
+    (!isReadOnly && (status === "DRAFT" || status === "REJECTED")) ||
+    (isSuperAdmin && status === "VERIFIED")
+
+  // Soft-delete: admin only (require_admin), tidak utk VERIFIED (backend
+  // akan reject 'verified_must_be_cancelled').
+  const canSoftDelete = isAdmin && status !== "VERIFIED"
+
+  // Hard-delete (god-mode): SUPERADMIN only, hanya tampilkan utk
+  // VERIFIED supaya tidak duplikat dgn soft-delete biasa.
+  const canHardDelete = isSuperAdmin && status === "VERIFIED"
 
   const isBusy =
-    submit.isPending || verify.isPending || reject.isPending || del.isPending
+    submit.isPending ||
+    verify.isPending ||
+    reject.isPending ||
+    cancel.isPending ||
+    del.isPending ||
+    hardDel.isPending
 
   const handleSubmit = async () => {
     try {
@@ -90,36 +141,65 @@ export function TransactionActions({
     }
   }
 
-  const handleDelete = async () => {
+  const handleCancel = async (reason: string) => {
+    try {
+      await cancel.mutateAsync({ id, reason })
+      toast.success("Transaksi dibatalkan", {
+        description: "Status: CANCELLED. Tercatat di audit log.",
+      })
+      setConfirm(null)
+      onAfterMutate?.()
+    } catch (err) {
+      toast.error("Gagal membatalkan", { description: apiErrorMessage(err) })
+    }
+  }
+
+  const handleSoftDelete = async () => {
     try {
       await del.mutateAsync(id)
       toast.success("Transaksi dihapus")
       setConfirm(null)
-      onAfterMutate?.()
+      onAfterDestroy?.()
     } catch (err) {
       toast.error("Gagal menghapus", { description: apiErrorMessage(err) })
     }
   }
 
+  const handleHardDelete = async () => {
+    try {
+      await hardDel.mutateAsync(id)
+      toast.success("Transaksi dihapus permanen", {
+        description: "GOD-MODE: alokasi invoice ikut dibersihkan.",
+      })
+      setConfirm(null)
+      onAfterDestroy?.()
+    } catch (err) {
+      toast.error("Gagal hard-delete", { description: apiErrorMessage(err) })
+    }
+  }
+
+  const hasAnyAction =
+    canSubmit ||
+    canVerify ||
+    canReject ||
+    canCancel ||
+    canEdit ||
+    canSoftDelete ||
+    canHardDelete
+
+  if (!hasAnyAction) return null
+
   return (
     <>
-      <div className="flex flex-wrap gap-2 p-5 border-t bg-surface">
+      <div className="flex flex-wrap items-center gap-2 p-5 border-t bg-surface">
         {canSubmit && (
-          <Button
-            variant="primary"
-            disabled={isBusy}
-            onClick={() => setConfirm({ kind: "submit" })}
-          >
+          <Button variant="primary" disabled={isBusy} onClick={() => setConfirm({ kind: "submit" })}>
             <Send className="h-4 w-4" />
             Ajukan Validasi
           </Button>
         )}
         {canVerify && (
-          <Button
-            variant="primary"
-            disabled={isBusy}
-            onClick={() => setConfirm({ kind: "verify" })}
-          >
+          <Button variant="primary" disabled={isBusy} onClick={() => setConfirm({ kind: "verify" })}>
             <BadgeCheck className="h-4 w-4" />
             Validasi
           </Button>
@@ -135,13 +215,29 @@ export function TransactionActions({
             Tolak
           </Button>
         )}
+        {canCancel && (
+          <Button
+            variant="outline"
+            disabled={isBusy}
+            onClick={() => setConfirm({ kind: "cancel", reason: "" })}
+            className="border-warning-300 text-warning-700 hover:bg-warning-50"
+          >
+            <Ban className="h-4 w-4" />
+            Batalkan
+          </Button>
+        )}
         {canEdit && onEdit && (
           <Button variant="secondary" onClick={onEdit} disabled={isBusy}>
             <Pencil className="h-4 w-4" />
             Edit
+            {status === "VERIFIED" && (
+              <span className="ml-1 rounded bg-warning-100 text-warning-700 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                God
+              </span>
+            )}
           </Button>
         )}
-        {canDelete && (
+        {canSoftDelete && (
           <Button
             variant="ghost"
             disabled={isBusy}
@@ -152,13 +248,20 @@ export function TransactionActions({
             Hapus
           </Button>
         )}
+        {canHardDelete && (
+          <Button
+            variant="ghost"
+            disabled={isBusy}
+            onClick={() => setConfirm({ kind: "hardDelete", typed: "" })}
+            className="text-danger-700 hover:bg-danger-100 ml-auto"
+          >
+            <Flame className="h-4 w-4" />
+            Hapus Permanen
+          </Button>
+        )}
       </div>
 
-      {/* Submit confirm */}
-      <Dialog
-        open={confirm?.kind === "submit"}
-        onOpenChange={(o) => !o && setConfirm(null)}
-      >
+      <Dialog open={confirm?.kind === "submit"} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Ajukan untuk validasi?</DialogTitle>
@@ -168,9 +271,7 @@ export function TransactionActions({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="secondary" onClick={() => setConfirm(null)}>
-              Batal
-            </Button>
+            <Button variant="secondary" onClick={() => setConfirm(null)}>Batal</Button>
             <Button onClick={handleSubmit} disabled={submit.isPending}>
               {submit.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Ajukan
@@ -179,11 +280,7 @@ export function TransactionActions({
         </DialogContent>
       </Dialog>
 
-      {/* Verify confirm */}
-      <Dialog
-        open={confirm?.kind === "verify"}
-        onOpenChange={(o) => !o && setConfirm(null)}
-      >
+      <Dialog open={confirm?.kind === "verify"} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Validasi transaksi ini?</DialogTitle>
@@ -193,9 +290,7 @@ export function TransactionActions({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="secondary" onClick={() => setConfirm(null)}>
-              Batal
-            </Button>
+            <Button variant="secondary" onClick={() => setConfirm(null)}>Batal</Button>
             <Button onClick={handleVerify} disabled={verify.isPending}>
               {verify.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Ya, Validasi
@@ -204,11 +299,7 @@ export function TransactionActions({
         </DialogContent>
       </Dialog>
 
-      {/* Reject confirm w/ reason */}
-      <Dialog
-        open={confirm?.kind === "reject"}
-        onOpenChange={(o) => !o && setConfirm(null)}
-      >
+      <Dialog open={confirm?.kind === "reject"} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Tolak transaksi</DialogTitle>
@@ -228,18 +319,11 @@ export function TransactionActions({
             placeholder="Mis. Bukti tidak terbaca, nominal tidak sesuai…"
           />
           <DialogFooter>
-            <Button variant="secondary" onClick={() => setConfirm(null)}>
-              Batal
-            </Button>
+            <Button variant="secondary" onClick={() => setConfirm(null)}>Batal</Button>
             <Button
-              onClick={() =>
-                confirm?.kind === "reject" && handleReject(confirm.reason.trim())
-              }
-              disabled={
-                reject.isPending ||
-                (confirm?.kind === "reject" && !confirm.reason.trim())
-              }
               variant="danger"
+              onClick={() => confirm?.kind === "reject" && handleReject(confirm.reason.trim())}
+              disabled={reject.isPending || (confirm?.kind === "reject" && !confirm.reason.trim())}
             >
               {reject.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Tolak
@@ -248,11 +332,41 @@ export function TransactionActions({
         </DialogContent>
       </Dialog>
 
-      {/* Delete confirm */}
-      <Dialog
-        open={confirm?.kind === "delete"}
-        onOpenChange={(o) => !o && setConfirm(null)}
-      >
+      <Dialog open={confirm?.kind === "cancel"} onOpenChange={(o) => !o && setConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Batalkan transaksi tervalidasi?</DialogTitle>
+            <DialogDescription>
+              Status berubah ke CANCELLED dan tidak dihitung di laporan.
+              Transaksi tidak dihapus -- hanya di-archive. Berikan alasan
+              untuk audit log.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={confirm?.kind === "cancel" ? confirm.reason : ""}
+            onChange={(e) =>
+              setConfirm(
+                confirm?.kind === "cancel" ? { kind: "cancel", reason: e.target.value } : confirm,
+              )
+            }
+            rows={3}
+            placeholder="Mis. Salah input nominal, transaksi double, dll."
+          />
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setConfirm(null)}>Tidak</Button>
+            <Button
+              variant="danger"
+              onClick={() => confirm?.kind === "cancel" && handleCancel(confirm.reason.trim())}
+              disabled={cancel.isPending || (confirm?.kind === "cancel" && !confirm.reason.trim())}
+            >
+              {cancel.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Ya, Batalkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirm?.kind === "delete"} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Hapus transaksi?</DialogTitle>
@@ -262,12 +376,56 @@ export function TransactionActions({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="secondary" onClick={() => setConfirm(null)}>
-              Batal
-            </Button>
-            <Button onClick={handleDelete} disabled={del.isPending} variant="danger">
+            <Button variant="secondary" onClick={() => setConfirm(null)}>Batal</Button>
+            <Button onClick={handleSoftDelete} disabled={del.isPending} variant="danger">
               {del.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Ya, Hapus
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirm?.kind === "hardDelete"} onOpenChange={(o) => !o && setConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-danger-700">
+              <Flame className="inline h-4 w-4 mr-1" />
+              Hapus PERMANEN (God-mode)
+            </DialogTitle>
+            <DialogDescription>
+              Transaksi tervalidasi akan dihapus <strong>permanen dari
+              database</strong>. Lampiran ikut terhapus dan alokasi invoice
+              yg menunjuk transaksi ini akan dibersihkan otomatis. Audit log
+              tetap menyimpan jejak (sebelum-state).
+              <br /><br />
+              Tindakan ini <strong>tidak bisa dibatalkan</strong>. Ketik
+              <span className="font-mono font-bold mx-1">HAPUS</span> untuk
+              konfirmasi.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            autoFocus
+            placeholder="Ketik HAPUS"
+            value={confirm?.kind === "hardDelete" ? confirm.typed : ""}
+            onChange={(e) =>
+              setConfirm(
+                confirm?.kind === "hardDelete" ? { kind: "hardDelete", typed: e.target.value } : confirm,
+              )
+            }
+            className="font-mono"
+          />
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setConfirm(null)}>Batal</Button>
+            <Button
+              variant="danger"
+              onClick={handleHardDelete}
+              disabled={
+                hardDel.isPending ||
+                (confirm?.kind === "hardDelete" && confirm.typed !== "HAPUS")
+              }
+            >
+              {hardDel.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Hapus Permanen
             </Button>
           </DialogFooter>
         </DialogContent>

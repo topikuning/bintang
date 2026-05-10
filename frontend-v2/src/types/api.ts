@@ -7,11 +7,10 @@
  */
 
 export type UserRole =
-  | "SUPERADMIN"
-  | "CENTRAL_ADMIN"
-  | "PROJECT_ADMIN"
-  | "PROJECT_USER"
-  | "VIEWER"
+  | "SUPERADMIN"      // god-mode: hard delete + edit transaksi VERIFIED
+  | "CENTRAL_ADMIN"   // admin pusat, manage semua kecuali ops destruktif/VERIFIED
+  | "PROJECT_ADMIN"   // admin proyek, scoped ke project_users
+  | "EXECUTIVE"       // view-only (laporan, dashboard)
 
 export interface User {
   id: number
