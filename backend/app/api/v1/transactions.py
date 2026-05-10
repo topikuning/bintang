@@ -207,7 +207,11 @@ async def update_transaction(
     if not t or t.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
-    if t.status == TxnStatus.VERIFIED and user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
+    # VERIFIED: hanya SUPERADMIN yang boleh modifikasi (god-mode).
+    # Audit trail keuangan harus kuat -- CENTRAL_ADMIN tidak boleh
+    # ubah transaksi/lampiran yang sudah tervalidasi. Untuk koreksi,
+    # gunakan workflow CANCEL (POST /:id/cancel) lalu buat ulang.
+    if t.status == TxnStatus.VERIFIED and user.role != UserRole.SUPERADMIN:
         raise HTTPException(409, "verified_locked")
     before = snapshot(t)
     for k, v in payload.model_dump(exclude_unset=True).items():
@@ -403,7 +407,11 @@ async def upload_attachment(
     if not t or t.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
-    if t.status == TxnStatus.VERIFIED and user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
+    # VERIFIED: hanya SUPERADMIN yang boleh modifikasi (god-mode).
+    # Audit trail keuangan harus kuat -- CENTRAL_ADMIN tidak boleh
+    # ubah transaksi/lampiran yang sudah tervalidasi. Untuk koreksi,
+    # gunakan workflow CANCEL (POST /:id/cancel) lalu buat ulang.
+    if t.status == TxnStatus.VERIFIED and user.role != UserRole.SUPERADMIN:
         raise HTTPException(409, "verified_locked")
     meta = await save_upload(file, subdir=f"transactions/{t.id}")
     att = TransactionAttachment(transaction_id=t.id, uploaded_by_id=user.id, **meta)
@@ -427,7 +435,11 @@ async def attach_external_link(
     if not t or t.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
-    if t.status == TxnStatus.VERIFIED and user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
+    # VERIFIED: hanya SUPERADMIN yang boleh modifikasi (god-mode).
+    # Audit trail keuangan harus kuat -- CENTRAL_ADMIN tidak boleh
+    # ubah transaksi/lampiran yang sudah tervalidasi. Untuk koreksi,
+    # gunakan workflow CANCEL (POST /:id/cancel) lalu buat ulang.
+    if t.status == TxnStatus.VERIFIED and user.role != UserRole.SUPERADMIN:
         raise HTTPException(409, "verified_locked")
     meta = normalize_external_link(body.url, label=body.label, file_name=body.file_name)
     att = TransactionAttachment(transaction_id=t.id, uploaded_by_id=user.id, **meta)
@@ -449,7 +461,11 @@ async def delete_attachment(
     if not t or t.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
-    if t.status == TxnStatus.VERIFIED and user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
+    # VERIFIED: hanya SUPERADMIN yang boleh modifikasi (god-mode).
+    # Audit trail keuangan harus kuat -- CENTRAL_ADMIN tidak boleh
+    # ubah transaksi/lampiran yang sudah tervalidasi. Untuk koreksi,
+    # gunakan workflow CANCEL (POST /:id/cancel) lalu buat ulang.
+    if t.status == TxnStatus.VERIFIED and user.role != UserRole.SUPERADMIN:
         raise HTTPException(409, "verified_locked")
     att = await db.get(TransactionAttachment, aid)
     if not att or att.transaction_id != tid:
