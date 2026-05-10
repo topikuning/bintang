@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Eye, EyeOff, Loader2, Pencil, ShieldCheck, Trash2, User as UserIcon } from "lucide-react"
@@ -64,6 +64,17 @@ const updateSchema = z.object({
 })
 
 type FormValues = z.infer<typeof createSchema>
+
+function buildDefaults(user: User | null): FormValues {
+  return {
+    email: user?.email ?? "",
+    password: "",
+    name: user?.name ?? "",
+    role: user?.role ?? "PROJECT_ADMIN",
+    phone: user?.phone ?? "",
+    scope_all_projects: user?.scope_all_projects ?? false,
+  }
+}
 
 export function UsersPage() {
   const role = useAuthStore((s) => s.user?.role)
@@ -311,15 +322,12 @@ function UserForm({
     reset,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    defaultValues: {
-      email: user?.email ?? "",
-      password: "",
-      name: user?.name ?? "",
-      role: user?.role ?? "PROJECT_ADMIN",
-      phone: user?.phone ?? "",
-      scope_all_projects: user?.scope_all_projects ?? false,
-    },
+    defaultValues: buildDefaults(user),
   })
+
+  useEffect(() => {
+    if (open) reset(buildDefaults(user))
+  }, [user, open, reset])
 
   const onSubmit = async (raw: FormValues) => {
     if (isEdit) {
