@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,17 @@ import httpx
 
 from app.core.config import settings
 from app.services.ocr.adapter import OCRAdapter
+
+log = logging.getLogger(__name__)
+
+# Hard timeout untuk satu API call ke Anthropic. Cukup longgar utk dokumen
+# rumit (handwriting + banyak items) tapi cepat fail kalau ada masalah --
+# axios client di frontend 110s, jadi backend harus selesai lebih dulu.
+_ANTHROPIC_TIMEOUT = 75.0
+# Tidak retry. Default SDK retry 2 dgn exponential backoff -- total bisa
+# >150s dan trigger proxy/client timeout. Lebih baik fail cepat dan biarkan
+# user retry manual.
+_ANTHROPIC_MAX_RETRIES = 0
 
 
 # Schema yang dipaksakan ke output Claude. Field optional sengaja tidak
@@ -141,7 +153,11 @@ def _to_decimal(v: Any) -> Decimal | None:
 
 class ClaudeVisionOCRAdapter(OCRAdapter):
     def __init__(self, api_key: str, model: str) -> None:
-        self._client = anthropic.AsyncAnthropic(api_key=api_key)
+        self._client = anthropic.AsyncAnthropic(
+            api_key=api_key,
+            timeout=_ANTHROPIC_TIMEOUT,
+            max_retries=_ANTHROPIC_MAX_RETRIES,
+        )
         self._model = model
 
     async def extract_invoice(self, file_url: str) -> dict[str, Any]:
@@ -192,37 +208,75 @@ class ClaudeVisionOCRAdapter(OCRAdapter):
         else:
             raise ValueError(f"unsupported_media_type: {media_type}")
 
-        response = await self._client.messages.create(
-            model=self._model,
-            max_tokens=4096,
-            system=SYSTEM_PROMPT,
-            output_config={
-                "format": {"type": "json_schema", "schema": INVOICE_SCHEMA}
-            },
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        content_block,
-                        {
-                            "type": "text",
-                            "text": "Ekstrak dokumen ini sesuai schema. Kembalikan JSON saja.",
-                        },
-                    ],
-                }
-            ],
+        log.info(
+            "ocr.claude.start model=%s media=%s size_kb=%d",
+            self._model,
+            media_type,
+            len(content) // 1024,
         )
+        try:
+            response = await self._client.messages.create(
+                model=self._model,
+                max_tokens=4096,
+                system=SYSTEM_PROMPT,
+                output_config={
+                    "format": {"type": "json_schema", "schema": INVOICE_SCHEMA}
+                },
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            content_block,
+                            {
+                                "type": "text",
+                                "text": "Ekstrak dokumen ini sesuai schema. Kembalikan JSON saja.",
+                            },
+                        ],
+                    }
+                ],
+            )
+        except anthropic.AuthenticationError as e:
+            log.error("ocr.claude.auth_error: %s", e)
+            raise RuntimeError(
+                "anthropic_auth_failed: cek ANTHROPIC_API_KEY di env"
+            ) from e
+        except anthropic.RateLimitError as e:
+            log.error("ocr.claude.rate_limited: %s", e)
+            raise RuntimeError("anthropic_rate_limited: coba lagi sebentar") from e
+        except anthropic.BadRequestError as e:
+            log.error("ocr.claude.bad_request: %s", e)
+            raise RuntimeError(f"anthropic_bad_request: {e}") from e
+        except anthropic.APITimeoutError as e:
+            log.error("ocr.claude.timeout after %ss", _ANTHROPIC_TIMEOUT)
+            raise RuntimeError(
+                f"anthropic_timeout_{int(_ANTHROPIC_TIMEOUT)}s: dokumen terlalu rumit atau API lambat"
+            ) from e
+        except anthropic.APIError as e:
+            log.error("ocr.claude.api_error: %s", e)
+            raise RuntimeError(f"anthropic_api_error: {e}") from e
 
         text_block = next(
             (b for b in response.content if getattr(b, "type", None) == "text"),
             None,
         )
         if text_block is None:
-            raise RuntimeError("claude_no_text_block")
+            log.error(
+                "ocr.claude.no_text_block stop_reason=%s blocks=%s",
+                response.stop_reason,
+                [getattr(b, "type", "?") for b in response.content],
+            )
+            raise RuntimeError(f"claude_no_text_block stop={response.stop_reason}")
         try:
             data = json.loads(text_block.text)
         except json.JSONDecodeError as e:
+            log.error("ocr.claude.invalid_json: %s | text=%s", e, text_block.text[:500])
             raise RuntimeError(f"claude_invalid_json: {e}") from e
+        log.info(
+            "ocr.claude.done items=%d input_tokens=%d output_tokens=%d",
+            len(data.get("items") or []),
+            response.usage.input_tokens,
+            response.usage.output_tokens,
+        )
 
         return {
             "invoice_number": data.get("invoice_number"),
