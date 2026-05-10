@@ -155,23 +155,15 @@ export function useOcrTestConnection() {
   })
 }
 
-export function useOcrReview() {
+/** Soft-delete draft OCR -- biasanya dipakai kalau hasil ekstraksi salah/blur
+ * dan tidak akan dijadikan invoice. Tidak bisa dihapus kalau sudah linked
+ * ke invoice (entity_id ter-set) supaya audit trail tetap utuh.
+ */
+export function useOcrDiscardDraft() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({
-      id,
-      approved,
-      note,
-    }: {
-      id: number
-      approved: boolean
-      note?: string
-    }): Promise<{ id: number; approved: boolean }> => {
-      const { data } = await api.post<{ id: number; approved: boolean }>(
-        `/ocr/drafts/${id}/review`,
-        { approved, note: note ?? null },
-      )
-      return data
+    mutationFn: async (id: number): Promise<void> => {
+      await api.delete(`/ocr/drafts/${id}`)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ocr", "drafts"] }),
   })
