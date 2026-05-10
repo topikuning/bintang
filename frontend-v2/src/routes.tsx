@@ -10,6 +10,7 @@ import { ProjectsPage } from "@/pages/master/ProjectsPage"
 import { VendorsPage } from "@/pages/master/VendorsPage"
 import { Placeholder } from "@/pages/Placeholder"
 import { POListPage } from "@/pages/purchase-orders/POListPage"
+import { ReportsPage } from "@/pages/Reports"
 import { TransactionsListPage } from "@/pages/transactions/TransactionsListPage"
 
 export const router = createBrowserRouter([
@@ -34,15 +35,7 @@ export const router = createBrowserRouter([
               />
             ),
           },
-          {
-            path: "reports",
-            element: (
-              <Placeholder
-                title="Laporan"
-                description="Cashflow, transaksi, invoice, hutang-piutang, budget, PO, audit."
-              />
-            ),
-          },
+          { path: "reports", element: <ReportsPage /> },
           {
             path: "audit-log",
             element: (
