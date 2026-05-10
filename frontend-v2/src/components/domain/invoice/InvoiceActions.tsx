@@ -6,6 +6,7 @@ import {
   Link2,
   Loader2,
   Pencil,
+  Printer,
   Send,
   Trash2,
 } from "lucide-react"
@@ -18,7 +19,7 @@ import {
   useMarkPaidInvoice,
 } from "@/hooks/useInvoiceMutations"
 import { useAuthStore } from "@/store/auth"
-import { apiErrorMessage } from "@/lib/api"
+import { api, apiErrorMessage } from "@/lib/api"
 import type { Invoice } from "@/types/api"
 import { Button } from "@/components/ui/button"
 import {
@@ -48,11 +49,13 @@ interface InvoiceActionsProps {
  * Issue (DRAFT->ISS)  |  CW   |   -    |      -         |  -    |     -     |   -
  * Mark-Paid manual    |  -    | ADMIN  |    ADMIN       |  -    |     -     | ADMIN
  * Cancel              |  -    | ADMIN  |    ADMIN       |  -    |     -     | ADMIN
+ * Cetak PDF           |  ALL  |  ALL   |    ALL         | ALL   |   ALL     |  ALL
  * Edit                |  CW   |   CW   |     CW         | SUPER |     -     |   CW
  * Soft-delete         | ADMIN | ADMIN  |    ADMIN       |  -    |   ADMIN   |  ADMIN
  * Hard-delete (god)   |  -    |   -    |      -         | SUPER | SUPER     |   -
  *
  * Legend:
+ *   ALL   = read-only oke (cetak PDF tidak ubah data)
  *   CW    = role !== EXECUTIVE (require_can_write)
  *   ADMIN = SUPERADMIN | CENTRAL_ADMIN
  *   SUPER = SUPERADMIN only (god-mode)
@@ -80,9 +83,32 @@ export function InvoiceActions({
     | { kind: "hardDelete"; typed: string }
   const [confirm, setConfirm] = useState<Confirm>(null)
   const [allocOpen, setAllocOpen] = useState(false)
+  const [printing, setPrinting] = useState(false)
 
   const status = invoice.status
   const id = invoice.id
+
+  const handlePrint = async () => {
+    setPrinting(true)
+    try {
+      // Backend render PDF A4 (kop perusahaan + items + total + terbilang).
+      // Buka di tab baru via Object URL supaya user bisa preview/download
+      // langsung dari viewer browser (Print, Save As, dst).
+      const res = await api.get(`/invoices/${id}/pdf`, {
+        responseType: "blob",
+        timeout: 60_000,
+      })
+      const blob = new Blob([res.data], { type: "application/pdf" })
+      const url = URL.createObjectURL(blob)
+      window.open(url, "_blank")
+      // Revoke setelah 60 detik supaya tidak leak Object URL.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (err) {
+      toast.error("Gagal cetak PDF", { description: apiErrorMessage(err) })
+    } finally {
+      setPrinting(false)
+    }
+  }
 
   const canIssue = !isReadOnly && status === "DRAFT"
   const canMarkPaid =
@@ -110,6 +136,11 @@ export function InvoiceActions({
   // (status closed) supaya tidak duplikat dgn soft-delete biasa
   const canHardDelete =
     isSuperAdmin && (status === "PAID" || status === "CANCELLED")
+
+  // Cetak PDF: selalu boleh karena invoice yang sampai ke FE pasti aktif
+  // (backend list/get filter deleted_at.is_(None)). Read-only, tidak peduli
+  // status atau role.
+  const canPrint = true
 
   const isBusy =
     issue.isPending ||
@@ -185,6 +216,7 @@ export function InvoiceActions({
     canCancel ||
     canAllocate ||
     canEdit ||
+    canPrint ||
     canSoftDelete ||
     canHardDelete
 
@@ -237,6 +269,21 @@ export function InvoiceActions({
           >
             <Ban className="h-3.5 w-3.5" />
             Batalkan
+          </Button>
+        )}
+        {canPrint && (
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={isBusy || printing}
+            onClick={handlePrint}
+          >
+            {printing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Printer className="h-3.5 w-3.5" />
+            )}
+            Cetak PDF
           </Button>
         )}
         {canEdit && onEdit && (
