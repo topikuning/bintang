@@ -74,20 +74,41 @@ async def update_user(
     user_id: int,
     payload: UserUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    actor: User = Depends(get_current_user),
 ) -> UserOut:
+    """Update user.
+
+    - SUPERADMIN: bebas update siapa pun & semua field.
+    - Bukan SUPERADMIN: hanya boleh update DIRI SENDIRI, dan terbatas
+      ke field profil non-sensitif (name, phone, password). Field
+      role / is_active / scope_all_projects tetap dijaga supaya user
+      tidak bisa eskalasi privilege.
+    """
+    is_self = user_id == actor.id
+    is_super = actor.role == UserRole.SUPERADMIN
+    if not (is_self or is_super):
+        raise HTTPException(403, "superadmin_only")
+
     u = await db.get(User, user_id)
     if not u or u.deleted_at is not None:
         raise HTTPException(404, "not_found")
     before = snapshot(u)
     data = payload.model_dump(exclude_unset=True)
+
+    # Self-update (non-SUPERADMIN): tolak field sensitif.
+    if is_self and not is_super:
+        forbidden = {"role", "is_active", "scope_all_projects"}
+        bad = forbidden & set(data.keys())
+        if bad:
+            raise HTTPException(403, f"field_forbidden_for_self_update: {','.join(sorted(bad))}")
+
     if "password" in data:
         pw = data.pop("password")
         if pw:
             u.password_hash = hash_password(pw)
     for k, v in data.items():
         setattr(u, k, v)
-    await log(db, user_id=admin.id, entity="user", entity_id=u.id,
+    await log(db, user_id=actor.id, entity="user", entity_id=u.id,
               action=AuditAction.UPDATE, before=before, after=snapshot(u))
     await db.commit()
     await db.refresh(u)
