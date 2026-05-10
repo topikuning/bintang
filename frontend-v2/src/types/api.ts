@@ -201,6 +201,22 @@ export interface AllocationApplyResult {
 
 export type POStatus = "DRAFT" | "ISSUED" | "APPROVED" | "CANCELLED"
 
+export interface POItem {
+  id: number
+  description: string
+  quantity: string
+  unit: string | null
+  unit_price: string
+  subtotal: string
+}
+
+export interface POItemInput {
+  description: string
+  quantity: number | string
+  unit?: string | null
+  unit_price: number | string
+}
+
 export interface PurchaseOrder {
   id: number
   number: string
@@ -209,8 +225,54 @@ export interface PurchaseOrder {
   vendor_client_id: number | null
   vendor_name: string | null
   po_date: string
+  needed_date?: string | null
+  payment_terms?: string | null
+  notes?: string | null
+  tax: string
+  discount: string
+  subtotal: string
   total: string
   status: POStatus
+  created_by_id?: number
+  approved_by_id?: number | null
+  approved_at?: string | null
+  cancel_reason?: string | null
   created_at: string
-  updated_at: string
+  updated_at?: string
+  items?: POItem[]
+}
+
+// Master data shapes (untuk CRUD page)
+export interface Company {
+  id: number
+  name: string
+  address?: string | null
+  npwp?: string | null
+  phone?: string | null
+  email?: string | null
+  logo_url?: string | null
+  is_active: boolean
+}
+
+export interface CompanyInput {
+  name: string
+  address?: string | null
+  npwp?: string | null
+  phone?: string | null
+  email?: string | null
+}
+
+export interface CategoryInput {
+  name: string
+  parent_id?: number | null
+  type?: "IN" | "OUT" | "BOTH"
+}
+
+export interface VendorClientInput {
+  name: string
+  npwp?: string | null
+  party_kind?: "VENDOR" | "CLIENT" | "BOTH"
+  phone?: string | null
+  email?: string | null
+  address?: string | null
 }

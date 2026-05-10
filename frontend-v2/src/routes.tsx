@@ -4,7 +4,12 @@ import { RequireAuth } from "@/components/auth/RequireAuth"
 import { DashboardPage } from "@/pages/Dashboard"
 import { InvoicesListPage } from "@/pages/invoices/InvoicesListPage"
 import { LoginPage } from "@/pages/Login"
+import { CategoriesPage } from "@/pages/master/CategoriesPage"
+import { CompaniesPage } from "@/pages/master/CompaniesPage"
+import { ProjectsPage } from "@/pages/master/ProjectsPage"
+import { VendorsPage } from "@/pages/master/VendorsPage"
 import { Placeholder } from "@/pages/Placeholder"
+import { POListPage } from "@/pages/purchase-orders/POListPage"
 import { TransactionsListPage } from "@/pages/transactions/TransactionsListPage"
 
 export const router = createBrowserRouter([
@@ -16,61 +21,53 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
-          {
-            path: "dashboard",
-            element: <DashboardPage />,
-          },
-          {
-            path: "transactions",
-            element: <TransactionsListPage />,
-          },
-          {
-            path: "invoices",
-            element: <InvoicesListPage />,
-          },
-          {
-            path: "purchase-orders",
-            element: <Placeholder title="Purchase Order" description="PO dengan approval & cetak." />,
-          },
+          { path: "dashboard", element: <DashboardPage /> },
+          { path: "transactions", element: <TransactionsListPage /> },
+          { path: "invoices", element: <InvoicesListPage /> },
+          { path: "purchase-orders", element: <POListPage /> },
           {
             path: "budget",
-            element: <Placeholder title="Budget vs Actual" description="Realisasi anggaran per kategori & proyek." />,
+            element: (
+              <Placeholder
+                title="Budget vs Actual"
+                description="Realisasi anggaran per kategori & proyek."
+              />
+            ),
           },
           {
             path: "reports",
-            element: <Placeholder title="Laporan" description="Cashflow, transaksi, invoice, hutang-piutang, budget, PO, audit." />,
+            element: (
+              <Placeholder
+                title="Laporan"
+                description="Cashflow, transaksi, invoice, hutang-piutang, budget, PO, audit."
+              />
+            ),
           },
           {
             path: "audit-log",
-            element: <Placeholder title="Audit Log" description="Riwayat aktivitas semua user." />,
+            element: (
+              <Placeholder title="Audit Log" description="Riwayat aktivitas semua user." />
+            ),
           },
-          {
-            path: "master/projects",
-            element: <Placeholder title="Proyek" description="Daftar dan kelola proyek." />,
-          },
-          {
-            path: "master/companies",
-            element: <Placeholder title="Perusahaan" />,
-          },
-          {
-            path: "master/categories",
-            element: <Placeholder title="Kategori" />,
-          },
-          {
-            path: "master/vendors-clients",
-            element: <Placeholder title="Vendor & Klien" />,
-          },
-          {
-            path: "master/users",
-            element: <Placeholder title="Pengguna" />,
-          },
+          { path: "master/projects", element: <ProjectsPage /> },
+          { path: "master/companies", element: <CompaniesPage /> },
+          { path: "master/categories", element: <CategoriesPage /> },
+          { path: "master/vendors-clients", element: <VendorsPage /> },
+          { path: "master/users", element: <Placeholder title="Pengguna" /> },
           {
             path: "settings",
-            element: <Placeholder title="Pengaturan" description="Profil, preferensi tampilan, default proyek." />,
+            element: (
+              <Placeholder
+                title="Pengaturan"
+                description="Profil, preferensi tampilan, default proyek."
+              />
+            ),
           },
           {
             path: "more",
-            element: <Placeholder title="Menu Lainnya" description="Halaman tambahan untuk mobile." />,
+            element: (
+              <Placeholder title="Menu Lainnya" description="Halaman tambahan untuk mobile." />
+            ),
           },
         ],
       },
