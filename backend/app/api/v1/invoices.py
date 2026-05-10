@@ -326,6 +326,17 @@ async def update_invoice(
         # data legacy tanpa items: pertahankan subtotal, total = subtotal + tax
         inv.total = Decimal(inv.subtotal or 0) + Decimal(inv.tax or 0)
     await recompute_invoice_status(db, inv)
+    # Setelah flush, kolom dengan server-side onupdate (mis. updated_at di
+    # TimestampMixin pakai onupdate=func.now()) di-expire SQLAlchemy untuk
+    # fetch nilai dari server. snapshot(inv) berikutnya iterasi semua kolom
+    # secara sync -> akses kolom expired -> trigger lazy-load -> butuh
+    # greenlet context -> MissingGreenlet di async session.
+    # Fix: refresh kolom secara async-safe sebelum snapshot. attribute_names
+    # dibatasi ke daftar kolom saja supaya relationships (items/attachments)
+    # tidak ikut di-refetch.
+    await db.refresh(
+        inv, attribute_names=[c.name for c in Invoice.__table__.columns]
+    )
     await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
               action=AuditAction.UPDATE, before=before, after=snapshot(inv))
     await db.commit()
