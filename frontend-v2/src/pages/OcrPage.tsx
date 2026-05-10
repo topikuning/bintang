@@ -24,10 +24,10 @@ import {
 } from "lucide-react"
 import {
   useOcrCreateInvoice,
+  useOcrDiscardDraft,
   useOcrDrafts,
   useOcrExtract,
   useOcrExtractUpload,
-  useOcrReview,
   useOcrTestConnection,
   type OcrDraft,
 } from "@/hooks/useOcr"
@@ -69,9 +69,11 @@ interface OcrItem {
  * Flow:
  *  1. Pilih mode: Upload langsung (drag/drop atau pick file) atau paste URL
  *  2. POST /ocr/extract-upload (multipart) atau /ocr/extract (JSON URL)
- *  3. Backend simpan AIExtraction draft, list di bawah utk review
- *  4. Review approve/reject (audit log) atau pakai datanya untuk buat invoice
- *     manual
+ *  3. Backend simpan AIExtraction draft -> muncul di list dgn ringkasan
+ *  4. Klik Buat Invoice (pilih project + IN/OUT + vendor opsional) -> Invoice
+ *     DRAFT tercipta dgn data + lampiran. Edit/koreksi field di InvoiceForm
+ *     setelah submit (status DRAFT semua field editable).
+ *  5. Hapus Draft kalau hasil OCR salah/blur dan tidak akan dipakai.
  */
 export function OcrPage() {
   const role = useAuthStore((s) => s.user?.role)
@@ -80,7 +82,7 @@ export function OcrPage() {
   const draftsQ = useOcrDrafts()
   const extract = useOcrExtract()
   const extractUpload = useOcrExtractUpload()
-  const review = useOcrReview()
+  const discard = useOcrDiscardDraft()
   const testConn = useOcrTestConnection()
 
   const [mode, setMode] = useState<Mode>("upload")
@@ -186,14 +188,15 @@ export function OcrPage() {
     }
   }
 
-  const handleReview = async (id: number, approved: boolean) => {
+  const handleDiscard = async (id: number) => {
+    if (!confirm(`Hapus draft #${id}? File asli tetap di storage.`)) return
     try {
-      await review.mutateAsync({ id, approved })
-      toast.success(approved ? "Draft disetujui" : "Draft ditolak", {
-        description: "Status draft diperbarui di audit log.",
+      await discard.mutateAsync(id)
+      toast.success(`Draft #${id} dihapus`, {
+        description: "Hasil ekstraksi yang salah dibuang dari list.",
       })
     } catch (err) {
-      toast.error("Gagal review", { description: apiErrorMessage(err) })
+      toast.error("Gagal hapus draft", { description: apiErrorMessage(err) })
     }
   }
 
@@ -418,9 +421,8 @@ export function OcrPage() {
                 draft={d}
                 isExpanded={expandedId === d.id}
                 onToggle={() => setExpandedId((c) => (c === d.id ? null : d.id))}
-                onApprove={() => handleReview(d.id, true)}
-                onReject={() => handleReview(d.id, false)}
-                isReviewing={review.isPending}
+                onDiscard={() => handleDiscard(d.id)}
+                isDiscarding={discard.isPending}
               />
             ))}
           </ul>
@@ -448,21 +450,19 @@ function DraftCard({
   draft,
   isExpanded,
   onToggle,
-  onApprove,
-  onReject,
-  isReviewing,
+  onDiscard,
+  isDiscarding,
 }: {
   draft: OcrDraft
   isExpanded: boolean
   onToggle: () => void
-  onApprove: () => void
-  onReject: () => void
-  isReviewing: boolean
+  onDiscard: () => void
+  isDiscarding: boolean
 }) {
   const conf = draft.confidence_score ?? 0
   const confTone =
     conf >= 0.85 ? "success" : conf >= 0.6 ? "warning" : "danger"
-  const isReviewed = draft.status === "REVIEWED"
+  const isLinked = draft.entity_id != null
   const data = (draft.extracted_data ?? {}) as Record<string, unknown>
 
   const summary = {
@@ -484,7 +484,7 @@ function DraftCard({
     <li
       className={cn(
         "rounded-md border bg-surface",
-        isReviewed && "border-success-200",
+        isLinked && "border-success-200",
       )}
     >
       <button
@@ -499,7 +499,12 @@ function DraftCard({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-mono text-[12px] text-ink-700">#{draft.id}</span>
             <Badge tone="neutral">{draft.entity}</Badge>
-            {isReviewed && <Badge tone="success">Reviewed</Badge>}
+            {isLinked && (
+              <Badge tone="success">
+                <CheckCircle2 className="h-3 w-3" />
+                Inv. #{draft.entity_id}
+              </Badge>
+            )}
             {summary.isHandwritten && (
               <Badge tone="warning">
                 <PenLine className="h-3 w-3" />
@@ -644,27 +649,13 @@ function DraftCard({
             </pre>
           </details>
 
-          {/* Actions */}
-          {!isReviewed && (
-            <div className="flex flex-wrap gap-2 justify-end">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={onReject}
-                disabled={isReviewing}
-                className="border-danger-300 text-danger-700 hover:bg-danger-50"
-              >
-                <XCircle className="h-3.5 w-3.5" />
-                Tolak
-              </Button>
-              <Button size="sm" onClick={onApprove} disabled={isReviewing}>
-                {isReviewing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Setujui & Tandai Direview
-              </Button>
-            </div>
-          )}
-          {isReviewed && draft.entity_id != null && (
+          {/* Aksi: kalau sudah linked ke invoice, tampilkan badge sukses.
+               Kalau belum, tampilkan panel Buat Invoice + tombol Hapus Draft.
+               Step "Setujui & Tandai Direview" sengaja dihilangkan karena
+               tidak punya nilai praktis -- koreksi data terjadi di
+               InvoiceForm setelah submit (semua field editable saat status
+               masih DRAFT). */}
+          {isLinked ? (
             <div className="rounded-md border border-success-200 bg-success-50 p-3 flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-1.5 text-[12px] text-success-800">
                 <CheckCircle2 className="h-4 w-4 text-success-600 shrink-0" />
@@ -681,9 +672,23 @@ function DraftCard({
                 Lihat invoice
               </RouterLink>
             </div>
-          )}
-          {isReviewed && draft.entity_id == null && (
-            <CreateInvoiceFromDraftPanel draft={draft} />
+          ) : (
+            <>
+              <CreateInvoiceFromDraftPanel draft={draft} />
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onDiscard}
+                  disabled={isDiscarding}
+                  className="border-danger-300 text-danger-700 hover:bg-danger-50"
+                >
+                  {isDiscarding && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  <XCircle className="h-3.5 w-3.5" />
+                  Hapus Draft
+                </Button>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -739,9 +744,10 @@ function CreateInvoiceFromDraftPanel({ draft }: { draft: OcrDraft }) {
         <div className="flex items-start gap-2 text-[12px] text-ink-700">
           <Receipt className="h-4 w-4 text-brand-600 shrink-0 mt-0.5" />
           <div>
-            Draft sudah direview. Buat <strong>Invoice DRAFT</strong> dengan{" "}
+            Buat <strong>Invoice DRAFT</strong> dengan{" "}
             <span className="font-mono">{itemsCount}</span> item ({totalLabel}) +
-            file gambar otomatis ter-attach sebagai lampiran.
+            file gambar otomatis ter-attach sebagai lampiran. Edit / koreksi
+            field di form Invoice setelah submit.
           </div>
         </div>
         <div className="flex justify-end">
