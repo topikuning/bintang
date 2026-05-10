@@ -276,3 +276,46 @@ export interface VendorClientInput {
   email?: string | null
   address?: string | null
 }
+
+// Audit log
+export type AuditAction =
+  | "CREATE"
+  | "UPDATE"
+  | "DELETE"
+  | "SUBMIT"
+  | "VERIFY"
+  | "REJECT"
+  | "CANCEL"
+  | "APPROVE"
+
+export interface AuditLogEntry {
+  id: number
+  created_at: string
+  user_id: number
+  user_name: string | null
+  entity: string
+  entity_id: number
+  action: AuditAction | string
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+  note: string | null
+}
+
+// User mutation types
+export interface UserCreateInput {
+  email: string
+  password: string
+  name: string
+  role: UserRole
+  phone?: string | null
+  scope_all_projects?: boolean
+}
+
+export interface UserUpdateInput {
+  name?: string
+  role?: UserRole
+  is_active?: boolean
+  phone?: string | null
+  password?: string | null
+  scope_all_projects?: boolean
+}

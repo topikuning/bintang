@@ -7,10 +7,14 @@ import { LoginPage } from "@/pages/Login"
 import { CategoriesPage } from "@/pages/master/CategoriesPage"
 import { CompaniesPage } from "@/pages/master/CompaniesPage"
 import { ProjectsPage } from "@/pages/master/ProjectsPage"
+import { UsersPage } from "@/pages/master/UsersPage"
 import { VendorsPage } from "@/pages/master/VendorsPage"
+import { AuditLogPage } from "@/pages/AuditLog"
+import { MorePage } from "@/pages/More"
 import { Placeholder } from "@/pages/Placeholder"
 import { POListPage } from "@/pages/purchase-orders/POListPage"
 import { ReportsPage } from "@/pages/Reports"
+import { SettingsPage } from "@/pages/Settings"
 import { TransactionsListPage } from "@/pages/transactions/TransactionsListPage"
 
 export const router = createBrowserRouter([
@@ -36,32 +40,14 @@ export const router = createBrowserRouter([
             ),
           },
           { path: "reports", element: <ReportsPage /> },
-          {
-            path: "audit-log",
-            element: (
-              <Placeholder title="Audit Log" description="Riwayat aktivitas semua user." />
-            ),
-          },
+          { path: "audit-log", element: <AuditLogPage /> },
           { path: "master/projects", element: <ProjectsPage /> },
           { path: "master/companies", element: <CompaniesPage /> },
           { path: "master/categories", element: <CategoriesPage /> },
           { path: "master/vendors-clients", element: <VendorsPage /> },
-          { path: "master/users", element: <Placeholder title="Pengguna" /> },
-          {
-            path: "settings",
-            element: (
-              <Placeholder
-                title="Pengaturan"
-                description="Profil, preferensi tampilan, default proyek."
-              />
-            ),
-          },
-          {
-            path: "more",
-            element: (
-              <Placeholder title="Menu Lainnya" description="Halaman tambahan untuk mobile." />
-            ),
-          },
+          { path: "master/users", element: <UsersPage /> },
+          { path: "settings", element: <SettingsPage /> },
+          { path: "more", element: <MorePage /> },
         ],
       },
     ],
