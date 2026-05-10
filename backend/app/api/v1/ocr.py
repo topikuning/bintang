@@ -464,10 +464,13 @@ async def create_invoice_from_draft(
         action=AuditAction.UPDATE,
         note=f"linked to invoice #{inv.id}",
     )
-    await db.commit()
-    await db.refresh(inv)
 
-    return {
+    # Capture summary SEBELUM commit. Setelah commit, mengakses
+    # inv.items / inv.attachments bisa trigger lazy-load yang butuh
+    # greenlet context (MissingGreenlet error). expire_on_commit=False
+    # cuma menjaga column attrs, bukan relationship collections setelah
+    # refresh.
+    summary = {
         "invoice_id": inv.id,
         "invoice_number": inv.number,
         "project_id": inv.project_id,
@@ -478,3 +481,6 @@ async def create_invoice_from_draft(
         "attachments_count": len(inv.attachments),
         "draft_id": rec.id,
     }
+
+    await db.commit()
+    return summary
