@@ -15,6 +15,7 @@ import {
   type LucideIcon,
   MoreHorizontal,
   Receipt,
+  ScanLine,
   Settings,
   ShoppingCart,
   Tag,
@@ -68,6 +69,7 @@ export const DESKTOP_NAV: NavGroup[] = [
     label: "Sistem",
     items: [
       { label: "Import Data", to: "/imports", icon: Database },
+      { label: "Asisten OCR", to: "/ocr", icon: ScanLine },
       { label: "Pengaturan", to: "/settings", icon: Settings },
     ],
   },
@@ -111,6 +113,7 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
     label: "Sistem",
     items: [
       { label: "Import Data", to: "/imports", icon: Database },
+      { label: "Asisten OCR", to: "/ocr", icon: ScanLine },
       { label: "Pengaturan", to: "/settings", icon: Settings },
     ],
   },

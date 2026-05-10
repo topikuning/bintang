@@ -44,6 +44,9 @@ const ProjectDetailPage = lazy(() =>
 const ImportsPage = lazy(() =>
   import("@/pages/Imports").then((m) => ({ default: m.ImportsPage })),
 )
+const OcrPage = lazy(() =>
+  import("@/pages/OcrPage").then((m) => ({ default: m.OcrPage })),
+)
 const CompaniesPage = lazy(() =>
   import("@/pages/master/CompaniesPage").then((m) => ({ default: m.CompaniesPage })),
 )
@@ -123,6 +126,7 @@ export const router = createBrowserRouter([
           { path: "master/projects", element: <L><ProjectsPage /></L> },
           { path: "master/projects/:id", element: <L><ProjectDetailPage /></L> },
           { path: "imports", element: <L><ImportsPage /></L> },
+          { path: "ocr", element: <L><OcrPage /></L> },
           { path: "master/companies", element: <L><CompaniesPage /></L> },
           { path: "master/categories", element: <L><CategoriesPage /></L> },
           { path: "master/vendors-clients", element: <L><VendorsPage /></L> },
