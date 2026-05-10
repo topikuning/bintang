@@ -15,6 +15,7 @@ import { useAuthStore } from "@/store/auth"
 import { useUIPrefs } from "@/store/ui-prefs"
 import { useUpdateUser } from "@/hooks/useUsers"
 import { useProjects } from "@/hooks/useProjects"
+import { MessagingSection } from "@/components/domain/settings/MessagingSection"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -246,6 +247,9 @@ export function SettingsPage() {
           Tip: kamu juga bisa ganti proyek aktif kapan saja via picker di topbar.
         </p>
       </Section>
+
+      {/* Notifikasi (messaging) */}
+      <MessagingSection />
 
       {/* Logout */}
       <div className="rounded-md border bg-surface p-4 flex items-center justify-between gap-3">
