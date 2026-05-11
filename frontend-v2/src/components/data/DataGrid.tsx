@@ -6,7 +6,7 @@ import {
   type Row,
 } from "@tanstack/react-table"
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react"
-import { useState } from "react"
+import { Fragment, useState } from "react"
 import type { SortingState } from "@tanstack/react-table"
 import { getSortedRowModel } from "@tanstack/react-table"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -23,6 +23,13 @@ export interface DataGridProps<T> {
   footer?: React.ReactNode
   /** Custom empty state, default tidak render apa-apa (parent handle). */
   emptyMessage?: string
+  /**
+   * Expandable-row support. Kalau ketiga prop diisi, grid akan render
+   * sub-row content di bawah row yg expanded.
+   */
+  getRowId?: (row: T) => string | number
+  expandedIds?: Set<string | number>
+  renderExpandedRow?: (row: T) => React.ReactNode
 }
 
 export function DataGrid<T>({
@@ -33,6 +40,9 @@ export function DataGrid<T>({
   className,
   footer,
   emptyMessage = "Tidak ada data.",
+  getRowId,
+  expandedIds,
+  renderExpandedRow,
 }: DataGridProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([])
 
@@ -132,39 +142,56 @@ export function DataGrid<T>({
                 </td>
               </tr>
             ) : (
-              table.getRowModel().rows.map((row: Row<T>) => (
-                <tr
-                  key={row.id}
-                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
-                  className={cn(
-                    "border-b last:border-b-0 transition-colors",
-                    onRowClick && "cursor-pointer hover:bg-brand-50/50",
-                  )}
-                >
-                  {row.getVisibleCells().map((cell, idx) => {
-                    const meta = (cell.column.columnDef.meta ?? {}) as {
-                      align?: "left" | "right" | "center" | "num"
-                      sticky?: boolean
-                    }
-                    return (
-                      <td
-                        key={cell.id}
-                        className={cn(
-                          "px-3 py-2.5 align-top",
-                          meta.align === "right" && "text-right",
-                          meta.align === "center" && "text-center",
-                          meta.align === "num" && "text-right font-mono [font-variant-numeric:tabular-nums]",
-                          meta.align === "left" && "text-left",
-                          !meta.align && (idx === 0 ? "text-left" : ""),
-                          meta.sticky && "sticky left-0 bg-surface z-[1]",
-                        )}
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))
+              table.getRowModel().rows.map((row: Row<T>) => {
+                const rid = getRowId ? getRowId(row.original) : row.id
+                const isExpanded =
+                  renderExpandedRow != null && expandedIds != null && expandedIds.has(rid)
+                return (
+                  <Fragment key={row.id}>
+                    <tr
+                      onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                      className={cn(
+                        "border-b last:border-b-0 transition-colors",
+                        onRowClick && "cursor-pointer hover:bg-brand-50/50",
+                        isExpanded && "bg-brand-50/30",
+                      )}
+                    >
+                      {row.getVisibleCells().map((cell, idx) => {
+                        const meta = (cell.column.columnDef.meta ?? {}) as {
+                          align?: "left" | "right" | "center" | "num"
+                          sticky?: boolean
+                        }
+                        return (
+                          <td
+                            key={cell.id}
+                            className={cn(
+                              "px-3 py-2.5 align-top",
+                              meta.align === "right" && "text-right",
+                              meta.align === "center" && "text-center",
+                              meta.align === "num" && "text-right font-mono [font-variant-numeric:tabular-nums]",
+                              meta.align === "left" && "text-left",
+                              !meta.align && (idx === 0 ? "text-left" : ""),
+                              meta.sticky && "sticky left-0 bg-surface z-[1]",
+                            )}
+                          >
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                    {isExpanded && (
+                      <tr className="bg-surface-muted/50 border-b last:border-b-0">
+                        <td
+                          colSpan={row.getVisibleCells().length}
+                          className="px-3 py-2"
+                        >
+                          {renderExpandedRow!(row.original)}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })
             )}
           </tbody>
           {footer && <tfoot className="bg-surface-muted border-t-2 border-ink-300">{footer}</tfoot>}

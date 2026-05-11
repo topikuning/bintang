@@ -48,6 +48,15 @@ export function InvoicesListPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Invoice | null>(null)
+  // Expandable rows utk grid desktop: kumpulan ID invoice yg sedang expand.
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
+  const toggleExpanded = (id: number) =>
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
   const params: InvoiceListParams = useMemo(
     () => ({
@@ -86,8 +95,23 @@ export function InvoicesListPage() {
   const nDraft = items.filter((i) => i.status === "DRAFT").length
 
   const columns = useMemo(
-    () => buildInvoiceColumns({ projectMap, hideProject: defaultProjectId != null }),
-    [projectMap, defaultProjectId],
+    () =>
+      buildInvoiceColumns({
+        projectMap,
+        hideProject: defaultProjectId != null,
+        expand: {
+          isExpanded: (id) => expandedIds.has(id),
+          toggle: toggleExpanded,
+        },
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectMap, defaultProjectId, expandedIds],
+  )
+
+  // Cast Set<number> ke Set<string|number> krn DataGrid generic key.
+  const expandedSet = useMemo<Set<string | number>>(
+    () => new Set<string | number>([...expandedIds]),
+    [expandedIds],
   )
 
   const detailOpen = selectedId != null
@@ -201,6 +225,9 @@ export function InvoicesListPage() {
                 onClick={() => setSelectedId(inv.id)}
               />
             )}
+            getRowId={(inv) => inv.id}
+            expandedIds={expandedSet}
+            renderExpandedRow={(inv) => <InvoiceItemsInline invoice={inv} />}
           />
           {bp !== "mobile" && total > 0 && (
             <Pagination
@@ -314,6 +341,97 @@ interface FilterChipsProps<V extends string> {
   value: V
   options: Array<{ value: V; label: string }>
   onChange: (v: V) => void
+}
+
+function InvoiceItemsInline({ invoice }: { invoice: Invoice }) {
+  const items = invoice.items ?? []
+  if (items.length === 0) {
+    return (
+      <div className="text-[12px] text-ink-500 italic">
+        Invoice ini belum punya item rincian.
+      </div>
+    )
+  }
+  return (
+    <div className="rounded-md border bg-surface overflow-hidden">
+      <table className="w-full text-[12px] border-collapse">
+        <thead className="bg-surface-muted">
+          <tr>
+            <th className="px-2 py-1.5 text-left font-semibold text-ink-600 w-8">No</th>
+            <th className="px-2 py-1.5 text-left font-semibold text-ink-600">Deskripsi</th>
+            <th className="px-2 py-1.5 text-right font-semibold text-ink-600 w-20">Qty</th>
+            <th className="px-2 py-1.5 text-left font-semibold text-ink-600 w-16">Satuan</th>
+            <th className="px-2 py-1.5 text-right font-semibold text-ink-600 w-32">Harga Satuan</th>
+            <th className="px-2 py-1.5 text-right font-semibold text-ink-600 w-32">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((it, idx) => (
+            <tr key={it.id} className="border-t">
+              <td className="px-2 py-1.5 text-ink-500">{idx + 1}</td>
+              <td className="px-2 py-1.5">{it.description}</td>
+              <td
+                data-num
+                className="px-2 py-1.5 text-right font-mono [font-variant-numeric:tabular-nums]"
+              >
+                {Number(it.quantity)}
+              </td>
+              <td className="px-2 py-1.5 text-ink-700">{it.unit ?? "—"}</td>
+              <td
+                data-num
+                className="px-2 py-1.5 text-right font-mono [font-variant-numeric:tabular-nums]"
+              >
+                {fmtIDR(it.unit_price)}
+              </td>
+              <td
+                data-num
+                className="px-2 py-1.5 text-right font-mono font-semibold [font-variant-numeric:tabular-nums]"
+              >
+                {fmtIDR(it.subtotal)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot className="bg-surface-muted border-t-2">
+          <tr>
+            <td colSpan={5} className="px-2 py-1.5 text-right text-ink-600 font-semibold">
+              Subtotal
+            </td>
+            <td
+              data-num
+              className="px-2 py-1.5 text-right font-mono font-semibold [font-variant-numeric:tabular-nums]"
+            >
+              {fmtIDR(invoice.subtotal)}
+            </td>
+          </tr>
+          {Number(invoice.tax) > 0 && (
+            <tr>
+              <td colSpan={5} className="px-2 py-1.5 text-right text-ink-600">
+                Pajak
+              </td>
+              <td
+                data-num
+                className="px-2 py-1.5 text-right font-mono [font-variant-numeric:tabular-nums]"
+              >
+                {fmtIDR(invoice.tax)}
+              </td>
+            </tr>
+          )}
+          <tr className="bg-brand-50/50">
+            <td colSpan={5} className="px-2 py-1.5 text-right text-ink-900 font-bold">
+              Total
+            </td>
+            <td
+              data-num
+              className="px-2 py-1.5 text-right font-mono font-bold text-brand-700 [font-variant-numeric:tabular-nums]"
+            >
+              {fmtIDR(invoice.total)}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  )
 }
 
 function FilterChips<V extends string>({ label, value, options, onChange }: FilterChipsProps<V>) {

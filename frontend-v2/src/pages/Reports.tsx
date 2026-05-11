@@ -4,10 +4,12 @@ import {
   CreditCard,
   FileMinus,
   FilePlus,
+  FileText,
   History,
   ShoppingCart,
   TrendingUp,
 } from "lucide-react"
+import { Link } from "react-router-dom"
 import { ReportSection } from "@/components/reports/ReportSection"
 import { useAuthStore } from "@/store/auth"
 
@@ -99,6 +101,31 @@ export function ReportsPage() {
           },
         ]}
       />
+
+      {/* Laporan interaktif: tampilan + export CSV langsung di browser.
+          Beda dgn ReportSection lain yg generate PDF/XLSX di server. */}
+      <Link
+        to="/reports/invoice-items"
+        className="group flex items-start gap-3 rounded-md border bg-surface p-4 hover:border-brand-300 hover:shadow-sm transition-colors"
+      >
+        <div className="grid h-10 w-10 place-items-center rounded bg-brand-50 text-brand-600 shrink-0">
+          <FileText className="h-5 w-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-base font-semibold text-ink-900 group-hover:text-brand-700">
+              Detail Invoice (Per Item)
+            </h3>
+            <span className="rounded bg-info-50 text-info-700 px-1.5 py-0.5 text-[10px] font-semibold uppercase">
+              Interaktif
+            </span>
+          </div>
+          <p className="text-[12px] text-ink-500 mt-0.5">
+            Tabel flatten semua item dr seluruh invoice. Filter periode/proyek/tipe/status,
+            export CSV langsung. Untuk audit cepat & cetak rincian.
+          </p>
+        </div>
+      </Link>
 
       <ReportSection
         slug="debts"
