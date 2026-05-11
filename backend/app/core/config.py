@@ -29,15 +29,23 @@ class Settings(BaseSettings):
     # Contoh: https://api.bintang.me
     PUBLIC_BASE_URL: str = ""
 
-    # --- OCR / Claude Vision ---
-    # Pilih engine: "stub" (default, dummy data) atau "claude" (Claude vision API).
+    # --- OCR ---
+    # Pilih engine:
+    #   "stub"    -> dummy data (default, dev mode)
+    #   "claude"  -> Anthropic Claude Vision (Haiku 4.5 default; ~$0.01/img)
+    #   "mistral" -> Mistral Document AI (mistral-ocr-latest; ~$0.002/page,
+    #               5-10x lebih murah dari Claude)
     OCR_ENGINE: str = "stub"
-    # Model Claude untuk OCR. Haiku 4.5 paling murah & cepat -- cukup utk
-    # invoice/struk/tulisan tangan. Bisa di-upgrade ke claude-sonnet-4-6 kalau
-    # akurasi kurang.
-    OCR_MODEL: str = "claude-haiku-4-5"
-    # API key Anthropic. Wajib kalau OCR_ENGINE="claude". Kosong = stub mode.
+    # Model OCR. Auto-pick default sesuai engine:
+    #   claude  -> "claude-haiku-4-5"
+    #   mistral -> "mistral-ocr-latest"
+    # Override hanya kalau perlu (mis. "claude-sonnet-4-6" utk akurasi tinggi).
+    OCR_MODEL: str = ""
+    # API key Anthropic (wajib kalau OCR_ENGINE="claude"). Kosong = skip.
     ANTHROPIC_API_KEY: str = ""
+    # API key Mistral (wajib kalau OCR_ENGINE="mistral"). Generate di
+    # https://console.mistral.ai/api-keys/. Kosong = skip.
+    MISTRAL_API_KEY: str = ""
 
     # --- WhatsApp via WAHA ---
     # Base URL WAHA-server (TANPA trailing slash). KOSONG = integrasi off.
