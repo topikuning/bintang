@@ -399,8 +399,11 @@ async def create_project(
     if p.status == ProjectStatus.MENUNGGU_PERSETUJUAN:
         p.status = ProjectStatus.AKTIF
     p.approved_by_id = admin.id
-    from sqlalchemy import func as _sa_func
-    p.approved_at = _sa_func.now()
+    # Pakai Python datetime (BUKAN func.now()) supaya snapshot(p) di
+    # bawah bisa JSON-serialize utk AuditLog.after. func.now() return SQL
+    # FunctionElement object yg gagal json.dumps -> 500.
+    from datetime import datetime as _dt
+    p.approved_at = _dt.utcnow()
     db.add(p)
     await db.flush()
     if funder_ids:
@@ -506,8 +509,11 @@ async def approve_proposal(
     before = snapshot(p)
     p.status = ProjectStatus.AKTIF
     p.approved_by_id = admin.id
-    from sqlalchemy import func as _sa_func
-    p.approved_at = _sa_func.now()
+    # Pakai Python datetime (BUKAN func.now()) supaya snapshot(p) di
+    # bawah bisa JSON-serialize utk AuditLog.after. func.now() return SQL
+    # FunctionElement object yg gagal json.dumps -> 500.
+    from datetime import datetime as _dt
+    p.approved_at = _dt.utcnow()
     p.rejection_reason = None
     # Auto-assign pengaju supaya bisa langsung akses proyek-nya.
     if p.proposed_by_id:
@@ -546,8 +552,11 @@ async def reject_proposal(
     before = snapshot(p)
     p.status = ProjectStatus.DIBATALKAN
     p.approved_by_id = admin.id  # siapa yg menolak
-    from sqlalchemy import func as _sa_func
-    p.approved_at = _sa_func.now()
+    # Pakai Python datetime (BUKAN func.now()) supaya snapshot(p) di
+    # bawah bisa JSON-serialize utk AuditLog.after. func.now() return SQL
+    # FunctionElement object yg gagal json.dumps -> 500.
+    from datetime import datetime as _dt
+    p.approved_at = _dt.utcnow()
     p.rejection_reason = reason
     await log(db, user_id=admin.id, entity="project_proposal", entity_id=p.id,
               action=AuditAction.REJECT, before=before, after=snapshot(p))
