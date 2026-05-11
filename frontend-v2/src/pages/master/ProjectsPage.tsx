@@ -139,7 +139,7 @@ export function ProjectsPage() {
       cell: ({ row }) => (
         <div className="flex justify-end gap-1">
           <RouterLink
-            to={`/master/projects/${row.original.id}`}
+            to={`/projects/${row.original.id}`}
             onClick={(e) => e.stopPropagation()}
             className="flex h-8 w-8 items-center justify-center rounded text-info-600 hover:bg-info-50"
             aria-label="Detail"
@@ -229,7 +229,7 @@ export function ProjectsPage() {
               </div>
               <div className="flex items-center justify-end gap-1 mt-1">
                 <RouterLink
-                  to={`/master/projects/${p.id}`}
+                  to={`/projects/${p.id}`}
                   onClick={(e) => e.stopPropagation()}
                   className="flex h-8 w-8 items-center justify-center rounded text-info-600 hover:bg-info-50"
                   aria-label="Detail"
