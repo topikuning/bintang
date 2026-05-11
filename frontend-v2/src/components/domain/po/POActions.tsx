@@ -31,6 +31,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/sonner"
+import { PrintPdfDialog } from "@/components/domain/shared/PrintPdfDialog"
 
 interface POActionsProps {
   po: PurchaseOrder
@@ -145,20 +146,25 @@ export function POActions({ po, onEdit, onAfterDestroy, onAfterMutate }: POActio
   const hasAny =
     canIssue || canApprove || canCancel || canEdit || canSoftDelete || canHardDelete
 
-  // PDF download tersedia utk semua role
-  const apiBase = import.meta.env.VITE_API_BASE_URL || "/api/v1"
-  const pdfUrl = `${apiBase}/purchase-orders/${id}/pdf`
+  // PDF cetak via dialog (utk pilih signatures + nama penanggung jawab).
+  const [printOpen, setPrintOpen] = useState(false)
 
   if (!hasAny) {
     return (
-      <div className="flex items-center px-3 py-2 sm:p-4 border-t bg-surface">
-        <Button asChild size="sm" variant="secondary">
-          <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
+      <>
+        <div className="flex items-center px-3 py-2 sm:p-4 border-t bg-surface">
+          <Button size="sm" variant="secondary" onClick={() => setPrintOpen(true)}>
             <Download className="h-3.5 w-3.5" />
             Cetak PDF
-          </a>
-        </Button>
-      </div>
+          </Button>
+        </div>
+        <PrintPdfDialog
+          open={printOpen}
+          onClose={() => setPrintOpen(false)}
+          pdfPath={`/purchase-orders/${id}/pdf`}
+          documentLabel={`PO ${po.number}`}
+        />
+      </>
     )
   }
 
@@ -200,11 +206,9 @@ export function POActions({ po, onEdit, onAfterDestroy, onAfterMutate }: POActio
             )}
           </Button>
         )}
-        <Button asChild size="sm" variant="ghost">
-          <a href={pdfUrl} target="_blank" rel="noopener noreferrer">
-            <Download className="h-3.5 w-3.5" />
-            PDF
-          </a>
+        <Button size="sm" variant="ghost" onClick={() => setPrintOpen(true)}>
+          <Download className="h-3.5 w-3.5" />
+          PDF
         </Button>
         {canSoftDelete && (
           <Button
@@ -363,6 +367,13 @@ export function POActions({ po, onEdit, onAfterDestroy, onAfterMutate }: POActio
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PrintPdfDialog
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        pdfPath={`/purchase-orders/${id}/pdf`}
+        documentLabel={`PO ${po.number}`}
+      />
     </>
   )
 }

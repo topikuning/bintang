@@ -161,21 +161,28 @@
 </div>
 {% endif %}
 
-<!-- SIGNATURE -->
+<!-- SIGNATURE -- sig_show_creator/sig_show_approver dr endpoint PDF.
+     Default both True (compat); user bisa pilih per dokumen di FE. -->
+{% if sig_show_creator or sig_show_approver %}
 <div class="signature">
+  {% if sig_show_creator %}
   <div class="box">
     <div class="role">Dibuat oleh,</div>
     <div class="sign-area"></div>
     <div class="name">{{ created_by.name if created_by else "" }}</div>
     <div class="title-sub">Project Admin</div>
   </div>
+  {% endif %}
+  {% if sig_show_approver %}
   <div class="box">
     <div class="role">Disetujui oleh,</div>
     <div class="sign-area"></div>
-    <div class="name">{{ approved_by.name if approved_by else (company.director_name or "") }}</div>
-    <div class="title-sub">Direktur</div>
+    <div class="name">{{ sig_responsible_name or (approved_by.name if approved_by else (company.director_name or "")) }}</div>
+    <div class="title-sub">{{ sig_responsible_title or "Direktur" }}</div>
   </div>
+  {% endif %}
 </div>
+{% endif %}
 
 <div class="foot-note">
   Dokumen diterbitkan secara elektronik oleh sistem {{ company.name }} dan sah tanpa tanda tangan basah.

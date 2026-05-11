@@ -332,9 +332,14 @@ async def hard_delete_po(
 @router.get("/{pid}/pdf")
 async def po_pdf(
     pid: int,
+    signatures: str = Query("both", pattern="^(both|creator|approver|none)$"),
+    responsible_name: str | None = Query(None, max_length=200),
+    responsible_title: str | None = Query(None, max_length=120),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Response:
+    """Cetak PO ke PDF. signatures + responsible_name dipakai utk
+    customize signature block per dokumen (lihat invoice_pdf)."""
     res = await db.execute(
         select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == pid)
     )
@@ -350,12 +355,23 @@ async def po_pdf(
     base_css = (Path(__file__).parent.parent.parent / "services/pdf/templates/_base.css").read_text(encoding="utf-8")
     logo_data = inline_image(company.logo_url) if company else None
     letterhead_data = inline_image(company.letterhead_url) if company else None
+    # Default nama penanggung jawab: approved_by (kalau ada, dia yg meng-approve)
+    # lalu company.director_name.
+    default_responsible = None
+    if approved_by:
+        default_responsible = approved_by.name
+    elif company:
+        default_responsible = company.director_name
     html = render_html(
         "po.html",
         po=po, project=project, company=company,
         vendor=vendor, created_by=created_by, approved_by=approved_by,
         logo_data=logo_data, letterhead_data=letterhead_data,
         base_css=base_css,
+        sig_show_creator=signatures in ("both", "creator"),
+        sig_show_approver=signatures in ("both", "approver"),
+        sig_responsible_name=(responsible_name or "").strip() or default_responsible,
+        sig_responsible_title=(responsible_title or "").strip() or "Direktur",
     )
     pdf = await html_to_pdf_async(html)
     return Response(
