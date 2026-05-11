@@ -1,6 +1,14 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
-import { ArrowLeft, Download, FileMinus, FilePlus, Receipt } from "lucide-react"
+import {
+  ArrowLeft,
+  Download,
+  FileMinus,
+  FilePlus,
+  Receipt,
+  Search,
+  X,
+} from "lucide-react"
 import { useInvoices } from "@/hooks/useInvoices"
 import { useProjects } from "@/hooks/useProjects"
 import { useUIPrefs } from "@/store/ui-prefs"
@@ -65,6 +73,13 @@ export function InvoiceItemsReportPage() {
   const [status, setStatus] = useState<StatusFilter>("ALL")
   const [dateFrom, setDateFrom] = useState<string>("")
   const [dateTo, setDateTo] = useState<string>("")
+  // Pencarian teks bebas: dicari di deskripsi item, satuan, no invoice,
+  // nama vendor/klien, dan kode/nama proyek. Client-side (instant) krn
+  // data sudah ada di memory.
+  const [searchText, setSearchText] = useState<string>("")
+  // Min/max nilai subtotal item utk audit (mis. cari item > 10jt).
+  const [minSubtotal, setMinSubtotal] = useState<string>("")
+  const [maxSubtotal, setMaxSubtotal] = useState<string>("")
 
   const invQuery = useInvoices({
     project_id: projectId ?? undefined,
@@ -82,7 +97,8 @@ export function InvoiceItemsReportPage() {
     return m
   }, [projectsQuery.data])
 
-  const rows = useMemo<FlatRow[]>(() => {
+  // Build flat rows DULU dari hasil fetch (semua filter server-side).
+  const allRows = useMemo<FlatRow[]>(() => {
     const list: FlatRow[] = []
     for (const inv of invQuery.data?.items ?? []) {
       const items = inv.items ?? []
@@ -90,6 +106,37 @@ export function InvoiceItemsReportPage() {
     }
     return list
   }, [invQuery.data])
+
+  // Lalu apply client-side filter (search text + min/max subtotal).
+  const rows = useMemo<FlatRow[]>(() => {
+    const needle = searchText.trim().toLowerCase()
+    const minN = minSubtotal === "" ? null : Number(minSubtotal)
+    const maxN = maxSubtotal === "" ? null : Number(maxSubtotal)
+    return allRows.filter((r) => {
+      if (needle) {
+        const p = projectMap.get(r.invoice.project_id)
+        const hay = [
+          r.item.description ?? "",
+          r.item.unit ?? "",
+          r.invoice.number ?? "",
+          r.invoice.party_name ?? "",
+          p?.name ?? "",
+          p?.code ?? "",
+          r.invoice.notes ?? "",
+        ]
+          .join(" ")
+          .toLowerCase()
+        if (!hay.includes(needle)) return false
+      }
+      if (minN != null && !Number.isNaN(minN)) {
+        if (Number(r.item.subtotal) < minN) return false
+      }
+      if (maxN != null && !Number.isNaN(maxN)) {
+        if (Number(r.item.subtotal) > maxN) return false
+      }
+      return true
+    })
+  }, [allRows, searchText, minSubtotal, maxSubtotal, projectMap])
 
   const totalQty = rows.reduce((s, r) => s + Number(r.item.quantity || 0), 0)
   const totalSubtotal = rows.reduce((s, r) => s + Number(r.item.subtotal || 0), 0)
@@ -208,6 +255,35 @@ export function InvoiceItemsReportPage() {
         </div>
       </div>
 
+      {/* Search bar -- prioritas utama utk audit. */}
+      <div className="rounded-md border bg-surface p-3 sm:p-4">
+        <Field
+          label="Cari di rincian item"
+          hint="Cari di deskripsi, satuan, no invoice, nama vendor/klien, kode/nama proyek, dan catatan invoice."
+        >
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
+            <Input
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Mis. 'semen', 'PT Beton Jaya', 'INV-2025-0042', 'KNMP-MTR'…"
+              className="pl-9 pr-9"
+              autoFocus
+            />
+            {searchText && (
+              <button
+                type="button"
+                onClick={() => setSearchText("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded text-ink-500 hover:bg-ink-100 hover:text-ink-900"
+                aria-label="Hapus pencarian"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </Field>
+      </div>
+
       {/* Filter bar */}
       <div className="rounded-md border bg-surface p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         <Field label="Proyek">
@@ -251,13 +327,60 @@ export function InvoiceItemsReportPage() {
         </Field>
       </div>
 
+      {/* Nilai filter -- berguna utk audit "tampilkan item > 10jt" dll */}
+      <div className="rounded-md border bg-surface p-3 sm:p-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Field label="Subtotal Min (Rp)">
+          <Input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="any"
+            value={minSubtotal}
+            onChange={(e) => setMinSubtotal(e.target.value)}
+            placeholder="0"
+            className="font-mono [font-variant-numeric:tabular-nums]"
+          />
+        </Field>
+        <Field label="Subtotal Max (Rp)">
+          <Input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="any"
+            value={maxSubtotal}
+            onChange={(e) => setMaxSubtotal(e.target.value)}
+            placeholder="tanpa batas"
+            className="font-mono [font-variant-numeric:tabular-nums]"
+          />
+        </Field>
+        <div className="col-span-2 flex items-end">
+          {(searchText || minSubtotal || maxSubtotal) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchText("")
+                setMinSubtotal("")
+                setMaxSubtotal("")
+              }}
+              className="text-[12px] text-brand-600 hover:underline"
+            >
+              ✕ Hapus semua filter pencarian
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         <SummaryCard
           icon={Receipt}
           label="Total Item"
           value={String(rows.length)}
-          hint={`dari ${invQuery.data?.items.length ?? 0} invoice`}
+          hint={
+            allRows.length !== rows.length
+              ? `dr ${allRows.length} item (terfilter)`
+              : `dari ${invQuery.data?.items.length ?? 0} invoice`
+          }
         />
         <SummaryCard
           label="Total Qty"
@@ -289,7 +412,9 @@ export function InvoiceItemsReportPage() {
           </div>
         ) : rows.length === 0 ? (
           <div className="p-12 text-center text-[13px] text-ink-500">
-            Tidak ada item invoice yang cocok dgn filter.
+            {searchText.trim() || minSubtotal || maxSubtotal
+              ? `Tidak ada item yg cocok dgn pencarian${searchText.trim() ? ` "${searchText.trim()}"` : ""}.`
+              : "Tidak ada item invoice yang cocok dgn filter."}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -358,7 +483,9 @@ export function InvoiceItemsReportPage() {
                       <td className="px-2 py-1.5 text-center text-ink-500">
                         {r.idxInInvoice + 1}
                       </td>
-                      <td className="px-2 py-1.5 align-top">{r.item.description}</td>
+                      <td className="px-2 py-1.5 align-top">
+                        <Highlight text={r.item.description} term={searchText.trim()} />
+                      </td>
                       <td
                         data-num
                         className="px-2 py-1.5 text-right font-mono [font-variant-numeric:tabular-nums]"
@@ -413,15 +540,18 @@ export function InvoiceItemsReportPage() {
 // ============================================================
 function Field({
   label,
+  hint,
   children,
 }: {
   label: string
+  hint?: string
   children: React.ReactNode
 }) {
   return (
     <div className="flex flex-col gap-1.5">
       <Label className="text-[11px] uppercase tracking-wider">{label}</Label>
       {children}
+      {hint && <p className="text-[11px] text-ink-500">{hint}</p>}
     </div>
   )
 }
@@ -481,5 +611,32 @@ function SummaryCard({
       {hint && <div className="text-[10px] text-ink-500 mt-0.5 truncate">{hint}</div>}
     </div>
   )
+}
+
+/** Tampilkan teks dgn match dr `term` di-highlight (case-insensitive). */
+function Highlight({ text, term }: { text: string; term: string }) {
+  if (!term) return <>{text}</>
+  const lower = text.toLowerCase()
+  const needle = term.toLowerCase()
+  if (!lower.includes(needle)) return <>{text}</>
+  const parts: React.ReactNode[] = []
+  let cursor = 0
+  let idx = lower.indexOf(needle, cursor)
+  let key = 0
+  while (idx !== -1) {
+    if (idx > cursor) parts.push(text.slice(cursor, idx))
+    parts.push(
+      <mark
+        key={key++}
+        className="bg-warning-100 text-warning-900 rounded-sm px-0.5"
+      >
+        {text.slice(idx, idx + needle.length)}
+      </mark>,
+    )
+    cursor = idx + needle.length
+    idx = lower.indexOf(needle, cursor)
+  }
+  if (cursor < text.length) parts.push(text.slice(cursor))
+  return <>{parts}</>
 }
 
