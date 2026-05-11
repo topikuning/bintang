@@ -44,6 +44,7 @@ export interface Project {
   location: string | null
   company_id: number
   company_name?: string | null
+  client_name: string | null
   pic_user_id: number | null
   start_date: string | null
   end_date: string | null

@@ -8,6 +8,7 @@ export interface ProjectProposalInput {
   name: string
   location?: string | null
   company_id: number
+  client_name?: string | null
   start_date?: string | null
   end_date?: string | null
   notes?: string | null

@@ -26,6 +26,8 @@ async def _sync_pg_columns(conn) -> None:
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS tax_ppn_pct NUMERIC(5,2) NOT NULL DEFAULT 11",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS tax_pph_pct NUMERIC(5,2) NOT NULL DEFAULT 2",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS marketing_pct NUMERIC(5,2) NOT NULL DEFAULT 15",
+        # Nama Dinas/Instansi/Klien pemberi pekerjaan (opsional)
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_name VARCHAR(200)",
         # Proposal workflow (siapa ajukan, siapa approve, kapan, alasan reject)
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS proposed_by_id INTEGER REFERENCES users(id)",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS approved_by_id INTEGER REFERENCES users(id)",

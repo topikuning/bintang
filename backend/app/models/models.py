@@ -233,6 +233,10 @@ class Project(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     location: Mapped[str | None] = mapped_column(String(200), nullable=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    # Nama Dinas/Instansi/Klien pemberi pekerjaan (opsional). Bukan FK -- pure
+    # display string supaya luwes (nama lengkap dgn jabatan, alamat, dll).
+    # Tampil di header PDF PO/Invoice.
+    client_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     pic_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
