@@ -145,10 +145,15 @@ class CashAdvanceSettlementItemIn(BaseModel):
     description: str
     amount: Decimal
     receipt_url: str | None = None
+    # Opsional: kalau item ini bayar invoice eksternal, link ke invoice.
+    # Backend auto-bikin InvoiceAllocation utk amount item.
+    invoice_id: int | None = None
 
 
 class CashAdvanceSettlementItemOut(CashAdvanceSettlementItemIn):
     id: int
+    # Untuk tampilan FE -- nama invoice yg di-link (di-resolve di endpoint)
+    invoice_number: str | None = None
 
     class Config:
         from_attributes = True

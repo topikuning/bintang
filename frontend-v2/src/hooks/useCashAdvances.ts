@@ -61,6 +61,9 @@ export interface SettlementItemInput {
   description: string
   amount: number
   receipt_url?: string | null
+  /** Kalau diisi, item ini bayar invoice eksternal -- backend auto-bikin
+   *  InvoiceAllocation utk amount item. */
+  invoice_id?: number | null
 }
 
 export interface SettlementInput {

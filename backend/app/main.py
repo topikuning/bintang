@@ -42,6 +42,8 @@ async def _sync_pg_columns(conn) -> None:
         "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS parent_advance_tx_id INTEGER REFERENCES transactions(id)",
         "CREATE INDEX IF NOT EXISTS ix_transactions_kind ON transactions (kind)",
         "CREATE INDEX IF NOT EXISTS ix_transactions_recipient_user_id ON transactions (recipient_user_id)",
+        # Settlement item: link ke invoice eksternal yg dibayar lewat dana ops
+        "ALTER TABLE cash_advance_settlement_items ADD COLUMN IF NOT EXISTS invoice_id INTEGER REFERENCES invoices(id)",
     ]
     for sql in statements:
         try:

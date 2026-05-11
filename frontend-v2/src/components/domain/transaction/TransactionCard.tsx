@@ -74,7 +74,7 @@ export function TransactionCard({
           {t.kind === "CASH_ADVANCE" && (
             <Badge tone={t.settlement_status === "SETTLED" ? "success" : "warning"}>
               <Wallet className="h-3 w-3" />
-              {t.settlement_status === "SETTLED" ? "Uang Muka (settled)" : "Uang Muka"}
+              {t.settlement_status === "SETTLED" ? "Dana Ops (settled)" : "Dana Ops"}
             </Badge>
           )}
           {t.kind === "DIRECT_EXPENSE" && (

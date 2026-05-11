@@ -789,14 +789,48 @@ async def settle_cash_advance(
     )
     db.add(settlement)
     await db.flush()
+    # Pre-fetch invoice yg di-refer di items (validasi exist + recompute later)
+    invoice_ids = sorted({i.invoice_id for i in payload.items if i.invoice_id})
+    invoice_map: dict[int, Invoice] = {}
+    if invoice_ids:
+        res = await db.execute(
+            select(Invoice).where(
+                Invoice.id.in_(invoice_ids),
+                Invoice.deleted_at.is_(None),
+            )
+        )
+        for inv in res.scalars().all():
+            invoice_map[inv.id] = inv
+        # Validasi semua invoice_id ada
+        missing = set(invoice_ids) - set(invoice_map.keys())
+        if missing:
+            raise HTTPException(
+                400,
+                f"invoice_id_invalid: {sorted(missing)} tidak ada / sudah dihapus",
+            )
     for it in payload.items:
-        db.add(CashAdvanceSettlementItem(
+        item_row = CashAdvanceSettlementItem(
             settlement_id=settlement.id,
             category_id=it.category_id,
             description=it.description,
             amount=it.amount,
             receipt_url=it.receipt_url,
-        ))
+            invoice_id=it.invoice_id,
+        )
+        db.add(item_row)
+        # Kalau item ini bayar invoice, bikin InvoiceAllocation dari tx
+        # CASH_ADVANCE asli ke invoice. Recompute invoice status nanti.
+        if it.invoice_id:
+            db.add(InvoiceAllocation(
+                invoice_id=it.invoice_id,
+                transaction_id=tid,
+                allocated_amount=_D(it.amount),
+                note=f"Settlement dana ops #{settlement.id} -- {it.description}",
+                created_by_id=user.id,
+            ))
+    # Recompute status semua invoice yg ke-allocate
+    for inv in invoice_map.values():
+        await recompute_invoice_status(db, inv)
     await log(
         db, user_id=user.id, entity="cash_advance_settlement",
         entity_id=settlement.id, action=AuditAction.CREATE,
@@ -819,6 +853,16 @@ async def settle_cash_advance(
     )
     s = res.scalar_one()
     out = CashAdvanceSettlementOut.model_validate(s)
+    # Resolve invoice_number per item utk display FE
+    inv_ids = sorted({i.invoice_id for i in s.items if i.invoice_id})
+    if inv_ids:
+        inv_res = await db.execute(
+            select(Invoice).where(Invoice.id.in_(inv_ids))
+        )
+        inv_num_map = {inv.id: inv.number for inv in inv_res.scalars().all()}
+        for oi in out.items:
+            if oi.invoice_id:
+                oi.invoice_number = inv_num_map.get(oi.invoice_id)
     settler = await db.get(User, s.settled_by_id)
     if settler:
         out.settled_by_name = settler.name
@@ -849,17 +893,46 @@ async def delete_cash_advance_settlement(
     # VERIFIED dilarang kecuali superadmin (audit lock)
     if t.status == TxnStatus.VERIFIED and user.role != UserRole.SUPERADMIN:
         raise HTTPException(409, "verified_locked")
+    # Pre-fetch items utk handle invoice allocation rollback
+    items_res = await db.execute(
+        select(CashAdvanceSettlementItem).where(
+            CashAdvanceSettlementItem.settlement_id == settlement.id
+        )
+    )
+    items_to_clean = items_res.scalars().all()
+    # InvoiceAllocation yg pernah dibuat saat settle (transaction_id = tx
+    # CASH_ADVANCE asli, invoice_id = settlement_item.invoice_id) -> soft delete.
+    inv_ids_touched: set[int] = set()
+    for it in items_to_clean:
+        if it.invoice_id:
+            inv_ids_touched.add(it.invoice_id)
+            res = await db.execute(
+                select(InvoiceAllocation).where(
+                    InvoiceAllocation.transaction_id == tid,
+                    InvoiceAllocation.invoice_id == it.invoice_id,
+                    InvoiceAllocation.deleted_at.is_(None),
+                )
+            )
+            for alloc in res.scalars().all():
+                from sqlalchemy import func as _sa_func
+                alloc.deleted_at = _sa_func.now()
     # Top-up tx kalau ada -- soft delete
     if settlement.topup_tx_id:
         from sqlalchemy import func as _sa_func
         topup = await db.get(Transaction, settlement.topup_tx_id)
         if topup and topup.deleted_at is None:
             topup.deleted_at = _sa_func.now()
+    settlement_id_log = settlement.id
     await db.delete(settlement)
+    # Recompute status invoice yg di-affect
+    for inv_id in inv_ids_touched:
+        inv = await db.get(Invoice, inv_id)
+        if inv:
+            await recompute_invoice_status(db, inv)
     await log(
         db, user_id=user.id, entity="cash_advance_settlement",
-        entity_id=settlement.id, action=AuditAction.DELETE,
-        before={"cash_advance_tx_id": tid},
+        entity_id=settlement_id_log, action=AuditAction.DELETE,
+        before={"cash_advance_tx_id": tid, "invoices_affected": list(inv_ids_touched)},
     )
     await db.commit()
 
