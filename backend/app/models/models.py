@@ -43,6 +43,21 @@ class ProjectStatus(str, enum.Enum):
     DIBATALKAN = "DIBATALKAN"
 
 
+class ProjectDocType(str, enum.Enum):
+    """Tipe dokumen lampiran proyek (kategorisasi utk audit).
+    Disimpan sbg VARCHAR di DB supaya luwes nambah tipe baru tanpa
+    perlu ALTER TYPE di Postgres. Validasi enum hanya di app level."""
+    SPK = "SPK"                          # Surat Perintah Kerja
+    SURAT_PESANAN = "SURAT_PESANAN"      # Surat Pesanan
+    BAST = "BAST"                        # Berita Acara Serah Terima
+    KONTRAK = "KONTRAK"                  # Kontrak induk
+    FAKTUR_PAJAK = "FAKTUR_PAJAK"        # Faktur Pajak
+    INVOICE = "INVOICE"                  # Invoice fisik dr vendor
+    KWITANSI = "KWITANSI"                # Kwitansi pembayaran
+    BERITA_ACARA = "BERITA_ACARA"        # Berita Acara umum (selain BAST)
+    LAINNYA = "LAINNYA"                  # Catch-all
+
+
 class TxnType(str, enum.Enum):
     IN = "IN"
     OUT = "OUT"
@@ -282,7 +297,10 @@ class ProjectAttachment(TimestampMixin, Base):
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
     )
-    label: Mapped[str | None] = mapped_column(String(100), nullable=True)  # mis: "Kontrak", "BAST"
+    label: Mapped[str | None] = mapped_column(String(100), nullable=True)  # judul bebas: "Kontrak no. xxx", dll
+    # Kategorisasi dokumen utk audit (SPK/BAST/dll). Disimpan sbg string
+    # supaya bisa nambah enum value tanpa migration. Nullable utk dok lama.
+    doc_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(120), nullable=False)

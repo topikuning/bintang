@@ -18,6 +18,7 @@ from app.models.models import (
     AuditAction,
     Project,
     ProjectAttachment,
+    ProjectDocType,
     ProjectStatus,
     ProjectUser,
     User,
@@ -542,9 +543,27 @@ async def project_users(
 
 
 # ---------- Project document attachments (kontrak, BAST, dll) ----------
+# Enum value valid utk doc_type. Dipakai untuk validasi input (raise 400
+# kalau client kirim value di luar daftar) dan referensi UI.
+_VALID_DOC_TYPES = {t.value for t in ProjectDocType}
+
+
+def _validate_doc_type(v: str | None) -> str | None:
+    if v is None or v == "":
+        return None
+    if v not in _VALID_DOC_TYPES:
+        raise HTTPException(
+            400,
+            f"invalid_doc_type: '{v}' tidak valid. Pilihan: "
+            + ", ".join(sorted(_VALID_DOC_TYPES)),
+        )
+    return v
+
+
 class ProjectAttachmentOut(BaseModel):
     id: int
     label: str | None = None
+    doc_type: str | None = None
     file_name: str
     file_size: int
     mime_type: str
@@ -554,6 +573,20 @@ class ProjectAttachmentOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+def _att_to_out(a: ProjectAttachment) -> ProjectAttachmentOut:
+    return ProjectAttachmentOut(
+        id=a.id,
+        label=a.label,
+        doc_type=a.doc_type,
+        file_name=a.file_name,
+        file_size=a.file_size,
+        mime_type=a.mime_type,
+        url=a.url,
+        uploaded_by_id=a.uploaded_by_id,
+        created_at=a.created_at.isoformat(),
+    )
 
 
 @router.get("/{pid}/attachments", response_model=list[ProjectAttachmentOut])
@@ -572,14 +605,7 @@ async def list_project_attachments(
         .where(ProjectAttachment.project_id == pid, ProjectAttachment.deleted_at.is_(None))
         .order_by(ProjectAttachment.id.asc())
     )
-    return [
-        ProjectAttachmentOut(
-            id=a.id, label=a.label, file_name=a.file_name, file_size=a.file_size,
-            mime_type=a.mime_type, url=a.url, uploaded_by_id=a.uploaded_by_id,
-            created_at=a.created_at.isoformat(),
-        )
-        for a in res.scalars().all()
-    ]
+    return [_att_to_out(a) for a in res.scalars().all()]
 
 
 @router.post("/{pid}/attachments", response_model=ProjectAttachmentOut, status_code=201)
@@ -587,37 +613,42 @@ async def upload_project_attachment(
     pid: int,
     file: Annotated[UploadFile, File(...)],
     label: str | None = None,
+    doc_type: str | None = None,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> ProjectAttachmentOut:
     """Upload dokumen proyek (kontrak, surat penunjukan, BAST, dll).
-    Hanya superadmin / admin pusat yang boleh upload."""
+    Hanya superadmin / admin pusat yang boleh upload.
+
+    doc_type: kategori dokumen (SPK/BAST/Faktur Pajak/dll). Opsional --
+    kalau diisi, akan divalidasi terhadap ProjectDocType enum.
+    """
     p = await db.get(Project, pid)
     if not p or p.deleted_at is not None:
         raise HTTPException(404, "not_found")
+    doc_type = _validate_doc_type(doc_type)
     meta = await save_upload(file, subdir=f"projects/{pid}")
     att = ProjectAttachment(
         project_id=pid,
         label=(label or "").strip() or None,
+        doc_type=doc_type,
         uploaded_by_id=admin.id,
         **meta,
     )
     db.add(att)
     await db.flush()
     await log(db, user_id=admin.id, entity="project_attachment", entity_id=pid,
-              action=AuditAction.CREATE, after={"file": meta["file_name"], "label": label})
+              action=AuditAction.CREATE,
+              after={"file": meta["file_name"], "label": label, "doc_type": doc_type})
     await db.commit()
     await db.refresh(att)
-    return ProjectAttachmentOut(
-        id=att.id, label=att.label, file_name=att.file_name, file_size=att.file_size,
-        mime_type=att.mime_type, url=att.url, uploaded_by_id=att.uploaded_by_id,
-        created_at=att.created_at.isoformat(),
-    )
+    return _att_to_out(att)
 
 
 class _ProjectLinkIn(BaseModel):
     url: str
     label: str | None = None
+    doc_type: str | None = None
     file_name: str | None = None
 
 
@@ -632,10 +663,12 @@ async def attach_project_link(
     p = await db.get(Project, pid)
     if not p or p.deleted_at is not None:
         raise HTTPException(404, "not_found")
+    doc_type = _validate_doc_type(body.doc_type)
     meta = normalize_external_link(body.url, label=body.label, file_name=body.file_name)
     att = ProjectAttachment(
         project_id=pid,
         label=(body.label or "").strip() or None,
+        doc_type=doc_type,
         uploaded_by_id=admin.id,
         **meta,
     )
@@ -643,14 +676,41 @@ async def attach_project_link(
     await db.flush()
     await log(db, user_id=admin.id, entity="project_attachment", entity_id=pid,
               action=AuditAction.CREATE,
-              after={"link": meta["file_name"], "url": meta["url"], "label": body.label})
+              after={"link": meta["file_name"], "url": meta["url"],
+                     "label": body.label, "doc_type": doc_type})
     await db.commit()
     await db.refresh(att)
-    return ProjectAttachmentOut(
-        id=att.id, label=att.label, file_name=att.file_name, file_size=att.file_size,
-        mime_type=att.mime_type, url=att.url, uploaded_by_id=att.uploaded_by_id,
-        created_at=att.created_at.isoformat(),
-    )
+    return _att_to_out(att)
+
+
+class _ProjectAttachmentPatch(BaseModel):
+    """Patch metadata attachment (label/doc_type). File tdk diganti."""
+    label: str | None = None
+    doc_type: str | None = None
+
+
+@router.patch("/{pid}/attachments/{aid}", response_model=ProjectAttachmentOut)
+async def patch_project_attachment(
+    pid: int,
+    aid: int,
+    body: _ProjectAttachmentPatch,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> ProjectAttachmentOut:
+    """Update label/doc_type attachment yg sudah ada (utk re-kategori)."""
+    att = await db.get(ProjectAttachment, aid)
+    if not att or att.project_id != pid or att.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    if body.doc_type is not None:
+        att.doc_type = _validate_doc_type(body.doc_type)
+    if body.label is not None:
+        att.label = body.label.strip() or None
+    await log(db, user_id=admin.id, entity="project_attachment", entity_id=pid,
+              action=AuditAction.UPDATE,
+              after={"label": att.label, "doc_type": att.doc_type})
+    await db.commit()
+    await db.refresh(att)
+    return _att_to_out(att)
 
 
 @router.delete("/{pid}/attachments/{aid}", status_code=204)
