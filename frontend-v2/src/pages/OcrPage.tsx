@@ -17,7 +17,6 @@ import {
   ScanLine,
   ShieldCheck,
   Sparkles,
-  Stethoscope,
   Upload,
   X,
   XCircle,
@@ -93,9 +92,55 @@ export function OcrPage() {
   const [filePreview, setFilePreview] = useState<string | null>(null)
   const [entity, setEntity] = useState<Entity>("invoice")
   const [engine, setEngine] = useState<string>("")  // "" = default env
+  const [engineTestStatus, setEngineTestStatus] = useState<
+    Record<string, EngineTestState>
+  >({})
+  const [testingEngine, setTestingEngine] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [uploadPct, setUploadPct] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const runEngineTest = async (engineKey: string) => {
+    setTestingEngine(engineKey)
+    try {
+      const r = await testConn.mutateAsync(engineKey)
+      setEngineTestStatus((prev) => ({
+        ...prev,
+        [engineKey]: {
+          ok: !!r.ok,
+          model: r.model,
+          latency_ms: r.latency_ms,
+          error: r.error,
+          hint: r.hint,
+          at: Date.now(),
+        },
+      }))
+      if (r.ok) {
+        toast.success(`Koneksi ${engineKey} OK`, {
+          description: `${r.model} -- ${r.latency_ms}ms`,
+        })
+      } else {
+        toast.error(`${engineKey}: ${r.error ?? "gagal"}`, {
+          description: r.hint || r.detail || undefined,
+        })
+      }
+    } catch (err) {
+      setEngineTestStatus((prev) => ({
+        ...prev,
+        [engineKey]: {
+          ok: false,
+          error: "exception",
+          hint: apiErrorMessage(err),
+          at: Date.now(),
+        },
+      }))
+      toast.error(`${engineKey}: gagal test`, {
+        description: apiErrorMessage(err),
+      })
+    } finally {
+      setTestingEngine(null)
+    }
+  }
 
   // Auto-pilih engine default dari /ocr/engines (jika belum dipilih user)
   useEffect(() => {
@@ -182,25 +227,6 @@ export function OcrPage() {
     }
   }
 
-  const handleTestConnection = async () => {
-    try {
-      const r = await testConn.mutateAsync(engine || null)
-      if (r.ok) {
-        toast.success(`Koneksi ${r.engine ?? "OCR"} OK`, {
-          description: `${r.model} -- ${r.latency_ms}ms`,
-        })
-      } else {
-        toast.error("Koneksi gagal", {
-          description: r.hint ?? r.detail ?? r.error ?? "unknown",
-        })
-      }
-    } catch (err) {
-      toast.error("Test koneksi error", {
-        description: apiErrorMessage(err),
-      })
-    }
-  }
-
   const handleDiscard = async (id: number) => {
     if (!confirm(`Hapus draft #${id}? File asli tetap di storage.`)) return
     try {
@@ -231,31 +257,16 @@ export function OcrPage() {
         </div>
       </div>
 
-      {/* Banner: Claude Vision + Test koneksi */}
+      {/* Banner: info OCR engine (pilih saat upload) */}
       <div className="rounded-md border border-info-200 bg-info-50 p-3 sm:p-4 flex items-start gap-2 flex-wrap">
         <Sparkles className="h-4 w-4 text-info-600 mt-0.5 shrink-0" />
         <div className="text-[12px] text-info-800 leading-relaxed flex-1 min-w-[200px]">
-          <strong>Powered by Claude Vision.</strong> Mendukung dokumen cetak
-          maupun tulisan tangan, ekstrak nomor, tanggal, vendor, total, dan
-          tiap baris item. Confidence rendah otomatis ditandai untuk review
-          manual.
+          Pilih engine OCR di bawah sebelum upload. Mendukung dokumen
+          cetak maupun tulisan tangan, ekstrak nomor, tanggal, vendor,
+          total, dan tiap baris item. Confidence rendah otomatis ditandai
+          untuk review manual.
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleTestConnection}
-          disabled={testConn.isPending}
-          className="border-info-300 text-info-700 hover:bg-info-100 shrink-0"
-        >
-          {testConn.isPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Stethoscope className="h-3.5 w-3.5" />
-          )}
-          Test Koneksi
-        </Button>
       </div>
-      {testConn.data && <TestConnectionResultCard result={testConn.data} />}
 
       {/* Submit form */}
       <div className="rounded-md border bg-surface p-4 sm:p-5 space-y-3">
@@ -384,7 +395,27 @@ export function OcrPage() {
           </div>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-[180px_240px_auto] sm:items-end">
+        {/* Engine OCR -- card radio per engine + tombol test independen */}
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-[11px] uppercase tracking-wider">
+            Engine OCR
+          </Label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {(enginesQ.data ?? []).map((e) => (
+              <EngineCard
+                key={e.key}
+                info={e}
+                selected={engine === e.key}
+                onSelect={() => e.available && setEngine(e.key)}
+                testStatus={engineTestStatus[e.key]}
+                onTest={() => runEngineTest(e.key)}
+                testing={testingEngine === e.key}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-[180px_auto] sm:items-end">
           <div className="flex flex-col gap-1">
             <Label className="text-[11px] uppercase tracking-wider">Jenis</Label>
             <Select
@@ -395,33 +426,6 @@ export function OcrPage() {
               <option value="receipt">Kuitansi/Struk</option>
               <option value="po">Purchase Order</option>
             </Select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <Label className="text-[11px] uppercase tracking-wider">
-              Engine OCR
-            </Label>
-            <Select
-              value={engine}
-              onChange={(e) => setEngine(e.target.value)}
-              disabled={enginesQ.isLoading}
-            >
-              {(enginesQ.data ?? []).map((e) => (
-                <option
-                  key={e.key}
-                  value={e.key}
-                  disabled={!e.available}
-                >
-                  {e.label} {e.cost_per_doc ? `(${e.cost_per_doc})` : ""}
-                  {!e.available ? " — belum aktif" : ""}
-                </option>
-              ))}
-            </Select>
-            {engine && (() => {
-              const sel = (enginesQ.data ?? []).find((e) => e.key === engine)
-              return sel?.note ? (
-                <p className="text-[11px] text-ink-500">{sel.note}</p>
-              ) : null
-            })()}
           </div>
           <Button
             onClick={handleExtract}
@@ -931,55 +935,129 @@ function FieldCell({
   )
 }
 
-function TestConnectionResultCard({
-  result,
+// ============================================================
+// Engine card -- radio + label + cost + test button + status
+// ============================================================
+interface EngineTestState {
+  ok: boolean
+  model?: string
+  latency_ms?: number
+  error?: string
+  hint?: string
+  at: number
+}
+
+function EngineCard({
+  info,
+  selected,
+  onSelect,
+  testStatus,
+  onTest,
+  testing,
 }: {
-  result: import("@/hooks/useOcr").OcrTestConnectionResult
+  info: import("@/hooks/useOcr").OcrEngineInfo
+  selected: boolean
+  onSelect: () => void
+  testStatus?: EngineTestState
+  onTest: () => void
+  testing: boolean
 }) {
-  if (result.ok) {
-    return (
-      <div className="rounded-md border border-success-200 bg-success-50 p-3 text-[12px] text-success-800 flex items-start gap-2">
-        <CheckCircle2 className="h-4 w-4 text-success-600 mt-0.5 shrink-0" />
-        <div className="space-y-0.5">
-          <div>
-            <strong>Koneksi OK.</strong> Model {result.model}, latency{" "}
-            {result.latency_ms}ms.
-          </div>
-          {result.reply && (
-            <div className="font-mono text-[11px] text-success-700">
-              Reply: {result.reply}
-            </div>
-          )}
-          {(result.input_tokens != null || result.output_tokens != null) && (
-            <div className="font-mono text-[11px] text-success-700">
-              Tokens: in={result.input_tokens} out={result.output_tokens}
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
+  const disabled = !info.available
   return (
-    <div className="rounded-md border border-danger-200 bg-danger-50 p-3 text-[12px] text-danger-800 flex items-start gap-2">
-      <XCircle className="h-4 w-4 text-danger-600 mt-0.5 shrink-0" />
-      <div className="space-y-0.5 flex-1 min-w-0">
-        <div>
-          <strong>Koneksi gagal:</strong> {result.error ?? "unknown"}
+    <div
+      onClick={onSelect}
+      role={disabled ? undefined : "button"}
+      tabIndex={disabled ? -1 : 0}
+      onKeyDown={(e) => {
+        if (!disabled && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault()
+          onSelect()
+        }
+      }}
+      className={
+        "rounded-md border p-3 transition-colors " +
+        (selected
+          ? "border-brand-500 bg-brand-50/40 ring-1 ring-brand-300"
+          : disabled
+            ? "border-border-strong/60 bg-surface-muted/40 cursor-not-allowed opacity-70"
+            : "border-border-strong bg-surface hover:bg-ink-50 cursor-pointer")
+      }
+    >
+      <div className="flex items-start gap-2.5">
+        {/* Radio circle */}
+        <div
+          className={
+            "mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 shrink-0 " +
+            (selected ? "border-brand-600 bg-brand-600" : "border-border-strong bg-surface")
+          }
+        >
+          {selected && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
         </div>
-        {result.hint && (
-          <div className="text-danger-700">💡 {result.hint}</div>
-        )}
-        {result.detail && (
-          <details className="text-[11px]">
-            <summary className="cursor-pointer text-danger-600 hover:text-danger-800">
-              Detail teknis
-            </summary>
-            <pre className="mt-1 font-mono whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
-              {result.detail}
-            </pre>
-          </details>
-        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-ink-900">
+              {info.label}
+            </span>
+            {info.cost_per_doc && (
+              <span className="text-[11px] text-ink-500 tabular-nums">
+                {info.cost_per_doc}
+              </span>
+            )}
+            {disabled && (
+              <span className="text-[10px] uppercase tracking-wider rounded px-1.5 py-0.5 bg-warning-100 text-warning-800">
+                belum aktif
+              </span>
+            )}
+          </div>
+          {info.note && (
+            <p className="text-[11px] text-ink-500 mt-0.5 leading-snug">
+              {info.note}
+            </p>
+          )}
+          {/* Status test connection */}
+          <div className="flex items-center justify-between gap-2 mt-2">
+            <div className="text-[11px]">
+              {testing ? (
+                <span className="text-info-700 inline-flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" /> testing…
+                </span>
+              ) : testStatus ? (
+                testStatus.ok ? (
+                  <span className="text-success-700 inline-flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" />
+                    OK · {testStatus.latency_ms}ms
+                  </span>
+                ) : (
+                  <span className="text-danger-700 inline-flex items-center gap-1">
+                    <XCircle className="h-3 w-3" />
+                    {testStatus.error ?? "gagal"}
+                  </span>
+                )
+              ) : (
+                <span className="text-ink-400">belum di-test</span>
+              )}
+            </div>
+            <button
+              type="button"
+              disabled={disabled || testing}
+              onClick={(e) => {
+                e.stopPropagation()
+                onTest()
+              }}
+              className={
+                "text-[11px] rounded border px-2 py-0.5 " +
+                (disabled || testing
+                  ? "border-border-strong text-ink-400 cursor-not-allowed"
+                  : "border-info-300 text-info-700 hover:bg-info-50")
+              }
+            >
+              {testing ? "…" : "Test koneksi"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
+
+
