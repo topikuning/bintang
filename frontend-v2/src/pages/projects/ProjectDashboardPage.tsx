@@ -17,6 +17,7 @@ import {
   UserPlus,
   Users,
   Wallet,
+  X,
 } from "lucide-react"
 import { useProject } from "@/hooks/useProjects"
 import { useProjectDashboard } from "@/hooks/useDashboard"
@@ -24,9 +25,12 @@ import { useTransactions } from "@/hooks/useTransactions"
 import {
   useDeleteProjectAttachment,
   useLinkProjectAttachment,
+  usePatchProjectAttachment,
   useProjectAttachments,
   useUploadProjectAttachment,
+  PROJECT_DOC_TYPE_LABELS,
   type ProjectAttachment,
+  type ProjectDocType,
 } from "@/hooks/useProjectAttachments"
 import { useProjectUsers, type ProjectMember } from "@/hooks/useProjectUsers"
 import { useAssignProject, useUnassignProject, useUsers } from "@/hooks/useUsers"
@@ -49,14 +53,12 @@ import { InvoiceForm } from "@/components/domain/invoice/InvoiceForm"
 import { POForm } from "@/components/domain/po/POForm"
 import { CashflowChart } from "@/components/charts/CashflowChart"
 import { SpendingBreakdown } from "@/components/domain/dashboard/SpendingBreakdown"
-import { AttachmentList } from "@/components/domain/shared/AttachmentList"
 import { AttachmentUploader } from "@/components/forms/AttachmentUploader"
 import { Combobox, type ComboboxOption } from "@/components/forms/Combobox"
 import { toast } from "@/components/ui/sonner"
 import { fmtCompact, fmtDate, fmtIDR } from "@/lib/format"
 import { apiErrorMessage } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import type { Attachment } from "@/types/api"
 
 /**
  * Halaman tunggal proyek -- canonical view utk konteks 1 proyek.
@@ -833,25 +835,47 @@ function ProjectAttachmentsSection({
   const upload = useUploadProjectAttachment()
   const link = useLinkProjectAttachment()
   const del = useDeleteProjectAttachment()
+  const patch = usePatchProjectAttachment()
   const attachments: ProjectAttachment[] = attQ.data ?? []
 
-  const asAttachment = (a: ProjectAttachment): Attachment => ({
-    id: a.id,
-    file_name: a.label || a.file_name,
-    file_size: a.file_size,
-    mime_type: a.mime_type,
-    url: a.url,
-    created_at: a.created_at,
-  })
+  // Doc-type selector: berlaku untuk semua file yg di-upload pada session
+  // ini (sampai user ganti). Default LAINNYA supaya minimal ada kategori.
+  const [docType, setDocType] = useState<ProjectDocType | "">("")
 
-  const handleDelete = async (att: Attachment) => {
+  const handleDelete = async (id: number) => {
     try {
-      await del.mutateAsync({ projectId, attachmentId: att.id })
+      await del.mutateAsync({ projectId, attachmentId: id })
       toast.success("Dokumen proyek dihapus")
     } catch (err) {
       toast.error("Gagal menghapus", { description: apiErrorMessage(err) })
     }
   }
+
+  const handlePatchDocType = async (id: number, newType: ProjectDocType | "") => {
+    try {
+      await patch.mutateAsync({
+        projectId,
+        attachmentId: id,
+        docType: newType || null,
+      })
+      toast.success("Tipe dokumen diperbarui")
+    } catch (err) {
+      toast.error("Gagal update", { description: apiErrorMessage(err) })
+    }
+  }
+
+  // Group attachment by doc_type utk display rapi (Kontrak, SPK, BAST, dll).
+  const grouped = new Map<string, ProjectAttachment[]>()
+  for (const a of attachments) {
+    const key = a.doc_type ?? "_UNCATEGORIZED"
+    if (!grouped.has(key)) grouped.set(key, [])
+    grouped.get(key)!.push(a)
+  }
+  // Order: kategori known dulu sesuai enum, lalu uncategorized di akhir.
+  const orderedKeys = [
+    ...(Object.keys(PROJECT_DOC_TYPE_LABELS) as ProjectDocType[]),
+    "_UNCATEGORIZED",
+  ].filter((k) => grouped.has(k))
 
   return (
     <Section
@@ -861,29 +885,129 @@ function ProjectAttachmentsSection({
       <div className="px-3 sm:px-4 py-3 space-y-3">
         {attQ.isLoading ? (
           <Skeleton className="h-24" />
+        ) : attachments.length === 0 ? (
+          <div className="text-[12px] text-ink-500 italic">
+            {isAdmin
+              ? "Belum ada dokumen. Tambah kontrak/BAST/SPK/lampiran lain di bawah."
+              : "Belum ada dokumen proyek."}
+          </div>
         ) : (
-          <AttachmentList
-            attachments={attachments.map(asAttachment)}
-            canDelete={isAdmin}
-            onDelete={handleDelete}
-            deletingId={del.isPending ? del.variables?.attachmentId ?? null : null}
-            emptyMessage={
-              isAdmin
-                ? "Belum ada dokumen. Tambah kontrak/BAST/lampiran lain di bawah."
-                : "Belum ada dokumen proyek."
-            }
-          />
+          <div className="space-y-3">
+            {orderedKeys.map((key) => {
+              const items = grouped.get(key)!
+              const isUncategorized = key === "_UNCATEGORIZED"
+              const label = isUncategorized
+                ? "Tanpa Kategori"
+                : PROJECT_DOC_TYPE_LABELS[key as ProjectDocType]
+              return (
+                <div key={key}>
+                  <div className="text-[10px] uppercase tracking-wider text-ink-500 mb-1 font-semibold">
+                    {label} <span className="text-ink-400 ml-1">({items.length})</span>
+                  </div>
+                  <ul className="divide-y rounded border bg-surface">
+                    {items.map((a) => (
+                      <li
+                        key={a.id}
+                        className="flex items-center gap-2 px-2.5 py-2 text-[12px]"
+                      >
+                        <Paperclip className="h-3.5 w-3.5 text-ink-400 shrink-0" />
+                        <a
+                          href={a.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 min-w-0 truncate text-brand-700 hover:underline"
+                          title={a.file_name}
+                        >
+                          {a.label || a.file_name}
+                        </a>
+                        {isAdmin && (
+                          <>
+                            <select
+                              value={a.doc_type ?? ""}
+                              onChange={(e) =>
+                                handlePatchDocType(
+                                  a.id,
+                                  (e.target.value || "") as ProjectDocType | "",
+                                )
+                              }
+                              disabled={patch.isPending}
+                              className="text-[11px] rounded border border-border bg-surface px-1.5 py-0.5"
+                              aria-label="Ubah tipe dokumen"
+                            >
+                              <option value="">— Tanpa Kategori —</option>
+                              {Object.entries(PROJECT_DOC_TYPE_LABELS).map(([v, l]) => (
+                                <option key={v} value={v}>
+                                  {l}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(a.id)}
+                              disabled={del.isPending}
+                              className="flex h-6 w-6 items-center justify-center rounded text-danger-500 hover:bg-danger-50"
+                              aria-label="Hapus"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            })}
+          </div>
         )}
+
         {isAdmin && (
-          <AttachmentUploader
-            uploadFile={(file, onProgress) =>
-              upload.mutateAsync({ projectId, file, onProgress }).then(() => undefined)
-            }
-            linkExternal={(url, label) =>
-              link.mutateAsync({ projectId, url, label }).then(() => undefined)
-            }
-            isLinking={link.isPending}
-          />
+          <>
+            <div className="flex flex-col gap-1.5 pt-1">
+              <label className="text-[11px] uppercase tracking-wider text-ink-500">
+                Tipe Dokumen (untuk file/link berikutnya)
+              </label>
+              <select
+                value={docType}
+                onChange={(e) => setDocType(e.target.value as ProjectDocType | "")}
+                className="h-9 rounded border border-border-strong bg-surface px-2 text-sm"
+              >
+                <option value="">— Pilih kategori (opsional) —</option>
+                {Object.entries(PROJECT_DOC_TYPE_LABELS).map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-ink-500">
+                Kategori ini berlaku utk semua file yg di-upload setelahnya.
+                Bisa ubah per file di list di atas.
+              </p>
+            </div>
+            <AttachmentUploader
+              uploadFile={(file, onProgress) =>
+                upload
+                  .mutateAsync({
+                    projectId,
+                    file,
+                    docType: (docType || null) as ProjectDocType | null,
+                    onProgress,
+                  })
+                  .then(() => undefined)
+              }
+              linkExternal={(url, label) =>
+                link
+                  .mutateAsync({
+                    projectId,
+                    url,
+                    label,
+                    docType: (docType || null) as ProjectDocType | null,
+                  })
+                  .then(() => undefined)
+              }
+              isLinking={link.isPending}
+            />
+          </>
         )}
         {!isAdmin && attachments.length === 0 && (
           <p className="text-[11px] text-ink-500 flex items-center gap-1.5">
