@@ -570,6 +570,14 @@ class CashAdvanceSettlementItem(TimestampMixin, Base):
     description: Mapped[str] = mapped_column(String(300), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     receipt_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Kalau item ini sebenarnya bayar invoice eksternal (bukan beban langsung),
+    # link ke invoice. Saat settle, backend auto-bikin InvoiceAllocation
+    # dari tx CASH_ADVANCE asli ke invoice ini utk amount item.
+    # Tetap simpan di settlement_item supaya jelas mana item yg invoice-payment
+    # vs beban langsung. category_id boleh diisi atau tidak (informasi tambahan).
+    invoice_id: Mapped[int | None] = mapped_column(
+        ForeignKey("invoices.id"), nullable=True
+    )
 
     settlement: Mapped[CashAdvanceSettlement] = relationship(back_populates="items")
 

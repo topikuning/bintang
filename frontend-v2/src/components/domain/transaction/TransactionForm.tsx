@@ -67,8 +67,8 @@ const KIND_LABEL: Record<TxnKind, { label: string; hint: string }> = {
     hint: "Pembayaran ke vendor (ada nomor invoice/PO).",
   },
   CASH_ADVANCE: {
-    label: "Uang Muka Personal",
-    hint: "Kasbon ke karyawan/staff. Perlu pertanggungjawaban (settle) nanti.",
+    label: "Dana Operasional",
+    hint: "Dana operasional ke karyawan/staff -- bisa utk beban langsung atau bayar invoice. Perlu pertanggungjawaban (settle) nanti.",
   },
   DIRECT_EXPENSE: {
     label: "Beban Langsung",
@@ -169,7 +169,7 @@ export function TransactionForm({
       const isDirect = effectiveKind === "DIRECT_EXPENSE"
       // Validate recipient (CASH_ADVANCE)
       if (isAdvance && !d.recipient_user_id && !d.recipient_name?.trim()) {
-        toast.error("Penerima uang muka wajib diisi (pilih user atau ketik nama)")
+        toast.error("Penerima dana operasional wajib diisi (pilih user atau ketik nama)")
         setSubmitting(false)
         return
       }

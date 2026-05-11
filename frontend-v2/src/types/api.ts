@@ -150,6 +150,9 @@ export interface CashAdvanceSettlementItem {
   description: string
   amount: string | number
   receipt_url?: string | null
+  /** Kalau item ini bayar invoice eksternal */
+  invoice_id?: number | null
+  invoice_number?: string | null
 }
 
 export interface CashAdvanceSettlement {

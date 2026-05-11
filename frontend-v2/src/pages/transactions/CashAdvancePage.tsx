@@ -22,6 +22,7 @@ import {
   useSettleCashAdvance,
   type SettlementInput,
 } from "@/hooks/useCashAdvances"
+import { useInvoices } from "@/hooks/useInvoices"
 import { apiErrorMessage } from "@/lib/api"
 import { ErrorState } from "@/components/data/ErrorState"
 import { Badge } from "@/components/ui/badge"
@@ -50,11 +51,15 @@ function Page({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Hub Uang Muka Karyawan (Cash Advance).
+ * Hub Dana Operasional (Cash Advance / Kas Bon).
  *
  * 2 view:
  *  - "Outstanding": list per-tx advance yg belum di-settle (action: settle)
- *  - "Saldo per Penerima": agregat per karyawan/staff (utk monitoring)
+ *  - "Saldo per Penerima": agregat per penerima (utk monitoring)
+ *
+ * Settlement item bisa link ke invoice -- bayar tagihan eksternal via
+ * dana operasional. Backend auto-bikin InvoiceAllocation utk item dgn
+ * invoice_id.
  */
 export function CashAdvancePage() {
   const [tab, setTab] = useState<"outstanding" | "balances">("outstanding")
@@ -71,11 +76,12 @@ export function CashAdvancePage() {
         <div>
           <h1 className="text-xl font-bold text-ink-900 sm:text-2xl flex items-center gap-2">
             <Wallet className="h-5 w-5 text-brand-600" />
-            Uang Muka Karyawan
+            Dana Operasional
           </h1>
           <p className="text-[12px] text-ink-500 mt-0.5">
-            Kelola uang muka (kasbon) -- bukan beban, masih piutang. Settle dgn
-            pertanggungjawaban (struk/kwitansi) supaya jadi beban resmi.
+            Kelola dana operasional (kas bon) -- bukan beban, masih piutang.
+            Settle dgn pertanggungjawaban (struk/kwitansi atau link invoice
+            yg dibayar) supaya jadi beban/pelunasan resmi.
           </p>
         </div>
       </div>
@@ -154,9 +160,9 @@ function OutstandingList({
     return (
       <div className="rounded-md border border-dashed bg-surface-muted/40 p-6 text-center">
         <CheckCircle2 className="mx-auto h-8 w-8 text-success-600" />
-        <p className="mt-2 text-sm font-medium">Semua uang muka sudah di-settle</p>
+        <p className="mt-2 text-sm font-medium">Semua dana operasional sudah di-settle</p>
         <p className="text-[12px] text-ink-500 mt-1">
-          Buat uang muka baru: Transaksi → Pengeluaran → "Uang Muka Personal".
+          Buat dana operasional baru: Transaksi → Pengeluaran → "Dana Operasional".
         </p>
       </div>
     )
@@ -241,7 +247,7 @@ function BalancesList({
     return (
       <div className="rounded-md border border-dashed bg-surface-muted/40 p-6 text-center">
         <Users className="mx-auto h-8 w-8 text-ink-400" />
-        <p className="mt-2 text-sm">Belum ada riwayat uang muka.</p>
+        <p className="mt-2 text-sm">Belum ada riwayat dana operasional.</p>
       </div>
     )
   }
@@ -307,6 +313,7 @@ const settlementSchema = z.object({
         description: z.string().min(1, "Deskripsi wajib"),
         amount: z.number().positive("> 0"),
         receipt_url: z.string().nullable().optional(),
+        invoice_id: z.number().nullable().optional(),
       }),
     )
     .min(1, "Minimal 1 item"),
@@ -340,6 +347,7 @@ function SettlementDialog({
         description: "",
         amount: advanceAmount,
         receipt_url: null,
+        invoice_id: null,
       },
     ],
   }
@@ -384,6 +392,7 @@ function SettlementDialog({
           description: i.description,
           amount: i.amount,
           receipt_url: i.receipt_url ?? null,
+          invoice_id: i.invoice_id ?? null,
         })),
       }
       const result = await settleMu.mutateAsync({
@@ -434,15 +443,28 @@ function SettlementDialog({
           <DialogHeader>
             <DialogTitle>Pertanggungjawaban</DialogTitle>
             <DialogDescription>
-              Uang muka #{target.id} ({fmtIDR(advanceAmount)}) sudah di-settle
+              Dana operasional #{target.id} ({fmtIDR(advanceAmount)}) sudah di-settle
               {s.settled_by_name && ` oleh ${s.settled_by_name}`}.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 text-sm">
             <ul className="divide-y rounded border bg-surface">
               {s.items.map((it) => (
-                <li key={it.id} className="flex justify-between px-3 py-2">
-                  <span>{it.description}</span>
+                <li key={it.id} className="flex justify-between px-3 py-2 gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate">{it.description}</div>
+                    {it.invoice_id && (
+                      <div className="text-[11px] text-brand-700">
+                        Bayar invoice:{" "}
+                        <Link
+                          to={`/invoices/${it.invoice_id}`}
+                          className="hover:underline"
+                        >
+                          {it.invoice_number ?? `#${it.invoice_id}`}
+                        </Link>
+                      </div>
+                    )}
+                  </div>
                   <span className="tabular-nums">{fmtIDR(Number(it.amount))}</span>
                 </li>
               ))}
@@ -494,7 +516,7 @@ function SettlementDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            Pertanggungjawaban Uang Muka -- {target.recipient_display}
+            Pertanggungjawaban Dana Operasional -- {target.recipient_display}
           </DialogTitle>
           <DialogDescription>
             Advance #{target.id}: <strong>{fmtIDR(advanceAmount)}</strong>. Rincikan
@@ -590,6 +612,22 @@ function SettlementDialog({
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
+                  {/* Row 2: optional invoice link (item bayar invoice eksternal) */}
+                  <div className="col-span-12 flex items-center gap-2">
+                    <span className="text-[11px] text-ink-500 shrink-0">
+                      Bayar invoice (opsional):
+                    </span>
+                    <Controller
+                      control={control}
+                      name={`items.${idx}.invoice_id`}
+                      render={({ field }) => (
+                        <InvoicePickerInline
+                          value={field.value ?? null}
+                          onChange={field.onChange}
+                        />
+                      )}
+                    />
+                  </div>
                 </div>
               ))}
               <Button
@@ -602,6 +640,7 @@ function SettlementDialog({
                     description: "",
                     amount: 0,
                     receipt_url: null,
+                    invoice_id: null,
                   })
                 }
               >
@@ -676,5 +715,41 @@ function SettlementDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** Inline picker: pilih invoice OPEN (utk settlement item yg bayar invoice). */
+function InvoicePickerInline({
+  value,
+  onChange,
+}: {
+  value: number | null
+  onChange: (v: number | null) => void
+}) {
+  // Ambil invoice yg masih open (ISSUED/PARTIALLY_PAID/OVERDUE) supaya
+  // tidak crowded. Backend validate exist saat submit.
+  const invQ = useInvoices({
+    page: 1,
+    size: 200,
+  })
+  const items = (invQ.data?.items ?? []).filter(
+    (inv) =>
+      inv.status === "ISSUED" ||
+      inv.status === "PARTIALLY_PAID" ||
+      inv.status === "OVERDUE",
+  )
+  return (
+    <select
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
+      className="h-8 flex-1 rounded border border-border-strong bg-surface px-2 text-[12px]"
+    >
+      <option value="">— Tidak (beban langsung) —</option>
+      {items.map((inv) => (
+        <option key={inv.id} value={inv.id}>
+          {inv.number} -- {inv.party_name ?? "-"} ({fmtIDR(Number(inv.total ?? 0))})
+        </option>
+      ))}
+    </select>
   )
 }
