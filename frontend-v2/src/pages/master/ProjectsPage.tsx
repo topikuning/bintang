@@ -52,6 +52,7 @@ const schema = z.object({
   code: z.string().min(1, "Kode wajib"),
   name: z.string().min(1, "Nama wajib"),
   company_id: z.number().min(1, "Pilih perusahaan"),
+  client_name: z.string().nullable().optional(),
   location: z.string().nullable().optional(),
   start_date: z.string().nullable().optional(),
   end_date: z.string().nullable().optional(),
@@ -306,6 +307,7 @@ function buildDefaults(project: Project | null): FormValues {
     code: project?.code ?? "",
     name: project?.name ?? "",
     company_id: project?.company_id ?? 0,
+    client_name: project?.client_name ?? "",
     location: project?.location ?? "",
     start_date: project?.start_date ?? "",
     end_date: project?.end_date ?? "",
@@ -379,6 +381,7 @@ function ProjectForm({
         name: parsed.data.name,
         company_id: parsed.data.company_id,
         location: parsed.data.location?.trim() || null,
+        client_name: parsed.data.client_name?.trim() || null,
         start_date: parsed.data.start_date?.trim() || null,
         end_date: parsed.data.end_date?.trim() || null,
         status: parsed.data.status,
@@ -455,6 +458,15 @@ function ProjectForm({
           render={({ field }) => (
             <CompanyPicker value={field.value || null} onChange={(v) => field.onChange(v ?? 0)} />
           )}
+        />
+      </Field>
+      <Field
+        label="Dinas / Instansi / Klien"
+        hint="Pemberi pekerjaan -- tampil di header PDF PO & Invoice. Opsional."
+      >
+        <Input
+          {...register("client_name")}
+          placeholder="Mis. Dinas PUPR Kota Mataram"
         />
       </Field>
       <Field label="Lokasi">

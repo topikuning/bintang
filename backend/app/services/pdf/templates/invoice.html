@@ -78,6 +78,12 @@
     <td class="label">Lokasi Proyek</td>
     <td class="value">{{ project.location or project.name }}</td>
   </tr>
+  {% if project.client_name %}
+  <tr>
+    <td class="label">Dinas / Instansi / Klien</td>
+    <td class="value">{{ project.client_name }}</td>
+  </tr>
+  {% endif %}
   <tr>
     <td class="label">Status</td>
     <td class="value">

@@ -165,6 +165,11 @@ export function ProjectDashboardPage() {
                     </>
                   )}
                 </div>
+                {project.client_name && (
+                  <div className="text-[12px] text-ink-500 mt-0.5">
+                    Klien: <span className="font-medium text-ink-700">{project.client_name}</span>
+                  </div>
+                )}
               </div>
             </div>
             <Badge tone={healthTone(health)}>{healthLabel(health)}</Badge>

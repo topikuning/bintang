@@ -28,6 +28,7 @@ const schema = z.object({
   code: z.string().min(1, "Kode wajib").max(40, "Maks 40 karakter"),
   name: z.string().min(1, "Nama wajib"),
   company_id: z.number().min(1, "Pilih perusahaan"),
+  client_name: z.string().nullable().optional(),
   location: z.string().nullable().optional(),
   start_date: z.string().nullable().optional(),
   end_date: z.string().nullable().optional(),
@@ -42,6 +43,7 @@ const defaults: FormValues = {
   code: "",
   name: "",
   company_id: 0,
+  client_name: "",
   location: "",
   start_date: "",
   end_date: "",
@@ -86,6 +88,7 @@ export function ProjectProposalForm({ open, onClose }: Props) {
         code: parsed.data.code,
         name: parsed.data.name,
         company_id: parsed.data.company_id,
+        client_name: parsed.data.client_name?.trim() || null,
         location: parsed.data.location?.trim() || null,
         start_date: parsed.data.start_date?.trim() || null,
         end_date: parsed.data.end_date?.trim() || null,
@@ -149,6 +152,15 @@ export function ProjectProposalForm({ open, onClose }: Props) {
           </Field>
           <Field label="Lokasi">
             <Input {...register("location")} placeholder="Mis. Mataram, NTB" />
+          </Field>
+          <Field
+            label="Dinas / Instansi / Klien"
+            hint="Pemberi pekerjaan (opsional). Tampil di header PDF PO/Invoice."
+          >
+            <Input
+              {...register("client_name")}
+              placeholder="Mis. Dinas PUPR Kota Mataram"
+            />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Tanggal Mulai">

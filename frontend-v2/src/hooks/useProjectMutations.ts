@@ -8,6 +8,7 @@ export interface ProjectInput {
   name: string
   company_id: number
   location?: string | null
+  client_name?: string | null
   pic_user_id?: number | null
   start_date?: string | null
   end_date?: string | null

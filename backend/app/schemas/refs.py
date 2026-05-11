@@ -52,6 +52,7 @@ class ProjectBase(BaseModel):
     name: str
     location: str | None = None
     company_id: int
+    client_name: str | None = None
     pic_user_id: int | None = None
     start_date: date | None = None
     end_date: date | None = None
@@ -75,6 +76,7 @@ class ProjectUpdate(BaseModel):
     name: str | None = None
     location: str | None = None
     company_id: int | None = None
+    client_name: str | None = None
     pic_user_id: int | None = None
     start_date: date | None = None
     end_date: date | None = None
@@ -116,6 +118,7 @@ class ProjectProposalCreate(BaseModel):
     name: str
     location: str | None = None
     company_id: int
+    client_name: str | None = None
     start_date: date | None = None
     end_date: date | None = None
     notes: str | None = None
