@@ -21,6 +21,7 @@ import {
   ShoppingCart,
   Tag,
   Users,
+  Wallet,
 } from "lucide-react"
 
 export interface NavItem {
@@ -47,6 +48,7 @@ export const DESKTOP_NAV: NavGroup[] = [
     label: "Operasional",
     items: [
       { label: "Transaksi", to: "/transactions", icon: ArrowLeftRight },
+      { label: "Uang Muka", to: "/transactions/cash-advances", icon: Wallet },
       { label: "Invoice", to: "/invoices", icon: Receipt },
       { label: "Purchase Order", to: "/purchase-orders", icon: ShoppingCart },
       { label: "Budget", to: "/budget", icon: BadgeDollarSign },

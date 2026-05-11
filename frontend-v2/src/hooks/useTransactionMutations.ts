@@ -1,12 +1,19 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { queryKeys } from "@/lib/query-keys"
-import type { PaymentMethod, Transaction, TxnType } from "@/types/api"
+import type { PaymentMethod, Transaction, TxnKind, TxnType } from "@/types/api"
+
+export interface TransactionItemInput {
+  category_id?: number | null
+  description: string
+  amount: number
+}
 
 export interface TransactionInput {
   project_id: number
   tx_date: string
   type: TxnType
+  kind?: TxnKind                          // default INVOICE_PAYMENT di backend
   amount: number
   category_id?: number | null
   vendor_client_id?: number | null
@@ -14,6 +21,10 @@ export interface TransactionInput {
   payment_method: PaymentMethod
   reference_no?: string | null
   description?: string | null
+  invoice_id?: number | null
+  recipient_user_id?: number | null       // utk CASH_ADVANCE
+  recipient_name?: string | null          // utk CASH_ADVANCE
+  items?: TransactionItemInput[]          // utk DIRECT_EXPENSE
 }
 
 export function useCreateTransaction() {

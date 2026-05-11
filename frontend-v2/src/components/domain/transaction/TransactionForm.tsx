@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
-import { useForm, Controller } from "react-hook-form"
-import { Loader2 } from "lucide-react"
+import { useForm, Controller, useFieldArray } from "react-hook-form"
+import { Loader2, Plus, Trash2 } from "lucide-react"
 import { z } from "zod"
 import { toApiDate } from "@/lib/format"
 import { apiErrorMessage } from "@/lib/api"
@@ -10,7 +10,8 @@ import {
   useUpdateTransaction,
   type TransactionInput,
 } from "@/hooks/useTransactionMutations"
-import type { PaymentMethod, Transaction, TxnType } from "@/types/api"
+import { useUsers } from "@/hooks/useUsers"
+import type { PaymentMethod, Transaction, TxnKind, TxnType } from "@/types/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -32,10 +33,17 @@ const PAYMENT_OPTIONS: Array<{ value: PaymentMethod; label: string }> = [
   { value: "OTHER", label: "Lainnya" },
 ]
 
+const itemSchema = z.object({
+  category_id: z.number().nullable().optional(),
+  description: z.string().min(1, "Deskripsi wajib"),
+  amount: z.number().positive("Harus > 0"),
+})
+
 const schema = z.object({
   project_id: z.number({ required_error: "Pilih proyek" }).min(1, "Pilih proyek"),
   tx_date: z.string().min(1, "Tanggal wajib diisi"),
   type: z.enum(["IN", "OUT"]),
+  kind: z.enum(["INVOICE_PAYMENT", "CASH_ADVANCE", "DIRECT_EXPENSE"]),
   amount: z.number({ required_error: "Nominal wajib diisi" }).positive("Nominal harus lebih dari 0"),
   category_id: z.number().nullable().optional(),
   vendor_client_id: z.number().nullable().optional(),
@@ -43,9 +51,29 @@ const schema = z.object({
   payment_method: z.enum(["TRANSFER", "CASH", "QRIS", "OTHER"]),
   reference_no: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
+  // CASH_ADVANCE recipient (hybrid)
+  recipient_user_id: z.number().nullable().optional(),
+  recipient_name: z.string().nullable().optional(),
+  // DIRECT_EXPENSE rincian items
+  items: z.array(itemSchema).default([]),
 })
 
 type FormValues = z.infer<typeof schema>
+
+const KIND_LABEL: Record<TxnKind, { label: string; hint: string }> = {
+  INVOICE_PAYMENT: {
+    label: "Bayar Invoice",
+    hint: "Pembayaran ke vendor (ada nomor invoice/PO).",
+  },
+  CASH_ADVANCE: {
+    label: "Uang Muka Personal",
+    hint: "Kasbon ke karyawan/staff. Perlu pertanggungjawaban (settle) nanti.",
+  },
+  DIRECT_EXPENSE: {
+    label: "Beban Langsung",
+    hint: "Pengeluaran tanpa invoice (struk/kwitansi). Rincikan per item.",
+  },
+}
 
 interface TransactionFormProps {
   open: boolean
@@ -75,6 +103,7 @@ export function TransactionForm({
       project_id: initialProjectId,
       tx_date: transaction?.tx_date ?? todayIso,
       type: transaction?.type ?? "OUT",
+      kind: (transaction?.kind as TxnKind | undefined) ?? "INVOICE_PAYMENT",
       amount: transaction ? Number(transaction.amount) : 0,
       category_id: transaction?.category_id ?? null,
       vendor_client_id: transaction?.vendor_client_id ?? null,
@@ -82,6 +111,14 @@ export function TransactionForm({
       payment_method: transaction?.payment_method ?? "TRANSFER",
       reference_no: transaction?.reference_no ?? "",
       description: transaction?.description ?? "",
+      recipient_user_id: transaction?.recipient_user_id ?? null,
+      recipient_name: transaction?.recipient_name ?? "",
+      items:
+        (transaction?.items ?? []).map((it) => ({
+          category_id: it.category_id ?? null,
+          description: it.description,
+          amount: Number(it.amount ?? 0),
+        })),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [transaction?.id, todayIso, initialProjectId],
@@ -93,8 +130,12 @@ export function TransactionForm({
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ defaultValues })
+
+  const itemsArr = useFieldArray({ control, name: "items" })
+  const usersQ = useUsers({ size: 200 })
 
   // Reset saat sheet baru dibuka atau transaction berubah
   useEffect(() => {
@@ -114,17 +155,54 @@ export function TransactionForm({
     }
     setSubmitting(true)
     try {
+      const d = parsed.data
+      // Untuk IN, kind selalu INVOICE_PAYMENT (CASH_ADVANCE & DIRECT_EXPENSE OUT-only)
+      const effectiveKind: TxnKind = d.type === "IN" ? "INVOICE_PAYMENT" : d.kind
+      const isAdvance = effectiveKind === "CASH_ADVANCE"
+      const isDirect = effectiveKind === "DIRECT_EXPENSE"
+      // Validate recipient (CASH_ADVANCE)
+      if (isAdvance && !d.recipient_user_id && !d.recipient_name?.trim()) {
+        toast.error("Penerima uang muka wajib diisi (pilih user atau ketik nama)")
+        setSubmitting(false)
+        return
+      }
+      // Validate items + amount sum (DIRECT_EXPENSE)
+      if (isDirect) {
+        if (d.items.length === 0) {
+          toast.error("Tambahkan minimal 1 rincian item")
+          setSubmitting(false)
+          return
+        }
+        const sum = d.items.reduce((acc, it) => acc + Number(it.amount || 0), 0)
+        if (Math.abs(sum - d.amount) > 0.01) {
+          toast.error("Total nominal tidak cocok dgn jumlah rincian", {
+            description: `Nominal: ${d.amount.toLocaleString("id-ID")} | Sum item: ${sum.toLocaleString("id-ID")}`,
+          })
+          setSubmitting(false)
+          return
+        }
+      }
       const payload: TransactionInput = {
-        project_id: parsed.data.project_id,
-        tx_date: parsed.data.tx_date,
-        type: parsed.data.type,
-        amount: parsed.data.amount,
-        category_id: parsed.data.category_id ?? null,
-        vendor_client_id: parsed.data.vendor_client_id ?? null,
-        party_name: parsed.data.party_name?.trim() || null,
-        payment_method: parsed.data.payment_method,
-        reference_no: parsed.data.reference_no?.trim() || null,
-        description: parsed.data.description?.trim() || null,
+        project_id: d.project_id,
+        tx_date: d.tx_date,
+        type: d.type,
+        kind: effectiveKind,
+        amount: d.amount,
+        category_id: d.category_id ?? null,
+        vendor_client_id: isAdvance || isDirect ? null : d.vendor_client_id ?? null,
+        party_name: isAdvance || isDirect ? null : d.party_name?.trim() || null,
+        payment_method: d.payment_method,
+        reference_no: d.reference_no?.trim() || null,
+        description: d.description?.trim() || null,
+        recipient_user_id: isAdvance ? d.recipient_user_id ?? null : null,
+        recipient_name: isAdvance ? d.recipient_name?.trim() || null : null,
+        items: isDirect
+          ? d.items.map((it) => ({
+              category_id: it.category_id ?? null,
+              description: it.description,
+              amount: Number(it.amount),
+            }))
+          : undefined,
       }
       if (isEdit && transaction) {
         await update.mutateAsync(payload)
@@ -146,6 +224,23 @@ export function TransactionForm({
   }
 
   const currentType = watch("type") as TxnType
+  const currentKind = watch("kind") as TxnKind
+  // Untuk IN, paksa INVOICE_PAYMENT supaya conditional logic konsisten.
+  const effectiveKind: TxnKind = currentType === "IN" ? "INVOICE_PAYMENT" : currentKind
+  const isAdvance = effectiveKind === "CASH_ADVANCE"
+  const isDirect = effectiveKind === "DIRECT_EXPENSE"
+  const items = watch("items") || []
+  const itemsSum = items.reduce(
+    (acc, it) => acc + Number(it?.amount || 0),
+    0,
+  )
+
+  // Auto-sync amount = sum(items) untuk DIRECT_EXPENSE.
+  useEffect(() => {
+    if (isDirect) {
+      setValue("amount", itemsSum, { shouldValidate: false })
+    }
+  }, [isDirect, itemsSum, setValue])
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
@@ -207,6 +302,50 @@ export function TransactionForm({
               )}
             />
 
+            {/* Kind picker -- hanya tampil utk OUT. IN selalu INVOICE_PAYMENT. */}
+            {currentType === "OUT" && (
+              <Field
+                label="Jenis Pengeluaran"
+                required
+                hint={KIND_LABEL[effectiveKind].hint}
+              >
+                <Controller
+                  control={control}
+                  name="kind"
+                  render={({ field }) => (
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(Object.keys(KIND_LABEL) as TxnKind[]).map((k) => {
+                        const active = field.value === k
+                        return (
+                          <button
+                            key={k}
+                            type="button"
+                            disabled={isEdit}
+                            onClick={() => field.onChange(k)}
+                            className={
+                              "h-9 rounded border text-[12px] font-medium px-1 " +
+                              (active
+                                ? "border-brand-500 bg-brand-50 text-brand-700"
+                                : "border-border-strong bg-surface text-ink-600 hover:bg-ink-50") +
+                              (isEdit ? " opacity-60 cursor-not-allowed" : "")
+                            }
+                            title={KIND_LABEL[k].hint}
+                          >
+                            {KIND_LABEL[k].label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                />
+                {isEdit && (
+                  <p className="text-[11px] text-ink-500">
+                    Jenis terkunci setelah transaksi dibuat (audit).
+                  </p>
+                )}
+              </Field>
+            )}
+
             <Field label="Tanggal" required error={errors.tx_date?.message}>
               <Controller
                 control={control}
@@ -217,7 +356,11 @@ export function TransactionForm({
               />
             </Field>
 
-            <Field label="Nominal" required error={errors.amount?.message}>
+            <Field
+              label={isDirect ? "Nominal Total (otomatis = sum rincian)" : "Nominal"}
+              required
+              error={errors.amount?.message}
+            >
               <Controller
                 control={control}
                 name="amount"
@@ -226,6 +369,7 @@ export function TransactionForm({
                     value={field.value || null}
                     onChange={(v) => field.onChange(v ?? 0)}
                     placeholder="0"
+                    disabled={isDirect}
                   />
                 )}
               />
@@ -245,36 +389,168 @@ export function TransactionForm({
               />
             </Field>
 
-            <Field label="Kategori">
-              <Controller
-                control={control}
-                name="category_id"
-                render={({ field }) => (
-                  <CategoryPicker
-                    value={field.value ?? null}
-                    onChange={field.onChange}
-                    type={currentType}
+            {/* CASH_ADVANCE: recipient picker (User combobox + nama bebas) */}
+            {isAdvance && (
+              <>
+                <Field
+                  label="Penerima (User)"
+                  hint="Pilih kalau penerima sudah punya akun. Kalau tidak, kosongkan dan isi 'Nama penerima' di bawah."
+                >
+                  <Controller
+                    control={control}
+                    name="recipient_user_id"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value ?? ""}
+                        onChange={(e) =>
+                          field.onChange(e.target.value ? Number(e.target.value) : null)
+                        }
+                      >
+                        <option value="">— Pilih user —</option>
+                        {(usersQ.data?.items ?? []).map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name} ({u.email})
+                          </option>
+                        ))}
+                      </Select>
+                    )}
                   />
-                )}
-              />
-            </Field>
+                </Field>
+                <Field label="Nama penerima (alternatif)">
+                  <Input
+                    {...register("recipient_name")}
+                    placeholder="Mis. Pak Joko (mandor lapangan)"
+                  />
+                </Field>
+              </>
+            )}
 
-            <Field label="Vendor / Klien">
-              <Controller
-                control={control}
-                name="vendor_client_id"
-                render={({ field }) => (
-                  <VendorPicker value={field.value ?? null} onChange={field.onChange} />
-                )}
-              />
-            </Field>
+            {/* DIRECT_EXPENSE: multi-line items */}
+            {isDirect && (
+              <Field
+                label="Rincian Pengeluaran"
+                required
+                hint="Tambahkan per item belanja (mis. ATK, bensin, parkir, dll)."
+              >
+                <div className="rounded border bg-surface-muted/40 p-2 space-y-2">
+                  {itemsArr.fields.length === 0 ? (
+                    <p className="text-[12px] text-ink-500 italic px-1">
+                      Belum ada rincian. Klik "Tambah Item" di bawah.
+                    </p>
+                  ) : (
+                    itemsArr.fields.map((f, idx) => (
+                      <div
+                        key={f.id}
+                        className="grid grid-cols-12 gap-1.5 items-start rounded bg-surface p-2 border"
+                      >
+                        <div className="col-span-12 sm:col-span-5">
+                          <Input
+                            {...register(`items.${idx}.description`)}
+                            placeholder="Deskripsi (mis. Beli ATK)"
+                            className="h-9 text-sm"
+                          />
+                        </div>
+                        <div className="col-span-5 sm:col-span-3">
+                          <Controller
+                            control={control}
+                            name={`items.${idx}.category_id`}
+                            render={({ field }) => (
+                              <CategoryPicker
+                                value={field.value ?? null}
+                                onChange={field.onChange}
+                                type="OUT"
+                              />
+                            )}
+                          />
+                        </div>
+                        <div className="col-span-6 sm:col-span-3">
+                          <Controller
+                            control={control}
+                            name={`items.${idx}.amount`}
+                            render={({ field }) => (
+                              <AmountInput
+                                value={field.value || null}
+                                onChange={(v) => field.onChange(v ?? 0)}
+                                placeholder="0"
+                              />
+                            )}
+                          />
+                        </div>
+                        <div className="col-span-1 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => itemsArr.remove(idx)}
+                            className="flex h-8 w-8 items-center justify-center rounded text-danger-500 hover:bg-danger-50"
+                            aria-label="Hapus item"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      itemsArr.append({
+                        category_id: null,
+                        description: "",
+                        amount: 0,
+                      })
+                    }
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Tambah Item
+                  </Button>
+                  {items.length > 0 && (
+                    <div className="text-right text-[12px] text-ink-700 pt-1 border-t">
+                      Total:{" "}
+                      <span className="font-semibold tabular-nums">
+                        Rp {itemsSum.toLocaleString("id-ID")}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </Field>
+            )}
 
-            <Field label="Nama Pihak (alternatif)" hint="Kalau vendor/klien belum terdaftar.">
-              <Input
-                {...register("party_name")}
-                placeholder="Mis. PT Beton Jaya"
-              />
-            </Field>
+            {/* Kategori, vendor, party -- hanya tampil utk INVOICE_PAYMENT */}
+            {!isAdvance && !isDirect && (
+              <>
+                <Field label="Kategori">
+                  <Controller
+                    control={control}
+                    name="category_id"
+                    render={({ field }) => (
+                      <CategoryPicker
+                        value={field.value ?? null}
+                        onChange={field.onChange}
+                        type={currentType}
+                      />
+                    )}
+                  />
+                </Field>
+
+                <Field label="Vendor / Klien">
+                  <Controller
+                    control={control}
+                    name="vendor_client_id"
+                    render={({ field }) => (
+                      <VendorPicker value={field.value ?? null} onChange={field.onChange} />
+                    )}
+                  />
+                </Field>
+
+                <Field label="Nama Pihak (alternatif)" hint="Kalau vendor/klien belum terdaftar.">
+                  <Input
+                    {...register("party_name")}
+                    placeholder="Mis. PT Beton Jaya"
+                  />
+                </Field>
+              </>
+            )}
 
             <Field label="Metode Pembayaran" required>
               <Controller
