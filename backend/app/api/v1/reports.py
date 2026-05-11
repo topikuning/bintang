@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.deps import (
     ensure_project_access,
@@ -15,6 +16,8 @@ from app.core.deps import (
 from app.db.session import get_db
 from app.models.models import (
     AuditLog,
+    CashAdvanceSettlement,
+    CashAdvanceSettlementItem,
     Category,
     Company,
     Invoice,
@@ -24,6 +27,8 @@ from app.models.models import (
     Project,
     PurchaseOrder,
     Transaction,
+    TransactionItem,
+    TxnKind,
     TxnStatus,
     TxnType,
     User,
@@ -349,6 +354,7 @@ async def cashflow(
 async def report_transactions(
     format: str = Query("pdf", pattern="^(pdf|xlsx)$"),
     type: TxnType | None = None,
+    kind: str | None = None,                # TxnKind value (string)
     project_id: int | None = None,
     category_id: int | None = None,
     status: TxnStatus | None = None,
@@ -365,6 +371,9 @@ async def report_transactions(
     stmt = select(Transaction).where(Transaction.deleted_at.is_(None))
     if type:
         stmt = stmt.where(Transaction.type == type)
+    if kind:
+        # TxnKind disimpan sbg VARCHAR di DB -- filter string langsung.
+        stmt = stmt.where(Transaction.kind == kind)
     if pids is not None:
         stmt = stmt.where(Transaction.project_id.in_(pids))
     if status:
@@ -435,8 +444,14 @@ async def report_transactions(
     period_label = f"{_fmt_date(date_from) if date_from else 'awal'} s/d {_fmt_date(date_to) if date_to else 'sekarang'}"
     status_label = status.value if status else "semua status"
     scope_line = f"Periode {period_label} · {proj_label} · {arah_label} · {status_label}"
+    _KIND_NICE = {
+        "INVOICE_PAYMENT": "Bayar Invoice",
+        "CASH_ADVANCE": "Dana Operasional",
+        "DIRECT_EXPENSE": "Beban Langsung",
+    }
     filters = {
         "Arah Kas": f"{type.value} ({arah_label})" if type else "Semua (IN+OUT)",
+        "Jenis": _KIND_NICE.get(kind, kind) if kind else "Semua",
         "Periode": period_label,
         "Proyek": proj_label,
         "Status": status.value if status else "Semua",
@@ -943,4 +958,316 @@ async def report_audit(
         summary=summary, scope_line=scope_line,
         detail_label="Riwayat Aktivitas",
         doc_no=f"AUD-{datetime.now().strftime('%Y%m%d%H%M')}",
+    )
+
+
+
+# ============================================================
+# Cash Advance (Dana Operasional) report
+# ============================================================
+@router.get("/cash-advances")
+async def report_cash_advances(
+    format: str = Query("pdf", pattern="^(pdf|xlsx)$"),
+    project_id: int | None = None,
+    settlement_status: str | None = Query(
+        None, pattern="^(SETTLED|OUTSTANDING)$",
+        description="Filter status pertanggungjawaban",
+    ),
+    date_from: date_type | None = None,
+    date_to: date_type | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    """Laporan Dana Operasional (CASH_ADVANCE).
+
+    Kolom: Tanggal | Penerima | Proyek | Pengeluaran | Status Settle |
+           Sudah Lapor | Sisa Outstanding
+    Summary: total disbursed, outstanding total, age rata-rata, % settled.
+    """
+    from decimal import Decimal as _D
+    ids = await user_project_ids(db, user)
+    pids = _accessible_pids(ids, project_id)
+    if pids is not None and not pids:
+        raise HTTPException(403, "no_project_access")
+    stmt = (
+        select(Transaction)
+        .options(
+            selectinload(Transaction.settlement).selectinload(
+                CashAdvanceSettlement.items
+            ),
+        )
+        .where(
+            Transaction.deleted_at.is_(None),
+            Transaction.kind == TxnKind.CASH_ADVANCE.value,
+        )
+    )
+    if pids is not None:
+        stmt = stmt.where(Transaction.project_id.in_(pids))
+    if date_from:
+        stmt = stmt.where(Transaction.tx_date >= date_from)
+    if date_to:
+        stmt = stmt.where(Transaction.tx_date <= date_to)
+    res = await db.execute(stmt.order_by(Transaction.tx_date.desc()))
+    txs = list(res.scalars().all())
+    # Filter by settlement_status post-load (sederhana)
+    if settlement_status == "SETTLED":
+        txs = [t for t in txs if t.settlement is not None]
+    elif settlement_status == "OUTSTANDING":
+        txs = [t for t in txs if t.settlement is None]
+
+    proj_ids = {t.project_id for t in txs}
+    if project_id:
+        proj_ids.add(project_id)
+    proj_map = await _project_map_for_ids(db, proj_ids)
+    user_ids = {t.recipient_user_id for t in txs if t.recipient_user_id}
+    user_map: dict[int, User] = {}
+    if user_ids:
+        user_map = {
+            u.id: u for u in (
+                await db.execute(select(User).where(User.id.in_(user_ids)))
+            ).scalars().all()
+        }
+
+    headers = [
+        "Tanggal", "Penerima", "Proyek", "Pengeluaran",
+        "Status", "Sudah Lapor", "Outstanding",
+    ]
+    cols = [
+        {"align": "center", "width": "78px"},
+        {"align": "left", "width": "20%"},
+        {"align": "left"},
+        {"align": "num", "width": "110px"},
+        {"align": "center", "width": "82px"},
+        {"align": "num", "width": "110px"},
+        {"align": "num", "width": "110px"},
+    ]
+    rows: list[list] = []
+    total_disbursed = _D("0")
+    total_settled = _D("0")
+    total_outstanding = _D("0")
+    n_settled = 0
+    age_days_sum = 0
+    today = datetime.now().date()
+    for t in txs:
+        amt = _D(t.amount or 0)
+        total_disbursed += amt
+        recipient = t.recipient_name or (
+            user_map.get(t.recipient_user_id).name
+            if t.recipient_user_id and user_map.get(t.recipient_user_id)
+            else "?"
+        )
+        sett = t.settlement
+        if sett:
+            n_settled += 1
+            settled_amt = _D(sett.returned_to_kas or 0) + sum(
+                (_D(i.amount) for i in (sett.items or [])), start=_D("0")
+            )
+            total_settled += settled_amt
+            outstanding = amt - settled_amt
+            status_str = "SETTLED"
+        else:
+            settled_amt = _D("0")
+            outstanding = amt
+            status_str = "OUTSTANDING"
+            age_days_sum += (today - t.tx_date).days if t.tx_date else 0
+        total_outstanding += outstanding
+        rows.append([
+            _fmt_date(t.tx_date),
+            recipient,
+            proj_map.get(t.project_id).name if proj_map.get(t.project_id) else "-",
+            _fmt_idr(amt),
+            status_str,
+            _fmt_idr(settled_amt),
+            _fmt_idr(outstanding),
+        ])
+    n_outstanding = len(txs) - n_settled
+    avg_age = (age_days_sum / n_outstanding) if n_outstanding else 0
+    summary = [
+        {"label": "Total Disbursed", "value": f"Rp {_fmt_idr(total_disbursed)}",
+         "sub": f"{len(txs)} tx"},
+        {"label": "Sudah Settled", "value": f"Rp {_fmt_idr(total_settled)}",
+         "sub": f"{n_settled} / {len(txs)} tx"},
+        {"label": "Outstanding", "value": f"Rp {_fmt_idr(total_outstanding)}",
+         "sub": f"{n_outstanding} blm lapor"},
+        {"label": "Avg Age Outstanding", "value": f"{avg_age:.0f} hari",
+         "sub": "rata-rata umur"},
+    ]
+    proj_label = (proj_map.get(project_id).name
+                  if project_id and proj_map.get(project_id) else "Semua proyek")
+    period_label = (
+        f"{_fmt_date(date_from) if date_from else 'awal'} s/d "
+        f"{_fmt_date(date_to) if date_to else 'sekarang'}"
+    )
+    scope_line = (
+        f"Periode {period_label} · {proj_label} · "
+        f"{settlement_status or 'semua status'}"
+    )
+    filters = {
+        "Periode": period_label,
+        "Proyek": proj_label,
+        "Status Settle": settlement_status or "Semua",
+    }
+    footer_row = [
+        "TOTAL", "", "", _fmt_idr(total_disbursed),
+        "", _fmt_idr(total_settled), _fmt_idr(total_outstanding),
+    ]
+    company = await _resolve_company(db, project_id)
+    return await _output(
+        format, title="Laporan Dana Operasional",
+        headers=headers, rows=rows, cols=cols,
+        filters=filters, totals={}, company=company,
+        printed_by=user.name, landscape=True,
+        summary=summary, scope_line=scope_line,
+        detail_label="Detail Dana Operasional", footer_row=footer_row,
+        doc_no=f"DOPS-{datetime.now().strftime('%Y%m%d%H%M')}",
+    )
+
+
+# ============================================================
+# Direct Expense (Beban Langsung) report
+# ============================================================
+@router.get("/direct-expenses")
+async def report_direct_expenses(
+    format: str = Query("pdf", pattern="^(pdf|xlsx)$"),
+    project_id: int | None = None,
+    category_id: int | None = None,
+    date_from: date_type | None = None,
+    date_to: date_type | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    """Laporan Beban Langsung (DIRECT_EXPENSE) -- breakdown per line item.
+
+    Kolom: Tanggal | Proyek | Deskripsi Item | Kategori | Nominal Item
+    Summary: total beban, jumlah tx, jumlah item, kategori terbanyak.
+    """
+    from decimal import Decimal as _D
+    ids = await user_project_ids(db, user)
+    pids = _accessible_pids(ids, project_id)
+    if pids is not None and not pids:
+        raise HTTPException(403, "no_project_access")
+    stmt = (
+        select(Transaction)
+        .options(selectinload(Transaction.items))
+        .where(
+            Transaction.deleted_at.is_(None),
+            Transaction.kind == TxnKind.DIRECT_EXPENSE.value,
+        )
+    )
+    if pids is not None:
+        stmt = stmt.where(Transaction.project_id.in_(pids))
+    if date_from:
+        stmt = stmt.where(Transaction.tx_date >= date_from)
+    if date_to:
+        stmt = stmt.where(Transaction.tx_date <= date_to)
+    res = await db.execute(stmt.order_by(Transaction.tx_date.desc()))
+    txs = list(res.scalars().all())
+
+    proj_ids = {t.project_id for t in txs}
+    if project_id:
+        proj_ids.add(project_id)
+    proj_map = await _project_map_for_ids(db, proj_ids)
+    # Category map (line items + tx category fallback)
+    cat_ids: set[int] = set()
+    for t in txs:
+        if t.category_id:
+            cat_ids.add(t.category_id)
+        for it in (t.items or []):
+            if it.category_id:
+                cat_ids.add(it.category_id)
+    cat_map: dict[int, Category] = {}
+    if cat_ids:
+        cat_map = {
+            c.id: c for c in (
+                await db.execute(select(Category).where(Category.id.in_(cat_ids)))
+            ).scalars().all()
+        }
+
+    headers = ["Tanggal", "Proyek", "Deskripsi", "Kategori", "Nominal"]
+    cols = [
+        {"align": "center", "width": "78px"},
+        {"align": "left", "width": "20%"},
+        {"align": "left"},
+        {"align": "left", "width": "20%"},
+        {"align": "num", "width": "110px"},
+    ]
+    rows: list[list] = []
+    total = _D("0")
+    cat_count: dict[str, int] = {}
+    n_items = 0
+    for t in txs:
+        items = t.items or []
+        # Filter by category jika diset (filter di line item level)
+        if category_id is not None:
+            items = [i for i in items if i.category_id == category_id]
+            if not items and t.category_id != category_id:
+                continue
+        if items:
+            for it in items:
+                amt = _D(it.amount or 0)
+                total += amt
+                n_items += 1
+                cat_name = (
+                    cat_map.get(it.category_id).name if it.category_id
+                    and cat_map.get(it.category_id) else "-"
+                )
+                cat_count[cat_name] = cat_count.get(cat_name, 0) + 1
+                rows.append([
+                    _fmt_date(t.tx_date),
+                    proj_map.get(t.project_id).name if proj_map.get(t.project_id) else "-",
+                    it.description,
+                    cat_name,
+                    _fmt_idr(amt),
+                ])
+        else:
+            # Fallback: tx tanpa items (legacy / korupsi data) -> 1 baris pakai amount tx
+            amt = _D(t.amount or 0)
+            total += amt
+            cat_name = (
+                cat_map.get(t.category_id).name if t.category_id
+                and cat_map.get(t.category_id) else "-"
+            )
+            cat_count[cat_name] = cat_count.get(cat_name, 0) + 1
+            rows.append([
+                _fmt_date(t.tx_date),
+                proj_map.get(t.project_id).name if proj_map.get(t.project_id) else "-",
+                t.description or "(tanpa rincian)",
+                cat_name,
+                _fmt_idr(amt),
+            ])
+    top_cat = max(cat_count, key=cat_count.get) if cat_count else "—"
+    summary = [
+        {"label": "Total Beban Langsung", "value": f"Rp {_fmt_idr(total)}",
+         "sub": f"{len(txs)} tx"},
+        {"label": "Jumlah Item", "value": str(n_items),
+         "sub": "rincian per kategori"},
+        {"label": "Kategori Terbanyak", "value": top_cat,
+         "sub": f"{cat_count.get(top_cat, 0)}× tercatat" if top_cat != "—" else ""},
+        {"label": "Periode", "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "—",
+         "sub": f"sejak {_fmt_date(date_from)}" if date_from else "tanpa batas"},
+    ]
+    proj_label = (proj_map.get(project_id).name
+                  if project_id and proj_map.get(project_id) else "Semua proyek")
+    cat_label = (cat_map.get(category_id).name
+                 if category_id and cat_map.get(category_id) else "Semua kategori")
+    period_label = (
+        f"{_fmt_date(date_from) if date_from else 'awal'} s/d "
+        f"{_fmt_date(date_to) if date_to else 'sekarang'}"
+    )
+    scope_line = f"Periode {period_label} · {proj_label} · {cat_label}"
+    filters = {
+        "Periode": period_label,
+        "Proyek": proj_label,
+        "Kategori": cat_label,
+    }
+    footer_row = ["TOTAL", "", "", "", _fmt_idr(total)]
+    company = await _resolve_company(db, project_id)
+    return await _output(
+        format, title="Laporan Beban Langsung",
+        headers=headers, rows=rows, cols=cols,
+        filters=filters, totals={}, company=company,
+        printed_by=user.name, landscape=True,
+        summary=summary, scope_line=scope_line,
+        detail_label="Detail Beban Langsung", footer_row=footer_row,
+        doc_no=f"DEXP-{datetime.now().strftime('%Y%m%d%H%M')}",
     )
