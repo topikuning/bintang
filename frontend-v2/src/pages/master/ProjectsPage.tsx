@@ -12,6 +12,7 @@ import {
   useUpdateProject,
   type ProjectInput,
 } from "@/hooks/useProjectMutations"
+import { useProjectDashboard } from "@/hooks/useDashboard"
 import { useCompanies } from "@/hooks/useCompanies"
 import { MasterPageShell } from "@/components/master/MasterPageShell"
 import { Badge } from "@/components/ui/badge"
@@ -326,6 +327,22 @@ function ProjectForm({
   const create = useCreateProject()
   const update = useUpdateProject(project?.id ?? 0)
 
+  // Cek aktivitas proyek -- kode immutable kalau sudah ada Tx/Invoice/PO
+  // (lihat backend update_project: PO number embed code, lookup chat
+  // pakai code, Excel importer pakai code). Backend juga validate, ini
+  // hint UX supaya field input langsung disabled + ada penjelasan.
+  const dashQ = useProjectDashboard(isEdit && open ? project!.id : null)
+  const codeLocked =
+    isEdit &&
+    !!dashQ.data &&
+    (dashQ.data.totals.in > 0 ||
+      dashQ.data.totals.out > 0 ||
+      dashQ.data.totals.pending_in > 0 ||
+      dashQ.data.totals.pending_out > 0 ||
+      dashQ.data.invoice_open_total > 0 ||
+      dashQ.data.invoice_paid_total > 0 ||
+      dashQ.data.invoices.length > 0)
+
   const {
     control,
     register,
@@ -389,8 +406,26 @@ function ProjectForm({
       className="flex flex-col gap-3 px-4 py-4 sm:px-5"
     >
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Kode" required error={errors.code?.message}>
-          <Input {...register("code")} placeholder="Mis. KNMP-MTR" autoFocus className="font-mono" />
+        <Field
+          label="Kode"
+          required
+          error={errors.code?.message}
+          hint={
+            codeLocked
+              ? "Terkunci -- proyek sudah punya transaksi/invoice/PO. Kode di-embed di nomor PO + alias chat."
+              : isEdit
+                ? "Bisa diubah selama belum ada transaksi/invoice/PO."
+                : undefined
+          }
+        >
+          <Input
+            {...register("code")}
+            placeholder="Mis. KNMP-MTR"
+            autoFocus={!isEdit}
+            className="font-mono"
+            disabled={codeLocked}
+            readOnly={codeLocked}
+          />
         </Field>
         <Field label="Status" required>
           <Select {...register("status")}>

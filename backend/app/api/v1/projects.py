@@ -245,8 +245,55 @@ async def update_project(
     p = await db.get(Project, pid)
     if not p or p.deleted_at is not None:
         raise HTTPException(404, "not_found")
+
+    data = payload.model_dump(exclude_unset=True)
+
+    # Code IMMUTABLE jika sudah ada aktivitas. Walau secara FK relasi pakai
+    # project_id, 'code' di-embed di nomor PO (PO/YYYY/MM/{CODE}/####) dan
+    # dipakai sbg lookup chat (Telegram/WhatsApp) + Excel import. Ubah code
+    # akan bikin seri PO inkonsisten + putus alias chat. Block utk SEMUA
+    # role (termasuk SUPERADMIN) -- escape hatch: hapus dulu semua tx/inv/PO.
+    if "code" in data and data["code"] != p.code:
+        from app.models.models import (
+            Invoice as _Invoice,
+            PurchaseOrder as _PurchaseOrder,
+            Transaction as _Transaction,
+        )
+        tx_exists = (await db.execute(
+            select(_Transaction.id).where(
+                _Transaction.project_id == pid,
+                _Transaction.deleted_at.is_(None),
+            ).limit(1)
+        )).scalar_one_or_none() is not None
+        inv_exists = (await db.execute(
+            select(_Invoice.id).where(
+                _Invoice.project_id == pid,
+                _Invoice.deleted_at.is_(None),
+            ).limit(1)
+        )).scalar_one_or_none() is not None
+        po_exists = (await db.execute(
+            select(_PurchaseOrder.id).where(
+                _PurchaseOrder.project_id == pid,
+                _PurchaseOrder.deleted_at.is_(None),
+            ).limit(1)
+        )).scalar_one_or_none() is not None
+        if tx_exists or inv_exists or po_exists:
+            raise HTTPException(
+                400,
+                "project_code_locked: kode proyek tidak bisa diubah karena "
+                "sudah ada transaksi/invoice/PO terhubung. Kode di-embed di "
+                "nomor PO dan dipakai sbg lookup chat -- mengubahnya akan "
+                "memutus referensi historis.",
+            )
+        # Validasi unik kalau memang diizinkan (tidak ada activity).
+        clash = (await db.execute(
+            select(Project).where(Project.code == data["code"], Project.id != pid)
+        )).scalar_one_or_none()
+        if clash:
+            raise HTTPException(409, "project_code_already_used")
+
     before = snapshot(p)
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    for k, v in data.items():
         setattr(p, k, v)
     await log(db, user_id=admin.id, entity="project", entity_id=p.id,
               action=AuditAction.UPDATE, before=before, after=snapshot(p))
