@@ -1,14 +1,18 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
-import { Building2, FolderKanban, Search } from "lucide-react"
+import { Building2, ClipboardList, FolderKanban, Plus, Search } from "lucide-react"
 import { useProjectsStats, type ProjectStats } from "@/hooks/useProjectsStats"
 import { useCompanies } from "@/hooks/useCompanies"
+import { useProposalCount } from "@/hooks/useProjectProposals"
 import { useUIPrefs } from "@/store/ui-prefs"
+import { useAuthStore } from "@/store/auth"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Combobox } from "@/components/forms/Combobox"
 import { ErrorState } from "@/components/data/ErrorState"
+import { ProjectProposalForm } from "@/components/domain/project/ProjectProposalForm"
 import { fmtIDR } from "@/lib/format"
 import { apiErrorMessage } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -24,9 +28,19 @@ import { cn } from "@/lib/utils"
  * Master CRUD (tambah/edit/hapus) tetap di /master/projects.
  */
 export function ProjectsHubPage() {
+  const role = useAuthStore((s) => s.user?.role)
+  const isAdmin = role === "SUPERADMIN" || role === "CENTRAL_ADMIN"
+  const canPropose = role !== "EXECUTIVE"
+
   const [q, setQ] = useState("")
   const [companyId, setCompanyId] = useState<number | null>(null)
   const [statusFilter, setStatusFilter] = useState<"AKTIF" | "ALL">("AKTIF")
+  const [proposeOpen, setProposeOpen] = useState(false)
+
+  // Pending proposal count (admin saja -- 403 utk non-admin, queryClient
+  // tetap retry-disabled supaya tdk spam log).
+  const proposalCountQ = useProposalCount()
+  const pendingCount = isAdmin ? proposalCountQ.data?.count ?? 0 : 0
 
   const params = useMemo(
     () => ({
@@ -55,11 +69,40 @@ export function ProjectsHubPage() {
 
   return (
     <div className="flex flex-col gap-3 p-3 sm:p-5 lg:p-6 max-w-5xl">
-      <div>
-        <h1 className="text-xl font-bold text-ink-900 sm:text-2xl">Proyek</h1>
-        <p className="text-[12px] text-ink-500 mt-0.5">
-          Pilih proyek untuk lihat dashboard dan akses cepat ke transaksi/invoice.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-ink-900 sm:text-2xl">Proyek</h1>
+          <p className="text-[12px] text-ink-500 mt-0.5">
+            Pilih proyek untuk lihat dashboard dan akses cepat ke transaksi/invoice.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {isAdmin && pendingCount > 0 && (
+            <Link to="/projects/approval-queue">
+              <Button variant="secondary" size="md">
+                <ClipboardList className="h-4 w-4" />
+                Antrian Proposal
+                <span className="ml-1 rounded-full bg-warning-500 text-white px-1.5 py-0.5 text-[10px] font-bold">
+                  {pendingCount}
+                </span>
+              </Button>
+            </Link>
+          )}
+          {isAdmin && pendingCount === 0 && (
+            <Link to="/projects/approval-queue">
+              <Button variant="secondary" size="md">
+                <ClipboardList className="h-4 w-4" />
+                Antrian Proposal
+              </Button>
+            </Link>
+          )}
+          {canPropose && (
+            <Button onClick={() => setProposeOpen(true)} size="md">
+              <Plus className="h-4 w-4" />
+              Ajukan Proyek
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Filter bar */}
@@ -117,6 +160,11 @@ export function ProjectsHubPage() {
           ))}
         </div>
       )}
+
+      <ProjectProposalForm
+        open={proposeOpen}
+        onClose={() => setProposeOpen(false)}
+      />
     </div>
   )
 }

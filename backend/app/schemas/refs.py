@@ -94,9 +94,37 @@ class ProjectOut(ProjectBase):
     # Diisi dari relasi Project.company (selectinload di endpoint).
     # Membantu UI menampilkan dan mencari proyek berdasarkan perusahaan.
     company_name: str | None = None
+    # Proposal workflow metadata (None utk proyek lama / yg langsung dibuat admin).
+    proposed_by_id: int | None = None
+    proposed_by_name: str | None = None
+    approved_by_id: int | None = None
+    approved_by_name: str | None = None
+    approved_at: str | None = None
+    rejection_reason: str | None = None
 
     class Config:
         from_attributes = True
+
+
+class ProjectProposalCreate(BaseModel):
+    """Subset payload utk endpoint POST /projects/proposal.
+
+    Kolom yg perlu admin atur (tax/marketing/budget detail) di-set default --
+    admin bisa edit setelah approve. Pengaju cukup isi info inti.
+    """
+    code: str
+    name: str
+    location: str | None = None
+    company_id: int
+    start_date: date | None = None
+    end_date: date | None = None
+    notes: str | None = None
+    project_value: Decimal = Decimal("0")
+    budget_amount: Decimal = Decimal("0")
+
+
+class ProjectRejectIn(BaseModel):
+    reason: str
 
 
 # Categories

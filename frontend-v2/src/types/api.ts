@@ -30,7 +30,12 @@ export interface TokenResponse {
   token_type: "bearer"
 }
 
-export type ProjectStatus = "AKTIF" | "SELESAI" | "DITAHAN" | "DIBATALKAN"
+export type ProjectStatus =
+  | "MENUNGGU_PERSETUJUAN"
+  | "AKTIF"
+  | "SELESAI"
+  | "DITAHAN"
+  | "DIBATALKAN"
 
 export interface Project {
   id: number
@@ -51,6 +56,13 @@ export interface Project {
   tax_ppn_pct: string | number
   tax_pph_pct: string | number
   marketing_pct: string | number
+  // Proposal workflow metadata
+  proposed_by_id?: number | null
+  proposed_by_name?: string | null
+  approved_by_id?: number | null
+  approved_by_name?: string | null
+  approved_at?: string | null
+  rejection_reason?: string | null
 }
 
 export interface Page<T> {

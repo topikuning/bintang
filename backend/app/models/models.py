@@ -33,6 +33,10 @@ class UserRole(str, enum.Enum):
 
 
 class ProjectStatus(str, enum.Enum):
+    # Proposal dr non-admin user -> menunggu approve dr CENTRAL/SUPERADMIN.
+    # Tidak muncul di operasional (ProjectPicker/Switcher/list/dashboard);
+    # hanya muncul di approval queue + master CRUD utk admin.
+    MENUNGGU_PERSETUJUAN = "MENUNGGU_PERSETUJUAN"
     AKTIF = "AKTIF"
     SELESAI = "SELESAI"
     DITAHAN = "DITAHAN"
@@ -113,9 +117,11 @@ class AuditAction(str, enum.Enum):
     CREATE = "CREATE"
     UPDATE = "UPDATE"
     DELETE = "DELETE"
+    SUBMIT = "SUBMIT"
     VERIFY = "VERIFY"
     CANCEL = "CANCEL"
     APPROVE = "APPROVE"
+    REJECT = "REJECT"
 
 
 # --- Core entities ---
@@ -243,6 +249,15 @@ class Project(TimestampMixin, Base):
     tax_ppn_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("11"))
     tax_pph_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("2"))
     marketing_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("15"))
+
+    # Proposal workflow: kalau diajukan oleh non-admin, status=MENUNGGU_PERSETUJUAN.
+    # proposed_by_id wajib utk audit (siapa yg mengajukan). approved_by_id +
+    # approved_at terisi saat admin approve. rejection_reason terisi saat reject
+    # (status berubah jadi DIBATALKAN).
+    proposed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    approved_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     company: Mapped[Company] = relationship(back_populates="projects")
     user_links: Mapped[list[ProjectUser]] = relationship(
