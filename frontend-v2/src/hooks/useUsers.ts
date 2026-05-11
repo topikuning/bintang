@@ -57,9 +57,10 @@ export function useAssignProject() {
     },
     onSuccess: (_, vars) => {
       // useUsers list (project_ids per user berubah) + useProjectUsers
-      // list anggota tim per project (keynya beda namespace).
+      // list anggota tim per project + useUserProjects list proyek per user.
       qc.invalidateQueries({ queryKey: KEY })
       qc.invalidateQueries({ queryKey: ["projects", "users", vars.projectId] })
+      qc.invalidateQueries({ queryKey: ["users", "projects", vars.userId] })
     },
   })
 }
@@ -73,6 +74,26 @@ export function useUnassignProject() {
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: KEY })
       qc.invalidateQueries({ queryKey: ["projects", "users", vars.projectId] })
+      qc.invalidateQueries({ queryKey: ["users", "projects", vars.userId] })
     },
+  })
+}
+
+export interface UserProject {
+  id: number
+  code: string
+  name: string
+  status: string
+}
+
+/** List proyek yg ditugaskan ke user (eksplisit lewat project_users). */
+export function useUserProjects(userId: number | null | undefined) {
+  return useQuery({
+    queryKey: ["users", "projects", userId ?? -1],
+    queryFn: async (): Promise<UserProject[]> => {
+      const { data } = await api.get<UserProject[]>(`/users/${userId}/projects`)
+      return data
+    },
+    enabled: userId != null && userId > 0,
   })
 }

@@ -1,14 +1,30 @@
 import { useEffect, useState } from "react"
 import { Controller, useForm } from "react-hook-form"
 import type { ColumnDef } from "@tanstack/react-table"
-import { Eye, EyeOff, Loader2, Pencil, ShieldCheck, Trash2, User as UserIcon } from "lucide-react"
+import {
+  Eye,
+  EyeOff,
+  FolderKanban,
+  Loader2,
+  Pencil,
+  Plus,
+  ShieldCheck,
+  Trash2,
+  User as UserIcon,
+  X,
+} from "lucide-react"
 import { z } from "zod"
 import {
+  useAssignProject,
   useCreateUser,
   useDeleteUser,
+  useUnassignProject,
   useUpdateUser,
+  useUserProjects,
   useUsers,
 } from "@/hooks/useUsers"
+import { useProjects } from "@/hooks/useProjects"
+import { Combobox } from "@/components/forms/Combobox"
 import { useAuthStore } from "@/store/auth"
 import { MasterPageShell } from "@/components/master/MasterPageShell"
 import { Badge } from "@/components/ui/badge"
@@ -451,6 +467,17 @@ function UserForm({
       <Field label="Telepon">
         <Input {...register("phone")} inputMode="tel" placeholder="0812 3456 7890" className="font-mono" />
       </Field>
+
+      {/* Akses proyek -- daftar project_users + tombol tambah/hapus. Hanya
+          muncul saat mode edit (user sudah punya id) dan user tidak scope_all
+          (kalau scope_all, sudah akses semua proyek tanpa perlu assignment). */}
+      {isEdit && user && (
+        <UserProjectsSection
+          userId={user.id}
+          userName={user.name}
+          scopeAll={user.scope_all_projects}
+        />
+      )}
     </form>
   )
 
@@ -492,6 +519,131 @@ function UserForm({
         {footer}
       </SheetContent>
     </Sheet>
+  )
+}
+
+function UserProjectsSection({
+  userId,
+  userName,
+  scopeAll,
+}: {
+  userId: number
+  userName: string
+  scopeAll: boolean
+}) {
+  const projectsQ = useUserProjects(userId)
+  const assign = useAssignProject()
+  const unassign = useUnassignProject()
+  const allProjectsQ = useProjects({ status: "AKTIF", size: 500 })
+
+  const [pickerVal, setPickerVal] = useState<number | null>(null)
+  const items = projectsQ.data ?? []
+  const assignedIds = new Set(items.map((p) => p.id))
+  const candidates = (allProjectsQ.data?.items ?? []).filter(
+    (p) => !assignedIds.has(p.id),
+  )
+
+  const handleAdd = async () => {
+    if (!pickerVal) return
+    try {
+      await assign.mutateAsync({ userId, projectId: pickerVal })
+      toast.success("Proyek ditambahkan utk user")
+      setPickerVal(null)
+    } catch (err) {
+      toast.error("Gagal menambah proyek", { description: apiErrorMessage(err) })
+    }
+  }
+
+  const handleRemove = async (projectId: number, projectName: string) => {
+    try {
+      await unassign.mutateAsync({ userId, projectId })
+      toast.success(`Akses ke "${projectName}" dicabut`)
+    } catch (err) {
+      toast.error("Gagal mencabut akses", { description: apiErrorMessage(err) })
+    }
+  }
+
+  return (
+    <Field
+      label="Akses Proyek (per proyek)"
+      hint={
+        scopeAll
+          ? `${userName} punya scope 'Akses semua proyek' -- daftar di bawah tdk dipakai utk authorization (semua proyek tetap bisa diakses). Hanya catatan eksplisit.`
+          : "Pilih proyek di bawah utk tambah akses. User hanya bisa lihat proyek yg ditugaskan di sini."
+      }
+    >
+      <div className="rounded-md border bg-surface-muted/40 p-2.5 space-y-2">
+        {projectsQ.isLoading ? (
+          <div className="text-[12px] text-ink-500">Memuat daftar proyek…</div>
+        ) : items.length === 0 ? (
+          <div className="text-[12px] text-ink-500 italic">
+            Belum ada proyek yg ditugaskan.
+          </div>
+        ) : (
+          <ul className="flex flex-wrap gap-1.5">
+            {items.map((p) => (
+              <li
+                key={p.id}
+                className="inline-flex items-center gap-1.5 rounded border border-brand-200 bg-brand-50 pl-2 pr-1 py-0.5 text-[12px]"
+              >
+                <FolderKanban className="h-3 w-3 text-brand-600" />
+                <span className="font-medium text-brand-800">{p.name}</span>
+                <span className="font-mono text-[10px] text-ink-500">{p.code}</span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    handleRemove(p.id, p.name)
+                  }}
+                  disabled={unassign.isPending}
+                  className="ml-1 flex h-5 w-5 items-center justify-center rounded text-danger-500 hover:bg-danger-50"
+                  aria-label={`Cabut akses ke ${p.name}`}
+                  title="Cabut akses"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="flex items-center gap-2 pt-1">
+          <div className="flex-1 min-w-0">
+            <Combobox
+              value={pickerVal}
+              onChange={(v) => setPickerVal(v == null ? null : Number(v))}
+              options={candidates.map((p) => ({
+                value: p.id,
+                label: p.name,
+                hint: p.code,
+              }))}
+              placeholder={
+                candidates.length === 0
+                  ? "Semua proyek aktif sudah ditugaskan"
+                  : "Pilih proyek utk ditambahkan…"
+              }
+              disabled={candidates.length === 0}
+              isLoading={allProjectsQ.isLoading}
+              sheetTitle="Pilih Proyek"
+              emptyMessage="Tidak ada proyek tersisa"
+            />
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleAdd}
+            disabled={!pickerVal || assign.isPending}
+          >
+            {assign.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
+            Tambah
+          </Button>
+        </div>
+      </div>
+    </Field>
   )
 }
 

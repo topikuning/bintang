@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_superadmin
+from app.core.deps import get_current_user, require_admin, require_superadmin
 from app.core.security import hash_password
 from app.db.session import get_db
-from app.models.models import AuditAction, ProjectUser, User, UserRole
+from app.models.models import AuditAction, Project, ProjectUser, User, UserRole
 from app.schemas.auth import UserCreate, UserOut, UserUpdate
 from app.schemas.common import Page
 from app.services.audit import log, snapshot
@@ -135,11 +135,46 @@ async def delete_user(
     await db.commit()
 
 
+@router.get("/{user_id}/projects")
+async def list_user_projects(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> list[dict]:
+    """Daftar proyek yang di-assign ke user via project_users. Admin only.
+
+    Catatan: user dgn scope_all_projects=True secara efektif punya akses
+    ke semua proyek, tapi endpoint ini hanya mengembalikan baris eksplisit
+    di project_users (utk UI bisa kasih hint kalau scope_all aktif).
+    """
+    target = await db.get(User, user_id)
+    if not target or target.deleted_at is not None:
+        raise HTTPException(404, "user_not_found")
+    res = await db.execute(
+        select(Project)
+        .join(ProjectUser, ProjectUser.project_id == Project.id)
+        .where(
+            ProjectUser.user_id == user_id,
+            Project.deleted_at.is_(None),
+        )
+        .order_by(Project.name)
+    )
+    return [
+        {
+            "id": p.id,
+            "code": p.code,
+            "name": p.name,
+            "status": p.status.value,
+        }
+        for p in res.scalars().all()
+    ]
+
+
 @router.post("/{user_id}/projects/{project_id}", status_code=204)
 async def assign_project(
     user_id: int, project_id: int,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> None:
     exists = (await db.execute(
         select(ProjectUser).where(
@@ -158,7 +193,7 @@ async def assign_project(
 async def unassign_project(
     user_id: int, project_id: int,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_superadmin),
+    admin: User = Depends(require_admin),
 ) -> None:
     res = await db.execute(
         select(ProjectUser).where(
