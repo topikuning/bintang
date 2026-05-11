@@ -74,6 +74,47 @@ class StubOCRAdapter(OCRAdapter):
         }
 
 
+_DEFAULT_MODEL = {
+    "claude": "claude-haiku-4-5",
+    "mistral": "mistral-ocr-latest",
+}
+
+
+def _resolve_model(engine: str) -> str:
+    """Pilih model utk engine. Prioritas:
+    1. Env per-engine: OCR_MODEL_CLAUDE / OCR_MODEL_MISTRAL
+    2. Env legacy OCR_MODEL kalau prefix cocok (mis. claude-* utk claude)
+       -- backward compat user yg sdh set sebelumnya.
+    3. Default hardcoded per engine.
+    """
+    import logging
+
+    from app.core.config import settings
+
+    log = logging.getLogger(__name__)
+
+    per_engine = {
+        "claude": settings.OCR_MODEL_CLAUDE,
+        "mistral": settings.OCR_MODEL_MISTRAL,
+    }.get(engine, "")
+    if per_engine:
+        return per_engine
+    legacy = (settings.OCR_MODEL or "").strip()
+    if legacy:
+        # Cek prefix cocok engine
+        if engine == "claude" and legacy.startswith("claude-"):
+            return legacy
+        if engine == "mistral" and legacy.startswith("mistral-"):
+            return legacy
+        # Mismatch -> warn + pakai default
+        log.warning(
+            "ocr.model_mismatch: OCR_MODEL=%r tdk cocok utk engine=%s -- "
+            "pakai default '%s'. Set OCR_MODEL_%s utk override.",
+            legacy, engine, _DEFAULT_MODEL.get(engine), engine.upper(),
+        )
+    return _DEFAULT_MODEL.get(engine, "")
+
+
 def get_ocr_adapter(engine_override: str | None = None) -> OCRAdapter:
     """Pilih adapter berdasarkan env OCR_ENGINE atau override eksplisit.
 
@@ -85,10 +126,7 @@ def get_ocr_adapter(engine_override: str | None = None) -> OCRAdapter:
     - "mistral" + MISTRAL_API_KEY   -> MistralOCRAdapter (lebih murah)
     - selain itu                    -> StubOCRAdapter
 
-    OCR_MODEL default per engine:
-      - claude  -> claude-haiku-4-5
-      - mistral -> mistral-ocr-latest
-    Override eksplisit via env OCR_MODEL.
+    Model di-resolve via _resolve_model() (per-engine env > legacy > default).
     """
     from app.core.config import settings
 
@@ -99,14 +137,14 @@ def get_ocr_adapter(engine_override: str | None = None) -> OCRAdapter:
 
         return ClaudeVisionOCRAdapter(
             api_key=settings.ANTHROPIC_API_KEY,
-            model=settings.OCR_MODEL or "claude-haiku-4-5",
+            model=_resolve_model("claude"),
         )
     if engine == "mistral" and settings.MISTRAL_API_KEY:
         from app.services.ocr.mistral_adapter import MistralOCRAdapter
 
         return MistralOCRAdapter(
             api_key=settings.MISTRAL_API_KEY,
-            model=settings.OCR_MODEL or "mistral-ocr-latest",
+            model=_resolve_model("mistral"),
         )
     return StubOCRAdapter()
 
@@ -124,7 +162,7 @@ def list_available_engines() -> list[dict]:
         {
             "key": "claude",
             "label": "Claude Vision (akurasi tinggi)",
-            "model": settings.OCR_MODEL or "claude-haiku-4-5",
+            "model": _resolve_model("claude"),
             "cost_per_doc": "~$0.01 / gambar",
             "available": bool(settings.ANTHROPIC_API_KEY),
             "default": default_engine == "claude",
@@ -133,7 +171,7 @@ def list_available_engines() -> list[dict]:
         {
             "key": "mistral",
             "label": "Mistral OCR (lebih murah)",
-            "model": settings.OCR_MODEL or "mistral-ocr-latest",
+            "model": _resolve_model("mistral"),
             "cost_per_doc": "~$0.002 / halaman",
             "available": bool(settings.MISTRAL_API_KEY),
             "default": default_engine == "mistral",

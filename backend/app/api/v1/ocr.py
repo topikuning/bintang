@@ -89,7 +89,8 @@ async def test_connection(
                 "detail": str(e),
                 "hint": "Restart deploy supaya pip install anthropic dijalankan.",
             }
-        model = settings.OCR_MODEL or "claude-haiku-4-5"
+        from app.services.ocr.adapter import _resolve_model
+        model = _resolve_model("claude")
         adapter = ClaudeVisionOCRAdapter(
             api_key=settings.ANTHROPIC_API_KEY, model=model,
         )
@@ -104,9 +105,10 @@ async def test_connection(
                 "error": "missing_api_key",
                 "hint": "Set MISTRAL_API_KEY di env (https://console.mistral.ai/).",
             }
+        from app.services.ocr.adapter import _resolve_model
         from app.services.ocr.mistral_adapter import MistralOCRAdapter
 
-        model = settings.OCR_MODEL or "mistral-ocr-latest"
+        model = _resolve_model("mistral")
         adapter = MistralOCRAdapter(
             api_key=settings.MISTRAL_API_KEY, model=model,
         )

@@ -36,10 +36,15 @@ class Settings(BaseSettings):
     #   "mistral" -> Mistral Document AI (mistral-ocr-latest; ~$0.002/page,
     #               5-10x lebih murah dari Claude)
     OCR_ENGINE: str = "stub"
-    # Model OCR. Auto-pick default sesuai engine:
-    #   claude  -> "claude-haiku-4-5"
-    #   mistral -> "mistral-ocr-latest"
-    # Override hanya kalau perlu (mis. "claude-sonnet-4-6" utk akurasi tinggi).
+    # Model OCR -- ada 2 env terpisah PER engine supaya tidak salah forward
+    # (mis. claude model ke Mistral API -> 400 invalid_model).
+    #   OCR_MODEL_CLAUDE   default: "claude-haiku-4-5"
+    #   OCR_MODEL_MISTRAL  default: "mistral-ocr-latest"
+    OCR_MODEL_CLAUDE: str = ""
+    OCR_MODEL_MISTRAL: str = ""
+    # Backward-compat: OCR_MODEL lama. Akan di-forward HANYA kalau prefix
+    # cocok dgn engine yg dipakai (claude-* utk claude, mistral-* utk mistral).
+    # Engine lain akan abaikan (pakai default). Logging warning kalau mismatch.
     OCR_MODEL: str = ""
     # API key Anthropic (wajib kalau OCR_ENGINE="claude"). Kosong = skip.
     ANTHROPIC_API_KEY: str = ""
