@@ -6,8 +6,10 @@ import {
   FilePlus,
   FileText,
   History,
+  Receipt,
   ShoppingCart,
   TrendingUp,
+  Wallet,
 } from "lucide-react"
 import { Link } from "react-router-dom"
 import { ReportSection } from "@/components/reports/ReportSection"
@@ -44,7 +46,7 @@ export function ReportsPage() {
       <ReportSection
         slug="transactions"
         title="Transaksi Detail"
-        description="Daftar lengkap transaksi dgn filter status & arah. Cocok utk audit & rekonsiliasi."
+        description="Daftar lengkap transaksi dgn filter status, arah & jenis (Invoice/Dana Ops/Beban Langsung)."
         icon={CreditCard}
         extraFilters={[
           {
@@ -68,7 +70,42 @@ export function ReportsPage() {
               { value: "OUT", label: "Pengeluaran" },
             ],
           },
+          {
+            name: "kind",
+            label: "Jenis",
+            type: "select",
+            options: [
+              { value: "INVOICE_PAYMENT", label: "Bayar Invoice" },
+              { value: "CASH_ADVANCE", label: "Dana Operasional" },
+              { value: "DIRECT_EXPENSE", label: "Beban Langsung" },
+            ],
+          },
         ]}
+      />
+
+      <ReportSection
+        slug="cash-advances"
+        title="Dana Operasional"
+        description="Laporan kas bon / cash advance: per penerima + status pertanggungjawaban. Lihat outstanding + age."
+        icon={Wallet}
+        extraFilters={[
+          {
+            name: "settlement_status",
+            label: "Status Settle",
+            type: "select",
+            options: [
+              { value: "OUTSTANDING", label: "Belum Lapor" },
+              { value: "SETTLED", label: "Sudah Lapor" },
+            ],
+          },
+        ]}
+      />
+
+      <ReportSection
+        slug="direct-expenses"
+        title="Beban Langsung"
+        description="Rincian pengeluaran tanpa invoice (struk/kwitansi) per item, per kategori, per proyek."
+        icon={Receipt}
       />
 
       <ReportSection
