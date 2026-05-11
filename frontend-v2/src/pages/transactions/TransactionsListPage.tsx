@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react"
-import { ArrowDownLeft, ArrowUpRight, Plus, Wallet } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "react-router-dom"
+import { ArrowDownLeft, ArrowUpRight, Plus, Search, Wallet, X } from "lucide-react"
 import { useTransaction, useTransactions, type TransactionListParams } from "@/hooks/useTransactions"
 import { useProjects } from "@/hooks/useProjects"
 import { useCategories } from "@/hooks/useCategories"
@@ -42,6 +43,7 @@ const TYPE_TABS: Array<{ value: TypeFilter; label: string }> = [
 export function TransactionsListPage() {
   const bp = useBreakpoint()
   const { defaultProjectId } = useUIPrefs()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(50)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
@@ -49,6 +51,9 @@ export function TransactionsListPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Transaction | null>(null)
+  // q dipasok via URL (mis. dr Topbar global search /transactions?q=foo).
+  // Reactive: berubah saat user search lagi dr Topbar tanpa reload.
+  const q = searchParams.get("q")?.trim() ?? ""
 
   const params: TransactionListParams = useMemo(
     () => ({
@@ -57,9 +62,15 @@ export function TransactionsListPage() {
       project_id: defaultProjectId ?? undefined,
       status: statusFilter === "ALL" ? undefined : statusFilter,
       type: typeFilter === "ALL" ? undefined : typeFilter,
+      q: q || undefined,
     }),
-    [page, size, defaultProjectId, statusFilter, typeFilter],
+    [page, size, defaultProjectId, statusFilter, typeFilter, q],
   )
+
+  // Reset ke page 1 kalau query/filter berubah.
+  useEffect(() => {
+    setPage(1)
+  }, [q])
 
   const txQuery = useTransactions(params)
   const projectsQuery = useProjects({ status: "AKTIF" })
@@ -165,6 +176,27 @@ export function TransactionsListPage() {
             tone={nPending > 0 ? "warning" : "neutral"}
           />
         </SummaryCardGrid>
+
+        {q && (
+          <div className="flex items-center gap-2 rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-[12px]">
+            <Search className="h-4 w-4 text-brand-600 shrink-0" />
+            <span className="text-ink-700">
+              Hasil pencarian: <strong className="text-brand-800">{q}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                const next = new URLSearchParams(searchParams)
+                next.delete("q")
+                setSearchParams(next)
+              }}
+              className="ml-auto flex h-6 w-6 items-center justify-center rounded text-ink-500 hover:bg-brand-100 hover:text-ink-900"
+              aria-label="Hapus pencarian"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Filter chip rows */}
         <div className="flex flex-col gap-2">

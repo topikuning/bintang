@@ -55,6 +55,7 @@ export const DESKTOP_NAV: NavGroup[] = [
     label: "Laporan",
     items: [
       { label: "Laporan", to: "/reports", icon: BarChart3 },
+      { label: "Detail Invoice", to: "/reports/invoice-items", icon: Receipt },
       { label: "Audit Log", to: "/audit-log", icon: History },
     ],
   },
@@ -100,6 +101,7 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
     label: "Laporan",
     items: [
       { label: "Laporan", to: "/reports", icon: BarChart3 },
+      { label: "Detail Invoice", to: "/reports/invoice-items", icon: Receipt },
       { label: "Audit Log", to: "/audit-log", icon: History },
     ],
   },

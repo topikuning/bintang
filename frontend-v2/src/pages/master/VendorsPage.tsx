@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Loader2, Pencil, Trash2 } from "lucide-react"
 import { z } from "zod"
@@ -66,7 +67,9 @@ function buildDefaults(v: VendorClient | null): FormValues {
 }
 
 export function VendorsPage() {
-  const q = useVendors()
+  const [searchParams] = useSearchParams()
+  const searchQ = searchParams.get("q")?.trim() ?? ""
+  const q = useVendors(searchQ ? { q: searchQ } : {})
   const [formOpen, setFormOpen] = useState(false)
   const [target, setTarget] = useState<VendorClient | null>(null)
   const [confirmDel, setConfirmDel] = useState<VendorClient | null>(null)
