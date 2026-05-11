@@ -18,6 +18,10 @@ interface AdaptiveDataViewProps<T> {
   forceMode?: "grid" | "card"
   /** Footer row utk DataGrid (mis. TOTAL). */
   gridFooter?: React.ReactNode
+  /** Expandable-row support utk DataGrid (desktop). */
+  getRowId?: (row: T) => string | number
+  expandedIds?: Set<string | number>
+  renderExpandedRow?: (row: T) => React.ReactNode
 }
 
 export function AdaptiveDataView<T>({
@@ -29,6 +33,9 @@ export function AdaptiveDataView<T>({
   emptyMessage,
   forceMode,
   gridFooter,
+  getRowId,
+  expandedIds,
+  renderExpandedRow,
 }: AdaptiveDataViewProps<T>) {
   const bp = useBreakpoint()
   const mode = forceMode ?? (bp === "mobile" ? "card" : "grid")
@@ -56,6 +63,9 @@ export function AdaptiveDataView<T>({
       onRowClick={onItemClick}
       emptyMessage={emptyMessage}
       footer={gridFooter}
+      getRowId={getRowId}
+      expandedIds={expandedIds}
+      renderExpandedRow={renderExpandedRow}
     />
   )
 }

@@ -1,5 +1,5 @@
 import type { ColumnDef } from "@tanstack/react-table"
-import { FileMinus, FilePlus } from "lucide-react"
+import { ChevronDown, ChevronRight, FileMinus, FilePlus } from "lucide-react"
 import type { Invoice, Project } from "@/types/api"
 import { fmtDate, fmtIDR } from "@/lib/format"
 import { StatusBadge } from "@/components/domain/shared/StatusBadge"
@@ -7,13 +7,45 @@ import { StatusBadge } from "@/components/domain/shared/StatusBadge"
 interface BuildOpts {
   projectMap: Map<number, Project>
   hideProject?: boolean
+  /** Kalau diisi, tampilkan kolom chevron expand di paling kiri. */
+  expand?: {
+    isExpanded: (id: number) => boolean
+    toggle: (id: number) => void
+  }
 }
 
 export function buildInvoiceColumns({
   projectMap,
   hideProject,
+  expand,
 }: BuildOpts): ColumnDef<Invoice, unknown>[] {
-  const cols: ColumnDef<Invoice, unknown>[] = [
+  const cols: ColumnDef<Invoice, unknown>[] = []
+
+  if (expand) {
+    cols.push({
+      id: "expand",
+      header: "",
+      cell: ({ row }) => {
+        const open = expand.isExpanded(row.original.id)
+        return (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              expand.toggle(row.original.id)
+            }}
+            className="flex h-7 w-7 items-center justify-center rounded text-ink-500 hover:bg-ink-100 hover:text-ink-900"
+            aria-label={open ? "Tutup detail item" : "Lihat detail item"}
+          >
+            {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </button>
+        )
+      },
+      meta: { align: "center", width: "44px" },
+    })
+  }
+
+  cols.push(
     {
       id: "number",
       header: "No. Invoice",
@@ -49,7 +81,7 @@ export function buildInvoiceColumns({
       meta: { align: "left", width: "110px" },
       enableSorting: true,
     },
-  ]
+  )
 
   if (!hideProject) {
     cols.push({

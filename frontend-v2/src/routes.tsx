@@ -30,6 +30,11 @@ const POListPage = lazy(() =>
 const ReportsPage = lazy(() =>
   import("@/pages/Reports").then((m) => ({ default: m.ReportsPage })),
 )
+const InvoiceItemsReportPage = lazy(() =>
+  import("@/pages/reports/InvoiceItemsReportPage").then((m) => ({
+    default: m.InvoiceItemsReportPage,
+  })),
+)
 const AuditLogPage = lazy(() =>
   import("@/pages/AuditLog").then((m) => ({ default: m.AuditLogPage })),
 )
@@ -133,6 +138,10 @@ export const router = createBrowserRouter([
             ),
           },
           { path: "reports", element: <L><ReportsPage /></L> },
+          {
+            path: "reports/invoice-items",
+            element: <L><InvoiceItemsReportPage /></L>,
+          },
           { path: "audit-log", element: <L><AuditLogPage /></L> },
           { path: "projects", element: <L><ProjectsHubPage /></L> },
           { path: "projects/:id", element: <L><ProjectDashboardPage /></L> },
