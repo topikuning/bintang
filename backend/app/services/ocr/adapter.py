@@ -74,8 +74,12 @@ class StubOCRAdapter(OCRAdapter):
         }
 
 
-def get_ocr_adapter() -> OCRAdapter:
-    """Pilih adapter berdasarkan env OCR_ENGINE.
+def get_ocr_adapter(engine_override: str | None = None) -> OCRAdapter:
+    """Pilih adapter berdasarkan env OCR_ENGINE atau override eksplisit.
+
+    Args:
+        engine_override: kalau diisi (mis. dari request param), pakai itu;
+            else fallback ke settings.OCR_ENGINE.
 
     - "claude"  + ANTHROPIC_API_KEY -> ClaudeVisionOCRAdapter
     - "mistral" + MISTRAL_API_KEY   -> MistralOCRAdapter (lebih murah)
@@ -88,7 +92,7 @@ def get_ocr_adapter() -> OCRAdapter:
     """
     from app.core.config import settings
 
-    engine = (settings.OCR_ENGINE or "stub").lower()
+    engine = (engine_override or settings.OCR_ENGINE or "stub").lower()
     if engine == "claude" and settings.ANTHROPIC_API_KEY:
         # Lazy import biar stub mode tidak butuh anthropic SDK ter-install.
         from app.services.ocr.claude_adapter import ClaudeVisionOCRAdapter
@@ -105,3 +109,47 @@ def get_ocr_adapter() -> OCRAdapter:
             model=settings.OCR_MODEL or "mistral-ocr-latest",
         )
     return StubOCRAdapter()
+
+
+def list_available_engines() -> list[dict]:
+    """List OCR engine yg sudah configured (API key tersedia).
+
+    Return list of dicts utk dropdown FE:
+      {key, label, model, cost_per_doc, default, available, note}
+    """
+    from app.core.config import settings
+
+    default_engine = (settings.OCR_ENGINE or "stub").lower()
+    engines: list[dict] = [
+        {
+            "key": "claude",
+            "label": "Claude Vision (akurasi tinggi)",
+            "model": settings.OCR_MODEL or "claude-haiku-4-5",
+            "cost_per_doc": "~$0.01 / gambar",
+            "available": bool(settings.ANTHROPIC_API_KEY),
+            "default": default_engine == "claude",
+            "note": "Lebih jago tulisan tangan rumit & dokumen sulit.",
+        },
+        {
+            "key": "mistral",
+            "label": "Mistral OCR (lebih murah)",
+            "model": settings.OCR_MODEL or "mistral-ocr-latest",
+            "cost_per_doc": "~$0.002 / halaman",
+            "available": bool(settings.MISTRAL_API_KEY),
+            "default": default_engine == "mistral",
+            "note": "5-10x lebih murah, support PDF multi-page natif.",
+        },
+    ]
+    # Fallback: stub kalau tidak ada engine yg available di prod
+    has_any = any(e["available"] for e in engines)
+    if not has_any:
+        engines.append({
+            "key": "stub",
+            "label": "Stub (dummy data)",
+            "model": "-",
+            "cost_per_doc": "free",
+            "available": True,
+            "default": True,
+            "note": "Dev mode -- hasil dummy, tidak panggil API.",
+        })
+    return engines

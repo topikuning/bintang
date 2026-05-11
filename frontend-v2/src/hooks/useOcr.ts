@@ -59,13 +59,16 @@ export function useOcrExtract() {
     mutationFn: async ({
       file_url,
       entity = "invoice",
+      engine,
     }: {
       file_url: string
       entity?: string
+      engine?: string | null
     }): Promise<OcrExtractResult> => {
       const { data } = await api.post<OcrExtractResult>("/ocr/extract", {
         file_url,
         entity,
+        engine: engine || undefined,
       })
       return data
     },
@@ -79,23 +82,26 @@ export function useOcrExtractUpload() {
     mutationFn: async ({
       file,
       entity = "invoice",
+      engine,
       onProgress,
     }: {
       file: File
       entity?: string
+      engine?: string | null
       onProgress?: (pct: number) => void
     }): Promise<OcrExtractResult> => {
       const fd = new FormData()
       fd.append("file", file)
       fd.append("entity", entity)
+      if (engine) fd.append("engine", engine)
       const { data } = await api.post<OcrExtractResult>(
         "/ocr/extract-upload",
         fd,
         {
           headers: { "Content-Type": "multipart/form-data" },
-          // Backend OCR call (Claude) bisa makan 10-30 detik utk dokumen
-          // ramai (handwriting + banyak items). Backend SDK timeout 75s,
-          // beri buffer jaringan/proxy -> 110s di sini.
+          // Backend OCR call bisa makan 10-30 detik utk dokumen ramai
+          // (handwriting + banyak items). Backend SDK timeout 75s, beri
+          // buffer jaringan/proxy -> 110s di sini.
           timeout: 110_000,
           onUploadProgress: (e) => {
             if (onProgress && e.total) {
@@ -107,6 +113,27 @@ export function useOcrExtractUpload() {
       return data
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ocr", "drafts"] }),
+  })
+}
+
+export interface OcrEngineInfo {
+  key: string                // "claude" | "mistral" | "stub"
+  label: string
+  model: string
+  cost_per_doc: string
+  available: boolean
+  default: boolean
+  note?: string
+}
+
+export function useOcrEngines() {
+  return useQuery({
+    queryKey: ["ocr", "engines"],
+    queryFn: async (): Promise<OcrEngineInfo[]> => {
+      const { data } = await api.get<{ engines: OcrEngineInfo[] }>("/ocr/engines")
+      return data.engines
+    },
+    staleTime: 5 * 60_000,
   })
 }
 
@@ -145,10 +172,12 @@ export function useOcrCreateInvoice() {
 
 export function useOcrTestConnection() {
   return useMutation({
-    mutationFn: async (): Promise<OcrTestConnectionResult> => {
+    mutationFn: async (
+      engine?: string | null,
+    ): Promise<OcrTestConnectionResult> => {
       const { data } = await api.get<OcrTestConnectionResult>(
         "/ocr/test-connection",
-        { timeout: 70_000 },
+        { params: engine ? { engine } : undefined, timeout: 70_000 },
       )
       return data
     },
