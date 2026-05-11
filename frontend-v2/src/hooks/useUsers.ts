@@ -55,7 +55,12 @@ export function useAssignProject() {
     mutationFn: async ({ userId, projectId }: { userId: number; projectId: number }) => {
       await api.post(`/users/${userId}/projects/${projectId}`)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    onSuccess: (_, vars) => {
+      // useUsers list (project_ids per user berubah) + useProjectUsers
+      // list anggota tim per project (keynya beda namespace).
+      qc.invalidateQueries({ queryKey: KEY })
+      qc.invalidateQueries({ queryKey: ["projects", "users", vars.projectId] })
+    },
   })
 }
 
@@ -65,6 +70,9 @@ export function useUnassignProject() {
     mutationFn: async ({ userId, projectId }: { userId: number; projectId: number }) => {
       await api.delete(`/users/${userId}/projects/${projectId}`)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: KEY })
+      qc.invalidateQueries({ queryKey: ["projects", "users", vars.projectId] })
+    },
   })
 }
