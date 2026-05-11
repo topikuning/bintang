@@ -29,7 +29,7 @@ from app.models.models import (
     User,
 )
 from app.services.audit import log, snapshot
-from app.services.ocr.adapter import get_ocr_adapter
+from app.services.ocr.adapter import get_ocr_adapter, list_available_engines
 from app.services.storage.local import ALLOWED_MIME, save_upload
 
 router = APIRouter()
@@ -38,13 +38,27 @@ router = APIRouter()
 class ExtractIn(BaseModel):
     file_url: str
     entity: str = "invoice"
+    # Override OCR engine per request. None = pakai default dari env.
+    engine: str | None = None
+
+
+@router.get("/engines")
+async def list_engines(_user: User = Depends(get_current_user)) -> dict:
+    """List OCR engine yg available + tandai mana yg default.
+    Dipakai FE utk render dropdown 'Pilih engine' di OCR page."""
+    return {"engines": list_available_engines()}
 
 
 @router.get("/test-connection")
 async def test_connection(
+    engine: str | None = None,
     user: User = Depends(require_admin),
 ) -> dict:
     """Verifikasi koneksi ke OCR provider tanpa upload file.
+
+    Args:
+        engine: opsional, override pilihan engine (claude/mistral).
+            None = pakai default dari env OCR_ENGINE.
 
     Pakai untuk:
     - Cek apakah API key valid setelah set di env
@@ -52,12 +66,10 @@ async def test_connection(
     - Ukur latency baseline
     - Diagnose timeout: kalau test-connection sukses tapi /extract timeout,
       problemnya di image/payload, bukan auth/network
-
-    Supported engines: claude, mistral. Stub mode return ok=False.
     """
     from app.core.config import settings
 
-    engine = (settings.OCR_ENGINE or "stub").lower()
+    engine = (engine or settings.OCR_ENGINE or "stub").lower()
 
     if engine == "claude":
         if not settings.ANTHROPIC_API_KEY:
@@ -142,8 +154,11 @@ async def extract(
     """Ekstrak dokumen dari URL (eksternal atau path lokal /files/...).
 
     Untuk upload langsung dari browser, pakai POST /ocr/extract-upload.
+
+    payload.engine: opsional, override engine OCR per request
+        ('claude' | 'mistral' | None=default env).
     """
-    adapter = get_ocr_adapter()
+    adapter = get_ocr_adapter(payload.engine)
     try:
         result = await adapter.extract_invoice(payload.file_url)
     except Exception as e:  # noqa: BLE001
@@ -176,6 +191,7 @@ async def extract(
 async def extract_upload(
     file: UploadFile = File(...),
     entity: str = Form("invoice"),
+    engine: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
@@ -186,6 +202,9 @@ async def extract_upload(
     extract_from_bytes (Claude Vision), pakai byte path agar tidak perlu
     round-trip baca file. Selain itu, jatuh ke extract_invoice dgn URL
     relatif yang bakal di-resolve adapter.
+
+    engine: opsional, override engine OCR per request
+        ('claude' | 'mistral' | None=default env).
     """
     if file.content_type not in ALLOWED_MIME:
         raise HTTPException(415, f"unsupported_media_type: {file.content_type}")
@@ -204,7 +223,7 @@ async def extract_upload(
     content = p.read_bytes()
     media_type = saved["mime_type"]
 
-    adapter = get_ocr_adapter()
+    adapter = get_ocr_adapter(engine)
     try:
         try:
             result = await adapter.extract_from_bytes(

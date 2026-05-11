@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent } from "react"
+import { useEffect, useRef, useState, type DragEvent } from "react"
 import { Link as RouterLink } from "react-router-dom"
 import {
   AlertTriangle,
@@ -26,6 +26,7 @@ import {
   useOcrCreateInvoice,
   useOcrDiscardDraft,
   useOcrDrafts,
+  useOcrEngines,
   useOcrExtract,
   useOcrExtractUpload,
   useOcrTestConnection,
@@ -84,15 +85,26 @@ export function OcrPage() {
   const extractUpload = useOcrExtractUpload()
   const discard = useOcrDiscardDraft()
   const testConn = useOcrTestConnection()
+  const enginesQ = useOcrEngines()
 
   const [mode, setMode] = useState<Mode>("upload")
   const [fileUrl, setFileUrl] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [filePreview, setFilePreview] = useState<string | null>(null)
   const [entity, setEntity] = useState<Entity>("invoice")
+  const [engine, setEngine] = useState<string>("")  // "" = default env
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [uploadPct, setUploadPct] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Auto-pilih engine default dari /ocr/engines (jika belum dipilih user)
+  useEffect(() => {
+    if (engine) return
+    const list = enginesQ.data ?? []
+    const def = list.find((e) => e.default && e.available)
+      || list.find((e) => e.available)
+    if (def) setEngine(def.key)
+  }, [enginesQ.data, engine])
 
   const isPending = extract.isPending || extractUpload.isPending
 
@@ -144,7 +156,7 @@ export function OcrPage() {
       if (mode === "url") {
         const url = fileUrl.trim()
         if (!url) return
-        result = await extract.mutateAsync({ file_url: url, entity })
+        result = await extract.mutateAsync({ file_url: url, entity, engine })
         setFileUrl("")
       } else {
         if (!file) return
@@ -152,6 +164,7 @@ export function OcrPage() {
         result = await extractUpload.mutateAsync({
           file,
           entity,
+          engine,
           onProgress: setUploadPct,
         })
         pickFile(null)
@@ -171,9 +184,9 @@ export function OcrPage() {
 
   const handleTestConnection = async () => {
     try {
-      const r = await testConn.mutateAsync()
+      const r = await testConn.mutateAsync(engine || null)
       if (r.ok) {
-        toast.success("Koneksi Claude API OK", {
+        toast.success(`Koneksi ${r.engine ?? "OCR"} OK`, {
           description: `${r.model} -- ${r.latency_ms}ms`,
         })
       } else {
@@ -371,7 +384,7 @@ export function OcrPage() {
           </div>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-[180px_auto] sm:items-end">
+        <div className="grid gap-3 sm:grid-cols-[180px_240px_auto] sm:items-end">
           <div className="flex flex-col gap-1">
             <Label className="text-[11px] uppercase tracking-wider">Jenis</Label>
             <Select
@@ -382,6 +395,33 @@ export function OcrPage() {
               <option value="receipt">Kuitansi/Struk</option>
               <option value="po">Purchase Order</option>
             </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-[11px] uppercase tracking-wider">
+              Engine OCR
+            </Label>
+            <Select
+              value={engine}
+              onChange={(e) => setEngine(e.target.value)}
+              disabled={enginesQ.isLoading}
+            >
+              {(enginesQ.data ?? []).map((e) => (
+                <option
+                  key={e.key}
+                  value={e.key}
+                  disabled={!e.available}
+                >
+                  {e.label} {e.cost_per_doc ? `(${e.cost_per_doc})` : ""}
+                  {!e.available ? " — belum aktif" : ""}
+                </option>
+              ))}
+            </Select>
+            {engine && (() => {
+              const sel = (enginesQ.data ?? []).find((e) => e.key === engine)
+              return sel?.note ? (
+                <p className="text-[11px] text-ink-500">{sel.note}</p>
+              ) : null
+            })()}
           </div>
           <Button
             onClick={handleExtract}
