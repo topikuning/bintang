@@ -17,10 +17,14 @@ from app.core.deps import (
 from app.db.session import get_db
 from app.models.models import (
     AuditAction,
+    CashAdvanceSettlement,
+    CashAdvanceSettlementItem,
     Invoice,
     InvoiceAllocation,
     Transaction,
     TransactionAttachment,
+    TransactionItem,
+    TxnKind,
     TxnStatus,
     TxnType,
     User,
@@ -30,6 +34,9 @@ from app.schemas.common import Page
 from app.schemas.finance import (
     AttachmentOut,
     CancelIn,
+    CashAdvanceBalanceRow,
+    CashAdvanceSettlementIn,
+    CashAdvanceSettlementOut,
     ExternalLinkIn,
     TransactionAllocationRef,
     TransactionCreate,
@@ -75,25 +82,53 @@ async def _build_allocation_refs(
     return out
 
 
-def _serialize(t: Transaction, allocs: list[TransactionAllocationRef] | None = None) -> TransactionOut:
+def _serialize(
+    t: Transaction,
+    allocs: list[TransactionAllocationRef] | None = None,
+    *,
+    recipient_display: str | None = None,
+) -> TransactionOut:
+    from decimal import Decimal as _D
     out = TransactionOut.model_validate(t)
     out.attachments = [AttachmentOut.model_validate(a) for a in t.attachments]
+    # items utk DIRECT_EXPENSE (multi-line breakdown).
+    items = getattr(t, "items", None) or []
+    if items:
+        from app.schemas.finance import TransactionItemOut
+        out.items = [TransactionItemOut.model_validate(i) for i in items]
     out.allocations = allocs or []
-    allocated = sum(
-        (a.allocated_amount for a in (allocs or [])),
-        start=__import__("decimal").Decimal("0"),
-    )
+    allocated = sum((a.allocated_amount for a in (allocs or [])), start=_D("0"))
     out.allocated_amount = allocated
-    out.remaining_amount = max(
-        __import__("decimal").Decimal(t.amount or 0) - allocated,
-        __import__("decimal").Decimal("0"),
-    )
+    out.remaining_amount = max(_D(t.amount or 0) - allocated, _D("0"))
+    # CASH_ADVANCE only: status settlement + recipient display.
+    if t.kind == TxnKind.CASH_ADVANCE:
+        out.recipient_display = recipient_display or t.recipient_name
+        sett = getattr(t, "settlement", None)
+        out.settlement_status = "SETTLED" if sett else "OUTSTANDING"
+        out.settlement_id = sett.id if sett else None
     return out
 
 
 async def _serialize_with_allocs(db: AsyncSession, t: Transaction) -> TransactionOut:
     refs = (await _build_allocation_refs(db, [t.id])).get(t.id, [])
-    return _serialize(t, refs)
+    # Lazy-load: items + settlement (kalau ada). Resolve recipient_user.name.
+    from sqlalchemy.orm import selectinload as _sl
+    res = await db.execute(
+        select(Transaction)
+        .options(
+            _sl(Transaction.attachments),
+            _sl(Transaction.items),
+            _sl(Transaction.settlement),
+        )
+        .where(Transaction.id == t.id)
+    )
+    t = res.scalar_one()
+    recipient_display = t.recipient_name
+    if t.recipient_user_id and not recipient_display:
+        u = await db.get(User, t.recipient_user_id)
+        if u:
+            recipient_display = u.name
+    return _serialize(t, refs, recipient_display=recipient_display)
 
 
 @router.get("", response_model=Page[TransactionOut])
@@ -157,6 +192,51 @@ async def list_transactions(
     )
 
 
+def _validate_kind_invariants(
+    payload: TransactionCreate | TransactionUpdate,
+    *,
+    tx_type: TxnType,
+    kind: TxnKind,
+    amount,
+    items: list,
+) -> None:
+    """Cek aturan akunting per kind. Raise HTTPException(400) kalau melanggar."""
+    from decimal import Decimal as _D
+    # CASH_ADVANCE: hanya OUT + recipient wajib + items kosong (settlement nanti)
+    if kind == TxnKind.CASH_ADVANCE:
+        if tx_type != TxnType.OUT:
+            raise HTTPException(400, "cash_advance_must_be_out")
+        ru = getattr(payload, "recipient_user_id", None)
+        rn = (getattr(payload, "recipient_name", None) or "").strip()
+        if not ru and not rn:
+            raise HTTPException(
+                400,
+                "recipient_required: CASH_ADVANCE perlu recipient_user_id "
+                "atau recipient_name (salah satu)",
+            )
+        if items:
+            raise HTTPException(
+                400,
+                "items_not_allowed: CASH_ADVANCE tdk pakai items, rincian di "
+                "settlement (POST /transactions/{id}/settle)",
+            )
+    elif kind == TxnKind.DIRECT_EXPENSE:
+        if tx_type != TxnType.OUT:
+            raise HTTPException(400, "direct_expense_must_be_out")
+        if not items:
+            raise HTTPException(
+                400,
+                "items_required: DIRECT_EXPENSE wajib punya >=1 line item",
+            )
+        total = sum((_D(i.amount) for i in items), start=_D("0"))
+        if total != _D(amount or 0):
+            raise HTTPException(
+                400,
+                f"items_sum_mismatch: sum(items.amount)={total} != "
+                f"amount={amount}. Total harus sama persis.",
+            )
+
+
 @router.post("", response_model=TransactionOut, status_code=201)
 async def create_transaction(
     payload: TransactionCreate,
@@ -164,20 +244,38 @@ async def create_transaction(
     user: User = Depends(require_can_write),
 ) -> TransactionOut:
     await ensure_project_access(db, user, payload.project_id)
-    t = Transaction(**payload.model_dump(), status=TxnStatus.DRAFT, created_by_id=user.id)
+    _validate_kind_invariants(
+        payload, tx_type=payload.type, kind=payload.kind,
+        amount=payload.amount, items=payload.items,
+    )
+    # Validate recipient_user_id exist kalau diisi
+    if payload.recipient_user_id:
+        ru = await db.get(User, payload.recipient_user_id)
+        if not ru:
+            raise HTTPException(400, "recipient_user_not_found")
+    data = payload.model_dump(exclude={"items"})
+    t = Transaction(**data, status=TxnStatus.DRAFT, created_by_id=user.id)
     db.add(t)
     await db.flush()
+    # Bikin items (DIRECT_EXPENSE) -- mirror payload list
+    for it in payload.items:
+        db.add(TransactionItem(
+            transaction_id=t.id,
+            category_id=it.category_id,
+            description=it.description,
+            amount=it.amount,
+        ))
     if t.invoice_id:
         inv = await db.get(Invoice, t.invoice_id)
         if inv:
             await recompute_invoice_status(db, inv)
+    await db.refresh(
+        t, attribute_names=[c.name for c in Transaction.__table__.columns]
+    )
     await log(db, user_id=user.id, entity="transaction", entity_id=t.id,
               action=AuditAction.CREATE, after=snapshot(t))
     await db.commit()
-    res = await db.execute(
-        select(Transaction).options(selectinload(Transaction.attachments)).where(Transaction.id == t.id)
-    )
-    return await _serialize_with_allocs(db, res.scalar_one())
+    return await _serialize_with_allocs(db, t)
 
 
 @router.get("/{tid}", response_model=TransactionOut)
@@ -213,9 +311,49 @@ async def update_transaction(
     # gunakan workflow CANCEL (POST /:id/cancel) lalu buat ulang.
     if t.status == TxnStatus.VERIFIED and user.role != UserRole.SUPERADMIN:
         raise HTTPException(409, "verified_locked")
+    # Kalau ini CASH_ADVANCE yg sudah ke-settle, lock edit -- supaya saldo
+    # akunting tdk inkonsisten dgn settlement.
+    if t.kind == TxnKind.CASH_ADVANCE:
+        settlement = (await db.execute(
+            select(CashAdvanceSettlement).where(
+                CashAdvanceSettlement.cash_advance_tx_id == t.id
+            )
+        )).scalar_one_or_none()
+        if settlement:
+            raise HTTPException(
+                409,
+                "cash_advance_already_settled: edit dilarang, hapus "
+                "settlement dulu kalau perlu koreksi.",
+            )
+    data = payload.model_dump(exclude_unset=True)
+    items_payload = data.pop("items", None)
+    # Validate kind invariants jika ada perubahan amount/items
+    if items_payload is not None or "amount" in data:
+        new_amount = data.get("amount", t.amount)
+        items_check = items_payload if items_payload is not None else (t.items or [])
+        _validate_kind_invariants(
+            payload, tx_type=t.type, kind=t.kind,
+            amount=new_amount, items=items_check,
+        )
+    if payload.recipient_user_id:
+        ru = await db.get(User, payload.recipient_user_id)
+        if not ru:
+            raise HTTPException(400, "recipient_user_not_found")
     before = snapshot(t)
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    for k, v in data.items():
         setattr(t, k, v)
+    # Replace items kalau diisi (DIRECT_EXPENSE)
+    if items_payload is not None:
+        # Hapus item lama, masukkan yg baru
+        for it in list(t.items or []):
+            await db.delete(it)
+        for it in items_payload:
+            db.add(TransactionItem(
+                transaction_id=t.id,
+                category_id=it.category_id,
+                description=it.description,
+                amount=it.amount,
+            ))
     if t.invoice_id:
         inv = await db.get(Invoice, t.invoice_id)
         if inv:
@@ -223,10 +361,7 @@ async def update_transaction(
     await log(db, user_id=user.id, entity="transaction", entity_id=t.id,
               action=AuditAction.UPDATE, before=before, after=snapshot(t))
     await db.commit()
-    res = await db.execute(
-        select(Transaction).options(selectinload(Transaction.attachments)).where(Transaction.id == t.id)
-    )
-    return await _serialize_with_allocs(db, res.scalar_one())
+    return await _serialize_with_allocs(db, t)
 
 
 @router.post("/{tid}/submit", response_model=TransactionOut)
@@ -474,3 +609,335 @@ async def delete_attachment(
     await log(db, user_id=user.id, entity="transaction_attachment", entity_id=tid,
               action=AuditAction.DELETE, before={"file": att.file_name})
     await db.commit()
+
+
+# ============================================================
+# Cash Advance: settlement workflow + outstanding balance reports
+# ============================================================
+@router.post("/{tid}/settle", response_model=CashAdvanceSettlementOut, status_code=201)
+async def settle_cash_advance(
+    tid: int,
+    payload: CashAdvanceSettlementIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_can_write),
+) -> CashAdvanceSettlementOut:
+    """Pertanggungjawaban uang muka -- attach rincian penggunaan.
+
+    Aturan:
+    - Tx hrs kind=CASH_ADVANCE
+    - 1 advance = max 1 settlement (idempoten)
+    - sum(items) + returned_to_kas hrs >= advance.amount. Kalau >, sistem
+      auto-create top-up tx (kind=DIRECT_EXPENSE, status=DRAFT, parent=advance)
+      utk selisih -- bukti karyawan kelebihan bayar.
+    - Kalau ==, settle full.
+    - Kalau <, error 'must_match' (sisa hrs returned_to_kas).
+    """
+    from datetime import datetime as _dt
+    from decimal import Decimal as _D
+    t = await db.get(Transaction, tid)
+    if not t or t.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    await ensure_project_access(db, user, t.project_id)
+    if t.kind != TxnKind.CASH_ADVANCE:
+        raise HTTPException(400, "not_cash_advance: tx ini bukan uang muka")
+    # Cek sudah ada settlement?
+    existing = (await db.execute(
+        select(CashAdvanceSettlement).where(
+            CashAdvanceSettlement.cash_advance_tx_id == tid
+        )
+    )).scalar_one_or_none()
+    if existing:
+        raise HTTPException(409, "already_settled")
+    if not payload.items:
+        raise HTTPException(400, "items_required: minimal 1 rincian")
+    items_sum = sum((_D(i.amount) for i in payload.items), start=_D("0"))
+    returned = _D(payload.returned_to_kas or 0)
+    if returned < 0:
+        raise HTTPException(400, "returned_to_kas_negative: tdk boleh negatif")
+    advance_amt = _D(t.amount or 0)
+    total_accounted = items_sum + returned
+    topup_tx_id: int | None = None
+    topup_amount: _D | None = None
+    if total_accounted < advance_amt:
+        raise HTTPException(
+            400,
+            f"must_match: sum(items)+returned={total_accounted} < "
+            f"advance={advance_amt}. Sisa hrs dikembalikan via returned_to_kas.",
+        )
+    if total_accounted > advance_amt:
+        # Auto top-up: tx OUT kind=DIRECT_EXPENSE utk selisih.
+        topup_amount = total_accounted - advance_amt
+        topup = Transaction(
+            project_id=t.project_id,
+            tx_date=(payload.settled_at or _dt.utcnow()).date()
+                if payload.settled_at else _dt.utcnow().date(),
+            type=TxnType.OUT,
+            kind=TxnKind.DIRECT_EXPENSE,
+            amount=topup_amount,
+            description=f"Top-up settlement advance #{t.id}",
+            status=TxnStatus.DRAFT,
+            created_by_id=user.id,
+            parent_advance_tx_id=t.id,
+        )
+        db.add(topup)
+        await db.flush()
+        # Single item utk topup tx (kategori = item terbesar)
+        biggest = max(payload.items, key=lambda i: _D(i.amount))
+        db.add(TransactionItem(
+            transaction_id=topup.id,
+            category_id=biggest.category_id,
+            description=f"Selisih pertanggungjawaban: {biggest.description}",
+            amount=topup_amount,
+        ))
+        topup_tx_id = topup.id
+
+    settlement = CashAdvanceSettlement(
+        cash_advance_tx_id=tid,
+        settled_at=payload.settled_at or _dt.utcnow(),
+        settled_by_id=user.id,
+        returned_to_kas=returned,
+        topup_tx_id=topup_tx_id,
+        notes=payload.notes,
+    )
+    db.add(settlement)
+    await db.flush()
+    for it in payload.items:
+        db.add(CashAdvanceSettlementItem(
+            settlement_id=settlement.id,
+            category_id=it.category_id,
+            description=it.description,
+            amount=it.amount,
+            receipt_url=it.receipt_url,
+        ))
+    await log(
+        db, user_id=user.id, entity="cash_advance_settlement",
+        entity_id=settlement.id, action=AuditAction.CREATE,
+        after={
+            "cash_advance_tx_id": tid,
+            "items_count": len(payload.items),
+            "items_sum": str(items_sum),
+            "returned_to_kas": str(returned),
+            "topup_tx_id": topup_tx_id,
+            "topup_amount": str(topup_amount) if topup_amount else None,
+        },
+    )
+    await db.commit()
+    # Reload + serialize
+    await db.refresh(settlement)
+    res = await db.execute(
+        select(CashAdvanceSettlement)
+        .options(selectinload(CashAdvanceSettlement.items))
+        .where(CashAdvanceSettlement.id == settlement.id)
+    )
+    s = res.scalar_one()
+    out = CashAdvanceSettlementOut.model_validate(s)
+    settler = await db.get(User, s.settled_by_id)
+    if settler:
+        out.settled_by_name = settler.name
+    out.topup_amount = topup_amount
+    return out
+
+
+@router.delete("/{tid}/settle", status_code=204)
+async def delete_cash_advance_settlement(
+    tid: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_can_write),
+) -> None:
+    """Hapus settlement (utk koreksi). Top-up tx (kalau ada) ikut hilang
+    (FK constraint -- handle manual)."""
+    t = await db.get(Transaction, tid)
+    if not t or t.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    if t.kind != TxnKind.CASH_ADVANCE:
+        raise HTTPException(400, "not_cash_advance")
+    settlement = (await db.execute(
+        select(CashAdvanceSettlement).where(
+            CashAdvanceSettlement.cash_advance_tx_id == tid
+        )
+    )).scalar_one_or_none()
+    if not settlement:
+        raise HTTPException(404, "settlement_not_found")
+    # VERIFIED dilarang kecuali superadmin (audit lock)
+    if t.status == TxnStatus.VERIFIED and user.role != UserRole.SUPERADMIN:
+        raise HTTPException(409, "verified_locked")
+    # Top-up tx kalau ada -- soft delete
+    if settlement.topup_tx_id:
+        from sqlalchemy import func as _sa_func
+        topup = await db.get(Transaction, settlement.topup_tx_id)
+        if topup and topup.deleted_at is None:
+            topup.deleted_at = _sa_func.now()
+    await db.delete(settlement)
+    await log(
+        db, user_id=user.id, entity="cash_advance_settlement",
+        entity_id=settlement.id, action=AuditAction.DELETE,
+        before={"cash_advance_tx_id": tid},
+    )
+    await db.commit()
+
+
+@router.get("/cash-advances/outstanding", response_model=list[dict])
+async def list_outstanding_cash_advances(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    """List tx kind=CASH_ADVANCE yg BELUM di-settle (outstanding).
+    Hormat scoping user."""
+    from app.core.deps import user_project_ids
+    pids = await user_project_ids(db, user)
+    stmt = (
+        select(Transaction)
+        .options(
+            selectinload(Transaction.settlement),
+            selectinload(Transaction.attachments),
+        )
+        .where(
+            Transaction.deleted_at.is_(None),
+            Transaction.kind == TxnKind.CASH_ADVANCE,
+        )
+    )
+    if pids is not None:
+        if not pids:
+            return []
+        stmt = stmt.where(Transaction.project_id.in_(pids))
+    res = await db.execute(stmt.order_by(Transaction.tx_date.desc()))
+    txs = res.scalars().all()
+    # Filter yg outstanding (tdk ada settlement)
+    outstanding = [t for t in txs if t.settlement is None]
+    out: list[dict] = []
+    user_cache: dict[int, str] = {}
+    for t in outstanding:
+        recipient = t.recipient_name or ""
+        if t.recipient_user_id and not recipient:
+            if t.recipient_user_id not in user_cache:
+                u = await db.get(User, t.recipient_user_id)
+                user_cache[t.recipient_user_id] = u.name if u else "?"
+            recipient = user_cache[t.recipient_user_id]
+        out.append({
+            "id": t.id,
+            "tx_date": t.tx_date.isoformat(),
+            "project_id": t.project_id,
+            "amount": str(t.amount),
+            "recipient_user_id": t.recipient_user_id,
+            "recipient_name": t.recipient_name,
+            "recipient_display": recipient,
+            "description": t.description,
+            "status": t.status.value,
+            "created_by_id": t.created_by_id,
+            "age_days": (datetime.utcnow().date() - t.tx_date).days
+                if hasattr(t.tx_date, "year") else 0,
+        })
+    return out
+
+
+@router.get("/cash-advances/balances", response_model=list[CashAdvanceBalanceRow])
+async def cash_advance_balances(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[CashAdvanceBalanceRow]:
+    """Saldo uang muka outstanding per penerima (user atau nama bebas).
+
+    Group key: recipient_user_id kalau ada, else lowercase(recipient_name).
+    Outstanding = sum(advance.amount) - sum(settled items + returned).
+    """
+    from decimal import Decimal as _D
+    from app.core.deps import user_project_ids
+    pids = await user_project_ids(db, user)
+    stmt = (
+        select(Transaction)
+        .options(
+            selectinload(Transaction.settlement).selectinload(
+                CashAdvanceSettlement.items
+            ),
+        )
+        .where(
+            Transaction.deleted_at.is_(None),
+            Transaction.kind == TxnKind.CASH_ADVANCE,
+        )
+    )
+    if pids is not None:
+        if not pids:
+            return []
+        stmt = stmt.where(Transaction.project_id.in_(pids))
+    res = await db.execute(stmt)
+    txs = res.scalars().all()
+    # Group by recipient
+    groups: dict[tuple, dict] = {}
+    user_names: dict[int, str] = {}
+    for t in txs:
+        key = (
+            ("u", t.recipient_user_id) if t.recipient_user_id
+            else ("n", (t.recipient_name or "").lower().strip())
+        )
+        if key not in groups:
+            display = t.recipient_name or ""
+            if t.recipient_user_id:
+                if t.recipient_user_id not in user_names:
+                    u = await db.get(User, t.recipient_user_id)
+                    user_names[t.recipient_user_id] = u.name if u else "?"
+                display = user_names[t.recipient_user_id]
+            groups[key] = {
+                "recipient_user_id": t.recipient_user_id,
+                "recipient_name": display or "(tanpa nama)",
+                "advance_total": _D("0"),
+                "settled_total": _D("0"),
+                "advance_count": 0,
+                "unsettled_count": 0,
+            }
+        g = groups[key]
+        g["advance_total"] += _D(t.amount or 0)
+        g["advance_count"] += 1
+        sett = t.settlement
+        if sett:
+            g["settled_total"] += _D(sett.returned_to_kas or 0) + sum(
+                (_D(i.amount) for i in (sett.items or [])), start=_D("0")
+            )
+        else:
+            g["unsettled_count"] += 1
+    rows: list[CashAdvanceBalanceRow] = []
+    for g in groups.values():
+        outstanding = g["advance_total"] - g["settled_total"]
+        rows.append(CashAdvanceBalanceRow(
+            recipient_user_id=g["recipient_user_id"],
+            recipient_name=g["recipient_name"],
+            advance_total=g["advance_total"],
+            settled_total=g["settled_total"],
+            outstanding=outstanding,
+            advance_count=g["advance_count"],
+            unsettled_count=g["unsettled_count"],
+        ))
+    # Sort: outstanding terbesar dulu
+    rows.sort(key=lambda r: -r.outstanding)
+    return rows
+
+
+@router.get("/{tid}/settlement", response_model=CashAdvanceSettlementOut)
+async def get_cash_advance_settlement(
+    tid: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> CashAdvanceSettlementOut:
+    """Detail pertanggungjawaban utk 1 advance tx."""
+    t = await db.get(Transaction, tid)
+    if not t or t.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    await ensure_project_access(db, user, t.project_id)
+    if t.kind != TxnKind.CASH_ADVANCE:
+        raise HTTPException(400, "not_cash_advance")
+    res = await db.execute(
+        select(CashAdvanceSettlement)
+        .options(selectinload(CashAdvanceSettlement.items))
+        .where(CashAdvanceSettlement.cash_advance_tx_id == tid)
+    )
+    s = res.scalar_one_or_none()
+    if not s:
+        raise HTTPException(404, "settlement_not_found")
+    out = CashAdvanceSettlementOut.model_validate(s)
+    settler = await db.get(User, s.settled_by_id)
+    if settler:
+        out.settled_by_name = settler.name
+    if s.topup_tx_id:
+        topup = await db.get(Transaction, s.topup_tx_id)
+        if topup:
+            out.topup_amount = topup.amount
+    return out

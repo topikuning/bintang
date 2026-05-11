@@ -9,6 +9,7 @@ from app.models.models import (
     PartyType,
     PaymentMethod,
     POStatus,
+    TxnKind,
     TxnStatus,
     TxnType,
 )
@@ -34,10 +35,25 @@ class ExternalLinkIn(BaseModel):
 
 
 # --- Transaction ---
+class TransactionItemIn(BaseModel):
+    """Multi-line item utk tx (DIRECT_EXPENSE). Sum(items.amount) hrs = tx.amount."""
+    category_id: int | None = None
+    description: str
+    amount: Decimal
+
+
+class TransactionItemOut(TransactionItemIn):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
 class TransactionBase(BaseModel):
     project_id: int
     tx_date: date
     type: TxnType
+    kind: TxnKind = TxnKind.INVOICE_PAYMENT
     category_id: int | None = None
     amount: Decimal
     party_type: PartyType | None = None
@@ -51,14 +67,20 @@ class TransactionBase(BaseModel):
     usage_note: str | None = None
     invoice_id: int | None = None
     purchase_order_id: int | None = None
+    # CASH_ADVANCE: hybrid recipient (FK User atau string nama bebas).
+    # Salah satu wajib kalau kind=CASH_ADVANCE.
+    recipient_user_id: int | None = None
+    recipient_name: str | None = None
 
 
 class TransactionCreate(TransactionBase):
-    pass
+    # Diisi kalau kind=DIRECT_EXPENSE -- multi-line rincian. Sum hrs == amount.
+    items: list[TransactionItemIn] = []
 
 
 class TransactionUpdate(BaseModel):
     tx_date: date | None = None
+    # kind tidak boleh diubah setelah created -- akan ditolak di endpoint.
     category_id: int | None = None
     amount: Decimal | None = None
     party_type: PartyType | None = None
@@ -72,6 +94,10 @@ class TransactionUpdate(BaseModel):
     usage_note: str | None = None
     invoice_id: int | None = None
     purchase_order_id: int | None = None
+    recipient_user_id: int | None = None
+    recipient_name: str | None = None
+    # Update items utk DIRECT_EXPENSE: replace seluruh list kalau diisi.
+    items: list[TransactionItemIn] | None = None
 
 
 class TransactionAllocationRef(BaseModel):
@@ -93,9 +119,15 @@ class TransactionOut(TransactionBase):
     cancel_reason: str | None = None
     created_at: datetime
     attachments: list[AttachmentOut] = []
+    items: list[TransactionItemOut] = []
     allocated_amount: Decimal = Decimal("0")
     remaining_amount: Decimal = Decimal("0")
     allocations: list[TransactionAllocationRef] = []
+    # CASH_ADVANCE only: display info recipient + status settlement.
+    recipient_display: str | None = None     # nama user OR recipient_name
+    settlement_status: str | None = None     # "OUTSTANDING" / "SETTLED" / None
+    settlement_id: int | None = None
+    parent_advance_tx_id: int | None = None
 
     class Config:
         from_attributes = True
@@ -103,6 +135,62 @@ class TransactionOut(TransactionBase):
 
 class CancelIn(BaseModel):
     reason: str
+
+
+# --- Cash Advance Settlement ---
+class CashAdvanceSettlementItemIn(BaseModel):
+    category_id: int | None = None
+    description: str
+    amount: Decimal
+    receipt_url: str | None = None
+
+
+class CashAdvanceSettlementItemOut(CashAdvanceSettlementItemIn):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class CashAdvanceSettlementIn(BaseModel):
+    """Payload utk settle cash advance.
+    Total = sum(items) + returned_to_kas.
+    - Kalau total == advance.amount: OK, settled
+    - Kalau total < advance.amount: error 'must_match' (selisih hrs kembali ke kas)
+    - Kalau total > advance.amount: auto-create top-up tx (kind=DIRECT_EXPENSE)
+      utk selisih, parent_advance_tx_id = advance.id.
+    """
+    settled_at: datetime | None = None     # default now()
+    returned_to_kas: Decimal = Decimal("0")
+    notes: str | None = None
+    items: list[CashAdvanceSettlementItemIn]
+
+
+class CashAdvanceSettlementOut(BaseModel):
+    id: int
+    cash_advance_tx_id: int
+    settled_at: datetime
+    settled_by_id: int
+    settled_by_name: str | None = None
+    returned_to_kas: Decimal
+    topup_tx_id: int | None = None
+    topup_amount: Decimal | None = None
+    notes: str | None = None
+    items: list[CashAdvanceSettlementItemOut] = []
+
+    class Config:
+        from_attributes = True
+
+
+class CashAdvanceBalanceRow(BaseModel):
+    """Saldo uang muka outstanding per penerima (user atau nama bebas)."""
+    recipient_user_id: int | None = None
+    recipient_name: str
+    advance_total: Decimal           # sum kind=CASH_ADVANCE
+    settled_total: Decimal           # sum settlement.items + returned_to_kas
+    outstanding: Decimal             # = advance_total - settled_total
+    advance_count: int
+    unsettled_count: int
 
 
 # --- Invoice ---
