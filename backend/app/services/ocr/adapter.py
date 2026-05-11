@@ -77,8 +77,14 @@ class StubOCRAdapter(OCRAdapter):
 def get_ocr_adapter() -> OCRAdapter:
     """Pilih adapter berdasarkan env OCR_ENGINE.
 
-    - "claude" + ANTHROPIC_API_KEY -> ClaudeVisionOCRAdapter
-    - selain itu -> StubOCRAdapter
+    - "claude"  + ANTHROPIC_API_KEY -> ClaudeVisionOCRAdapter
+    - "mistral" + MISTRAL_API_KEY   -> MistralOCRAdapter (lebih murah)
+    - selain itu                    -> StubOCRAdapter
+
+    OCR_MODEL default per engine:
+      - claude  -> claude-haiku-4-5
+      - mistral -> mistral-ocr-latest
+    Override eksplisit via env OCR_MODEL.
     """
     from app.core.config import settings
 
@@ -89,6 +95,13 @@ def get_ocr_adapter() -> OCRAdapter:
 
         return ClaudeVisionOCRAdapter(
             api_key=settings.ANTHROPIC_API_KEY,
-            model=settings.OCR_MODEL,
+            model=settings.OCR_MODEL or "claude-haiku-4-5",
+        )
+    if engine == "mistral" and settings.MISTRAL_API_KEY:
+        from app.services.ocr.mistral_adapter import MistralOCRAdapter
+
+        return MistralOCRAdapter(
+            api_key=settings.MISTRAL_API_KEY,
+            model=settings.OCR_MODEL or "mistral-ocr-latest",
         )
     return StubOCRAdapter()

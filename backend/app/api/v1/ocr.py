@@ -44,53 +44,71 @@ class ExtractIn(BaseModel):
 async def test_connection(
     user: User = Depends(require_admin),
 ) -> dict:
-    """Verifikasi koneksi ke Anthropic API tanpa upload file.
+    """Verifikasi koneksi ke OCR provider tanpa upload file.
 
     Pakai untuk:
-    - Cek apakah ANTHROPIC_API_KEY valid setelah set di Railway
+    - Cek apakah API key valid setelah set di env
     - Cek apakah OCR_MODEL bisa di-akses (404 = model name salah)
-    - Ukur latency baseline Railway -> api.anthropic.com
+    - Ukur latency baseline
     - Diagnose timeout: kalau test-connection sukses tapi /extract timeout,
       problemnya di image/payload, bukan auth/network
+
+    Supported engines: claude, mistral. Stub mode return ok=False.
     """
     from app.core.config import settings
 
     engine = (settings.OCR_ENGINE or "stub").lower()
-    if engine != "claude":
-        return {
-            "ok": False,
-            "engine": engine,
-            "error": "engine_not_claude",
-            "hint": "Set OCR_ENGINE=claude di Railway env vars dulu.",
-        }
-    if not settings.ANTHROPIC_API_KEY:
-        return {
-            "ok": False,
-            "engine": "claude",
-            "error": "missing_api_key",
-            "hint": "Set ANTHROPIC_API_KEY di Railway env vars.",
-        }
 
-    # Lazy import (sama dgn factory) -- supaya error import muncul jelas
-    try:
-        from app.services.ocr.claude_adapter import ClaudeVisionOCRAdapter
-    except ImportError as e:
-        return {
-            "ok": False,
-            "error": "anthropic_not_installed",
-            "detail": str(e),
-            "hint": "Restart deploy supaya pip install anthropic dijalankan.",
-        }
+    if engine == "claude":
+        if not settings.ANTHROPIC_API_KEY:
+            return {
+                "ok": False,
+                "engine": "claude",
+                "error": "missing_api_key",
+                "hint": "Set ANTHROPIC_API_KEY di env.",
+            }
+        try:
+            from app.services.ocr.claude_adapter import ClaudeVisionOCRAdapter
+        except ImportError as e:
+            return {
+                "ok": False,
+                "engine": "claude",
+                "error": "anthropic_not_installed",
+                "detail": str(e),
+                "hint": "Restart deploy supaya pip install anthropic dijalankan.",
+            }
+        model = settings.OCR_MODEL or "claude-haiku-4-5"
+        adapter = ClaudeVisionOCRAdapter(
+            api_key=settings.ANTHROPIC_API_KEY, model=model,
+        )
+        result = await adapter.test_connection()
+        return {"engine": "claude", "model": model, **result}
 
-    adapter = ClaudeVisionOCRAdapter(
-        api_key=settings.ANTHROPIC_API_KEY,
-        model=settings.OCR_MODEL,
-    )
-    result = await adapter.test_connection()
+    if engine == "mistral":
+        if not settings.MISTRAL_API_KEY:
+            return {
+                "ok": False,
+                "engine": "mistral",
+                "error": "missing_api_key",
+                "hint": "Set MISTRAL_API_KEY di env (https://console.mistral.ai/).",
+            }
+        from app.services.ocr.mistral_adapter import MistralOCRAdapter
+
+        model = settings.OCR_MODEL or "mistral-ocr-latest"
+        adapter = MistralOCRAdapter(
+            api_key=settings.MISTRAL_API_KEY, model=model,
+        )
+        try:
+            result = await adapter.test_connection()
+        finally:
+            await adapter.aclose()
+        return {"engine": "mistral", "model": model, **result}
+
     return {
-        "engine": "claude",
-        "model": settings.OCR_MODEL,
-        **result,
+        "ok": False,
+        "engine": engine,
+        "error": "engine_not_supported",
+        "hint": "Set OCR_ENGINE=claude atau mistral di env.",
     }
 
 
