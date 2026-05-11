@@ -18,6 +18,11 @@ const TransactionsListPage = lazy(() =>
     default: m.TransactionsListPage,
   })),
 )
+const CashAdvancePage = lazy(() =>
+  import("@/pages/transactions/CashAdvancePage").then((m) => ({
+    default: m.CashAdvancePage,
+  })),
+)
 const InvoicesListPage = lazy(() =>
   import("@/pages/invoices/InvoicesListPage").then((m) => ({
     default: m.InvoicesListPage,
@@ -135,6 +140,7 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="/dashboard" replace /> },
           { path: "dashboard", element: <L><DashboardPage /></L> },
           { path: "transactions", element: <L><TransactionsListPage /></L> },
+          { path: "transactions/cash-advances", element: <L><CashAdvancePage /></L> },
           { path: "invoices", element: <L><InvoicesListPage /></L> },
           { path: "purchase-orders", element: <L><POListPage /></L> },
           {

@@ -96,6 +96,7 @@ export interface Attachment {
 }
 
 export type TxnType = "IN" | "OUT"
+export type TxnKind = "INVOICE_PAYMENT" | "CASH_ADVANCE" | "DIRECT_EXPENSE"
 export type TxnStatus =
   | "DRAFT"
   | "SUBMITTED"
@@ -104,11 +105,19 @@ export type TxnStatus =
   | "CANCELLED"
 export type PaymentMethod = "TRANSFER" | "CASH" | "QRIS" | "OTHER"
 
+export interface TransactionItem {
+  id: number
+  category_id: number | null
+  description: string
+  amount: string | number
+}
+
 export interface Transaction {
   id: number
   project_id: number
   tx_date: string
   type: TxnType
+  kind: TxnKind
   category_id: number | null
   amount: string
   party_name: string | null
@@ -119,6 +128,13 @@ export interface Transaction {
   status: TxnStatus
   invoice_id: number | null
   purchase_order_id: number | null
+  recipient_user_id: number | null
+  recipient_name: string | null
+  recipient_display?: string | null
+  settlement_status?: "OUTSTANDING" | "SETTLED" | null
+  settlement_id?: number | null
+  parent_advance_tx_id?: number | null
+  items?: TransactionItem[]
   created_by_id: number
   verified_by_id: number | null
   verified_at: string | null
@@ -126,6 +142,51 @@ export interface Transaction {
   created_at: string
   updated_at: string
   attachments?: Attachment[]
+}
+
+export interface CashAdvanceSettlementItem {
+  id: number
+  category_id: number | null
+  description: string
+  amount: string | number
+  receipt_url?: string | null
+}
+
+export interface CashAdvanceSettlement {
+  id: number
+  cash_advance_tx_id: number
+  settled_at: string
+  settled_by_id: number
+  settled_by_name?: string | null
+  returned_to_kas: string | number
+  topup_tx_id: number | null
+  topup_amount?: string | number | null
+  notes?: string | null
+  items: CashAdvanceSettlementItem[]
+}
+
+export interface CashAdvanceBalanceRow {
+  recipient_user_id: number | null
+  recipient_name: string
+  advance_total: string | number
+  settled_total: string | number
+  outstanding: string | number
+  advance_count: number
+  unsettled_count: number
+}
+
+export interface CashAdvanceOutstandingRow {
+  id: number
+  tx_date: string
+  project_id: number
+  amount: string
+  recipient_user_id: number | null
+  recipient_name: string | null
+  recipient_display: string
+  description: string | null
+  status: TxnStatus
+  created_by_id: number
+  age_days: number
 }
 
 export type InvoiceType = "IN" | "OUT"

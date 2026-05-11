@@ -1,7 +1,8 @@
-import { ChevronRight, Paperclip } from "lucide-react"
+import { ChevronRight, Coins, Paperclip, Receipt, Wallet } from "lucide-react"
 import type { Transaction } from "@/types/api"
 import { fmtDate } from "@/lib/format"
 import { AmountDisplay } from "@/components/domain/shared/AmountDisplay"
+import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/domain/shared/StatusBadge"
 import { cn } from "@/lib/utils"
 
@@ -66,13 +67,29 @@ export function TransactionCard({
         <div className="text-[12px] text-ink-600 line-clamp-1">{t.description}</div>
       )}
 
-      {/* Footer: status + attachment + chevron */}
+      {/* Footer: status + kind + attachment + chevron */}
       <div className="flex items-center justify-between mt-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <StatusBadge domain="transaction" status={t.status} />
-          {hasAttachment && (
-            <Paperclip className="h-3.5 w-3.5 text-ink-400" />
+          {t.kind === "CASH_ADVANCE" && (
+            <Badge tone={t.settlement_status === "SETTLED" ? "success" : "warning"}>
+              <Wallet className="h-3 w-3" />
+              {t.settlement_status === "SETTLED" ? "Uang Muka (settled)" : "Uang Muka"}
+            </Badge>
           )}
+          {t.kind === "DIRECT_EXPENSE" && (
+            <Badge tone="neutral">
+              <Receipt className="h-3 w-3" />
+              Beban Langsung{t.items?.length ? ` (${t.items.length})` : ""}
+            </Badge>
+          )}
+          {t.parent_advance_tx_id && (
+            <Badge tone="info" title="Top-up dari pertanggungjawaban">
+              <Coins className="h-3 w-3" />
+              Top-up
+            </Badge>
+          )}
+          {hasAttachment && <Paperclip className="h-3.5 w-3.5 text-ink-400" />}
         </div>
         <ChevronRight className="h-4 w-4 text-ink-300 group-hover:text-ink-500" />
       </div>
