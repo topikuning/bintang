@@ -9,6 +9,9 @@ interface ListParams {
   q?: string
   status?: ProjectStatus
   company_id?: number
+  /** Default backend hide proyek MENUNGGU_PERSETUJUAN dr list operasional.
+   *  Set true di master CRUD supaya admin tetap bisa kelola proposal. */
+  include_pending?: boolean
 }
 
 export function useProjects(params: ListParams = {}) {

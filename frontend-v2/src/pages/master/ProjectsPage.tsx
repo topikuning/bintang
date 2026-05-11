@@ -40,7 +40,13 @@ import { useBreakpoint } from "@/lib/breakpoint"
 import { cn } from "@/lib/utils"
 import type { Project, ProjectStatus } from "@/types/api"
 
-const STATUS_VALUES = ["AKTIF", "SELESAI", "DITAHAN", "DIBATALKAN"] as const
+const STATUS_VALUES = [
+  "MENUNGGU_PERSETUJUAN",
+  "AKTIF",
+  "SELESAI",
+  "DITAHAN",
+  "DIBATALKAN",
+] as const
 
 const schema = z.object({
   code: z.string().min(1, "Kode wajib"),
@@ -63,13 +69,15 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
+  MENUNGGU_PERSETUJUAN: "Menunggu Persetujuan",
   AKTIF: "Aktif",
   SELESAI: "Selesai",
   DITAHAN: "Ditahan",
   DIBATALKAN: "Dibatalkan",
 }
 
-const STATUS_TONE: Record<ProjectStatus, "success" | "neutral" | "warning" | "danger"> = {
+const STATUS_TONE: Record<ProjectStatus, "success" | "neutral" | "warning" | "danger" | "info"> = {
+  MENUNGGU_PERSETUJUAN: "info",
   AKTIF: "success",
   SELESAI: "neutral",
   DITAHAN: "warning",
@@ -77,7 +85,7 @@ const STATUS_TONE: Record<ProjectStatus, "success" | "neutral" | "warning" | "da
 }
 
 export function ProjectsPage() {
-  const q = useProjects({ size: 200 })
+  const q = useProjects({ size: 200, include_pending: true })
   const companiesQ = useCompanies()
   const [formOpen, setFormOpen] = useState(false)
   const [target, setTarget] = useState<Project | null>(null)

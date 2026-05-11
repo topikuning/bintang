@@ -51,6 +51,11 @@ const ProjectDashboardPage = lazy(() =>
     default: m.ProjectDashboardPage,
   })),
 )
+const ProposalQueuePage = lazy(() =>
+  import("@/pages/projects/ProposalQueuePage").then((m) => ({
+    default: m.ProposalQueuePage,
+  })),
+)
 const ImportsPage = lazy(() =>
   import("@/pages/Imports").then((m) => ({ default: m.ImportsPage })),
 )
@@ -144,6 +149,10 @@ export const router = createBrowserRouter([
           },
           { path: "audit-log", element: <L><AuditLogPage /></L> },
           { path: "projects", element: <L><ProjectsHubPage /></L> },
+          {
+            path: "projects/approval-queue",
+            element: <L><ProposalQueuePage /></L>,
+          },
           { path: "projects/:id", element: <L><ProjectDashboardPage /></L> },
           { path: "master/projects", element: <L><ProjectsPage /></L> },
           {

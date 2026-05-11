@@ -18,12 +18,19 @@ from app.models.models import (
     AuditAction,
     Project,
     ProjectAttachment,
+    ProjectStatus,
     ProjectUser,
     User,
     UserRole,
 )
 from app.schemas.common import Page
-from app.schemas.refs import ProjectCreate, ProjectOut, ProjectUpdate
+from app.schemas.refs import (
+    ProjectCreate,
+    ProjectOut,
+    ProjectProposalCreate,
+    ProjectRejectIn,
+    ProjectUpdate,
+)
 from app.services.audit import log, snapshot
 from app.services.storage.links import normalize_external_link
 from app.services.storage.local import save_upload
@@ -40,10 +47,38 @@ router = APIRouter()
 
 
 def _to_out(p: Project) -> ProjectOut:
-    """Serialize Project + isi company_name dari relasi (perlu sudah eager-loaded)."""
+    """Serialize Project + isi company_name + nama pengaju/approver dari relasi
+    (perlu sudah eager-loaded)."""
     out = ProjectOut.model_validate(p)
     out.company_name = p.company.name if getattr(p, "company", None) else None
+    proposed_by = getattr(p, "_proposed_by_user", None)
+    if proposed_by is not None:
+        out.proposed_by_name = proposed_by.name
+    approved_by = getattr(p, "_approved_by_user", None)
+    if approved_by is not None:
+        out.approved_by_name = approved_by.name
+    out.approved_at = p.approved_at.isoformat() if p.approved_at else None
     return out
+
+
+async def _attach_proposal_users(db: AsyncSession, projects: list[Project]) -> None:
+    """Bulk-load nama pengaju + approver utk list proyek, tempel sbg attr
+    in-memory supaya _to_out bisa pakai tanpa N+1 query."""
+    uids: set[int] = set()
+    for p in projects:
+        if p.proposed_by_id:
+            uids.add(p.proposed_by_id)
+        if p.approved_by_id:
+            uids.add(p.approved_by_id)
+    if not uids:
+        return
+    res = await db.execute(select(User).where(User.id.in_(uids)))
+    umap = {u.id: u for u in res.scalars().all()}
+    for p in projects:
+        if p.proposed_by_id and p.proposed_by_id in umap:
+            p._proposed_by_user = umap[p.proposed_by_id]
+        if p.approved_by_id and p.approved_by_id in umap:
+            p._approved_by_user = umap[p.approved_by_id]
 
 
 @router.get("", response_model=Page[ProjectOut])
@@ -51,6 +86,7 @@ async def list_projects(
     q: str | None = None,
     status: str | None = None,
     company_id: int | None = None,
+    include_pending: bool = False,
     page: int = Query(1, ge=1),
     size: int = Query(50, ge=1, le=2000),
     db: AsyncSession = Depends(get_db),
@@ -74,6 +110,11 @@ async def list_projects(
         )
     if status:
         stmt = stmt.where(Project.status == status)
+    elif not include_pending:
+        # Default: HIDE proyek MENUNGGU_PERSETUJUAN dr list operasional.
+        # Admin yg butuh lihat (master CRUD) bisa pass include_pending=true atau
+        # status=MENUNGGU_PERSETUJUAN.
+        stmt = stmt.where(Project.status != ProjectStatus.MENUNGGU_PERSETUJUAN)
     if company_id:
         stmt = stmt.where(Project.company_id == company_id)
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
@@ -83,7 +124,8 @@ async def list_projects(
         .offset((page - 1) * size)
         .limit(size)
     )
-    items = (await db.execute(stmt)).scalars().all()
+    items = list((await db.execute(stmt)).scalars().all())
+    await _attach_proposal_users(db, items)
     return Page(items=[_to_out(p) for p in items], total=total, page=page, size=size)
 
 
@@ -108,6 +150,9 @@ async def list_projects_with_stats(
         stmt = stmt.where((Project.name.ilike(like)) | (Project.code.ilike(like)))
     if status:
         stmt = stmt.where(Project.status == status)
+    else:
+        # Stats hanya utk proyek aktif/operasional, exclude proposal yg belum approve.
+        stmt = stmt.where(Project.status != ProjectStatus.MENUNGGU_PERSETUJUAN)
     if company_id:
         stmt = stmt.where(Project.company_id == company_id)
     stmt = stmt.order_by(Project.id.desc())
@@ -211,6 +256,12 @@ async def create_project(
     if exists:
         raise HTTPException(409, "project_code_already_used")
     p = Project(**payload.model_dump())
+    # Proyek yg dibuat langsung oleh admin -> AKTIF + ter-approve oleh dirinya.
+    if p.status == ProjectStatus.MENUNGGU_PERSETUJUAN:
+        p.status = ProjectStatus.AKTIF
+    p.approved_by_id = admin.id
+    from sqlalchemy import func as _sa_func
+    p.approved_at = _sa_func.now()
     db.add(p)
     await db.flush()
     if p.pic_user_id:
@@ -219,6 +270,149 @@ async def create_project(
               action=AuditAction.CREATE, after=snapshot(p))
     await db.commit()
     p = await _load_with_company(db, p.id)
+    return _to_out(p)
+
+
+# ---------- Proposal workflow ----------
+@router.get("/proposals/queue", response_model=Page[ProjectOut])
+async def list_proposal_queue(
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> Page[ProjectOut]:
+    """Queue proposal proyek yg menunggu approval. Hanya CENTRAL/SUPERADMIN."""
+    stmt = select(Project).where(
+        Project.deleted_at.is_(None),
+        Project.status == ProjectStatus.MENUNGGU_PERSETUJUAN,
+    )
+    total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    stmt = (
+        stmt.options(selectinload(Project.company))
+        .order_by(Project.id.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+    )
+    items = list((await db.execute(stmt)).scalars().all())
+    await _attach_proposal_users(db, items)
+    return Page(items=[_to_out(p) for p in items], total=total, page=page, size=size)
+
+
+@router.get("/proposals/count")
+async def count_proposals(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Hitungan proposal pending utk badge nav. Hanya admin."""
+    res = await db.execute(
+        select(func.count()).where(
+            Project.deleted_at.is_(None),
+            Project.status == ProjectStatus.MENUNGGU_PERSETUJUAN,
+        )
+    )
+    return {"count": res.scalar_one() or 0}
+
+
+@router.post("/proposals", response_model=ProjectOut, status_code=201)
+async def propose_project(
+    payload: ProjectProposalCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ProjectOut:
+    """Ajukan proyek baru -- terbuka utk semua user login (non-EXECUTIVE).
+
+    Status -> MENUNGGU_PERSETUJUAN. proposed_by_id = pengaju. Admin
+    (CENTRAL/SUPERADMIN) yg approve di endpoint /approve.
+    """
+    if user.role == UserRole.EXECUTIVE:
+        raise HTTPException(403, "read_only_role")
+    exists = (await db.execute(
+        select(Project).where(Project.code == payload.code)
+    )).scalar_one_or_none()
+    if exists:
+        raise HTTPException(409, "project_code_already_used")
+    p = Project(
+        **payload.model_dump(),
+        status=ProjectStatus.MENUNGGU_PERSETUJUAN,
+        proposed_by_id=user.id,
+    )
+    db.add(p)
+    await db.flush()
+    await log(db, user_id=user.id, entity="project_proposal", entity_id=p.id,
+              action=AuditAction.CREATE, after=snapshot(p))
+    await db.commit()
+    p = await _load_with_company(db, p.id)
+    await _attach_proposal_users(db, [p])
+    return _to_out(p)
+
+
+@router.post("/{pid}/approve", response_model=ProjectOut)
+async def approve_proposal(
+    pid: int,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> ProjectOut:
+    """Approve proposal proyek -> status AKTIF.
+
+    Hanya CENTRAL_ADMIN / SUPERADMIN. Catat approved_by_id + approved_at.
+    Otomatis assign pengaju sbg anggota tim proyek (kalau belum).
+    """
+    p = await db.get(Project, pid)
+    if not p or p.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    if p.status != ProjectStatus.MENUNGGU_PERSETUJUAN:
+        raise HTTPException(400, "proposal_not_pending")
+    before = snapshot(p)
+    p.status = ProjectStatus.AKTIF
+    p.approved_by_id = admin.id
+    from sqlalchemy import func as _sa_func
+    p.approved_at = _sa_func.now()
+    p.rejection_reason = None
+    # Auto-assign pengaju supaya bisa langsung akses proyek-nya.
+    if p.proposed_by_id:
+        existing = (await db.execute(
+            select(ProjectUser).where(
+                ProjectUser.project_id == p.id,
+                ProjectUser.user_id == p.proposed_by_id,
+            )
+        )).scalar_one_or_none()
+        if not existing:
+            db.add(ProjectUser(project_id=p.id, user_id=p.proposed_by_id))
+    await log(db, user_id=admin.id, entity="project_proposal", entity_id=p.id,
+              action=AuditAction.APPROVE, before=before, after=snapshot(p))
+    await db.commit()
+    p = await _load_with_company(db, p.id)
+    await _attach_proposal_users(db, [p])
+    return _to_out(p)
+
+
+@router.post("/{pid}/reject", response_model=ProjectOut)
+async def reject_proposal(
+    pid: int,
+    payload: ProjectRejectIn,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> ProjectOut:
+    """Tolak proposal proyek -> status DIBATALKAN + simpan rejection_reason."""
+    p = await db.get(Project, pid)
+    if not p or p.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    if p.status != ProjectStatus.MENUNGGU_PERSETUJUAN:
+        raise HTTPException(400, "proposal_not_pending")
+    reason = (payload.reason or "").strip()
+    if not reason:
+        raise HTTPException(400, "rejection_reason_required")
+    before = snapshot(p)
+    p.status = ProjectStatus.DIBATALKAN
+    p.approved_by_id = admin.id  # siapa yg menolak
+    from sqlalchemy import func as _sa_func
+    p.approved_at = _sa_func.now()
+    p.rejection_reason = reason
+    await log(db, user_id=admin.id, entity="project_proposal", entity_id=p.id,
+              action=AuditAction.REJECT, before=before, after=snapshot(p))
+    await db.commit()
+    p = await _load_with_company(db, p.id)
+    await _attach_proposal_users(db, [p])
     return _to_out(p)
 
 
@@ -231,7 +425,16 @@ async def get_project(
     p = await _load_with_company(db, pid)
     if not p or p.deleted_at is not None:
         raise HTTPException(404, "not_found")
-    await ensure_project_access(db, user, pid)
+    # Proyek MENUNGGU_PERSETUJUAN: hanya pengaju + admin (CENTRAL/SUPER) yg
+    # boleh lihat detail-nya. User lain dapat 404 (pretend not found).
+    if p.status == ProjectStatus.MENUNGGU_PERSETUJUAN:
+        is_central = user.role in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN)
+        is_proposer = p.proposed_by_id == user.id
+        if not (is_central or is_proposer):
+            raise HTTPException(404, "not_found")
+    else:
+        await ensure_project_access(db, user, pid)
+    await _attach_proposal_users(db, [p])
     return _to_out(p)
 
 
