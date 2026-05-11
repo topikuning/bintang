@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
@@ -105,7 +105,10 @@ class ProjectOut(ProjectBase):
     proposed_by_name: str | None = None
     approved_by_id: int | None = None
     approved_by_name: str | None = None
-    approved_at: str | None = None
+    # datetime supaya Pydantic bisa validate dr ORM (model_validate(p) baca
+    # Project.approved_at = datetime). Serialize ke ISO string otomatis saat
+    # response JSON dump.
+    approved_at: datetime | None = None
     rejection_reason: str | None = None
     # Pendana yg terhubung (many-to-many lewat project_funders).
     # FE pakai funder_ids utk form select, funder_names utk display chip.
