@@ -130,16 +130,45 @@ async def list_projects(
     return Page(items=[_to_out(p) for p in items], total=total, page=page, size=size)
 
 
+@router.get("/filters")
+async def list_project_filters(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Distinct values utk filter dropdown di hub proyek. Pakai sekali load
+    di FE supaya dropdown bisa langsung populate. Hormat scoping user.
+    """
+    stmt = select(Project).where(
+        Project.deleted_at.is_(None),
+        Project.status != ProjectStatus.MENUNGGU_PERSETUJUAN,
+    )
+    pids = await user_project_ids(db, user)
+    if pids is not None:
+        if not pids:
+            return {"locations": [], "clients": []}
+        stmt = stmt.where(Project.id.in_(pids))
+    res = (await db.execute(stmt)).scalars().all()
+    locations = sorted({(p.location or "").strip() for p in res if p.location})
+    clients = sorted({(p.client_name or "").strip() for p in res if p.client_name})
+    return {"locations": locations, "clients": clients}
+
+
 @router.get("/stats")
 async def list_projects_with_stats(
     q: str | None = None,
     status: str | None = None,
     company_id: int | None = None,
+    location: str | None = None,
+    client_name: str | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
     """List proyek lengkap dengan agregat keuangan (untuk halaman Proyek
-    yang kaya kartu). Hormat scoping user."""
+    yang kaya kartu). Hormat scoping user.
+
+    Filter location & client_name: exact match (case-insensitive). Dipakai
+    di hub proyek utk filter berdasarkan kota/instansi.
+    """
     stmt = select(Project).where(Project.deleted_at.is_(None))
     pids = await user_project_ids(db, user)
     if pids is not None:
@@ -156,6 +185,11 @@ async def list_projects_with_stats(
         stmt = stmt.where(Project.status != ProjectStatus.MENUNGGU_PERSETUJUAN)
     if company_id:
         stmt = stmt.where(Project.company_id == company_id)
+    if location:
+        # case-insensitive exact match (asumsi dropdown value sesuai DB)
+        stmt = stmt.where(func.lower(Project.location) == location.lower())
+    if client_name:
+        stmt = stmt.where(func.lower(Project.client_name) == client_name.lower())
     stmt = stmt.order_by(Project.id.desc())
     projects = (await db.execute(stmt)).scalars().all()
 
