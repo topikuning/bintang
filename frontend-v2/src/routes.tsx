@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate, useParams } from "react-router-dom"
 import { AppShell } from "@/components/layout/AppShell"
 import { RequireAuth } from "@/components/auth/RequireAuth"
 import { LoginPage } from "@/pages/Login"
+import { RouteErrorBoundary } from "@/components/data/RouteErrorBoundary"
 import { Skeleton } from "@/components/ui/skeleton"
 
 // Lazy-load semua halaman -- pecah bundle per route. Login tidak
@@ -119,12 +120,14 @@ function RedirectMasterProject() {
 }
 
 export const router = createBrowserRouter([
-  { path: "/login", element: <LoginPage /> },
+  { path: "/login", element: <LoginPage />, errorElement: <RouteErrorBoundary /> },
   {
     element: <RequireAuth />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       {
         element: <AppShell />,
+        errorElement: <RouteErrorBoundary />,
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
           { path: "dashboard", element: <L><DashboardPage /></L> },
