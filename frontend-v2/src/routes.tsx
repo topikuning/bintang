@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react"
-import { createBrowserRouter, Navigate } from "react-router-dom"
+import { createBrowserRouter, Navigate, useParams } from "react-router-dom"
 import { AppShell } from "@/components/layout/AppShell"
 import { RequireAuth } from "@/components/auth/RequireAuth"
 import { LoginPage } from "@/pages/Login"
@@ -35,11 +35,6 @@ const AuditLogPage = lazy(() =>
 )
 const ProjectsPage = lazy(() =>
   import("@/pages/master/ProjectsPage").then((m) => ({ default: m.ProjectsPage })),
-)
-const ProjectDetailPage = lazy(() =>
-  import("@/pages/master/ProjectDetailPage").then((m) => ({
-    default: m.ProjectDetailPage,
-  })),
 )
 const ProjectsHubPage = lazy(() =>
   import("@/pages/projects/ProjectsHubPage").then((m) => ({
@@ -107,6 +102,12 @@ function L({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<PageFallback />}>{children}</Suspense>
 }
 
+/** Redirect link lama /master/projects/:id ke /projects/:id (canonical). */
+function RedirectMasterProject() {
+  const { id } = useParams<{ id: string }>()
+  return <Navigate to={`/projects/${id}`} replace />
+}
+
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
   {
@@ -136,7 +137,12 @@ export const router = createBrowserRouter([
           { path: "projects", element: <L><ProjectsHubPage /></L> },
           { path: "projects/:id", element: <L><ProjectDashboardPage /></L> },
           { path: "master/projects", element: <L><ProjectsPage /></L> },
-          { path: "master/projects/:id", element: <L><ProjectDetailPage /></L> },
+          {
+            // Detail master proyek lama -> redirect ke canonical /projects/:id.
+            // Kita keep route ini supaya bookmark / link lama tetap jalan.
+            path: "master/projects/:id",
+            element: <RedirectMasterProject />,
+          },
           { path: "imports", element: <L><ImportsPage /></L> },
           { path: "ocr", element: <L><OcrPage /></L> },
           { path: "master/companies", element: <L><CompaniesPage /></L> },
