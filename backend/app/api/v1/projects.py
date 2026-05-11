@@ -410,6 +410,13 @@ async def create_project(
         await _replace_project_funders(db, p.id, funder_ids)
     if p.pic_user_id:
         db.add(ProjectUser(project_id=p.id, user_id=p.pic_user_id))
+    # PENTING: setelah db.flush(), kolom server-default (TimestampMixin
+    # created_at/updated_at, def. column2) di-expire. Refresh dgn explicit
+    # attribute_names supaya snapshot(p) tdk trigger lazy-load (yg gagal
+    # di async context = MissingGreenlet).
+    await db.refresh(
+        p, attribute_names=[c.name for c in Project.__table__.columns]
+    )
     await log(db, user_id=admin.id, entity="project", entity_id=p.id,
               action=AuditAction.CREATE, after=snapshot(p))
     await db.commit()
@@ -506,6 +513,22 @@ async def approve_proposal(
         raise HTTPException(404, "not_found")
     if p.status != ProjectStatus.MENUNGGU_PERSETUJUAN:
         raise HTTPException(400, "proposal_not_pending")
+
+    # PENTING: lakukan SEMUA db.execute() SEBELUM setattr supaya
+    # autoflush tidak ke-trigger di tengah. Kalau autoflush trigger
+    # setelah setattr, pending UPDATE Project di-flush, kolom updated_at
+    # (TimestampMixin onupdate=func.now()) di-expire SQLAlchemy, dan
+    # snapshot(p) berikutnya akan trigger lazy-load yg gagal di async
+    # (MissingGreenlet).
+    existing_pu = None
+    if p.proposed_by_id:
+        existing_pu = (await db.execute(
+            select(ProjectUser).where(
+                ProjectUser.project_id == p.id,
+                ProjectUser.user_id == p.proposed_by_id,
+            )
+        )).scalar_one_or_none()
+
     before = snapshot(p)
     p.status = ProjectStatus.AKTIF
     p.approved_by_id = admin.id
@@ -515,18 +538,13 @@ async def approve_proposal(
     from datetime import datetime as _dt
     p.approved_at = _dt.utcnow()
     p.rejection_reason = None
-    # Auto-assign pengaju supaya bisa langsung akses proyek-nya.
-    if p.proposed_by_id:
-        existing = (await db.execute(
-            select(ProjectUser).where(
-                ProjectUser.project_id == p.id,
-                ProjectUser.user_id == p.proposed_by_id,
-            )
-        )).scalar_one_or_none()
-        if not existing:
-            db.add(ProjectUser(project_id=p.id, user_id=p.proposed_by_id))
+    if p.proposed_by_id and not existing_pu:
+        db.add(ProjectUser(project_id=p.id, user_id=p.proposed_by_id))
+    # snapshot(p) DI SINI safe -- tdk ada execute() di antara setattr & ini,
+    # jadi autoflush belum trigger, updated_at masih cached.
+    after_data = snapshot(p)
     await log(db, user_id=admin.id, entity="project_proposal", entity_id=p.id,
-              action=AuditAction.APPROVE, before=before, after=snapshot(p))
+              action=AuditAction.APPROVE, before=before, after=after_data)
     await db.commit()
     p = await _load_with_company(db, p.id)
     await _attach_relations(db, [p])
@@ -648,12 +666,16 @@ async def update_project(
     before = snapshot(p)
     # Pisahkan funder_ids (M2M) dari kolom regular project.
     funder_ids = data.pop("funder_ids", None)
-    for k, v in data.items():
-        setattr(p, k, v)
+    # PENTING: lakukan _replace_project_funders (yg meng-execute db query)
+    # SEBELUM setattr supaya autoflush tdk meng-expire updated_at (yg
+    # bikin snapshot(p) berikutnya gagal lazy-load di async = MissingGreenlet).
     if funder_ids is not None:
         await _replace_project_funders(db, p.id, funder_ids)
+    for k, v in data.items():
+        setattr(p, k, v)
+    after_data = snapshot(p)
     await log(db, user_id=admin.id, entity="project", entity_id=p.id,
-              action=AuditAction.UPDATE, before=before, after=snapshot(p))
+              action=AuditAction.UPDATE, before=before, after=after_data)
     await db.commit()
     p = await _load_with_company(db, p.id)
     await _attach_funder_names(db, [p])
