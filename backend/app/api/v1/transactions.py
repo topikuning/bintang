@@ -348,7 +348,19 @@ async def update_transaction(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_can_write),
 ) -> TransactionOut:
-    t = await db.get(Transaction, tid)
+    # PENTING: eager-load items + attachments + settlement supaya saat
+    # iterate t.items / akses field utk delete tidak trigger lazy-load
+    # di async context (MissingGreenlet). db.get() default tdk eager-load.
+    res = await db.execute(
+        select(Transaction)
+        .options(
+            selectinload(Transaction.items),
+            selectinload(Transaction.attachments),
+            selectinload(Transaction.settlement),
+        )
+        .where(Transaction.id == tid)
+    )
+    t = res.scalar_one_or_none()
     if not t or t.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
