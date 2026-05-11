@@ -37,7 +37,10 @@ export interface NavGroup {
 export const DESKTOP_NAV: NavGroup[] = [
   {
     label: "Beranda",
-    items: [{ label: "Dashboard", to: "/dashboard", icon: Home }],
+    items: [
+      { label: "Dashboard", to: "/dashboard", icon: Home },
+      { label: "Proyek", to: "/projects", icon: FolderKanban },
+    ],
   },
   {
     label: "Operasional",
@@ -78,7 +81,7 @@ export const DESKTOP_NAV: NavGroup[] = [
 /** Bottom nav mobile -- max 5 item utama, sisanya di /more. */
 export const MOBILE_BOTTOM_NAV: NavItem[] = [
   { label: "Beranda", to: "/dashboard", icon: Home },
-  { label: "Proyek", to: "/master/projects", icon: FolderKanban },
+  { label: "Proyek", to: "/projects", icon: FolderKanban },
   { label: "Transaksi", to: "/transactions", icon: ArrowLeftRight },
   { label: "Invoice", to: "/invoices", icon: Receipt },
   { label: "Lainnya", to: "/more", icon: MoreHorizontal },
@@ -103,6 +106,7 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
   {
     label: "Master Data",
     items: [
+      { label: "Proyek (CRUD)", to: "/master/projects", icon: FolderKanban },
       { label: "Perusahaan", to: "/master/companies", icon: Building2 },
       { label: "Kategori", to: "/master/categories", icon: Tag },
       { label: "Vendor / Klien", to: "/master/vendors-clients", icon: ClipboardList },
