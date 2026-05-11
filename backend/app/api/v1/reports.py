@@ -190,7 +190,10 @@ async def _output(
       doc_no      nomor referensi dokumen utk header kanan-atas.
     """
     if format == "xlsx":
-        data = build_xlsx(title, headers, rows, filters=filters, totals=totals)
+        data = build_xlsx(
+            title, headers, rows,
+            filters=filters, totals=totals, cols=cols,
+        )
         return Response(
             data,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -345,7 +348,7 @@ async def cashflow(
 @router.get("/transactions")
 async def report_transactions(
     format: str = Query("pdf", pattern="^(pdf|xlsx)$"),
-    type: TxnType = Query(...),
+    type: TxnType | None = None,
     project_id: int | None = None,
     category_id: int | None = None,
     status: TxnStatus | None = None,
@@ -359,7 +362,9 @@ async def report_transactions(
     if pids is not None and not pids:
         raise HTTPException(403, "no_project_access")
 
-    stmt = select(Transaction).where(Transaction.deleted_at.is_(None), Transaction.type == type)
+    stmt = select(Transaction).where(Transaction.deleted_at.is_(None))
+    if type:
+        stmt = stmt.where(Transaction.type == type)
     if pids is not None:
         stmt = stmt.where(Transaction.project_id.in_(pids))
     if status:
@@ -410,7 +415,12 @@ async def report_transactions(
             _fmt_idr(t.amount),
         ])
     avg = (total / len(txs)) if txs else Decimal("0")
-    arah_label = "Pemasukan" if type == TxnType.IN else "Pengeluaran"
+    # Label adaptive ke pilihan `type`. None -> "Transaksi" (gabungan IN+OUT).
+    arah_label = (
+        "Pemasukan" if type == TxnType.IN else
+        "Pengeluaran" if type == TxnType.OUT else
+        "Transaksi"
+    )
     summary = [
         {"label": f"Total {arah_label}", "value": f"Rp {_fmt_idr(total)}",
          "sub": f"{len(txs)} transaksi"},
@@ -426,21 +436,27 @@ async def report_transactions(
     status_label = status.value if status else "semua status"
     scope_line = f"Periode {period_label} · {proj_label} · {arah_label} · {status_label}"
     filters = {
-        "Arah Kas": f"{type.value} ({arah_label})",
+        "Arah Kas": f"{type.value} ({arah_label})" if type else "Semua (IN+OUT)",
         "Periode": period_label,
         "Proyek": proj_label,
         "Status": status.value if status else "Semua",
     }
     footer_row = ["TOTAL", "", "", "", "", "", _fmt_idr(total)]
     company = await _resolve_company(db, project_id)
-    title = f"Laporan Transaksi {'Masuk' if type == TxnType.IN else 'Keluar'}"
+    if type == TxnType.IN:
+        title = "Laporan Transaksi Masuk"
+    elif type == TxnType.OUT:
+        title = "Laporan Transaksi Keluar"
+    else:
+        title = "Laporan Transaksi (Semua)"
+    doc_suffix = type.value if type else "ALL"
     return await _output(
         format, title=title, headers=headers, rows=rows, cols=cols,
         filters=filters, totals={}, company=company,
         printed_by=user.name, landscape=True,
         summary=summary, scope_line=scope_line,
         detail_label="Detail Transaksi", footer_row=footer_row,
-        doc_no=f"TXN-{type.value}-{datetime.now().strftime('%Y%m%d%H%M')}",
+        doc_no=f"TXN-{doc_suffix}-{datetime.now().strftime('%Y%m%d%H%M')}",
     )
 
 
@@ -448,7 +464,7 @@ async def report_transactions(
 @router.get("/invoices")
 async def report_invoices(
     format: str = Query("pdf", pattern="^(pdf|xlsx)$"),
-    type: InvoiceType = Query(...),
+    type: InvoiceType | None = None,
     project_id: int | None = None,
     status: InvoiceStatus | None = None,
     date_from: date_type | None = None,
@@ -461,7 +477,9 @@ async def report_invoices(
     if pids is not None and not pids:
         raise HTTPException(403, "no_project_access")
 
-    stmt = select(Invoice).where(Invoice.deleted_at.is_(None), Invoice.type == type)
+    stmt = select(Invoice).where(Invoice.deleted_at.is_(None))
+    if type:
+        stmt = stmt.where(Invoice.type == type)
     if pids is not None:
         stmt = stmt.where(Invoice.project_id.in_(pids))
     if status:
@@ -501,7 +519,11 @@ async def report_invoices(
             proj_map.get(inv.project_id).name if proj_map.get(inv.project_id) else "-",
             inv.party_name or "-", _fmt_idr(inv.total), inv.status.value,
         ])
-    arah = "Hutang" if type == InvoiceType.IN else "Piutang"
+    arah = (
+        "Hutang" if type == InvoiceType.IN else
+        "Piutang" if type == InvoiceType.OUT else
+        "Invoice"
+    )
     summary = [
         {"label": f"Total Nilai {arah}", "value": f"Rp {_fmt_idr(total)}",
          "sub": f"{len(rows_inv)} invoice"},
@@ -517,21 +539,27 @@ async def report_invoices(
     status_label = status.value if status else "semua status"
     scope_line = f"Periode {period_label} · {proj_label} · {arah} · {status_label}"
     filters = {
-        "Tipe Invoice": f"{type.value} ({arah})",
+        "Tipe Invoice": f"{type.value} ({arah})" if type else "Semua (Hutang + Piutang)",
         "Periode": period_label,
         "Proyek": proj_label,
         "Status": status.value if status else "Semua",
     }
     footer_row = ["TOTAL", "", "", "", "", _fmt_idr(total), ""]
     company = await _resolve_company(db, project_id)
-    title = f"Laporan Invoice {'Masuk (Hutang)' if type == InvoiceType.IN else 'Keluar (Piutang)'}"
+    if type == InvoiceType.IN:
+        title = "Laporan Invoice Masuk (Hutang)"
+    elif type == InvoiceType.OUT:
+        title = "Laporan Invoice Keluar (Piutang)"
+    else:
+        title = "Laporan Invoice (Hutang + Piutang)"
+    doc_suffix = type.value if type else "ALL"
     return await _output(
         format, title=title, headers=headers, rows=rows, cols=cols,
         filters=filters, totals={}, company=company,
         printed_by=user.name, landscape=True,
         summary=summary, scope_line=scope_line,
         detail_label="Daftar Invoice", footer_row=footer_row,
-        doc_no=f"INV-{type.value}-{datetime.now().strftime('%Y%m%d%H%M')}",
+        doc_no=f"INV-{doc_suffix}-{datetime.now().strftime('%Y%m%d%H%M')}",
     )
 
 
