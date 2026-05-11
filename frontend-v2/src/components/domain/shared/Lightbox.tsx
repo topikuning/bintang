@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, Download, X } from "lucide-react"
+import { DismissableLayer } from "@radix-ui/react-dismissable-layer"
 import { useLightbox } from "@/store/lightbox"
 import { cn } from "@/lib/utils"
 
@@ -7,14 +8,19 @@ import { cn } from "@/lib/utils"
  * Lightbox global -- listener tunggal di-mount sekali di App.
  * Render image fullscreen + navigation prev/next + close (Esc/swipe-down).
  *
- * UX patterns yang dipakai (familiar dr Gallery iOS/Android & Material):
- *  1. Tap image -> toggle controls (clean view utk lihat foto saja)
- *  2. Top bar gradient hitam-transparan dgn judul + actions (download,
- *     close 44x44). Selalu siap diakses dgn jempol di top.
- *  3. Swipe down to close (drag image vertikal, fade out, threshold 100px)
- *  4. Tap di area gelap (luar image) -> close
+ * Pakai Radix DismissableLayer supaya saat Lightbox terbuka di-atas Sheet
+ * (mis. detail invoice/transaksi), Esc & pointer-down-outside SHEET tidak
+ * fire -- karena Radix mengelola layer stack: hanya layer tertinggi yg
+ * merespon Esc, dan layer dgn disableOutsidePointerEvents membuat layer
+ * di bawahnya tdk dapat fire outside-detector mereka.
+ *
+ * UX patterns:
+ *  1. Tap image -> toggle controls
+ *  2. Top bar gradient hitam-transparan dgn title + actions
+ *  3. Swipe down to close (drag image vertikal, threshold 100px)
+ *  4. Tap di area gelap -> close
  *  5. Counter '1 / N' di top-center
- *  6. Keyboard nav: Esc/ArrowLeft/ArrowRight
+ *  6. Keyboard: Esc/ArrowLeft/ArrowRight
  */
 export function Lightbox() {
   const { open, images, index, close, next, prev } = useLightbox()
@@ -29,19 +35,11 @@ export function Lightbox() {
     setDragY(0)
   }, [open, index])
 
+  // Body overflow lock + Arrow keys (DismissableLayer hanya handle Esc).
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        // CAPTURE phase + stopImmediatePropagation: cegah Radix Dialog
-        // listener (yg meng-handle Esc utk sheet/modal di-atasnya kita)
-        // ikut menerima event. Tanpa ini, tekan Esc saat Lightbox terbuka
-        // akan menutup BOTH Lightbox dan Sheet detail invoice/transaksi.
-        e.stopPropagation()
-        e.stopImmediatePropagation()
-        e.preventDefault()
-        close()
-      } else if (e.key === "ArrowRight") {
+      if (e.key === "ArrowRight") {
         e.stopPropagation()
         next()
       } else if (e.key === "ArrowLeft") {
@@ -49,11 +47,6 @@ export function Lightbox() {
         prev()
       }
     }
-    // capture: true -> handler ini berjalan SEBELUM listener bubble-phase
-    // milik Radix Dialog, sehingga stopImmediatePropagation efektif.
-    // Untuk pointerdown 'outside-detector' Radix, ditangani via React
-    // onPointerDown di outer div Lightbox (lihat below) -- tidak perlu
-    // document-level listener (yg akan ikut block React event delegation).
     document.addEventListener("keydown", onKey, { capture: true })
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = "hidden"
@@ -61,7 +54,7 @@ export function Lightbox() {
       document.removeEventListener("keydown", onKey, { capture: true })
       document.body.style.overflow = prevOverflow
     }
-  }, [open, close, next, prev])
+  }, [open, next, prev])
 
   if (!open || images.length === 0) return null
   const cur = images[index]
@@ -77,7 +70,6 @@ export function Lightbox() {
   const onImagePointerMove = (e: React.PointerEvent<HTMLImageElement>) => {
     if (!isDragging || !dragStart.current) return
     const dy = e.clientY - dragStart.current.y
-    // Allow drag both directions tapi clamp utk feel natural
     setDragY(dy)
   }
 
@@ -93,7 +85,6 @@ export function Lightbox() {
     dragStart.current = null
     setIsDragging(false)
 
-    // Threshold: vertical move >100px ATAU velocity tinggi (>0.6) -> close
     if (Math.abs(dy) > 100 || velocity > 0.6) {
       close()
     } else {
@@ -101,32 +92,39 @@ export function Lightbox() {
     }
   }
 
-  // Stop bubbling supaya backdrop click tidak ke-trigger dr image
   const stopProp = (e: React.SyntheticEvent) => e.stopPropagation()
 
-  // Opacity overlay turun saat drag (visual feedback "kamu lagi close")
   const dragProgress = Math.min(1, Math.abs(dragY) / 200)
   const overlayOpacity = 1 - dragProgress * 0.6
   const imageScale = 1 - dragProgress * 0.1
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center"
-      onClick={close}
-      // Radix Dialog (Sheet) di-mount di portal yg parallel dgn Lightbox.
-      // Default Radix punya 'pointer-down-outside' detector di document
-      // yg akan menutup Sheet kalau klik terjadi di luar Sheet content.
-      // Lightbox secara DOM ada di luar Sheet content -> klik backdrop /
-      // tombol X di Lightbox dianggap "click outside Sheet" -> Sheet ikut
-      // close. Stop pointerdown di sini supaya tidak bubble ke document
-      // (jadi Radix outside-detector tidak fire), tapi tetap let React
-      // synthetic events (onClick) berjalan utk handler Lightbox sendiri.
-      onPointerDown={(e) => e.stopPropagation()}
-      style={{
-        backgroundColor: `rgba(0, 0, 0, ${0.95 * overlayOpacity})`,
-        transition: isDragging ? "none" : "background-color 200ms",
+    <DismissableLayer
+      // disableOutsidePointerEvents: bikin body pointer-events:none di luar
+      // layer ini, sehingga Sheet/Dialog di bawahnya TIDAK fire outside
+      // detector ketika user klik di Lightbox area.
+      disableOutsidePointerEvents
+      onEscapeKeyDown={(e) => {
+        // Cegah default Radix close (kita panggil close() manual).
+        // Stop propagation supaya listener Esc lain (mis. Sheet di bawah)
+        // tdk ikut handle.
+        e.preventDefault()
+        e.stopPropagation()
+        close()
       }}
+      // onDismiss dipanggil saat outside event terjadi (tdk terjadi krn
+      // disableOutsidePointerEvents=true) atau saat custom dismiss.
+      onDismiss={close}
+      asChild
     >
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center"
+        onClick={close}
+        style={{
+          backgroundColor: `rgba(0, 0, 0, ${0.95 * overlayOpacity})`,
+          transition: isDragging ? "none" : "background-color 200ms",
+        }}
+      >
       {/* Top bar: gradient hitam ke transparan, selalu accessible. */}
       <div
         onClick={stopProp}
@@ -249,6 +247,7 @@ export function Lightbox() {
         }}
         draggable={false}
       />
-    </div>
+      </div>
+    </DismissableLayer>
   )
 }
