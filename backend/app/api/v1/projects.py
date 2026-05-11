@@ -51,7 +51,11 @@ router = APIRouter()
 
 def _to_out(p: Project) -> ProjectOut:
     """Serialize Project + isi company_name + nama pengaju/approver +
-    funder_ids/funder_names dari relasi (perlu sudah eager-loaded)."""
+    funder_ids/funder_names dari relasi (perlu sudah eager-loaded).
+
+    approved_at = datetime di model_validate -> Pydantic handle serialize
+    ke ISO string otomatis di response JSON dump.
+    """
     out = ProjectOut.model_validate(p)
     out.company_name = p.company.name if getattr(p, "company", None) else None
     proposed_by = getattr(p, "_proposed_by_user", None)
@@ -60,7 +64,6 @@ def _to_out(p: Project) -> ProjectOut:
     approved_by = getattr(p, "_approved_by_user", None)
     if approved_by is not None:
         out.approved_by_name = approved_by.name
-    out.approved_at = p.approved_at.isoformat() if p.approved_at else None
     # Funders dr relasi project_funders (selectinload-ed).
     funder_links = getattr(p, "funders", []) or []
     out.funder_ids = [pf.funder_id for pf in funder_links]
