@@ -25,6 +25,8 @@ export interface ProjectStats {
     status: string
   }
   health: string
+  funder_ids?: number[]
+  funder_names?: string[]
 }
 
 interface Params {
@@ -33,6 +35,7 @@ interface Params {
   company_id?: number
   location?: string
   client_name?: string
+  funder_id?: number
 }
 
 export function useProjectsStats(params: Params = {}) {
@@ -49,6 +52,7 @@ export function useProjectsStats(params: Params = {}) {
 export interface ProjectFilters {
   locations: string[]
   clients: string[]
+  funders: Array<{ id: number; name: string }>
 }
 
 /** Distinct values utk dropdown filter di hub proyek. */

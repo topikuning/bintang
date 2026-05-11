@@ -40,6 +40,7 @@ export function ProjectsHubPage() {
   const [companyId, setCompanyId] = useState<number | null>(null)
   const [location, setLocation] = useState<string | null>(null)
   const [clientName, setClientName] = useState<string | null>(null)
+  const [funderId, setFunderId] = useState<number | null>(null)
   const [statusFilter, setStatusFilter] = useState<"AKTIF" | "ALL">("AKTIF")
   const [proposeOpen, setProposeOpen] = useState(false)
 
@@ -54,9 +55,10 @@ export function ProjectsHubPage() {
       company_id: companyId ?? undefined,
       location: location ?? undefined,
       client_name: clientName ?? undefined,
+      funder_id: funderId ?? undefined,
       status: statusFilter === "ALL" ? undefined : statusFilter,
     }),
-    [q, companyId, location, clientName, statusFilter],
+    [q, companyId, location, clientName, funderId, statusFilter],
   )
 
   const projectsQ = useProjectsStats(params)
@@ -115,7 +117,7 @@ export function ProjectsHubPage() {
       </div>
 
       {/* Filter bar */}
-      <div className="rounded-md border bg-surface p-2.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+      <div className="rounded-md border bg-surface p-2.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
           <Input
@@ -177,6 +179,18 @@ export function ProjectsHubPage() {
           clearable
           sheetTitle="Pilih Dinas/Klien"
           emptyMessage="Belum ada Dinas/Klien di proyek"
+        />
+        <Combobox
+          value={funderId}
+          onChange={(v) => setFunderId(v == null ? null : Number(v))}
+          options={(filtersQ.data?.funders ?? []).map((f) => ({
+            value: f.id,
+            label: f.name,
+          }))}
+          placeholder="Semua Pendana"
+          clearable
+          sheetTitle="Pilih Pendana"
+          emptyMessage="Belum ada pendana di-link ke proyek"
         />
         <div className="flex rounded border border-border-strong bg-surface text-[12px] overflow-hidden">
           <FilterTab

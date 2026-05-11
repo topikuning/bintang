@@ -68,7 +68,8 @@ class ProjectBase(BaseModel):
 
 
 class ProjectCreate(ProjectBase):
-    pass
+    # IDs Funder yg di-link saat create (opsional). M2M lewat project_funders.
+    funder_ids: list[int] = []
 
 
 class ProjectUpdate(BaseModel):
@@ -89,6 +90,9 @@ class ProjectUpdate(BaseModel):
     tax_ppn_pct: Decimal | None = None
     tax_pph_pct: Decimal | None = None
     marketing_pct: Decimal | None = None
+    # Kalau diisi (termasuk []), replace seluruh list funder yg ter-link.
+    # Kalau None (omit), tdk diubah.
+    funder_ids: list[int] | None = None
 
 
 class ProjectOut(ProjectBase):
@@ -103,6 +107,29 @@ class ProjectOut(ProjectBase):
     approved_by_name: str | None = None
     approved_at: str | None = None
     rejection_reason: str | None = None
+    # Pendana yg terhubung (many-to-many lewat project_funders).
+    # FE pakai funder_ids utk form select, funder_names utk display chip.
+    funder_ids: list[int] = []
+    funder_names: list[str] = []
+
+    class Config:
+        from_attributes = True
+
+
+class FunderBase(BaseModel):
+    name: str
+
+
+class FunderCreate(FunderBase):
+    pass
+
+
+class FunderUpdate(BaseModel):
+    name: str | None = None
+
+
+class FunderOut(FunderBase):
+    id: int
 
     class Config:
         from_attributes = True

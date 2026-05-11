@@ -8,6 +8,7 @@ from app.api.v1 import (
     categories,
     companies,
     dashboard,
+    funders,
     imports,
     invoices,
     messaging,
@@ -31,6 +32,7 @@ api_router.include_router(categories.router, prefix="/categories", tags=["catego
 api_router.include_router(
     vendors_clients.router, prefix="/vendors-clients", tags=["vendors-clients"]
 )
+api_router.include_router(funders.router, prefix="/funders", tags=["funders"])
 api_router.include_router(transactions.router, prefix="/transactions", tags=["transactions"])
 api_router.include_router(invoices.router, prefix="/invoices", tags=["invoices"])
 api_router.include_router(

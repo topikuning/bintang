@@ -64,6 +64,18 @@ export interface Project {
   approved_by_name?: string | null
   approved_at?: string | null
   rejection_reason?: string | null
+  // Pendana (many-to-many lewat project_funders)
+  funder_ids?: number[]
+  funder_names?: string[]
+}
+
+export interface Funder {
+  id: number
+  name: string
+}
+
+export interface FunderInput {
+  name: string
 }
 
 export interface Page<T> {
