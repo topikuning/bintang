@@ -624,11 +624,21 @@ def _terbilang(n: int) -> str:
 @router.get("/{iid}/pdf")
 async def invoice_pdf(
     iid: int,
+    signatures: str = Query("both", pattern="^(both|creator|approver|none)$"),
+    responsible_name: str | None = Query(None, max_length=200),
+    responsible_title: str | None = Query(None, max_length=120),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Response:
     """Cetak invoice ke PDF (A4). Status, paid, dan sisa diambil
-    real-time dari tabel allocations."""
+    real-time dari tabel allocations.
+
+    Query params utk customize signature block:
+    - signatures: 'both' (default) | 'creator' | 'approver' | 'none'
+    - responsible_name: override nama penanggung jawab utk TTD kanan
+      (default: company.director_name)
+    - responsible_title: override jabatan (default: 'Direktur')
+    """
     res = await db.execute(
         select(Invoice).options(*_full_options()).where(Invoice.id == iid)
     )
@@ -660,6 +670,10 @@ async def invoice_pdf(
         amount_in_words=_terbilang(int(Decimal(inv.total or 0))).capitalize(),
         logo_data=logo_data, letterhead_data=letterhead_data,
         base_css=base_css,
+        sig_show_creator=signatures in ("both", "creator"),
+        sig_show_approver=signatures in ("both", "approver"),
+        sig_responsible_name=(responsible_name or "").strip() or (company.director_name if company else None),
+        sig_responsible_title=(responsible_title or "").strip() or "Direktur",
     )
     pdf = await html_to_pdf_async(html)
     safe_name = (inv.number or f"INV-{inv.id}").replace("/", "-")
