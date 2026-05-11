@@ -31,6 +31,8 @@ interface Params {
   q?: string
   status?: string
   company_id?: number
+  location?: string
+  client_name?: string
 }
 
 export function useProjectsStats(params: Params = {}) {
@@ -41,5 +43,22 @@ export function useProjectsStats(params: Params = {}) {
       return data
     },
     staleTime: 60_000,
+  })
+}
+
+export interface ProjectFilters {
+  locations: string[]
+  clients: string[]
+}
+
+/** Distinct values utk dropdown filter di hub proyek. */
+export function useProjectFilters() {
+  return useQuery({
+    queryKey: ["projects-filters"],
+    queryFn: async (): Promise<ProjectFilters> => {
+      const { data } = await api.get<ProjectFilters>("/projects/filters")
+      return data
+    },
+    staleTime: 5 * 60_000,
   })
 }

@@ -1,7 +1,11 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { Building2, ClipboardList, FolderKanban, Plus, Search } from "lucide-react"
-import { useProjectsStats, type ProjectStats } from "@/hooks/useProjectsStats"
+import {
+  useProjectFilters,
+  useProjectsStats,
+  type ProjectStats,
+} from "@/hooks/useProjectsStats"
 import { useCompanies } from "@/hooks/useCompanies"
 import { useProposalCount } from "@/hooks/useProjectProposals"
 import { useUIPrefs } from "@/store/ui-prefs"
@@ -34,6 +38,8 @@ export function ProjectsHubPage() {
 
   const [q, setQ] = useState("")
   const [companyId, setCompanyId] = useState<number | null>(null)
+  const [location, setLocation] = useState<string | null>(null)
+  const [clientName, setClientName] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<"AKTIF" | "ALL">("AKTIF")
   const [proposeOpen, setProposeOpen] = useState(false)
 
@@ -46,13 +52,16 @@ export function ProjectsHubPage() {
     () => ({
       q: q.trim() || undefined,
       company_id: companyId ?? undefined,
+      location: location ?? undefined,
+      client_name: clientName ?? undefined,
       status: statusFilter === "ALL" ? undefined : statusFilter,
     }),
-    [q, companyId, statusFilter],
+    [q, companyId, location, clientName, statusFilter],
   )
 
   const projectsQ = useProjectsStats(params)
   const companiesQ = useCompanies()
+  const filtersQ = useProjectFilters()
 
   if (projectsQ.error) {
     return (
@@ -106,8 +115,8 @@ export function ProjectsHubPage() {
       </div>
 
       {/* Filter bar */}
-      <div className="rounded-md border bg-surface p-2.5 grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <div className="relative sm:col-span-1">
+      <div className="rounded-md border bg-surface p-2.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+        <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
           <Input
             value={q}
@@ -126,6 +135,48 @@ export function ProjectsHubPage() {
           placeholder="Semua perusahaan"
           clearable
           sheetTitle="Pilih Perusahaan"
+        />
+        <Combobox
+          // value -1 = no selection in Combobox API (numeric only). Trick:
+          // pakai index-based mapping ke string utk lokasi/klien via casting.
+          value={location ? (filtersQ.data?.locations ?? []).indexOf(location) : null}
+          onChange={(v) => {
+            if (v == null) {
+              setLocation(null)
+              return
+            }
+            const list = filtersQ.data?.locations ?? []
+            setLocation(list[Number(v)] ?? null)
+          }}
+          options={(filtersQ.data?.locations ?? []).map((loc, i) => ({
+            value: i,
+            label: loc,
+          }))}
+          placeholder="Semua lokasi"
+          clearable
+          sheetTitle="Pilih Lokasi"
+          emptyMessage="Belum ada lokasi di proyek"
+        />
+        <Combobox
+          value={
+            clientName ? (filtersQ.data?.clients ?? []).indexOf(clientName) : null
+          }
+          onChange={(v) => {
+            if (v == null) {
+              setClientName(null)
+              return
+            }
+            const list = filtersQ.data?.clients ?? []
+            setClientName(list[Number(v)] ?? null)
+          }}
+          options={(filtersQ.data?.clients ?? []).map((c, i) => ({
+            value: i,
+            label: c,
+          }))}
+          placeholder="Semua Dinas/Klien"
+          clearable
+          sheetTitle="Pilih Dinas/Klien"
+          emptyMessage="Belum ada Dinas/Klien di proyek"
         />
         <div className="flex rounded border border-border-strong bg-surface text-[12px] overflow-hidden">
           <FilterTab
