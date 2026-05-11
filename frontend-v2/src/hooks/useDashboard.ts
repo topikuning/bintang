@@ -5,7 +5,16 @@ import type {
   ProjectDashboardResponse,
 } from "@/types/dashboard"
 
-export function useGlobalDashboard(params?: { q?: string; company_id?: number }) {
+export interface GlobalDashboardParams {
+  q?: string
+  company_id?: number
+  // Multi-value (repeat query param). Empty list = no filter.
+  location?: string[]
+  client_name?: string[]
+  funder_id?: number[]
+}
+
+export function useGlobalDashboard(params?: GlobalDashboardParams) {
   return useQuery({
     queryKey: ["dashboard", "global", params ?? {}],
     queryFn: async (): Promise<GlobalDashboardResponse> => {

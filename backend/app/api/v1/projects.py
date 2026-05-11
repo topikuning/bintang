@@ -202,9 +202,10 @@ async def list_projects_with_stats(
     q: str | None = None,
     status: str | None = None,
     company_id: int | None = None,
-    location: str | None = None,
-    client_name: str | None = None,
-    funder_id: int | None = None,
+    # Multi-value: ?location=A&location=B. None/empty = no filter.
+    location: list[str] | None = Query(None),
+    client_name: list[str] | None = Query(None),
+    funder_id: list[int] | None = Query(None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
@@ -231,15 +232,20 @@ async def list_projects_with_stats(
     if company_id:
         stmt = stmt.where(Project.company_id == company_id)
     if location:
-        # case-insensitive exact match (asumsi dropdown value sesuai DB)
-        stmt = stmt.where(func.lower(Project.location) == location.lower())
+        # Multi-value, case-insensitive
+        stmt = stmt.where(
+            func.lower(Project.location).in_([s.lower() for s in location])
+        )
     if client_name:
-        stmt = stmt.where(func.lower(Project.client_name) == client_name.lower())
+        stmt = stmt.where(
+            func.lower(Project.client_name).in_([s.lower() for s in client_name])
+        )
     if funder_id:
-        # Join lewat project_funders
+        # JOIN lewat project_funders + distinct() supaya proyek dgn multi
+        # funder yg ke-match tdk muncul dobel.
         stmt = stmt.join(
             ProjectFunder, ProjectFunder.project_id == Project.id
-        ).where(ProjectFunder.funder_id == funder_id)
+        ).where(ProjectFunder.funder_id.in_(funder_id)).distinct()
     stmt = stmt.options(selectinload(Project.funders)).order_by(Project.id.desc())
     projects = (await db.execute(stmt)).scalars().all()
 

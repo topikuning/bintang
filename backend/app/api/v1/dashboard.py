@@ -1,7 +1,7 @@
 from datetime import date as date_type
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -104,6 +104,11 @@ def _ym_expr():
 async def global_dashboard(
     q: str | None = None,
     company_id: int | None = None,
+    # Multi-value filters. FastAPI parse repeated ?location=A&location=B -> list.
+    # Case-insensitive match (lowercase). Funder pakai JOIN ke project_funders.
+    location: list[str] | None = Query(None),
+    client_name: list[str] | None = Query(None),
+    funder_id: list[int] | None = Query(None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
@@ -142,6 +147,17 @@ async def global_dashboard(
         proj_q = proj_q.where((Project.name.ilike(like)) | (Project.code.ilike(like)))
     if company_id:
         proj_q = proj_q.where(Project.company_id == company_id)
+    if location:
+        proj_q = proj_q.where(func.lower(Project.location).in_([s.lower() for s in location]))
+    if client_name:
+        proj_q = proj_q.where(func.lower(Project.client_name).in_([s.lower() for s in client_name]))
+    if funder_id:
+        # JOIN lewat project_funders. distinct() supaya proyek dgn multi
+        # funder yg semua match tdk dobel.
+        from app.models.models import ProjectFunder as _PF
+        proj_q = proj_q.join(_PF, _PF.project_id == Project.id).where(
+            _PF.funder_id.in_(funder_id)
+        ).distinct()
     projects = (await db.execute(proj_q)).scalars().all()
     project_ids = [p.id for p in projects]
 

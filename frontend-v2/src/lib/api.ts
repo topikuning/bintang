@@ -4,6 +4,26 @@ import { useAuthStore } from "@/store/auth"
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "/api/v1",
   timeout: 30_000,
+  // Serialize array params dgn key di-repeat (?x=a&x=b) -- format yg
+  // FastAPI parse via `list[T] = Query(None)`. Default axios pakai
+  // bracket notation (?x[]=a) yg tdk dikenal FastAPI.
+  paramsSerializer: {
+    serialize: (params: Record<string, unknown>) => {
+      const parts: string[] = []
+      for (const [key, val] of Object.entries(params)) {
+        if (val === undefined || val === null) continue
+        if (Array.isArray(val)) {
+          for (const v of val) {
+            if (v === undefined || v === null || v === "") continue
+            parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(v))}`)
+          }
+        } else {
+          parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(val))}`)
+        }
+      }
+      return parts.join("&")
+    },
+  },
 })
 
 api.interceptors.request.use((cfg) => {

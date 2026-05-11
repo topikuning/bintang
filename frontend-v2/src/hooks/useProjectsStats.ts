@@ -33,9 +33,10 @@ interface Params {
   q?: string
   status?: string
   company_id?: number
-  location?: string
-  client_name?: string
-  funder_id?: number
+  // Multi-value (repeated query params). Empty array = no filter.
+  location?: string[]
+  client_name?: string[]
+  funder_id?: number[]
 }
 
 export function useProjectsStats(params: Params = {}) {
