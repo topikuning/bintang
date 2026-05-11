@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Combobox } from "@/components/forms/Combobox"
+import { MultiCombobox } from "@/components/forms/MultiCombobox"
 import { ErrorState } from "@/components/data/ErrorState"
 import { ProjectProposalForm } from "@/components/domain/project/ProjectProposalForm"
 import { fmtIDR } from "@/lib/format"
@@ -38,9 +39,10 @@ export function ProjectsHubPage() {
 
   const [q, setQ] = useState("")
   const [companyId, setCompanyId] = useState<number | null>(null)
-  const [location, setLocation] = useState<string | null>(null)
-  const [clientName, setClientName] = useState<string | null>(null)
-  const [funderId, setFunderId] = useState<number | null>(null)
+  // Multi-select: lokasi, dinas, pendana bisa pilih > 1 sekaligus.
+  const [locations, setLocations] = useState<string[]>([])
+  const [clientNames, setClientNames] = useState<string[]>([])
+  const [funderIds, setFunderIds] = useState<number[]>([])
   const [statusFilter, setStatusFilter] = useState<"AKTIF" | "ALL">("AKTIF")
   const [proposeOpen, setProposeOpen] = useState(false)
 
@@ -53,12 +55,12 @@ export function ProjectsHubPage() {
     () => ({
       q: q.trim() || undefined,
       company_id: companyId ?? undefined,
-      location: location ?? undefined,
-      client_name: clientName ?? undefined,
-      funder_id: funderId ?? undefined,
+      location: locations.length ? locations : undefined,
+      client_name: clientNames.length ? clientNames : undefined,
+      funder_id: funderIds.length ? funderIds : undefined,
       status: statusFilter === "ALL" ? undefined : statusFilter,
     }),
-    [q, companyId, location, clientName, funderId, statusFilter],
+    [q, companyId, locations, clientNames, funderIds, statusFilter],
   )
 
   const projectsQ = useProjectsStats(params)
@@ -138,57 +140,36 @@ export function ProjectsHubPage() {
           clearable
           sheetTitle="Pilih Perusahaan"
         />
-        <Combobox
-          // value -1 = no selection in Combobox API (numeric only). Trick:
-          // pakai index-based mapping ke string utk lokasi/klien via casting.
-          value={location ? (filtersQ.data?.locations ?? []).indexOf(location) : null}
-          onChange={(v) => {
-            if (v == null) {
-              setLocation(null)
-              return
-            }
-            const list = filtersQ.data?.locations ?? []
-            setLocation(list[Number(v)] ?? null)
-          }}
-          options={(filtersQ.data?.locations ?? []).map((loc, i) => ({
-            value: i,
+        <MultiCombobox<string>
+          value={locations}
+          onChange={setLocations}
+          options={(filtersQ.data?.locations ?? []).map((loc) => ({
+            value: loc,
             label: loc,
           }))}
           placeholder="Semua lokasi"
-          clearable
           sheetTitle="Pilih Lokasi"
           emptyMessage="Belum ada lokasi di proyek"
         />
-        <Combobox
-          value={
-            clientName ? (filtersQ.data?.clients ?? []).indexOf(clientName) : null
-          }
-          onChange={(v) => {
-            if (v == null) {
-              setClientName(null)
-              return
-            }
-            const list = filtersQ.data?.clients ?? []
-            setClientName(list[Number(v)] ?? null)
-          }}
-          options={(filtersQ.data?.clients ?? []).map((c, i) => ({
-            value: i,
+        <MultiCombobox<string>
+          value={clientNames}
+          onChange={setClientNames}
+          options={(filtersQ.data?.clients ?? []).map((c) => ({
+            value: c,
             label: c,
           }))}
           placeholder="Semua Dinas/Klien"
-          clearable
           sheetTitle="Pilih Dinas/Klien"
           emptyMessage="Belum ada Dinas/Klien di proyek"
         />
-        <Combobox
-          value={funderId}
-          onChange={(v) => setFunderId(v == null ? null : Number(v))}
+        <MultiCombobox<number>
+          value={funderIds}
+          onChange={setFunderIds}
           options={(filtersQ.data?.funders ?? []).map((f) => ({
             value: f.id,
             label: f.name,
           }))}
           placeholder="Semua Pendana"
-          clearable
           sheetTitle="Pilih Pendana"
           emptyMessage="Belum ada pendana di-link ke proyek"
         />

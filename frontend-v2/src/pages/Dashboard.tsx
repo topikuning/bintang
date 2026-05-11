@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import {
   AlertTriangle,
   ArrowDownLeft,
@@ -18,6 +18,8 @@ import {
 import { Link } from "react-router-dom"
 import { useUIPrefs } from "@/store/ui-prefs"
 import { useGlobalDashboard, useProjectDashboard } from "@/hooks/useDashboard"
+import { useProjectFilters } from "@/hooks/useProjectsStats"
+import { MultiCombobox } from "@/components/forms/MultiCombobox"
 import { ErrorState } from "@/components/data/ErrorState"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
 import { CashflowChart } from "@/components/charts/CashflowChart"
@@ -248,7 +250,24 @@ function ProjectDashboard({ projectId }: { projectId: number }) {
 // ============================================================
 function GlobalDashboard() {
   const bp = useBreakpoint()
-  const q = useGlobalDashboard()
+  // Filter state -- multi-value (sesuai backend yg sdh terima list[]).
+  const [locations, setLocations] = useState<string[]>([])
+  const [clientNames, setClientNames] = useState<string[]>([])
+  const [funderIds, setFunderIds] = useState<number[]>([])
+
+  const params = useMemo(
+    () => ({
+      location: locations.length ? locations : undefined,
+      client_name: clientNames.length ? clientNames : undefined,
+      funder_id: funderIds.length ? funderIds : undefined,
+    }),
+    [locations, clientNames, funderIds],
+  )
+
+  const q = useGlobalDashboard(params)
+  const filtersQ = useProjectFilters()
+  const hasActiveFilter =
+    locations.length > 0 || clientNames.length > 0 || funderIds.length > 0
 
   // PENTING: hook dipanggil di setiap render -- sebelum any conditional
   // return -- supaya urutan/jumlah hook konsisten (React error #310).
@@ -282,8 +301,61 @@ function GlobalDashboard() {
             Ringkasan {d.active_projects} proyek aktif
             {d.total_projects > d.active_projects &&
               ` dari ${d.total_projects} total`}
+            {hasActiveFilter && (
+              <span className="text-brand-600"> · filter aktif</span>
+            )}
           </p>
         </div>
+        {hasActiveFilter && (
+          <button
+            type="button"
+            onClick={() => {
+              setLocations([])
+              setClientNames([])
+              setFunderIds([])
+            }}
+            className="text-[12px] text-brand-600 hover:underline"
+          >
+            Bersihkan filter
+          </button>
+        )}
+      </div>
+
+      {/* Filter bar -- multi-select Lokasi / Dinas / Pendana */}
+      <div className="rounded-md border bg-surface p-2.5 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <MultiCombobox<string>
+          value={locations}
+          onChange={setLocations}
+          options={(filtersQ.data?.locations ?? []).map((loc) => ({
+            value: loc,
+            label: loc,
+          }))}
+          placeholder="Semua lokasi"
+          sheetTitle="Filter Lokasi"
+          emptyMessage="Belum ada lokasi di proyek"
+        />
+        <MultiCombobox<string>
+          value={clientNames}
+          onChange={setClientNames}
+          options={(filtersQ.data?.clients ?? []).map((c) => ({
+            value: c,
+            label: c,
+          }))}
+          placeholder="Semua Dinas/Klien"
+          sheetTitle="Filter Dinas/Klien"
+          emptyMessage="Belum ada Dinas/Klien di proyek"
+        />
+        <MultiCombobox<number>
+          value={funderIds}
+          onChange={setFunderIds}
+          options={(filtersQ.data?.funders ?? []).map((f) => ({
+            value: f.id,
+            label: f.name,
+          }))}
+          placeholder="Semua Pendana"
+          sheetTitle="Filter Pendana"
+          emptyMessage="Belum ada pendana di-link ke proyek"
+        />
       </div>
 
       {d.warnings.length > 0 && <WarningBanner warnings={d.warnings} />}
