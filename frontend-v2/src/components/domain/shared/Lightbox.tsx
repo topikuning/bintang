@@ -32,15 +32,33 @@ export function Lightbox() {
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close()
-      else if (e.key === "ArrowRight") next()
-      else if (e.key === "ArrowLeft") prev()
+      if (e.key === "Escape") {
+        // CAPTURE phase + stopImmediatePropagation: cegah Radix Dialog
+        // listener (yg meng-handle Esc utk sheet/modal di-atasnya kita)
+        // ikut menerima event. Tanpa ini, tekan Esc saat Lightbox terbuka
+        // akan menutup BOTH Lightbox dan Sheet detail invoice/transaksi.
+        e.stopPropagation()
+        e.stopImmediatePropagation()
+        e.preventDefault()
+        close()
+      } else if (e.key === "ArrowRight") {
+        e.stopPropagation()
+        next()
+      } else if (e.key === "ArrowLeft") {
+        e.stopPropagation()
+        prev()
+      }
     }
-    document.addEventListener("keydown", onKey)
+    // capture: true -> handler ini berjalan SEBELUM listener bubble-phase
+    // milik Radix Dialog, sehingga stopImmediatePropagation efektif.
+    // Untuk pointerdown 'outside-detector' Radix, ditangani via React
+    // onPointerDown di outer div Lightbox (lihat below) -- tidak perlu
+    // document-level listener (yg akan ikut block React event delegation).
+    document.addEventListener("keydown", onKey, { capture: true })
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = "hidden"
     return () => {
-      document.removeEventListener("keydown", onKey)
+      document.removeEventListener("keydown", onKey, { capture: true })
       document.body.style.overflow = prevOverflow
     }
   }, [open, close, next, prev])
@@ -95,6 +113,15 @@ export function Lightbox() {
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center"
       onClick={close}
+      // Radix Dialog (Sheet) di-mount di portal yg parallel dgn Lightbox.
+      // Default Radix punya 'pointer-down-outside' detector di document
+      // yg akan menutup Sheet kalau klik terjadi di luar Sheet content.
+      // Lightbox secara DOM ada di luar Sheet content -> klik backdrop /
+      // tombol X di Lightbox dianggap "click outside Sheet" -> Sheet ikut
+      // close. Stop pointerdown di sini supaya tidak bubble ke document
+      // (jadi Radix outside-detector tidak fire), tapi tetap let React
+      // synthetic events (onClick) berjalan utk handler Lightbox sendiri.
+      onPointerDown={(e) => e.stopPropagation()}
       style={{
         backgroundColor: `rgba(0, 0, 0, ${0.95 * overlayOpacity})`,
         transition: isDragging ? "none" : "background-color 200ms",
