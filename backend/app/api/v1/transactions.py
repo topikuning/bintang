@@ -88,22 +88,65 @@ def _serialize(
     *,
     recipient_display: str | None = None,
 ) -> TransactionOut:
+    """Serialize Transaction ke TransactionOut.
+
+    DEFENSIVE: tidak rely Pydantic from_attributes utk relationship --
+    pakai dict-by-columns supaya tidak trigger lazy-load (MissingGreenlet
+    di async context). Caller WAJIB eager-load relationship sebelum
+    panggil ini, kalau perlu nilai-nya:
+      - attachments (utk out.attachments)
+      - items (utk out.items)
+      - settlement (utk out.settlement_status)
+    Kalau relationship belum loaded, fallback ke list kosong (safe).
+    """
     from decimal import Decimal as _D
-    out = TransactionOut.model_validate(t)
-    out.attachments = [AttachmentOut.model_validate(a) for a in t.attachments]
-    # items utk DIRECT_EXPENSE (multi-line breakdown).
-    items = getattr(t, "items", None) or []
-    if items:
+    from sqlalchemy import inspect as _sa_inspect
+    from sqlalchemy.orm.base import LoaderCallableStatus as _LCS
+
+    # Build dict dari kolom-kolom saja (SKIP relationship -- tidak akses
+    # attr Mapped[list[...]] yg bisa lazy-load).
+    insp = _sa_inspect(t)
+    data: dict = {}
+    for col in t.__table__.columns:
+        attr_state = insp.attrs.get(col.name)
+        if attr_state is not None:
+            val = attr_state.loaded_value
+            if val is _LCS.NO_VALUE:
+                continue
+            data[col.name] = val
+    out = TransactionOut.model_validate(data)
+
+    # Sekarang isi relationship dr attr yg sudah eager-loaded (safe access
+    # karena query selectinload). Kalau caller lupa eager-load, tetap safe
+    # -- kita cek via inspect dulu.
+    def _safe_rel(name: str) -> list:
+        st = insp.attrs.get(name)
+        if st is None:
+            return []
+        val = st.loaded_value
+        if val is _LCS.NO_VALUE or val is None:
+            return []
+        return list(val)
+
+    atts = _safe_rel("attachments")
+    out.attachments = [AttachmentOut.model_validate(a) for a in atts]
+    items_rel = _safe_rel("items")
+    if items_rel:
         from app.schemas.finance import TransactionItemOut
-        out.items = [TransactionItemOut.model_validate(i) for i in items]
+        out.items = [TransactionItemOut.model_validate(i) for i in items_rel]
     out.allocations = allocs or []
     allocated = sum((a.allocated_amount for a in (allocs or [])), start=_D("0"))
     out.allocated_amount = allocated
     out.remaining_amount = max(_D(t.amount or 0) - allocated, _D("0"))
-    # CASH_ADVANCE only: status settlement + recipient display.
-    if t.kind == TxnKind.CASH_ADVANCE:
-        out.recipient_display = recipient_display or t.recipient_name
-        sett = getattr(t, "settlement", None)
+
+    # CASH_ADVANCE only: status settlement (rel scalar, uselist=False).
+    kind_val = data.get("kind") or ""
+    if kind_val == TxnKind.CASH_ADVANCE.value or kind_val == TxnKind.CASH_ADVANCE:
+        out.recipient_display = recipient_display or data.get("recipient_name")
+        sett_state = insp.attrs.get("settlement")
+        sett = None
+        if sett_state is not None and sett_state.loaded_value is not _LCS.NO_VALUE:
+            sett = sett_state.loaded_value
         out.settlement_status = "SETTLED" if sett else "OUTSTANDING"
         out.settlement_id = sett.id if sett else None
     return out
@@ -179,7 +222,11 @@ async def list_transactions(
         )
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     stmt = (
-        stmt.options(selectinload(Transaction.attachments))
+        stmt.options(
+            selectinload(Transaction.attachments),
+            selectinload(Transaction.items),
+            selectinload(Transaction.settlement),
+        )
         .order_by(Transaction.tx_date.desc(), Transaction.id.desc())
         .offset((page - 1) * size)
         .limit(size)
@@ -285,7 +332,7 @@ async def get_transaction(
     user: User = Depends(get_current_user),
 ) -> TransactionOut:
     res = await db.execute(
-        select(Transaction).options(selectinload(Transaction.attachments)).where(Transaction.id == tid)
+        select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == tid)
     )
     t = res.scalar_one_or_none()
     if not t or t.deleted_at is not None:
@@ -386,7 +433,7 @@ async def submit_transaction(
     from app.services.messaging import notify_transaction_submitted
     await notify_transaction_submitted(db, t)
     res = await db.execute(
-        select(Transaction).options(selectinload(Transaction.attachments)).where(Transaction.id == t.id)
+        select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == t.id)
     )
     return await _serialize_with_allocs(db, res.scalar_one())
 
@@ -416,7 +463,7 @@ async def verify_transaction(
     from app.services.messaging import notify_transaction_verified
     await notify_transaction_verified(db, t)
     res = await db.execute(
-        select(Transaction).options(selectinload(Transaction.attachments)).where(Transaction.id == t.id)
+        select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == t.id)
     )
     return await _serialize_with_allocs(db, res.scalar_one())
 
@@ -442,7 +489,7 @@ async def reject_transaction(
     from app.services.messaging import notify_transaction_rejected
     await notify_transaction_rejected(db, t)
     res = await db.execute(
-        select(Transaction).options(selectinload(Transaction.attachments)).where(Transaction.id == t.id)
+        select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == t.id)
     )
     return await _serialize_with_allocs(db, res.scalar_one())
 
@@ -468,7 +515,7 @@ async def cancel_transaction(
               action=AuditAction.CANCEL, before=before, after=snapshot(t), note=body.reason)
     await db.commit()
     res = await db.execute(
-        select(Transaction).options(selectinload(Transaction.attachments)).where(Transaction.id == t.id)
+        select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == t.id)
     )
     return await _serialize_with_allocs(db, res.scalar_one())
 
