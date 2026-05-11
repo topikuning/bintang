@@ -279,12 +279,16 @@ class Project(TimestampMixin, Base):
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     company: Mapped[Company] = relationship(back_populates="projects")
-    user_links: Mapped[list[ProjectUser]] = relationship(
+    user_links: Mapped[list["ProjectUser"]] = relationship(
         back_populates="project", cascade="all,delete-orphan"
     )
-    attachments: Mapped[list[ProjectAttachment]] = relationship(
+    attachments: Mapped[list["ProjectAttachment"]] = relationship(
         back_populates="project", cascade="all,delete-orphan",
         order_by="ProjectAttachment.id",
+    )
+    funders: Mapped[list["ProjectFunder"]] = relationship(
+        back_populates="project", cascade="all,delete-orphan",
+        order_by="ProjectFunder.id",
     )
 
 
@@ -308,6 +312,40 @@ class ProjectAttachment(TimestampMixin, Base):
     uploaded_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
 
     project: Mapped[Project] = relationship(back_populates="attachments")
+
+
+class Funder(TimestampMixin, Base):
+    """Master pendana proyek (APBN/APBD/Swasta/dll). M2M ke Project."""
+    __tablename__ = "funders"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False, index=True)
+
+    projects: Mapped[list["ProjectFunder"]] = relationship(
+        back_populates="funder", cascade="all,delete-orphan"
+    )
+
+
+class ProjectFunder(TimestampMixin, Base):
+    """Link table Project <-> Funder (many-to-many).
+    Many-to-many supaya 1 proyek bisa multi pendana + 1 pendana di banyak
+    proyek (filter cross-project per pendana di hub).
+    """
+    __tablename__ = "project_funders"
+    __table_args__ = (
+        UniqueConstraint("project_id", "funder_id", name="uq_project_funder"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    funder_id: Mapped[int] = mapped_column(
+        ForeignKey("funders.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    project: Mapped[Project] = relationship(back_populates="funders")
+    funder: Mapped[Funder] = relationship(back_populates="projects")
 
 
 class ProjectUser(TimestampMixin, Base):

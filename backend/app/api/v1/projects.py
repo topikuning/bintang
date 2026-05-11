@@ -16,9 +16,11 @@ from app.core.deps import (
 from app.db.session import get_db
 from app.models.models import (
     AuditAction,
+    Funder,
     Project,
     ProjectAttachment,
     ProjectDocType,
+    ProjectFunder,
     ProjectStatus,
     ProjectUser,
     User,
@@ -48,8 +50,8 @@ router = APIRouter()
 
 
 def _to_out(p: Project) -> ProjectOut:
-    """Serialize Project + isi company_name + nama pengaju/approver dari relasi
-    (perlu sudah eager-loaded)."""
+    """Serialize Project + isi company_name + nama pengaju/approver +
+    funder_ids/funder_names dari relasi (perlu sudah eager-loaded)."""
     out = ProjectOut.model_validate(p)
     out.company_name = p.company.name if getattr(p, "company", None) else None
     proposed_by = getattr(p, "_proposed_by_user", None)
@@ -59,7 +61,36 @@ def _to_out(p: Project) -> ProjectOut:
     if approved_by is not None:
         out.approved_by_name = approved_by.name
     out.approved_at = p.approved_at.isoformat() if p.approved_at else None
+    # Funders dr relasi project_funders (selectinload-ed).
+    funder_links = getattr(p, "funders", []) or []
+    out.funder_ids = [pf.funder_id for pf in funder_links]
+    # Bulk-loaded di endpoint via _attach_funder_names utk dapat name.
+    funder_names_map: dict[int, str] = getattr(p, "_funder_names_map", {})
+    out.funder_names = [
+        funder_names_map.get(pf.funder_id, "") for pf in funder_links
+    ]
     return out
+
+
+async def _attach_funder_names(db: AsyncSession, projects: list[Project]) -> None:
+    """Bulk-load nama Funder utk semua proyek, tempel sbg dict in-memory
+    supaya _to_out bisa pakai tanpa N+1 query."""
+    fids: set[int] = set()
+    for p in projects:
+        for pf in getattr(p, "funders", []) or []:
+            fids.add(pf.funder_id)
+    if not fids:
+        return
+    res = await db.execute(select(Funder).where(Funder.id.in_(fids)))
+    name_map = {f.id: f.name for f in res.scalars().all()}
+    for p in projects:
+        p._funder_names_map = name_map
+
+
+async def _attach_relations(db: AsyncSession, projects: list[Project]) -> None:
+    """Convenience: attach proposal users + funder names utk list proyek."""
+    await _attach_proposal_users(db, projects)
+    await _attach_funder_names(db, projects)
 
 
 async def _attach_proposal_users(db: AsyncSession, projects: list[Project]) -> None:
@@ -120,13 +151,13 @@ async def list_projects(
         stmt = stmt.where(Project.company_id == company_id)
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     stmt = (
-        stmt.options(selectinload(Project.company))
+        stmt.options(selectinload(Project.company), selectinload(Project.funders))
         .order_by(Project.id.desc())
         .offset((page - 1) * size)
         .limit(size)
     )
     items = list((await db.execute(stmt)).scalars().all())
-    await _attach_proposal_users(db, items)
+    await _attach_relations(db, items)
     return Page(items=[_to_out(p) for p in items], total=total, page=page, size=size)
 
 
@@ -135,22 +166,32 @@ async def list_project_filters(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
-    """Distinct values utk filter dropdown di hub proyek. Pakai sekali load
-    di FE supaya dropdown bisa langsung populate. Hormat scoping user.
+    """Distinct values utk filter dropdown di hub proyek. Hormat scoping
+    user. Termasuk funders {id,name} yg tertaut ke proyek yg user akses.
     """
-    stmt = select(Project).where(
+    stmt = select(Project).options(selectinload(Project.funders)).where(
         Project.deleted_at.is_(None),
         Project.status != ProjectStatus.MENUNGGU_PERSETUJUAN,
     )
     pids = await user_project_ids(db, user)
     if pids is not None:
         if not pids:
-            return {"locations": [], "clients": []}
+            return {"locations": [], "clients": [], "funders": []}
         stmt = stmt.where(Project.id.in_(pids))
-    res = (await db.execute(stmt)).scalars().all()
-    locations = sorted({(p.location or "").strip() for p in res if p.location})
-    clients = sorted({(p.client_name or "").strip() for p in res if p.client_name})
-    return {"locations": locations, "clients": clients}
+    projects = (await db.execute(stmt)).scalars().all()
+    locations = sorted({(p.location or "").strip() for p in projects if p.location})
+    clients = sorted({(p.client_name or "").strip() for p in projects if p.client_name})
+    # Funder yg tertaut ke proyek user (subset Funder table, sorted by name).
+    fids = {pf.funder_id for p in projects for pf in (p.funders or [])}
+    funders_list: list[dict] = []
+    if fids:
+        res = await db.execute(
+            select(Funder)
+            .where(Funder.id.in_(fids), Funder.deleted_at.is_(None))
+            .order_by(Funder.name)
+        )
+        funders_list = [{"id": f.id, "name": f.name} for f in res.scalars().all()]
+    return {"locations": locations, "clients": clients, "funders": funders_list}
 
 
 @router.get("/stats")
@@ -160,6 +201,7 @@ async def list_projects_with_stats(
     company_id: int | None = None,
     location: str | None = None,
     client_name: str | None = None,
+    funder_id: int | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
@@ -190,12 +232,25 @@ async def list_projects_with_stats(
         stmt = stmt.where(func.lower(Project.location) == location.lower())
     if client_name:
         stmt = stmt.where(func.lower(Project.client_name) == client_name.lower())
-    stmt = stmt.order_by(Project.id.desc())
+    if funder_id:
+        # Join lewat project_funders
+        stmt = stmt.join(
+            ProjectFunder, ProjectFunder.project_id == Project.id
+        ).where(ProjectFunder.funder_id == funder_id)
+    stmt = stmt.options(selectinload(Project.funders)).order_by(Project.id.desc())
     projects = (await db.execute(stmt)).scalars().all()
 
     # company map
     cmap_q = select(_Company)
     cmap = {c.id: c for c in (await db.execute(cmap_q)).scalars().all()}
+    # Funder name map utk display chip di card
+    funder_ids_all = {pf.funder_id for p in projects for pf in (p.funders or [])}
+    fname_map: dict[int, str] = {}
+    if funder_ids_all:
+        fres = await db.execute(
+            select(Funder).where(Funder.id.in_(funder_ids_all))
+        )
+        fname_map = {f.id: f.name for f in fres.scalars().all()}
 
     out: list[dict] = []
     active_tx_statuses = (_TxnStatus.DRAFT, _TxnStatus.SUBMITTED, _TxnStatus.VERIFIED)
@@ -270,15 +325,62 @@ async def list_projects_with_stats(
                 "status": bstatus,
             },
             "health": health,
+            "funder_ids": [pf.funder_id for pf in (p.funders or [])],
+            "funder_names": [
+                fname_map.get(pf.funder_id, "") for pf in (p.funders or [])
+            ],
         })
     return out
 
 
 async def _load_with_company(db: AsyncSession, pid: int) -> Project | None:
     res = await db.execute(
-        select(Project).options(selectinload(Project.company)).where(Project.id == pid)
+        select(Project)
+        .options(
+            selectinload(Project.company),
+            selectinload(Project.funders),
+        )
+        .where(Project.id == pid)
     )
     return res.scalar_one_or_none()
+
+
+async def _replace_project_funders(
+    db: AsyncSession, project_id: int, new_funder_ids: list[int]
+) -> None:
+    """Replace seluruh link funder utk proyek. Validate semua ID exist,
+    drop yg lama, insert yg baru. Idempoten saat list sama dgn DB."""
+    new_set = set(int(x) for x in (new_funder_ids or []))
+    if new_set:
+        # Validasi: pastikan semua ID exist & belum di-soft-delete.
+        valid = (
+            await db.execute(
+                select(Funder.id).where(
+                    Funder.id.in_(new_set), Funder.deleted_at.is_(None)
+                )
+            )
+        ).scalars().all()
+        invalid = new_set - set(valid)
+        if invalid:
+            raise HTTPException(
+                400,
+                f"funder_id_invalid: {sorted(invalid)} tidak ada / sudah dihapus",
+            )
+    existing = (
+        await db.execute(
+            select(ProjectFunder).where(ProjectFunder.project_id == project_id)
+        )
+    ).scalars().all()
+    existing_set = {pf.funder_id for pf in existing}
+    # Drop yg sudah tdk di list baru
+    to_drop = existing_set - new_set
+    for pf in existing:
+        if pf.funder_id in to_drop:
+            await db.delete(pf)
+    # Insert yg baru
+    to_add = new_set - existing_set
+    for fid in to_add:
+        db.add(ProjectFunder(project_id=project_id, funder_id=fid))
 
 
 @router.post("", response_model=ProjectOut, status_code=201)
@@ -290,7 +392,9 @@ async def create_project(
     exists = (await db.execute(select(Project).where(Project.code == payload.code))).scalar_one_or_none()
     if exists:
         raise HTTPException(409, "project_code_already_used")
-    p = Project(**payload.model_dump())
+    payload_data = payload.model_dump(exclude={"funder_ids"})
+    funder_ids = payload.funder_ids
+    p = Project(**payload_data)
     # Proyek yg dibuat langsung oleh admin -> AKTIF + ter-approve oleh dirinya.
     if p.status == ProjectStatus.MENUNGGU_PERSETUJUAN:
         p.status = ProjectStatus.AKTIF
@@ -299,6 +403,8 @@ async def create_project(
     p.approved_at = _sa_func.now()
     db.add(p)
     await db.flush()
+    if funder_ids:
+        await _replace_project_funders(db, p.id, funder_ids)
     if p.pic_user_id:
         db.add(ProjectUser(project_id=p.id, user_id=p.pic_user_id))
     await log(db, user_id=admin.id, entity="project", entity_id=p.id,
@@ -323,13 +429,13 @@ async def list_proposal_queue(
     )
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     stmt = (
-        stmt.options(selectinload(Project.company))
+        stmt.options(selectinload(Project.company), selectinload(Project.funders))
         .order_by(Project.id.desc())
         .offset((page - 1) * size)
         .limit(size)
     )
     items = list((await db.execute(stmt)).scalars().all())
-    await _attach_proposal_users(db, items)
+    await _attach_relations(db, items)
     return Page(items=[_to_out(p) for p in items], total=total, page=page, size=size)
 
 
@@ -377,7 +483,7 @@ async def propose_project(
               action=AuditAction.CREATE, after=snapshot(p))
     await db.commit()
     p = await _load_with_company(db, p.id)
-    await _attach_proposal_users(db, [p])
+    await _attach_relations(db, [p])
     return _to_out(p)
 
 
@@ -417,7 +523,7 @@ async def approve_proposal(
               action=AuditAction.APPROVE, before=before, after=snapshot(p))
     await db.commit()
     p = await _load_with_company(db, p.id)
-    await _attach_proposal_users(db, [p])
+    await _attach_relations(db, [p])
     return _to_out(p)
 
 
@@ -447,7 +553,7 @@ async def reject_proposal(
               action=AuditAction.REJECT, before=before, after=snapshot(p))
     await db.commit()
     p = await _load_with_company(db, p.id)
-    await _attach_proposal_users(db, [p])
+    await _attach_relations(db, [p])
     return _to_out(p)
 
 
@@ -469,7 +575,7 @@ async def get_project(
             raise HTTPException(404, "not_found")
     else:
         await ensure_project_access(db, user, pid)
-    await _attach_proposal_users(db, [p])
+    await _attach_relations(db, [p])
     return _to_out(p)
 
 
@@ -531,12 +637,17 @@ async def update_project(
             raise HTTPException(409, "project_code_already_used")
 
     before = snapshot(p)
+    # Pisahkan funder_ids (M2M) dari kolom regular project.
+    funder_ids = data.pop("funder_ids", None)
     for k, v in data.items():
         setattr(p, k, v)
+    if funder_ids is not None:
+        await _replace_project_funders(db, p.id, funder_ids)
     await log(db, user_id=admin.id, entity="project", entity_id=p.id,
               action=AuditAction.UPDATE, before=before, after=snapshot(p))
     await db.commit()
     p = await _load_with_company(db, p.id)
+    await _attach_funder_names(db, [p])
     return _to_out(p)
 
 

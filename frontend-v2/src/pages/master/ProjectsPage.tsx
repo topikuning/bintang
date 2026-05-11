@@ -14,6 +14,7 @@ import {
 } from "@/hooks/useProjectMutations"
 import { useProjectDashboard } from "@/hooks/useDashboard"
 import { useCompanies } from "@/hooks/useCompanies"
+import { useFunders } from "@/hooks/useFunders"
 import { MasterPageShell } from "@/components/master/MasterPageShell"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -65,6 +66,7 @@ const schema = z.object({
   tax_ppn_pct: z.number().min(0).max(100),
   tax_pph_pct: z.number().min(0).max(100),
   marketing_pct: z.number().min(0).max(100),
+  funder_ids: z.array(z.number()).default([]),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -320,6 +322,7 @@ function buildDefaults(project: Project | null): FormValues {
     tax_ppn_pct: project ? Number(project.tax_ppn_pct ?? 11) : 11,
     tax_pph_pct: project ? Number(project.tax_pph_pct ?? 2) : 2,
     marketing_pct: project ? Number(project.marketing_pct ?? 15) : 15,
+    funder_ids: project?.funder_ids ?? [],
   }
 }
 
@@ -393,6 +396,7 @@ function ProjectForm({
         tax_ppn_pct: parsed.data.tax_ppn_pct,
         tax_pph_pct: parsed.data.tax_pph_pct,
         marketing_pct: parsed.data.marketing_pct,
+        funder_ids: parsed.data.funder_ids,
       }
       if (isEdit) {
         await update.mutateAsync(payload)
@@ -467,6 +471,21 @@ function ProjectForm({
         <Input
           {...register("client_name")}
           placeholder="Mis. Dinas PUPR Kota Mataram"
+        />
+      </Field>
+      <Field
+        label="Pendana"
+        hint="Bisa lebih dari satu. Master di Lainnya → Pendana."
+      >
+        <Controller
+          control={control}
+          name="funder_ids"
+          render={({ field }) => (
+            <FunderMultiSelect
+              value={field.value ?? []}
+              onChange={field.onChange}
+            />
+          )}
         />
       </Field>
       <Field label="Lokasi">
@@ -617,6 +636,90 @@ function Field({
       {children}
       {hint && !error && <p className="text-[11px] text-ink-500">{hint}</p>}
       {error && <p className="text-[11px] text-danger-600">{error}</p>}
+    </div>
+  )
+}
+
+/** Multi-select Funder pakai checkbox list + chip preview. */
+function FunderMultiSelect({
+  value,
+  onChange,
+}: {
+  value: number[]
+  onChange: (next: number[]) => void
+}) {
+  const q = useFunders()
+  const items = q.data?.items ?? []
+  const selected = new Set(value)
+
+  const toggle = (id: number) => {
+    const next = new Set(selected)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    onChange(Array.from(next))
+  }
+
+  if (q.isLoading) {
+    return <div className="text-[12px] text-ink-500">Memuat pendana…</div>
+  }
+  if (items.length === 0) {
+    return (
+      <div className="rounded-md border border-dashed bg-surface-muted/40 p-3 text-[12px] text-ink-500">
+        Belum ada master pendana. Tambahkan dulu di menu{" "}
+        <RouterLink to="/master/funders" className="text-brand-600 hover:underline">
+          Master → Pendana
+        </RouterLink>
+        .
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {items
+            .filter((f) => selected.has(f.id))
+            .map((f) => (
+              <span
+                key={f.id}
+                className="inline-flex items-center gap-1 rounded border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] text-brand-800"
+              >
+                {f.name}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    toggle(f.id)
+                  }}
+                  className="text-danger-500 hover:text-danger-700"
+                  aria-label={`Lepas ${f.name}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+        </div>
+      )}
+      <div className="rounded border bg-surface max-h-40 overflow-y-auto">
+        {items.map((f) => {
+          const checked = selected.has(f.id)
+          return (
+            <label
+              key={f.id}
+              className="flex items-center gap-2 px-2.5 py-1.5 text-sm cursor-pointer hover:bg-ink-50 border-b last:border-b-0"
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => toggle(f.id)}
+                className="h-4 w-4 accent-brand-600"
+              />
+              <span>{f.name}</span>
+            </label>
+          )
+        })}
+      </div>
     </div>
   )
 }
