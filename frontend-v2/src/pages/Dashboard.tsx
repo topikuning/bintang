@@ -393,15 +393,18 @@ function GlobalDashboard() {
         </div>
       </Section>
 
-      {/* Breakdown charts -- side-by-side di lg, stack di mobile/tablet */}
-      {(d.spending_by_project.length > 0 || d.spending_by_category.length > 0) && (
+      {/* Breakdown charts -- side-by-side di lg, stack di mobile/tablet.
+          Defensive `?? []`: backend old / user tanpa proyek bisa return
+          shape tdk lengkap. */}
+      {((d.spending_by_project?.length ?? 0) > 0 ||
+        (d.spending_by_category?.length ?? 0) > 0) && (
         <div className="grid gap-4 lg:grid-cols-2">
-          {d.spending_by_project.length > 0 && (
+          {(d.spending_by_project?.length ?? 0) > 0 && (
             <Section title="Pengeluaran per Proyek" icon={PieIcon}>
               <div className="rounded-md border bg-surface p-4">
                 <SpendingBreakdown
                   total={d.totals.out}
-                  items={d.spending_by_project.map((s) => ({
+                  items={(d.spending_by_project ?? []).map((s) => ({
                     name: s.name,
                     value: s.total,
                   }))}
@@ -411,12 +414,12 @@ function GlobalDashboard() {
               </div>
             </Section>
           )}
-          {d.spending_by_category.length > 0 && (
+          {(d.spending_by_category?.length ?? 0) > 0 && (
             <Section title="Pengeluaran per Kategori" icon={PieIcon}>
               <div className="rounded-md border bg-surface p-4">
                 <SpendingBreakdown
                   total={d.totals.out}
-                  items={d.spending_by_category.map((c) => ({
+                  items={(d.spending_by_category ?? []).map((c) => ({
                     name: c.category,
                     value: c.total,
                   }))}

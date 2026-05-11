@@ -109,17 +109,33 @@ async def global_dashboard(
 ) -> dict:
     pids = await user_project_ids(db, user)  # None=all, []=no access, [..]=scoped
     proj_q = select(Project).where(Project.deleted_at.is_(None))
+
+    # Shape default utk early-return (user tanpa proyek / setelah filter
+    # tdk ada proyek). Wajib include SEMUA field yg dipakai FE supaya tdk
+    # crash di Dashboard.tsx (mis. spending_by_project.length).
+    def _empty_global() -> dict:
+        return {
+            "totals": {"in": 0, "out": 0, "balance": 0, "pending_in": 0, "pending_out": 0},
+            "active_projects": 0,
+            "total_projects": 0,
+            "minus_projects": 0,
+            "pending_count": 0,
+            "pending_total": 0,
+            "unlinked_out_count": 0,
+            "unlinked_out_total": 0,
+            "overdue_invoices": 0,
+            "biggest_project": None,
+            "top_spender": None,
+            "spending_by_project": [],
+            "spending_by_category": [],
+            "monthly_cashflow": [],
+            "projects": [],
+            "warnings": [],
+        }
+
     if pids is not None:
         if not pids:
-            return {
-                "totals": {"in": 0, "out": 0, "balance": 0},
-                "active_projects": 0,
-                "minus_projects": 0,
-                "biggest_project": None,
-                "monthly_cashflow": [],
-                "projects": [],
-                "warnings": [],
-            }
+            return _empty_global()
         proj_q = proj_q.where(Project.id.in_(pids))
     if q:
         like = f"%{q}%"
@@ -130,15 +146,7 @@ async def global_dashboard(
     project_ids = [p.id for p in projects]
 
     if not project_ids:
-        return {
-            "totals": {"in": 0, "out": 0, "balance": 0},
-            "active_projects": 0,
-            "minus_projects": 0,
-            "biggest_project": None,
-            "monthly_cashflow": [],
-            "projects": [],
-            "warnings": [],
-        }
+        return _empty_global()
 
     # totals_in/out dihitung lewat proj_summary di bawah agar konsisten
 
