@@ -35,6 +35,13 @@ async def _sync_pg_columns(conn) -> None:
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS approved_by_id INTEGER REFERENCES users(id)",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS rejection_reason TEXT",
+        # Akunting: kind tx (INVOICE_PAYMENT/CASH_ADVANCE/DIRECT_EXPENSE)
+        "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS kind VARCHAR(40) NOT NULL DEFAULT 'INVOICE_PAYMENT'",
+        "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS recipient_user_id INTEGER REFERENCES users(id)",
+        "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS recipient_name VARCHAR(200)",
+        "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS parent_advance_tx_id INTEGER REFERENCES transactions(id)",
+        "CREATE INDEX IF NOT EXISTS ix_transactions_kind ON transactions (kind)",
+        "CREATE INDEX IF NOT EXISTS ix_transactions_recipient_user_id ON transactions (recipient_user_id)",
     ]
     for sql in statements:
         try:

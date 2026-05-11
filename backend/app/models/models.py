@@ -63,6 +63,26 @@ class TxnType(str, enum.Enum):
     OUT = "OUT"
 
 
+class TxnKind(str, enum.Enum):
+    """Sub-jenis transaksi (terutama utk OUT) -- memenuhi kaidah akunting:
+
+    - INVOICE_PAYMENT: pembayaran ke vendor lewat invoice (ada party
+      eksternal + nomor invoice). Mapped ke invoice_id / allocations.
+    - CASH_ADVANCE: uang muka ke personal internal (BUKAN beban, masih
+      piutang -- 'Dr. Uang Muka / Kr. Kas'). Wajib di-settle dgn
+      CashAdvanceSettlement supaya jadi beban.
+    - DIRECT_EXPENSE: beban langsung tanpa invoice (struk/kwitansi).
+      Multi-line items per kategori (mis. ATK, bensin, parkir). Total
+      transaksi = sum(items).
+
+    Utk TxnType.IN: kind biasanya INVOICE_PAYMENT (penerimaan dr invoice
+    OUT) atau OTHER -- tdk dibedakan ketat.
+    """
+    INVOICE_PAYMENT = "INVOICE_PAYMENT"
+    CASH_ADVANCE = "CASH_ADVANCE"
+    DIRECT_EXPENSE = "DIRECT_EXPENSE"
+
+
 class TxnStatus(str, enum.Enum):
     DRAFT = "DRAFT"
     SUBMITTED = "SUBMITTED"
@@ -408,8 +428,28 @@ class Transaction(TimestampMixin, Base):
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
     tx_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     type: Mapped[TxnType] = mapped_column(Enum(TxnType), nullable=False, index=True)
+    # Sub-jenis tx OUT (akunting). Default INVOICE_PAYMENT supaya legacy
+    # data tdk perlu re-tagging. Hanya bermakna utk type=OUT.
+    kind: Mapped[TxnKind] = mapped_column(
+        String(40),
+        default=TxnKind.INVOICE_PAYMENT.value,
+        nullable=False,
+        index=True,
+    )
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True, index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    # Untuk kind=CASH_ADVANCE -- penerima uang muka (hybrid: bisa FK ke
+    # User akun, atau hanya string nama bebas utk staff yg belum punya akun).
+    # Salah satu wajib diisi kalau kind=CASH_ADVANCE.
+    recipient_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    recipient_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Untuk kind=CASH_ADVANCE -- link ke top-up tx kalau settlement overpay.
+    # Untuk DIRECT_EXPENSE auto-generated -- link balik ke advance asal.
+    parent_advance_tx_id: Mapped[int | None] = mapped_column(
+        ForeignKey("transactions.id"), nullable=True
+    )
 
     party_type: Mapped[PartyType | None] = mapped_column(Enum(PartyType), nullable=True)
     party_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -441,6 +481,97 @@ class Transaction(TimestampMixin, Base):
     attachments: Mapped[list[TransactionAttachment]] = relationship(
         back_populates="transaction", cascade="all,delete-orphan"
     )
+    # Multi-line breakdown utk DIRECT_EXPENSE (rincian pengeluaran per item).
+    items: Mapped[list["TransactionItem"]] = relationship(
+        back_populates="transaction",
+        cascade="all,delete-orphan",
+        order_by="TransactionItem.id",
+    )
+    # Settlement utk CASH_ADVANCE. 1 advance = max 1 settlement (unique).
+    settlement: Mapped["CashAdvanceSettlement | None"] = relationship(
+        back_populates="cash_advance",
+        cascade="all,delete-orphan",
+        uselist=False,
+        foreign_keys="CashAdvanceSettlement.cash_advance_tx_id",
+    )
+
+
+class TransactionItem(TimestampMixin, Base):
+    """Multi-line item breakdown utk transaksi (terutama DIRECT_EXPENSE).
+    Total transaksi = SUM(items.amount). Validasi di endpoint."""
+    __tablename__ = "transaction_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id"), nullable=True
+    )
+    description: Mapped[str] = mapped_column(String(300), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+
+    transaction: Mapped[Transaction] = relationship(back_populates="items")
+
+
+class CashAdvanceSettlement(TimestampMixin, Base):
+    """Pertanggungjawaban uang muka.
+    1-to-1 ke Transaction kind=CASH_ADVANCE. Membentuk pencatatan akunting:
+        Dr. Beban XYZ (per item) + Kr. Uang Muka Karyawan
+        Dr. Kas (returned_to_kas) + Kr. Uang Muka Karyawan
+    Kalau total items > advance amount -> auto-create top-up tx
+    (kind=DIRECT_EXPENSE, parent_advance_tx_id = advance).
+    """
+    __tablename__ = "cash_advance_settlements"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cash_advance_tx_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"),
+        unique=True, nullable=False, index=True,
+    )
+    settled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    settled_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    # Sisa yg dikembalikan ke kas (kalau pakai < advance). Tdk negatif.
+    returned_to_kas: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, default=Decimal("0")
+    )
+    # Top-up tx kalau overpay (sum items > advance). Auto-created by API.
+    topup_tx_id: Mapped[int | None] = mapped_column(
+        ForeignKey("transactions.id"), nullable=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    cash_advance: Mapped[Transaction] = relationship(
+        back_populates="settlement",
+        foreign_keys=[cash_advance_tx_id],
+    )
+    items: Mapped[list["CashAdvanceSettlementItem"]] = relationship(
+        back_populates="settlement",
+        cascade="all,delete-orphan",
+        order_by="CashAdvanceSettlementItem.id",
+    )
+
+
+class CashAdvanceSettlementItem(TimestampMixin, Base):
+    """Rincian penggunaan uang muka. 1 item = 1 baris pertanggungjawaban
+    (kategori + deskripsi + amount + opsional URL struk)."""
+    __tablename__ = "cash_advance_settlement_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    settlement_id: Mapped[int] = mapped_column(
+        ForeignKey("cash_advance_settlements.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id"), nullable=True
+    )
+    description: Mapped[str] = mapped_column(String(300), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    receipt_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    settlement: Mapped[CashAdvanceSettlement] = relationship(back_populates="items")
 
 
 class TransactionAttachment(TimestampMixin, Base):
