@@ -11,6 +11,7 @@ import {
   type TransactionInput,
 } from "@/hooks/useTransactionMutations"
 import { useUsers } from "@/hooks/useUsers"
+import { useAuthStore } from "@/store/auth"
 import type { PaymentMethod, Transaction, TxnKind, TxnType } from "@/types/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -136,6 +137,12 @@ export function TransactionForm({
 
   const itemsArr = useFieldArray({ control, name: "items" })
   const usersQ = useUsers({ size: 200 })
+  // God-mode: SUPERADMIN bisa ubah kind walau edit -- selama tx belum
+  // ter-alokasi ke invoice. Backend tetap validate (403 kalau non-superadmin
+  // atau 409 kalau ada allocation).
+  const role = useAuthStore((s) => s.user?.role)
+  const isSuperAdmin = role === "SUPERADMIN"
+  const kindLocked = isEdit && !isSuperAdmin
 
   // Reset saat sheet baru dibuka atau transaction berubah
   useEffect(() => {
@@ -320,14 +327,14 @@ export function TransactionForm({
                           <button
                             key={k}
                             type="button"
-                            disabled={isEdit}
+                            disabled={kindLocked}
                             onClick={() => field.onChange(k)}
                             className={
                               "h-9 rounded border text-[12px] font-medium px-1 " +
                               (active
                                 ? "border-brand-500 bg-brand-50 text-brand-700"
                                 : "border-border-strong bg-surface text-ink-600 hover:bg-ink-50") +
-                              (isEdit ? " opacity-60 cursor-not-allowed" : "")
+                              (kindLocked ? " opacity-60 cursor-not-allowed" : "")
                             }
                             title={KIND_LABEL[k].hint}
                           >
@@ -338,9 +345,17 @@ export function TransactionForm({
                     </div>
                   )}
                 />
-                {isEdit && (
+                {isEdit && kindLocked && (
                   <p className="text-[11px] text-ink-500">
-                    Jenis terkunci setelah transaksi dibuat (audit).
+                    Jenis terkunci setelah transaksi dibuat (audit). Hubungi
+                    SUPERADMIN bila perlu koreksi.
+                  </p>
+                )}
+                {isEdit && isSuperAdmin && (
+                  <p className="text-[11px] text-warning-700">
+                    God-mode: jenis bisa diubah selama tx belum ter-alokasi
+                    ke invoice. Pindah jenis akan reset field yg tdk berlaku
+                    (mis. invoice_id, recipient, items).
                   </p>
                 )}
               </Field>

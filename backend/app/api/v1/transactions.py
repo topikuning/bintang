@@ -374,12 +374,52 @@ async def update_transaction(
             )
     data = payload.model_dump(exclude_unset=True)
     items_payload = data.pop("items", None)
-    # Validate kind invariants jika ada perubahan amount/items
-    if items_payload is not None or "amount" in data:
+    new_kind = data.pop("kind", None)
+
+    # Ubah kind: HANYA SUPERADMIN (god-mode), dan tx blm ter-alokasi ke
+    # invoice -- alokasi (invoice_id atau lewat invoice_allocations) hanya
+    # bermakna utk INVOICE_PAYMENT, jadi pindah kind akan rusak data.
+    if new_kind is not None and new_kind != t.kind:
+        if user.role != UserRole.SUPERADMIN:
+            raise HTTPException(
+                403,
+                "kind_change_forbidden: hanya SUPERADMIN yg bisa ubah jenis tx",
+            )
+        # Cek alokasi invoice (invoice_id langsung atau InvoiceAllocation row)
+        alloc_exists = (await db.execute(
+            select(InvoiceAllocation.id).where(
+                InvoiceAllocation.transaction_id == t.id,
+                InvoiceAllocation.deleted_at.is_(None),
+            ).limit(1)
+        )).scalar_one_or_none() is not None
+        if alloc_exists or t.invoice_id:
+            raise HTTPException(
+                409,
+                "kind_change_blocked: tx sudah ter-alokasi ke invoice. "
+                "Hapus alokasi/unlink invoice dulu.",
+            )
+        # Reset field2 yg tdk berlaku di kind baru
+        if new_kind != TxnKind.INVOICE_PAYMENT:
+            data["invoice_id"] = None
+            data["purchase_order_id"] = None
+        if new_kind != TxnKind.CASH_ADVANCE:
+            data["recipient_user_id"] = None
+            data["recipient_name"] = None
+        if new_kind != TxnKind.DIRECT_EXPENSE:
+            # Drop items lama (akan di-handle kalau bukan DIRECT_EXPENSE)
+            if items_payload is None:
+                items_payload = []   # force clear
+        # Set kind baru
+        data["kind"] = new_kind
+
+    # Validate invariants utk kind effective (baru atau lama)
+    effective_kind = new_kind if new_kind else t.kind
+    if items_payload is not None or "amount" in data or new_kind is not None:
         new_amount = data.get("amount", t.amount)
         items_check = items_payload if items_payload is not None else (t.items or [])
+        # Pakai payload utk recipient check, tapi kind dr effective
         _validate_kind_invariants(
-            payload, tx_type=t.type, kind=t.kind,
+            payload, tx_type=t.type, kind=effective_kind,
             amount=new_amount, items=items_check,
         )
     if payload.recipient_user_id:
@@ -389,17 +429,18 @@ async def update_transaction(
     before = snapshot(t)
     for k, v in data.items():
         setattr(t, k, v)
-    # Replace items kalau diisi (DIRECT_EXPENSE)
+    # Replace items kalau diisi (DIRECT_EXPENSE) atau kind berubah ke non-DIRECT
     if items_payload is not None:
         # Hapus item lama, masukkan yg baru
         for it in list(t.items or []):
             await db.delete(it)
         for it in items_payload:
+            # items_payload bisa list[TransactionItemIn] (dr payload) atau []
             db.add(TransactionItem(
                 transaction_id=t.id,
-                category_id=it.category_id,
-                description=it.description,
-                amount=it.amount,
+                category_id=getattr(it, "category_id", None),
+                description=getattr(it, "description", ""),
+                amount=getattr(it, "amount", 0),
             ))
     if t.invoice_id:
         inv = await db.get(Invoice, t.invoice_id)

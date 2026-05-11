@@ -80,7 +80,9 @@ class TransactionCreate(TransactionBase):
 
 class TransactionUpdate(BaseModel):
     tx_date: date | None = None
-    # kind tidak boleh diubah setelah created -- akan ditolak di endpoint.
+    # kind boleh diubah HANYA oleh SUPERADMIN (god-mode) DAN belum ada
+    # invoice allocation. Validasi di endpoint.
+    kind: TxnKind | None = None
     category_id: int | None = None
     amount: Decimal | None = None
     party_type: PartyType | None = None
