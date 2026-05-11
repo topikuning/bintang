@@ -439,15 +439,15 @@ function SettlementDialog({
     const s = existingQ.data!
     return (
       <Dialog open onOpenChange={(o) => !o && onClose()}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-3 border-b shrink-0">
             <DialogTitle>Pertanggungjawaban</DialogTitle>
             <DialogDescription>
               Dana operasional #{target.id} ({fmtIDR(advanceAmount)}) sudah di-settle
               {s.settled_by_name && ` oleh ${s.settled_by_name}`}.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 text-sm">
+          <div className="space-y-2 text-sm flex-1 overflow-y-auto px-6 py-4">
             <ul className="divide-y rounded border bg-surface">
               {s.items.map((it) => (
                 <li key={it.id} className="flex justify-between px-3 py-2 gap-2">
@@ -492,7 +492,7 @@ function SettlementDialog({
               <div className="text-[12px] text-ink-500 italic">{s.notes}</div>
             )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="px-6 py-3 border-t shrink-0 bg-surface">
             <Button
               variant="danger"
               onClick={handleDelete}
@@ -513,8 +513,8 @@ function SettlementDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="px-6 pt-6 pb-3 border-b shrink-0">
           <DialogTitle>
             Pertanggungjawaban Dana Operasional -- {target.recipient_display}
           </DialogTitle>
@@ -527,7 +527,7 @@ function SettlementDialog({
 
         <form
           onSubmit={handleSubmit(onSubmit)}
-          className="space-y-3"
+          className="space-y-3 flex-1 overflow-y-auto px-6 py-4"
           id="settlement-form"
         >
           <div className="grid grid-cols-2 gap-2">
@@ -700,7 +700,7 @@ function SettlementDialog({
           </div>
         </form>
 
-        <DialogFooter>
+        <DialogFooter className="px-6 py-3 border-t shrink-0 bg-surface">
           <Button variant="secondary" onClick={onClose} disabled={isSubmitting || settleMu.isPending}>
             Batal
           </Button>
