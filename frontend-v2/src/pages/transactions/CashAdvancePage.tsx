@@ -624,6 +624,7 @@ function SettlementDialog({
                         <InvoicePickerInline
                           value={field.value ?? null}
                           onChange={field.onChange}
+                          projectId={target.project_id}
                         />
                       )}
                     />
@@ -718,19 +719,26 @@ function SettlementDialog({
   )
 }
 
-/** Inline picker: pilih invoice OPEN (utk settlement item yg bayar invoice). */
+/** Inline picker: pilih invoice OPEN (utk settlement item yg bayar invoice).
+ *  WAJIB di-filter project_id supaya hanya invoice dari proyek yg sama dgn
+ *  advance tx -- rule akunting: dana operasional 1 proyek tdk boleh
+ *  digunakan utk bayar invoice proyek lain. */
 function InvoicePickerInline({
   value,
   onChange,
+  projectId,
 }: {
   value: number | null
   onChange: (v: number | null) => void
+  projectId: number
 }) {
-  // Ambil invoice yg masih open (ISSUED/PARTIALLY_PAID/OVERDUE) supaya
-  // tidak crowded. Backend validate exist saat submit.
+  // Ambil invoice yg masih open (ISSUED/PARTIALLY_PAID/OVERDUE) di proyek
+  // yg sama dgn advance tx. Backend juga validate saat submit (defense
+  // in depth).
   const invQ = useInvoices({
     page: 1,
     size: 200,
+    project_id: projectId,
   })
   const items = (invQ.data?.items ?? []).filter(
     (inv) =>

@@ -820,6 +820,21 @@ async def settle_cash_advance(
                 400,
                 f"invoice_id_invalid: {sorted(missing)} tidak ada / sudah dihapus",
             )
+        # Aturan akunting: dana operasional 1 proyek tdk boleh dipakai
+        # bayar invoice proyek lain. Validate semua invoice di proyek
+        # yg sama dgn advance tx.
+        wrong_project = [
+            inv_id for inv_id, inv in invoice_map.items()
+            if inv.project_id != t.project_id
+        ]
+        if wrong_project:
+            raise HTTPException(
+                400,
+                f"invoice_wrong_project: invoice {sorted(wrong_project)} "
+                f"bukan dari proyek yg sama dgn dana operasional "
+                f"(proyek #{t.project_id}). Dana ops hanya boleh bayar "
+                f"invoice di proyek-nya sendiri.",
+            )
     for it in payload.items:
         item_row = CashAdvanceSettlementItem(
             settlement_id=settlement.id,
