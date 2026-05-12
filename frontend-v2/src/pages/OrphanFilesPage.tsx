@@ -1,5 +1,4 @@
 import { useState } from "react"
-import { Link } from "react-router-dom"
 import {
   Files,
   HardDrive,
@@ -249,14 +248,18 @@ export function OrphanFilesPage() {
                   />
                   <Files className="h-4 w-4 text-ink-400 shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <Link
-                      to={o.url}
+                    {/* URL /files/... dilayani backend static, BUKAN
+                        SPA route. Pakai <a> bukan <Link> -- kalau pakai
+                        Link, react-router intercept -> fallback ke
+                        dashboard. */}
+                    <a
+                      href={o.url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[13px] text-brand-700 hover:underline font-mono truncate block"
                     >
                       {o.path}
-                    </Link>
+                    </a>
                     <div className="text-[11px] text-ink-500">
                       {fmtBytes(o.size_bytes)} · diunggah {fmtDate(o.mtime)}
                     </div>
