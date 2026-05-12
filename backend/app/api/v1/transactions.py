@@ -275,13 +275,35 @@ def _validate_kind_invariants(
                 400,
                 "items_required: DIRECT_EXPENSE wajib punya >=1 line item",
             )
-        total = sum((_D(i.amount) for i in items), start=_D("0"))
+        # items bisa berbentuk: list[TransactionItemIn] (Pydantic dr payload),
+        # list[dict] (dr model_dump), atau list[TransactionItem] (ORM dr t.items).
+        # Support semua via _read_item_amount.
+        total = sum(
+            (_read_item_amount(i) for i in items), start=_D("0")
+        )
         if total != _D(amount or 0):
             raise HTTPException(
                 400,
                 f"items_sum_mismatch: sum(items.amount)={total} != "
                 f"amount={amount}. Total harus sama persis.",
             )
+
+
+def _read_item_amount(i) -> "Decimal":
+    """Read amount dr item -- support dict (model_dump output), Pydantic
+    instance, atau ORM row. Defensif terhadap shape input."""
+    from decimal import Decimal
+    if isinstance(i, dict):
+        return Decimal(str(i.get("amount") or 0))
+    val = getattr(i, "amount", None)
+    return Decimal(str(val or 0))
+
+
+def _get_item_field(i, key):
+    """Read field dr item -- support dict / Pydantic / ORM row."""
+    if isinstance(i, dict):
+        return i.get(key)
+    return getattr(i, key, None)
 
 
 @router.post("", response_model=TransactionOut, status_code=201)
@@ -447,12 +469,14 @@ async def update_transaction(
         for it in list(t.items or []):
             await db.delete(it)
         for it in items_payload:
-            # items_payload bisa list[TransactionItemIn] (dr payload) atau []
+            # items_payload bisa list[dict] (dr model_dump) atau
+            # list[TransactionItemIn] (Pydantic, kalau caller belum
+            # model_dump). Helper _get_item_field handle dua-duanya.
             db.add(TransactionItem(
                 transaction_id=t.id,
-                category_id=getattr(it, "category_id", None),
-                description=getattr(it, "description", ""),
-                amount=getattr(it, "amount", 0),
+                category_id=_get_item_field(it, "category_id"),
+                description=_get_item_field(it, "description") or "",
+                amount=_get_item_field(it, "amount") or 0,
             ))
     if t.invoice_id:
         inv = await db.get(Invoice, t.invoice_id)
