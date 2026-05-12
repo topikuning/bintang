@@ -86,6 +86,11 @@ const UsersPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("@/pages/Settings").then((m) => ({ default: m.SettingsPage })),
 )
+const SystemSettingsPage = lazy(() =>
+  import("@/pages/SystemSettingsPage").then((m) => ({
+    default: m.SystemSettingsPage,
+  })),
+)
 const MorePage = lazy(() =>
   import("@/pages/More").then((m) => ({ default: m.MorePage })),
 )
@@ -181,6 +186,7 @@ export const router = createBrowserRouter([
           { path: "master/funders", element: <L><FundersPage /></L> },
           { path: "master/users", element: <L><UsersPage /></L> },
           { path: "settings", element: <L><SettingsPage /></L> },
+          { path: "settings/system", element: <L><SystemSettingsPage /></L> },
           { path: "more", element: <L><MorePage /></L> },
         ],
       },

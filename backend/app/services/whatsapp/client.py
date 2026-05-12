@@ -23,28 +23,29 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx
 
-from app.core.config import settings
+from app.services.app_settings import get_cached
 
 logger = logging.getLogger(__name__)
 
 
 def is_enabled() -> bool:
-    return bool(settings.WHATSAPP_BASE_URL)
+    return bool(get_cached("WHATSAPP_BASE_URL"))
 
 
 def _base_url() -> str:
-    return settings.WHATSAPP_BASE_URL.rstrip("/")
+    return get_cached("WHATSAPP_BASE_URL").rstrip("/")
 
 
 def _headers() -> dict[str, str]:
     h = {"Accept": "application/json"}
-    if settings.WHATSAPP_API_KEY:
-        h["X-Api-Key"] = settings.WHATSAPP_API_KEY
+    api_key = get_cached("WHATSAPP_API_KEY")
+    if api_key:
+        h["X-Api-Key"] = api_key
     return h
 
 
 def _session() -> str:
-    return settings.WHATSAPP_SESSION or "default"
+    return get_cached("WHATSAPP_SESSION") or "default"
 
 
 def _rewrite_to_external(url: str) -> str:
@@ -66,7 +67,7 @@ def _rewrite_to_external(url: str) -> str:
     """
     if not url or not url.startswith(("http://", "https://")):
         return url
-    base = settings.WHATSAPP_BASE_URL
+    base = get_cached("WHATSAPP_BASE_URL")
     if not base:
         return url
     try:

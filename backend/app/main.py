@@ -146,21 +146,38 @@ async def lifespan(_app: FastAPI):
         print(f"[startup] perf index warning: {e}")
     Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
 
+    # Warm app_settings cache (DB > env) supaya sync readers (telegram/
+    # whatsapp/ocr clients) langsung dapat nilai effective.
+    try:
+        from app.db.session import SessionLocal
+        from app.services.app_settings import bootstrap_cache, get_cached
+
+        async with SessionLocal() as _ssn:
+            await bootstrap_cache(_ssn)
+    except Exception as e:  # noqa: BLE001
+        print(f"[startup] app_settings.bootstrap_cache warning: {e}")
+        from app.services.app_settings import get_cached  # type: ignore
+
+    public_base = get_cached("PUBLIC_BASE_URL")
+    tg_token = get_cached("TELEGRAM_BOT_TOKEN")
+    tg_secret = get_cached("TELEGRAM_WEBHOOK_SECRET")
+    wa_base = get_cached("WHATSAPP_BASE_URL")
+
     # Register Telegram webhook kalau token + base URL tersedia.
-    if settings.TELEGRAM_BOT_TOKEN and settings.PUBLIC_BASE_URL:
+    if tg_token and public_base:
         try:
             from app.services.telegram import client as tg
-            url = settings.PUBLIC_BASE_URL.rstrip("/") + "/api/v1/telegram/webhook"
-            ok = await tg.set_webhook(url, settings.TELEGRAM_WEBHOOK_SECRET or None)
+            url = public_base.rstrip("/") + "/api/v1/telegram/webhook"
+            ok = await tg.set_webhook(url, tg_secret or None)
             print(f"[startup] telegram setWebhook {url} -> ok={ok}")
         except Exception as e:  # noqa: BLE001
             print(f"[startup] telegram setWebhook failed: {e}")
 
     # Register WAHA webhook kalau base URL + PUBLIC_BASE_URL tersedia.
-    if settings.WHATSAPP_BASE_URL and settings.PUBLIC_BASE_URL:
+    if wa_base and public_base:
         try:
             from app.services.whatsapp import client as wa
-            url = settings.PUBLIC_BASE_URL.rstrip("/") + "/api/v1/whatsapp/webhook"
+            url = public_base.rstrip("/") + "/api/v1/whatsapp/webhook"
             ok = await wa.set_webhook(url)
             print(f"[startup] WAHA setWebhook {url} -> ok={ok}")
         except Exception as e:  # noqa: BLE001
