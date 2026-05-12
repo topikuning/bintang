@@ -47,6 +47,7 @@ MENU_REGISTRY: list[dict[str, Any]] = [
     {"id": "settings", "label": "Pengaturan Profil", "group": "sistem"},
     {"id": "settings-system", "label": "Sistem (API Keys)", "group": "sistem"},
     {"id": "settings-role-menus", "label": "Akses Menu per Role", "group": "sistem"},
+    {"id": "settings-orphan-files", "label": "File Orphan", "group": "sistem"},
 ]
 MENU_IDS = {m["id"] for m in MENU_REGISTRY}
 
