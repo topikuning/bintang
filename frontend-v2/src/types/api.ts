@@ -139,6 +139,12 @@ export interface Transaction {
   settlement_id?: number | null
   parent_advance_tx_id?: number | null
   items?: TransactionItem[]
+  /** Alokasi tx ini ke invoice (M:N via InvoiceAllocation). Diisi backend
+   *  utk tampilkan bidirectional link (tx -> invoice yg dibayar). */
+  allocations?: TransactionAllocationRef[]
+  /** Total amount yg sudah ter-alokasi ke invoice. */
+  allocated_amount?: string
+  remaining_amount?: string
   created_by_id: number
   verified_by_id: number | null
   verified_at: string | null
@@ -295,6 +301,17 @@ export interface AllocationOut {
   allocated_amount: string
   note: string | null
   created_at: string
+}
+
+/** Mirror backend TransactionAllocationRef -- info ringkas invoice yg
+ *  dibayar oleh suatu tx, dipakai utk render bidirectional link. */
+export interface TransactionAllocationRef {
+  id: number  // allocation_id
+  invoice_id: number
+  invoice_number: string | null
+  invoice_total: string
+  invoice_status: InvoiceStatus
+  allocated_amount: string
 }
 
 export interface AllocationApplyResult {

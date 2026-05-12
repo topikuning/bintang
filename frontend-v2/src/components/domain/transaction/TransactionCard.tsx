@@ -73,6 +73,24 @@ export function TransactionCard({
         <div className="text-[12px] text-ink-600 line-clamp-1">{t.description}</div>
       )}
 
+      {/* Row 3b: invoice yg dibayar (kalau ada allocation). Bidirectional
+          link supaya user gampang trace 'TX ini bayar invoice mana'. */}
+      {t.allocations && t.allocations.length > 0 && (
+        <div className="text-[11px] text-ink-500 flex items-center gap-1 flex-wrap">
+          <Receipt className="h-3 w-3 shrink-0" />
+          <span>Bayar invoice:</span>
+          {t.allocations.slice(0, 2).map((a, i) => (
+            <span key={a.id} className="font-mono text-brand-700">
+              {i > 0 && ", "}
+              {a.invoice_number ?? `#${a.invoice_id}`}
+            </span>
+          ))}
+          {t.allocations.length > 2 && (
+            <span className="text-ink-500">+{t.allocations.length - 2} lagi</span>
+          )}
+        </div>
+      )}
+
       {/* Footer: status + kind + attachment + chevron */}
       <div className="flex items-center justify-between mt-1">
         <div className="flex items-center gap-2 flex-wrap">
