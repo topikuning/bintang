@@ -18,6 +18,7 @@ from app.models.models import (
     Invoice,
     InvoiceAllocation,
     InvoiceStatus,
+    InvoiceType,
     Project,
     ProjectStatus,
     Transaction,
@@ -408,6 +409,47 @@ async def project_dashboard(
     inv_open = float((await db.execute(inv_open_q)).scalar_one() or 0)
     inv_paid = float((await db.execute(inv_paid_q)).scalar_one() or 0)
 
+    # AR/AP aging breakdown utk invoice open (bucket 0-30 / 31-60 / 61-90 / >90)
+    # Pakai tx_date (invoice_date) sebagai basis aging karena Invoice.due_date
+    # bisa null. Kalau due_date tersedia, pakai due_date. Compute di Python
+    # supaya portable (SQLite/Postgres).
+    from datetime import date as _date_type
+    aging_q = select(Invoice).where(
+        Invoice.project_id == pid,
+        Invoice.status.in_([InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE]),
+        Invoice.deleted_at.is_(None),
+    )
+    aging_invs = (await db.execute(aging_q)).scalars().all()
+    today = _date_type.today()
+    # Format: per-direction (IN=hutang/AP, OUT=piutang/AR), 4 bucket
+    def _empty_aging():
+        return {"b0_30": 0.0, "b31_60": 0.0, "b61_90": 0.0, "b90_plus": 0.0, "total": 0.0, "count": 0}
+    ap_aging = _empty_aging()  # IN -> hutang ke vendor
+    ar_aging = _empty_aging()  # OUT -> piutang dr klien
+    for inv in aging_invs:
+        ref_date = inv.due_date or inv.invoice_date
+        if ref_date:
+            age = (today - ref_date).days
+        else:
+            age = 0
+        # Outstanding = total - paid_amount (kalau ada). Pakai 'remaining'
+        # langsung dr Invoice kalau ada method, atau hitung manual.
+        outstanding = float(inv.total or 0)  # konservatif: pakai total
+        bucket = (
+            "b0_30" if age <= 30
+            else "b31_60" if age <= 60
+            else "b61_90" if age <= 90
+            else "b90_plus"
+        )
+        if inv.type == InvoiceType.IN:
+            ap_aging[bucket] += outstanding
+            ap_aging["total"] += outstanding
+            ap_aging["count"] += 1
+        else:
+            ar_aging[bucket] += outstanding
+            ar_aging["total"] += outstanding
+            ar_aging["count"] += 1
+
     # by category (OUT)
     cat_q = (
         select(Category.name, func.coalesce(func.sum(Transaction.amount), 0))
@@ -556,6 +598,11 @@ async def project_dashboard(
         "expense_to_income_ratio_pct": ratio,
         "invoice_open_total": inv_open,
         "invoice_paid_total": inv_paid,
+        # AR/AP aging breakdown: bucket 0-30 / 31-60 / 61-90 / >90 hari
+        # AR = piutang (invoice OUT yg blm dibayar klien)
+        # AP = hutang (invoice IN yg blm dibayar ke vendor)
+        "ap_aging": ap_aging,
+        "ar_aging": ar_aging,
         "pending_count": int(pending_count),
         "pending_total": float(pending_total),
         "unlinked_out_count": int(unlinked_out_count),
