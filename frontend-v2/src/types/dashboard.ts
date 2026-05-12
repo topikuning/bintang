@@ -97,6 +97,10 @@ export interface ProjectDashboardResponse {
   expense_to_income_ratio_pct: number | null
   invoice_open_total: number
   invoice_paid_total: number
+  /** Aging hutang ke vendor (Invoice IN open) */
+  ap_aging?: AgingBreakdown
+  /** Aging piutang dari klien (Invoice OUT open) */
+  ar_aging?: AgingBreakdown
   pending_count: number
   pending_total: number
   unlinked_out_count: number
@@ -147,4 +151,14 @@ export interface GlobalDashboardResponse {
   monthly_cashflow: MonthlyCashflowPoint[]
   projects: GlobalDashboardProjectSummary[]
   warnings: string[]
+}
+
+/** Aging bucket utk AR/AP -- 0-30 / 31-60 / 61-90 / >90 hari. */
+export interface AgingBreakdown {
+  b0_30: number
+  b31_60: number
+  b61_90: number
+  b90_plus: number
+  total: number
+  count: number
 }

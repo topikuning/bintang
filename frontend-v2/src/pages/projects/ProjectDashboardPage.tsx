@@ -228,6 +228,15 @@ export function ProjectDashboardPage() {
           />
         </div>
 
+        {/* CASH POSITION -- AR/AP aging breakdown utk audit working capital */}
+        {(dash.ap_aging || dash.ar_aging) && (
+          <AgingSection
+            ap={dash.ap_aging}
+            ar={dash.ar_aging}
+            currency={dash.project.currency}
+          />
+        )}
+
         {/* BUDGET */}
         {dash.budget.amount > 0 && (
           <Section title="Budget Pengeluaran">
@@ -1064,6 +1073,134 @@ function QuickAction({
     </button>
   )
 }
+
+/** Widget AR/AP aging — bucket 0-30 / 31-60 / 61-90 / >90.
+ *  Standar finance pro: visualize cash trapped di invoice yg belum dibayar.
+ *  Section ini critical utk CFO/PM lihat working capital health.
+ */
+function AgingSection({
+  ap,
+  ar,
+  currency,
+}: {
+  ap?: import("@/types/dashboard").AgingBreakdown
+  ar?: import("@/types/dashboard").AgingBreakdown
+  currency: string
+}) {
+  const hasAp = ap && ap.total > 0
+  const hasAr = ar && ar.total > 0
+  if (!hasAp && !hasAr) {
+    return (
+      <Section title="Posisi Kas (AR/AP)">
+        <div className="px-3 sm:px-4 py-3 text-[12px] text-ink-500 italic">
+          Tidak ada invoice outstanding. Semua sudah lunas atau belum ada
+          invoice di proyek ini.
+        </div>
+      </Section>
+    )
+  }
+  return (
+    <Section title="Posisi Kas (AR/AP)" subtitle="Aging invoice outstanding">
+      <div className="px-3 sm:px-4 py-3 space-y-3">
+        {hasAp && (
+          <AgingRow
+            label="Hutang ke Vendor (AP)"
+            tone="danger"
+            data={ap!}
+            currency={currency}
+            hint="Invoice masuk yg belum dibayar"
+          />
+        )}
+        {hasAr && (
+          <AgingRow
+            label="Piutang dari Klien (AR)"
+            tone="success"
+            data={ar!}
+            currency={currency}
+            hint="Tagihan keluar yg belum diterima"
+          />
+        )}
+      </div>
+    </Section>
+  )
+}
+
+function AgingRow({
+  label,
+  tone,
+  data,
+  hint,
+}: {
+  label: string
+  tone: "danger" | "success"
+  data: import("@/types/dashboard").AgingBreakdown
+  currency: string
+  hint?: string
+}) {
+  const total = data.total || 0
+  const pct = (v: number) => (total > 0 ? (v / total) * 100 : 0)
+  // Color intensity escalates dgn umur (mendukung scanning visual).
+  const buckets = [
+    { key: "b0_30", label: "0-30 hari", v: data.b0_30, bg: "bg-ink-300" },
+    { key: "b31_60", label: "31-60", v: data.b31_60, bg: "bg-warning-300" },
+    { key: "b61_90", label: "61-90", v: data.b61_90, bg: "bg-warning-500" },
+    {
+      key: "b90_plus",
+      label: ">90",
+      v: data.b90_plus,
+      bg: "bg-danger-500",
+    },
+  ]
+  return (
+    <div className="rounded-md border bg-surface p-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-2 flex-wrap">
+        <div>
+          <div className="text-[13px] font-semibold text-ink-900">{label}</div>
+          {hint && <div className="text-[11px] text-ink-500">{hint}</div>}
+        </div>
+        <div className="text-right">
+          <div
+            className={
+              "font-mono text-base font-bold tabular-nums " +
+              (tone === "danger" ? "text-danger-700" : "text-success-700")
+            }
+          >
+            {fmtIDR(total)}
+          </div>
+          <div className="text-[10px] text-ink-500">
+            {data.count} invoice
+          </div>
+        </div>
+      </div>
+      {/* Stacked bar: visual proportional per bucket */}
+      <div className="flex h-2 w-full overflow-hidden rounded-full bg-ink-100">
+        {buckets.map((b) => (
+          <div
+            key={b.key}
+            className={b.bg}
+            style={{ width: `${pct(b.v)}%` }}
+            title={`${b.label}: ${fmtIDR(b.v)} (${pct(b.v).toFixed(0)}%)`}
+          />
+        ))}
+      </div>
+      {/* Breakdown numeric */}
+      <div className="grid grid-cols-4 gap-1.5 text-[11px]">
+        {buckets.map((b) => (
+          <div
+            key={b.key}
+            className="rounded bg-surface-muted/40 px-1.5 py-1 text-center"
+          >
+            <div className="text-ink-500">{b.label}</div>
+            <div className="font-mono tabular-nums font-semibold text-ink-900">
+              {fmtIDR(b.v)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 
 function StatCard({
   label,
