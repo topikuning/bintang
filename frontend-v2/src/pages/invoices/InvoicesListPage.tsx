@@ -63,16 +63,35 @@ export function InvoicesListPage() {
   // q dipasok via URL (dr Topbar global search /invoices?q=foo).
   const q = searchParams.get("q")?.trim() ?? ""
 
+  // Deep link filter dari query: ?project_id=N&status=ISSUED. Kalau ada,
+  // override defaultProjectId / statusFilter state. Useful utk link dari
+  // ProjectDashboard stat cards ("Invoice Belum Lunas" dll).
+  const urlProjectId = searchParams.get("project_id")
+  const urlStatus = searchParams.get("status")
+  const urlType = searchParams.get("type")
+  const effectiveProjectId =
+    urlProjectId && Number(urlProjectId) > 0
+      ? Number(urlProjectId)
+      : defaultProjectId ?? undefined
+  const effectiveStatus =
+    urlStatus && urlStatus !== "ALL"
+      ? (urlStatus as InvoiceStatus)
+      : statusFilter === "ALL" ? undefined : statusFilter
+  const effectiveType =
+    urlType && urlType !== "ALL"
+      ? (urlType as InvoiceType)
+      : typeFilter === "ALL" ? undefined : typeFilter
+
   const params: InvoiceListParams = useMemo(
     () => ({
       page,
       size,
-      project_id: defaultProjectId ?? undefined,
-      status: statusFilter === "ALL" ? undefined : statusFilter,
-      type: typeFilter === "ALL" ? undefined : typeFilter,
+      project_id: effectiveProjectId,
+      status: effectiveStatus,
+      type: effectiveType,
       q: q || undefined,
     }),
-    [page, size, defaultProjectId, statusFilter, typeFilter, q],
+    [page, size, effectiveProjectId, effectiveStatus, effectiveType, q],
   )
 
   useEffect(() => {
@@ -82,6 +101,24 @@ export function InvoicesListPage() {
   const invQuery = useInvoices(params)
   const projectsQuery = useProjects({ status: "AKTIF" })
   const detailQuery = useInvoice(selectedId)
+
+  // Deep link: kalau URL punya ?id=N (mis. dr ProjectDashboardPage atau
+  // link external), auto-open detail invoice. Strip 'id' dari URL setelah
+  // di-handle supaya tdk re-trigger saat user close.
+  useEffect(() => {
+    const idStr = searchParams.get("id")
+    if (idStr) {
+      const id = Number(idStr)
+      if (Number.isFinite(id) && id > 0) {
+        setSelectedId(id)
+      }
+      // Strip id param tapi pertahankan filter lain (q, project_id, dst)
+      const next = new URLSearchParams(searchParams)
+      next.delete("id")
+      setSearchParams(next, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const projectMap = useMemo(() => {
     const m = new Map<number, Project>()
