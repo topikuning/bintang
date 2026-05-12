@@ -67,17 +67,18 @@ async def test_connection(
     - Diagnose timeout: kalau test-connection sukses tapi /extract timeout,
       problemnya di image/payload, bukan auth/network
     """
-    from app.core.config import settings
+    from app.services.app_settings import get_cached
 
-    engine = (engine or settings.OCR_ENGINE or "stub").lower()
+    engine = (engine or get_cached("OCR_ENGINE") or "stub").lower()
 
     if engine == "claude":
-        if not settings.ANTHROPIC_API_KEY:
+        anthropic_key = get_cached("ANTHROPIC_API_KEY")
+        if not anthropic_key:
             return {
                 "ok": False,
                 "engine": "claude",
                 "error": "missing_api_key",
-                "hint": "Set ANTHROPIC_API_KEY di env.",
+                "hint": "Set ANTHROPIC_API_KEY di Pengaturan.",
             }
         try:
             from app.services.ocr.claude_adapter import ClaudeVisionOCRAdapter
@@ -91,27 +92,24 @@ async def test_connection(
             }
         from app.services.ocr.adapter import _resolve_model
         model = _resolve_model("claude")
-        adapter = ClaudeVisionOCRAdapter(
-            api_key=settings.ANTHROPIC_API_KEY, model=model,
-        )
+        adapter = ClaudeVisionOCRAdapter(api_key=anthropic_key, model=model)
         result = await adapter.test_connection()
         return {"engine": "claude", "model": model, **result}
 
     if engine == "mistral":
-        if not settings.MISTRAL_API_KEY:
+        mistral_key = get_cached("MISTRAL_API_KEY")
+        if not mistral_key:
             return {
                 "ok": False,
                 "engine": "mistral",
                 "error": "missing_api_key",
-                "hint": "Set MISTRAL_API_KEY di env (https://console.mistral.ai/).",
+                "hint": "Set MISTRAL_API_KEY di Pengaturan (https://console.mistral.ai/).",
             }
         from app.services.ocr.adapter import _resolve_model
         from app.services.ocr.mistral_adapter import MistralOCRAdapter
 
         model = _resolve_model("mistral")
-        adapter = MistralOCRAdapter(
-            api_key=settings.MISTRAL_API_KEY, model=model,
-        )
+        adapter = MistralOCRAdapter(api_key=mistral_key, model=model)
         try:
             result = await adapter.test_connection()
         finally:
@@ -122,7 +120,7 @@ async def test_connection(
         "ok": False,
         "engine": engine,
         "error": "engine_not_supported",
-        "hint": "Set OCR_ENGINE=claude atau mistral di env.",
+        "hint": "Pilih engine claude atau mistral di Pengaturan.",
     }
 
 

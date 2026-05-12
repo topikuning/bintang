@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    admin_settings,
     allocations,
     attachments,
     audit_logs,
@@ -42,6 +43,7 @@ api_router.include_router(attachments.router, prefix="/attachments", tags=["atta
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(audit_logs.router, prefix="/audit-logs", tags=["audit-logs"])
+api_router.include_router(admin_settings.router, prefix="/admin/settings", tags=["admin-settings"])
 api_router.include_router(imports.router, prefix="/imports", tags=["imports"])
 api_router.include_router(ocr.router, prefix="/ocr", tags=["ocr"])
 api_router.include_router(telegram.router, prefix="/telegram", tags=["telegram"])

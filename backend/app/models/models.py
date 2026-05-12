@@ -796,3 +796,28 @@ class AIExtraction(TimestampMixin, Base):
     raw_response: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     reviewed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+
+class AppSetting(TimestampMixin, Base):
+    """Pengaturan sistem yg di-manage SUPERADMIN via UI (bukan env vars).
+
+    Pakai untuk: API keys (OCR, Telegram, WhatsApp/WAHA), URL public,
+    engine default, dll. Secret value di-encrypt at rest dgn Fernet
+    (master key derived dr SECRET_KEY env).
+
+    Convention key: UPPER_SNAKE_CASE (sama dgn env var lama). group_key
+    utk grouping di UI (ocr/telegram/whatsapp/system).
+    """
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(80), unique=True, nullable=False, index=True)
+    # Value setelah encrypt (kalau is_secret) atau plaintext. Nullable
+    # supaya bisa 'hapus' (set ke None) tanpa drop row.
+    value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_secret: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Grouping utk UI: "ocr", "telegram", "whatsapp", "system".
+    group_key: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    # Audit
+    updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

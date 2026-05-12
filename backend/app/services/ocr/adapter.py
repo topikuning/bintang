@@ -82,34 +82,35 @@ _DEFAULT_MODEL = {
 
 def _resolve_model(engine: str) -> str:
     """Pilih model utk engine. Prioritas:
-    1. Env per-engine: OCR_MODEL_CLAUDE / OCR_MODEL_MISTRAL
-    2. Env legacy OCR_MODEL kalau prefix cocok (mis. claude-* utk claude)
-       -- backward compat user yg sdh set sebelumnya.
+    1. App setting per-engine: OCR_MODEL_CLAUDE / OCR_MODEL_MISTRAL
+    2. App setting legacy OCR_MODEL kalau prefix cocok (mis. claude-*
+       utk claude) -- backward compat dr setting lama.
     3. Default hardcoded per engine.
     """
     import logging
 
-    from app.core.config import settings
+    from app.services.app_settings import get_cached
 
     log = logging.getLogger(__name__)
 
-    per_engine = {
-        "claude": settings.OCR_MODEL_CLAUDE,
-        "mistral": settings.OCR_MODEL_MISTRAL,
-    }.get(engine, "")
+    per_engine_key = {
+        "claude": "OCR_MODEL_CLAUDE",
+        "mistral": "OCR_MODEL_MISTRAL",
+    }.get(engine)
+    per_engine = get_cached(per_engine_key) if per_engine_key else ""
     if per_engine:
         return per_engine
-    legacy = (settings.OCR_MODEL or "").strip()
+    # OCR_MODEL legacy tidak di whitelist registry, pakai env fallback langsung
+    from app.core.config import settings as _env_settings
+    legacy = (_env_settings.OCR_MODEL or "").strip()
     if legacy:
-        # Cek prefix cocok engine
         if engine == "claude" and legacy.startswith("claude-"):
             return legacy
         if engine == "mistral" and legacy.startswith("mistral-"):
             return legacy
-        # Mismatch -> warn + pakai default
         log.warning(
             "ocr.model_mismatch: OCR_MODEL=%r tdk cocok utk engine=%s -- "
-            "pakai default '%s'. Set OCR_MODEL_%s utk override.",
+            "pakai default '%s'. Set OCR_MODEL_%s di Pengaturan utk override.",
             legacy, engine, _DEFAULT_MODEL.get(engine), engine.upper(),
         )
     return _DEFAULT_MODEL.get(engine, "")
@@ -128,22 +129,25 @@ def get_ocr_adapter(engine_override: str | None = None) -> OCRAdapter:
 
     Model di-resolve via _resolve_model() (per-engine env > legacy > default).
     """
-    from app.core.config import settings
+    from app.services.app_settings import get_cached
 
-    engine = (engine_override or settings.OCR_ENGINE or "stub").lower()
-    if engine == "claude" and settings.ANTHROPIC_API_KEY:
+    default_engine = get_cached("OCR_ENGINE") or "stub"
+    engine = (engine_override or default_engine).lower()
+    anthropic_key = get_cached("ANTHROPIC_API_KEY")
+    mistral_key = get_cached("MISTRAL_API_KEY")
+    if engine == "claude" and anthropic_key:
         # Lazy import biar stub mode tidak butuh anthropic SDK ter-install.
         from app.services.ocr.claude_adapter import ClaudeVisionOCRAdapter
 
         return ClaudeVisionOCRAdapter(
-            api_key=settings.ANTHROPIC_API_KEY,
+            api_key=anthropic_key,
             model=_resolve_model("claude"),
         )
-    if engine == "mistral" and settings.MISTRAL_API_KEY:
+    if engine == "mistral" and mistral_key:
         from app.services.ocr.mistral_adapter import MistralOCRAdapter
 
         return MistralOCRAdapter(
-            api_key=settings.MISTRAL_API_KEY,
+            api_key=mistral_key,
             model=_resolve_model("mistral"),
         )
     return StubOCRAdapter()
@@ -155,16 +159,16 @@ def list_available_engines() -> list[dict]:
     Return list of dicts utk dropdown FE:
       {key, label, model, cost_per_doc, default, available, note}
     """
-    from app.core.config import settings
+    from app.services.app_settings import get_cached
 
-    default_engine = (settings.OCR_ENGINE or "stub").lower()
+    default_engine = (get_cached("OCR_ENGINE") or "stub").lower()
     engines: list[dict] = [
         {
             "key": "claude",
             "label": "Claude Vision (akurasi tinggi)",
             "model": _resolve_model("claude"),
             "cost_per_doc": "~$0.01 / gambar",
-            "available": bool(settings.ANTHROPIC_API_KEY),
+            "available": bool(get_cached("ANTHROPIC_API_KEY")),
             "default": default_engine == "claude",
             "note": "Lebih jago tulisan tangan rumit & dokumen sulit.",
         },
@@ -173,7 +177,7 @@ def list_available_engines() -> list[dict]:
             "label": "Mistral OCR (lebih murah)",
             "model": _resolve_model("mistral"),
             "cost_per_doc": "~$0.002 / halaman",
-            "available": bool(settings.MISTRAL_API_KEY),
+            "available": bool(get_cached("MISTRAL_API_KEY")),
             "default": default_engine == "mistral",
             "note": "5-10x lebih murah, support PDF multi-page natif.",
         },

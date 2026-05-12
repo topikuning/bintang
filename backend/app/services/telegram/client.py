@@ -5,23 +5,27 @@ import logging
 
 import httpx
 
-from app.core.config import settings
+from app.services.app_settings import get_cached
 
 logger = logging.getLogger(__name__)
 
 API_BASE = "https://api.telegram.org"
 
 
+def _token() -> str:
+    return get_cached("TELEGRAM_BOT_TOKEN")
+
+
 def is_enabled() -> bool:
-    return bool(settings.TELEGRAM_BOT_TOKEN)
+    return bool(_token())
 
 
 def _api_url(method: str) -> str:
-    return f"{API_BASE}/bot{settings.TELEGRAM_BOT_TOKEN}/{method}"
+    return f"{API_BASE}/bot{_token()}/{method}"
 
 
 def _file_url(file_path: str) -> str:
-    return f"{API_BASE}/file/bot{settings.TELEGRAM_BOT_TOKEN}/{file_path}"
+    return f"{API_BASE}/file/bot{_token()}/{file_path}"
 
 
 async def send_message(

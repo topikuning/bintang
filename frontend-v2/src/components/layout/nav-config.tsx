@@ -13,6 +13,7 @@ import {
   FolderKanban,
   History,
   Home,
+  KeyRound,
   type LucideIcon,
   MoreHorizontal,
   Receipt,
@@ -79,6 +80,7 @@ export const DESKTOP_NAV: NavGroup[] = [
       { label: "Import Data", to: "/imports", icon: Database },
       { label: "Asisten OCR", to: "/ocr", icon: ScanLine },
       { label: "Pengaturan", to: "/settings", icon: Settings },
+      { label: "Sistem (API Keys)", to: "/settings/system", icon: KeyRound },
     ],
   },
 ]
@@ -126,6 +128,7 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
       { label: "Import Data", to: "/imports", icon: Database },
       { label: "Asisten OCR", to: "/ocr", icon: ScanLine },
       { label: "Pengaturan", to: "/settings", icon: Settings },
+      { label: "Sistem (API Keys)", to: "/settings/system", icon: KeyRound },
     ],
   },
 ]
