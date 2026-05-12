@@ -173,6 +173,84 @@ async def get_po(
     return _to_out(po)
 
 
+@router.get("/{pid}/linked-transactions")
+async def get_po_linked_transactions(
+    pid: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """List semua transaksi yg ter-link ke PO ini (via tx.purchase_order_id).
+
+    Plus: via tx allocations -> invoice yg dibayar -> drilldown lengkap
+    PO -> TX -> Invoice. Standar finance pro: procurement audit trail.
+    """
+    from app.models.models import Transaction, InvoiceAllocation, Invoice
+    po = await db.get(PurchaseOrder, pid)
+    if not po or po.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    await ensure_project_access(db, user, po.project_id)
+
+    # Transaksi yg langsung point ke PO ini
+    tx_q = (
+        select(Transaction)
+        .where(
+            Transaction.purchase_order_id == pid,
+            Transaction.deleted_at.is_(None),
+        )
+        .order_by(Transaction.tx_date.desc())
+    )
+    txs = (await db.execute(tx_q)).scalars().all()
+
+    tx_ids = [t.id for t in txs]
+    # Invoice yg dibayar oleh tx2 di atas (via allocation)
+    inv_map: dict[int, Invoice] = {}
+    alloc_map: dict[int, list[dict]] = {}  # tx_id -> [alloc info]
+    if tx_ids:
+        alloc_res = await db.execute(
+            select(InvoiceAllocation, Invoice)
+            .join(Invoice, Invoice.id == InvoiceAllocation.invoice_id)
+            .where(
+                InvoiceAllocation.transaction_id.in_(tx_ids),
+                InvoiceAllocation.deleted_at.is_(None),
+            )
+        )
+        for alloc, inv in alloc_res.all():
+            inv_map[inv.id] = inv
+            alloc_map.setdefault(alloc.transaction_id, []).append({
+                "allocation_id": alloc.id,
+                "invoice_id": inv.id,
+                "invoice_number": inv.number,
+                "invoice_status": inv.status.value if hasattr(inv.status, "value") else str(inv.status),
+                "allocated_amount": float(alloc.allocated_amount or 0),
+            })
+
+    txs_out = [
+        {
+            "id": t.id,
+            "tx_date": t.tx_date.isoformat() if t.tx_date else None,
+            "amount": float(t.amount or 0),
+            "type": t.type.value if hasattr(t.type, "value") else str(t.type),
+            "kind": (t.kind if isinstance(t.kind, str) else (t.kind.value if t.kind else None)),
+            "status": t.status.value if hasattr(t.status, "value") else str(t.status),
+            "description": t.description,
+            "party_name": t.party_name,
+            "allocations": alloc_map.get(t.id, []),
+        }
+        for t in txs
+    ]
+
+    return {
+        "po_id": pid,
+        "po_number": po.number,
+        "po_total": float(po.total or 0),
+        "transactions": txs_out,
+        "transactions_count": len(txs_out),
+        "invoices_count": len(inv_map),
+        # Summary: total tx amount yg sudah hit (allocated to invoices vs unallocated)
+        "total_paid": sum(float(t.amount or 0) for t in txs),
+    }
+
+
 @router.patch("/{pid}", response_model=POOut)
 async def update_po(
     pid: int,

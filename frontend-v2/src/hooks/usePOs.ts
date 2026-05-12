@@ -38,3 +38,49 @@ export function usePO(id: number | null | undefined) {
     enabled: id != null && id > 0,
   })
 }
+
+export interface POAllocationRef {
+  allocation_id: number
+  invoice_id: number
+  invoice_number: string | null
+  invoice_status: string
+  allocated_amount: number
+}
+
+export interface POLinkedTx {
+  id: number
+  tx_date: string | null
+  amount: number
+  type: "IN" | "OUT"
+  kind: string | null
+  status: string
+  description: string | null
+  party_name: string | null
+  allocations: POAllocationRef[]
+}
+
+export interface POLinkedTxResponse {
+  po_id: number
+  po_number: string
+  po_total: number
+  transactions: POLinkedTx[]
+  transactions_count: number
+  invoices_count: number
+  total_paid: number
+}
+
+/** Get tx + invoice (via allocation) yg ter-link ke PO. Untuk audit
+ *  procurement chain: PO -> TX -> Invoice. */
+export function usePOLinkedTransactions(id: number | null | undefined) {
+  return useQuery({
+    queryKey: ["po-linked-tx", id ?? -1],
+    queryFn: async (): Promise<POLinkedTxResponse> => {
+      const { data } = await api.get<POLinkedTxResponse>(
+        `/purchase-orders/${id}/linked-transactions`,
+      )
+      return data
+    },
+    enabled: id != null && id > 0,
+    staleTime: 30_000,
+  })
+}

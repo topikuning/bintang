@@ -1,6 +1,16 @@
-import { Calendar, FileText, Hash, ShoppingCart, User } from "lucide-react"
+import { Link as RouterLink } from "react-router-dom"
+import {
+  Calendar,
+  ExternalLink,
+  FileText,
+  Hash,
+  Receipt,
+  ShoppingCart,
+  User,
+} from "lucide-react"
 import type { Project, PurchaseOrder } from "@/types/api"
 import { fmtDate, fmtDateTime, fmtIDR } from "@/lib/format"
+import { usePOLinkedTransactions } from "@/hooks/usePOs"
 import { StatusBadge } from "@/components/domain/shared/StatusBadge"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -141,9 +151,133 @@ export function PODetail({ po, isLoading, project }: PODetailProps) {
           </div>
         </div>
       )}
+
+      {/* Procurement chain: TX yg dibayar pakai PO ini + invoice yg
+          dibayar lewat TX tsb. Standar finance pro -- audit trail
+          procurement. */}
+      <LinkedTransactionsSection poId={po.id} />
     </div>
   )
 }
+
+function LinkedTransactionsSection({ poId }: { poId: number }) {
+  const q = usePOLinkedTransactions(poId)
+  if (q.isLoading) {
+    return (
+      <div className="p-5 border-t">
+        <Skeleton className="h-24" />
+      </div>
+    )
+  }
+  if (!q.data) return null
+  const d = q.data
+  const txs = d.transactions ?? []
+  if (txs.length === 0) {
+    return (
+      <div className="p-5 border-t">
+        <div className="mb-2 flex items-center gap-1.5 text-[12px] uppercase tracking-wider text-ink-500">
+          <ExternalLink className="h-3.5 w-3.5" />
+          <span>Transaksi terkait PO</span>
+        </div>
+        <p className="text-[12px] text-ink-500 italic">
+          Belum ada transaksi yang menggunakan PO ini.
+        </p>
+      </div>
+    )
+  }
+  // Aggregate semua invoice yg dibayar via tx2 di atas (de-duplicated)
+  const invoiceSet = new Map<
+    number,
+    { number: string | null; status: string; total: number }
+  >()
+  for (const t of txs) {
+    for (const a of t.allocations ?? []) {
+      const existing = invoiceSet.get(a.invoice_id)
+      invoiceSet.set(a.invoice_id, {
+        number: a.invoice_number,
+        status: a.invoice_status,
+        total: (existing?.total ?? 0) + a.allocated_amount,
+      })
+    }
+  }
+  const invoices = Array.from(invoiceSet.entries())
+  return (
+    <div className="p-5 border-t space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 text-[12px] uppercase tracking-wider text-ink-500">
+          <ExternalLink className="h-3.5 w-3.5" />
+          <span>Procurement Chain</span>
+        </div>
+        <div className="text-[11px] text-ink-500">
+          <span className="font-semibold text-ink-700">
+            {txs.length}
+          </span>{" "}
+          transaksi · <span className="font-semibold text-ink-700">
+            {invoices.length}
+          </span>{" "}
+          invoice ·{" "}
+          <span className="font-mono font-semibold text-ink-900">
+            {fmtIDR(d.total_paid)}
+          </span>
+        </div>
+      </div>
+
+      {/* TX list dgn drilldown ke invoice yg dibayar */}
+      <div className="rounded border bg-surface divide-y">
+        {txs.map((t) => (
+          <div key={t.id} className="px-3 py-2 text-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <RouterLink
+                  to={`/transactions/${t.id}`}
+                  className="font-medium text-brand-700 hover:underline truncate inline-block"
+                >
+                  Tx #{t.id} ·{" "}
+                  {t.description || t.party_name || "(tanpa deskripsi)"}
+                </RouterLink>
+                <div className="text-[11px] text-ink-500">
+                  {t.tx_date && fmtDate(t.tx_date)} · {t.kind ?? t.type}{" "}
+                  · {t.status}
+                </div>
+              </div>
+              <span className="font-mono text-sm tabular-nums shrink-0">
+                {fmtIDR(t.amount)}
+              </span>
+            </div>
+            {/* Allocations: invoice yg dibayar oleh tx ini */}
+            {t.allocations.length > 0 && (
+              <div className="mt-1.5 pl-3 border-l-2 border-info-200 space-y-0.5">
+                {t.allocations.map((a) => (
+                  <div
+                    key={a.allocation_id}
+                    className="text-[11px] flex items-center justify-between gap-2"
+                  >
+                    <RouterLink
+                      to={`/invoices/${a.invoice_id}`}
+                      className="text-info-700 hover:underline inline-flex items-center gap-1 truncate"
+                    >
+                      <Receipt className="h-3 w-3 shrink-0" />
+                      <span className="font-mono truncate">
+                        {a.invoice_number ?? `Invoice #${a.invoice_id}`}
+                      </span>
+                      <span className="text-ink-400 normal-case">
+                        ({a.invoice_status})
+                      </span>
+                    </RouterLink>
+                    <span className="font-mono tabular-nums text-ink-600 shrink-0">
+                      {fmtIDR(a.allocated_amount)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 
 function Field({
   label,
