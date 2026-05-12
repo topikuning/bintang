@@ -1,7 +1,9 @@
+import { Link as RouterLink } from "react-router-dom"
 import {
   Calendar,
   Coins,
   CreditCard,
+  ExternalLink,
   FileText,
   Hash,
   ListTree,
@@ -10,7 +12,12 @@ import {
   User as UserIcon,
   Wallet,
 } from "lucide-react"
-import type { Project, Transaction, TxnKind } from "@/types/api"
+import type {
+  Project,
+  Transaction,
+  TransactionAllocationRef,
+  TxnKind,
+} from "@/types/api"
 import type { Category } from "@/hooks/useCategories"
 import {
   useDeleteTransactionAttachment,
@@ -185,6 +192,16 @@ export function TransactionDetail({
         </>
       )}
 
+      {/* Bidirectional link: tx ini bayar invoice mana? Tampil utk semua
+          tx yg punya allocation (biasanya kind=INVOICE_PAYMENT, tapi
+          juga CASH_ADVANCE yg item-nya pay invoice). */}
+      {t.allocations && t.allocations.length > 0 && (
+        <>
+          <Separator />
+          <AllocationsSection allocations={t.allocations} />
+        </>
+      )}
+
       {/* Total breakdown */}
       <Separator />
       <div className="p-5 text-[13px] text-ink-500">
@@ -194,6 +211,45 @@ export function TransactionDetail({
       {/* Lampiran / bukti */}
       <Separator />
       <AttachmentSection transaction={t} />
+    </div>
+  )
+}
+
+
+function AllocationsSection({
+  allocations,
+}: {
+  allocations: TransactionAllocationRef[]
+}) {
+  return (
+    <div className="p-5 space-y-2">
+      <div className="flex items-center gap-2 text-[12px] uppercase tracking-wider text-ink-500">
+        <ExternalLink className="h-3.5 w-3.5" />
+        <span>Membayar Invoice</span>
+        <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-semibold text-ink-700 normal-case">
+          {allocations.length}
+        </span>
+      </div>
+      <ul className="divide-y rounded border bg-surface">
+        {allocations.map((a) => (
+          <li key={a.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+            <div className="flex-1 min-w-0">
+              <RouterLink
+                to={`/invoices/${a.invoice_id}`}
+                className="text-brand-700 hover:underline font-mono truncate inline-block"
+              >
+                {a.invoice_number ?? `#${a.invoice_id}`}
+              </RouterLink>
+              <div className="text-[11px] text-ink-500">
+                Status: {a.invoice_status} · Total invoice: {fmtIDR(Number(a.invoice_total ?? 0))}
+              </div>
+            </div>
+            <span className="font-mono text-sm tabular-nums shrink-0">
+              {fmtIDR(Number(a.allocated_amount ?? 0))}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
