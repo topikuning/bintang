@@ -1,5 +1,16 @@
-import { Calendar, CreditCard, FileText, Hash, Paperclip, User } from "lucide-react"
-import type { Project, Transaction } from "@/types/api"
+import {
+  Calendar,
+  Coins,
+  CreditCard,
+  FileText,
+  Hash,
+  ListTree,
+  Paperclip,
+  Receipt,
+  User as UserIcon,
+  Wallet,
+} from "lucide-react"
+import type { Project, Transaction, TxnKind } from "@/types/api"
 import type { Category } from "@/hooks/useCategories"
 import {
   useDeleteTransactionAttachment,
@@ -31,6 +42,21 @@ const PAYMENT_LABEL: Record<string, string> = {
   OTHER: "Lainnya",
 }
 
+const KIND_LABEL: Record<TxnKind, { label: string; hint: string }> = {
+  INVOICE_PAYMENT: {
+    label: "Bayar Invoice",
+    hint: "Pembayaran ke vendor lewat invoice/PO.",
+  },
+  CASH_ADVANCE: {
+    label: "Dana Operasional",
+    hint: "Kas bon ke staff internal. Perlu pertanggungjawaban.",
+  },
+  DIRECT_EXPENSE: {
+    label: "Beban Langsung",
+    hint: "Pengeluaran tanpa invoice (struk/kwitansi). Rincian per item di bawah.",
+  },
+}
+
 export function TransactionDetail({
   transaction,
   isLoading,
@@ -50,6 +76,9 @@ export function TransactionDetail({
 
   const t = transaction
   const isIn = t.type === "IN"
+  const kindMeta = t.kind ? KIND_LABEL[t.kind] : null
+  const isDirect = t.kind === "DIRECT_EXPENSE"
+  const isAdvance = t.kind === "CASH_ADVANCE"
 
   return (
     <div className="flex flex-col">
@@ -60,6 +89,41 @@ export function TransactionDetail({
             {isIn ? "Pemasukan" : "Pengeluaran"}
           </span>
           <StatusBadge domain="transaction" status={t.status} />
+          {/* Badge kind utk OUT: jelas jenis pengeluarannya. */}
+          {!isIn && kindMeta && (
+            <span
+              className={
+                "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider " +
+                (isDirect
+                  ? "bg-info-100 text-info-800"
+                  : isAdvance
+                    ? "bg-warning-100 text-warning-800"
+                    : "bg-ink-100 text-ink-700")
+              }
+              title={kindMeta.hint}
+            >
+              {isDirect ? (
+                <Receipt className="h-3 w-3" />
+              ) : isAdvance ? (
+                <Wallet className="h-3 w-3" />
+              ) : (
+                <Coins className="h-3 w-3" />
+              )}
+              {kindMeta.label}
+            </span>
+          )}
+          {t.kind === "CASH_ADVANCE" && t.settlement_status && (
+            <span
+              className={
+                "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider " +
+                (t.settlement_status === "SETTLED"
+                  ? "bg-success-100 text-success-800"
+                  : "bg-warning-100 text-warning-800")
+              }
+            >
+              {t.settlement_status === "SETTLED" ? "Settled" : "Outstanding"}
+            </span>
+          )}
           <span className="ml-auto rounded bg-ink-100 px-2 py-0.5 text-[11px] font-mono text-ink-700 tabular-nums">
             #{t.id}
           </span>
@@ -70,9 +134,22 @@ export function TransactionDetail({
 
       {/* Body fields */}
       <dl className="divide-y">
-        <Field label="Pihak" icon={User} value={t.party_name || "—"} />
+        {/* CASH_ADVANCE: penerima jadi info utama, sembunyikan party_name */}
+        {isAdvance ? (
+          <Field
+            label="Penerima Dana"
+            icon={UserIcon}
+            value={t.recipient_display || t.recipient_name || "—"}
+          />
+        ) : (
+          <Field label="Pihak" icon={UserIcon} value={t.party_name || "—"} />
+        )}
         <Field label="Proyek" value={project ? `${project.name} (${project.code})` : "—"} />
-        <Field label="Kategori" value={category?.name || "—"} />
+        {/* Kategori hanya relevant utk INVOICE_PAYMENT (kategori sebagai
+            ringkasan keseluruhan); utk DIRECT_EXPENSE rincian ada di items. */}
+        {!isDirect && (
+          <Field label="Kategori" value={category?.name || "—"} />
+        )}
         <Field label="Deskripsi" icon={FileText} value={t.description || "—"} />
         <Field
           label="Metode Pembayaran"
@@ -80,6 +157,13 @@ export function TransactionDetail({
           value={PAYMENT_LABEL[t.payment_method] ?? t.payment_method}
         />
         <Field label="No. Referensi" icon={Hash} value={t.reference_no || "—"} mono />
+        {t.parent_advance_tx_id && (
+          <Field
+            label="Top-up dari"
+            icon={Coins}
+            value={`Dana Ops #${t.parent_advance_tx_id}`}
+          />
+        )}
         <Field
           label="Dibuat pada"
           icon={Calendar}
@@ -93,7 +177,15 @@ export function TransactionDetail({
         )}
       </dl>
 
-      {/* Total breakdown — placeholder utk masa depan (allocations dll) */}
+      {/* Rincian items utk DIRECT_EXPENSE -- breakdown per kategori */}
+      {isDirect && (
+        <>
+          <Separator />
+          <ItemsSection items={t.items ?? []} />
+        </>
+      )}
+
+      {/* Total breakdown */}
       <Separator />
       <div className="p-5 text-[13px] text-ink-500">
         Total: <span className="font-mono font-semibold text-ink-900">{fmtIDR(t.amount)}</span>
@@ -102,6 +194,68 @@ export function TransactionDetail({
       {/* Lampiran / bukti */}
       <Separator />
       <AttachmentSection transaction={t} />
+    </div>
+  )
+}
+
+
+function ItemsSection({
+  items,
+}: {
+  items: NonNullable<Transaction["items"]>
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="p-5 space-y-2">
+        <div className="flex items-center gap-2 text-[12px] uppercase tracking-wider text-ink-500">
+          <ListTree className="h-3.5 w-3.5" />
+          <span>Rincian Pengeluaran</span>
+        </div>
+        <p className="text-[12px] text-ink-500 italic">
+          Tidak ada rincian item.
+        </p>
+      </div>
+    )
+  }
+  const total = items.reduce(
+    (acc, it) => acc + Number(it.amount ?? 0),
+    0,
+  )
+  return (
+    <div className="p-5 space-y-2">
+      <div className="flex items-center gap-2 text-[12px] uppercase tracking-wider text-ink-500">
+        <ListTree className="h-3.5 w-3.5" />
+        <span>Rincian Pengeluaran</span>
+        <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-semibold text-ink-700 normal-case">
+          {items.length}
+        </span>
+      </div>
+      <ul className="divide-y rounded border bg-surface">
+        {items.map((it) => (
+          <li
+            key={it.id}
+            className="flex items-start gap-2 px-3 py-2 text-sm"
+          >
+            <div className="flex-1 min-w-0">
+              <div className="truncate font-medium text-ink-900">
+                {it.description}
+              </div>
+              {it.category_id != null && (
+                <div className="text-[11px] text-ink-500">
+                  Kategori #{it.category_id}
+                </div>
+              )}
+            </div>
+            <span className="font-mono text-sm tabular-nums shrink-0">
+              {fmtIDR(Number(it.amount ?? 0))}
+            </span>
+          </li>
+        ))}
+        <li className="flex justify-between px-3 py-2 bg-surface-muted text-[12px] font-semibold">
+          <span>Total rincian</span>
+          <span className="font-mono tabular-nums">{fmtIDR(total)}</span>
+        </li>
+      </ul>
     </div>
   )
 }
