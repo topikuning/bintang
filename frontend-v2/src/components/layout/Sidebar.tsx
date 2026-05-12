@@ -1,8 +1,12 @@
 import { NavLink } from "react-router-dom"
 import { cn } from "@/lib/utils"
-import { DESKTOP_NAV } from "./nav-config"
+import { useMenuConfig } from "@/hooks/useMenuConfig"
+import { DESKTOP_NAV, filterNavGroups } from "./nav-config"
 
 export function Sidebar() {
+  const cfgQ = useMenuConfig()
+  const allowed = cfgQ.data ? new Set(cfgQ.data.menu_ids) : undefined
+  const groups = filterNavGroups(DESKTOP_NAV, allowed)
   return (
     <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r bg-surface">
       <div className="flex h-14 items-center gap-2 px-5 border-b">
@@ -18,7 +22,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-3">
-        {DESKTOP_NAV.map((group) => (
+        {groups.map((group) => (
           <div key={group.label} className="mb-4">
             <div className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
               {group.label}

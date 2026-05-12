@@ -1,9 +1,13 @@
 import { NavLink } from "react-router-dom"
 import * as Tooltip from "@radix-ui/react-tooltip"
 import { cn } from "@/lib/utils"
-import { TABLET_NAV } from "./nav-config"
+import { useMenuConfig } from "@/hooks/useMenuConfig"
+import { TABLET_NAV, filterNavItems } from "./nav-config"
 
 export function NavRail() {
+  const cfgQ = useMenuConfig()
+  const allowed = cfgQ.data ? new Set(cfgQ.data.menu_ids) : undefined
+  const items = filterNavItems(TABLET_NAV, allowed)
   return (
     <Tooltip.Provider delayDuration={300}>
       <aside className="hidden md:flex lg:hidden w-14 shrink-0 flex-col border-r bg-surface">
@@ -14,7 +18,7 @@ export function NavRail() {
         </div>
         <nav className="flex-1 overflow-y-auto py-2">
           <ul className="flex flex-col items-center gap-1">
-            {TABLET_NAV.map((item) => (
+            {items.map((item) => (
               <li key={item.to}>
                 <Tooltip.Root>
                   <Tooltip.Trigger asChild>

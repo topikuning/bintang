@@ -1,7 +1,8 @@
 import { ChevronRight } from "lucide-react"
 import { Link } from "react-router-dom"
 import { useAuthStore } from "@/store/auth"
-import { MOBILE_MORE_NAV } from "@/components/layout/nav-config"
+import { useMenuConfig } from "@/hooks/useMenuConfig"
+import { MOBILE_MORE_NAV, filterNavGroups } from "@/components/layout/nav-config"
 
 /**
  * Halaman /more -- mobile overflow menu utk fitur yg tidak muat di
@@ -14,6 +15,9 @@ import { MOBILE_MORE_NAV } from "@/components/layout/nav-config"
 export function MorePage() {
   const role = useAuthStore((s) => s.user?.role)
   const isAdmin = role === "SUPERADMIN" || role === "CENTRAL_ADMIN"
+  const cfgQ = useMenuConfig()
+  const allowed = cfgQ.data ? new Set(cfgQ.data.menu_ids) : undefined
+  const filteredGroups = filterNavGroups(MOBILE_MORE_NAV, allowed)
 
   return (
     <div className="flex flex-col gap-4 p-3 sm:p-5">
@@ -24,9 +28,10 @@ export function MorePage() {
         </p>
       </div>
 
-      {MOBILE_MORE_NAV.map((group) => {
+      {filteredGroups.map((group) => {
         const items = group.items.filter((item) => {
-          // Filter sensitive routes utk non-admin
+          // Defensive: audit-log + master-users tetap di-gate ke admin
+          // (selain dari policy admin DB).
           if (item.to === "/audit-log" || item.to === "/master/users") {
             return isAdmin
           }

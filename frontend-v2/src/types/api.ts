@@ -20,6 +20,10 @@ export interface User {
   scope_all_projects: boolean
   is_active: boolean
   phone?: string | null
+  /** Telegram chat_id (force-link by SUPERADMIN) */
+  telegram_chat_id?: string | null
+  /** WhatsApp chat_id WAHA format (msisdn@c.us) */
+  whatsapp_chat_id?: string | null
   /** Project IDs yg boleh diakses; [] berarti akses semua (kalau scope_all_projects=true). */
   project_ids?: number[]
 }
@@ -433,4 +437,10 @@ export interface UserUpdateInput {
   phone?: string | null
   password?: string | null
   scope_all_projects?: boolean
+  /** Force-link by SUPERADMIN. Empty = unlink. */
+  telegram_chat_id?: string | null
+  /** Nomor WA biasa (628xxxx atau 08xxxx). Server convert ke <msisdn>@c.us. */
+  whatsapp_phone?: string | null
+  /** Direct WAHA format (override whatsapp_phone). */
+  whatsapp_chat_id?: string | null
 }

@@ -13,6 +13,33 @@ from app.services.audit import log, snapshot
 router = APIRouter()
 
 
+def _normalize_wa_phone(raw: str) -> str:
+    """Normalize WhatsApp phone input ke format WAHA '<msisdn>@c.us'.
+
+    Terima berbagai format: '0812xxxx', '+62812xxxx', '812xxxx',
+    '62812xxxx@c.us' (sdh format WAHA). Strip non-digit, ensure prefix 62.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+    # Sudah format WAHA -- pass-through dgn cleanup
+    if "@" in raw:
+        return raw
+    digits = "".join(c for c in raw if c.isdigit())
+    if not digits:
+        return ""
+    # Indonesia normalization:
+    # - mulai 0    -> ganti dgn 62
+    # - mulai 8    -> tambah 62
+    # - mulai 62   -> as-is
+    # - lain (mis. mulai 1) -> as-is (assume international)
+    if digits.startswith("0"):
+        digits = "62" + digits[1:]
+    elif digits.startswith("8"):
+        digits = "62" + digits
+    return f"{digits}@c.us"
+
+
 @router.get("", response_model=Page[UserOut])
 async def list_users(
     q: str | None = None,
@@ -69,6 +96,20 @@ async def get_user(
     return UserOut.model_validate(u)
 
 
+@router.get("/me/menu-config")
+async def my_menu_config(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Return menu IDs yg user (sesuai role-nya) boleh lihat. FE filter
+    nav-config berdasarkan list ini.
+    """
+    from app.services.menu_policy import list_user_menus
+
+    ids = await list_user_menus(db, user.role)
+    return {"role": user.role.value, "menu_ids": ids}
+
+
 @router.patch("/{user_id}", response_model=UserOut)
 async def update_user(
     user_id: int,
@@ -97,7 +138,10 @@ async def update_user(
 
     # Self-update (non-SUPERADMIN): tolak field sensitif.
     if is_self and not is_super:
-        forbidden = {"role", "is_active", "scope_all_projects"}
+        forbidden = {
+            "role", "is_active", "scope_all_projects",
+            "telegram_chat_id", "whatsapp_phone", "whatsapp_chat_id",
+        }
         bad = forbidden & set(data.keys())
         if bad:
             raise HTTPException(403, f"field_forbidden_for_self_update: {','.join(sorted(bad))}")
@@ -106,6 +150,23 @@ async def update_user(
         pw = data.pop("password")
         if pw:
             u.password_hash = hash_password(pw)
+    # Force-link kontak (SUPERADMIN-only, sdh di-gate di atas). whatsapp_phone
+    # adalah helper input -- normalize ke whatsapp_chat_id format WAHA.
+    if "whatsapp_phone" in data:
+        phone_raw = (data.pop("whatsapp_phone") or "").strip()
+        if not phone_raw:
+            # Eksplisit kosong = unlink (kecuali whatsapp_chat_id explicit)
+            if "whatsapp_chat_id" not in data:
+                data["whatsapp_chat_id"] = None
+        else:
+            data["whatsapp_chat_id"] = _normalize_wa_phone(phone_raw)
+    if "telegram_chat_id" in data:
+        # Trim + empty = None (unlink)
+        tg = (data.get("telegram_chat_id") or "").strip()
+        data["telegram_chat_id"] = tg or None
+    if "whatsapp_chat_id" in data:
+        wa = (data.get("whatsapp_chat_id") or "").strip()
+        data["whatsapp_chat_id"] = wa or None
     for k, v in data.items():
         setattr(u, k, v)
     await log(db, user_id=actor.id, entity="user", entity_id=u.id,
