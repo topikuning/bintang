@@ -16,6 +16,8 @@ class UserOut(BaseModel):
     is_active: bool
     phone: str | None = None
     scope_all_projects: bool = False
+    telegram_chat_id: str | None = None
+    whatsapp_chat_id: str | None = None
 
     class Config:
         from_attributes = True
@@ -41,3 +43,12 @@ class UserUpdate(BaseModel):
     phone: str | None = None
     password: str | None = None
     scope_all_projects: bool | None = None
+    # Force-link contact (SUPERADMIN only). Set ke null/string-kosong utk
+    # unlink. telegram_chat_id: numeric/string apa adanya.
+    telegram_chat_id: str | None = None
+    # whatsapp_phone: input user-friendly (628xxxx), server convert ke
+    # whatsapp_chat_id (<msisdn>@c.us). Kalau diisi, overwrite chat_id.
+    whatsapp_phone: str | None = None
+    # whatsapp_chat_id: direct input formal (<msisdn>@c.us). Override
+    # whatsapp_phone kalau keduanya diisi.
+    whatsapp_chat_id: str | None = None

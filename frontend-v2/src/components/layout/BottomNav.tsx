@@ -1,12 +1,16 @@
 import { NavLink } from "react-router-dom"
 import { cn } from "@/lib/utils"
-import { MOBILE_BOTTOM_NAV } from "./nav-config"
+import { useMenuConfig } from "@/hooks/useMenuConfig"
+import { MOBILE_BOTTOM_NAV, filterNavItems } from "./nav-config"
 
 export function BottomNav() {
+  const cfgQ = useMenuConfig()
+  const allowed = cfgQ.data ? new Set(cfgQ.data.menu_ids) : undefined
+  const items = filterNavItems(MOBILE_BOTTOM_NAV, allowed)
   return (
     <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t bg-surface pb-safe">
       <ul className="flex">
-        {MOBILE_BOTTOM_NAV.map((item) => (
+        {items.map((item) => (
           <li key={item.to} className="flex-1">
             <NavLink
               to={item.to}

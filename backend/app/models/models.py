@@ -821,3 +821,21 @@ class AppSetting(TimestampMixin, Base):
     group_key: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     # Audit
     updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class RoleMenuPolicy(TimestampMixin, Base):
+    """Toggle off menu utk role tertentu. Default: semua menu visible
+    untuk semua role -- baris di tabel ini menandakan menu yg DI-HIDE.
+
+    SUPERADMIN selalu lihat semua (tdk berlaku policy).
+    """
+    __tablename__ = "role_menu_policies"
+    __table_args__ = (
+        UniqueConstraint("role", "menu_id", name="uq_role_menu"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    role: Mapped[UserRole] = mapped_column(Enum(UserRole), nullable=False, index=True)
+    menu_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    hidden: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

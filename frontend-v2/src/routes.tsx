@@ -91,6 +91,9 @@ const SystemSettingsPage = lazy(() =>
     default: m.SystemSettingsPage,
   })),
 )
+const RoleMenusPage = lazy(() =>
+  import("@/pages/RoleMenusPage").then((m) => ({ default: m.RoleMenusPage })),
+)
 const MorePage = lazy(() =>
   import("@/pages/More").then((m) => ({ default: m.MorePage })),
 )
@@ -187,6 +190,7 @@ export const router = createBrowserRouter([
           { path: "master/users", element: <L><UsersPage /></L> },
           { path: "settings", element: <L><SettingsPage /></L> },
           { path: "settings/system", element: <L><SystemSettingsPage /></L> },
+          { path: "settings/role-menus", element: <L><RoleMenusPage /></L> },
           { path: "more", element: <L><MorePage /></L> },
         ],
       },

@@ -68,6 +68,9 @@ const createSchema = z.object({
   role: z.enum(["SUPERADMIN", "CENTRAL_ADMIN", "PROJECT_ADMIN", "EXECUTIVE"]),
   phone: z.string().nullable().optional(),
   scope_all_projects: z.boolean(),
+  // Force-link kontak (SUPERADMIN only di backend).
+  telegram_chat_id: z.string().nullable().optional(),
+  whatsapp_phone: z.string().nullable().optional(),
 })
 
 const updateSchema = z.object({
@@ -77,6 +80,8 @@ const updateSchema = z.object({
   phone: z.string().nullable().optional(),
   password: z.string().min(6, "Password minimal 6 karakter").or(z.literal("")).optional(),
   scope_all_projects: z.boolean(),
+  telegram_chat_id: z.string().nullable().optional(),
+  whatsapp_phone: z.string().nullable().optional(),
 })
 
 type FormValues = z.infer<typeof createSchema>
@@ -89,6 +94,8 @@ function buildDefaults(user: User | null): FormValues {
     role: user?.role ?? "PROJECT_ADMIN",
     phone: user?.phone ?? "",
     scope_all_projects: user?.scope_all_projects ?? false,
+    telegram_chat_id: user?.telegram_chat_id ?? "",
+    whatsapp_phone: user?.whatsapp_chat_id ?? "",
   }
 }
 
@@ -330,6 +337,7 @@ function UserForm({
   const create = useCreateUser()
   const update = useUpdateUser(user?.id ?? 0)
   const [showPassword, setShowPassword] = useState(false)
+  const currentActorRole = useAuthStore((s) => s.user?.role)
 
   const {
     control,
@@ -354,6 +362,8 @@ function UserForm({
         phone: raw.phone,
         password: raw.password ? raw.password : undefined,
         scope_all_projects: raw.scope_all_projects,
+        telegram_chat_id: raw.telegram_chat_id,
+        whatsapp_phone: raw.whatsapp_phone,
       })
       if (!parsed.success) {
         toast.error(parsed.error.issues[0]?.message ?? "Periksa isian")
@@ -367,6 +377,8 @@ function UserForm({
           phone: parsed.data.phone?.trim() || null,
           password: parsed.data.password || undefined,
           scope_all_projects: parsed.data.scope_all_projects,
+          telegram_chat_id: parsed.data.telegram_chat_id?.trim() || null,
+          whatsapp_phone: parsed.data.whatsapp_phone?.trim() || null,
         })
         toast.success("Pengguna diperbarui")
         reset()
@@ -467,6 +479,39 @@ function UserForm({
       <Field label="Telepon">
         <Input {...register("phone")} inputMode="tel" placeholder="0812 3456 7890" className="font-mono" />
       </Field>
+
+      {/* Force-link kontak chat -- hanya SUPERADMIN (backend reject lain). */}
+      {currentActorRole === "SUPERADMIN" && (
+        <>
+          <Field
+            label="Telegram chat_id (force-link)"
+            hint="Set langsung tanpa /link OTP. Numeric, mis. 123456789. Kosongkan utk unlink."
+          >
+            <Input
+              {...register("telegram_chat_id")}
+              inputMode="numeric"
+              placeholder="123456789"
+              className="font-mono"
+            />
+          </Field>
+          <Field
+            label="Nomor WhatsApp (force-link)"
+            hint="Format bebas (0812..., +62812..., 62812...). Server auto-convert ke format WAHA <msisdn>@c.us."
+          >
+            <Input
+              {...register("whatsapp_phone")}
+              inputMode="tel"
+              placeholder="0812 3456 7890"
+              className="font-mono"
+            />
+            {user?.whatsapp_chat_id && (
+              <p className="text-[10px] text-ink-400 font-mono mt-0.5">
+                Saat ini: {user.whatsapp_chat_id}
+              </p>
+            )}
+          </Field>
+        </>
+      )}
 
       {/* Akses proyek -- daftar project_users + tombol tambah/hapus. Hanya
           muncul saat mode edit (user sudah punya id) dan user tidak scope_all
