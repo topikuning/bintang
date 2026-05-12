@@ -36,10 +36,16 @@ export function TransactionCard({
         className,
       )}
     >
-      {/* Row 1: tanggal + nominal */}
+      {/* Row 1: tanggal + ID + nominal. ID dipakai sbg referensi di
+          WhatsApp/Telegram (mis. '/hapus 123') -- mudahkan user copy. */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col leading-tight">
-          <span className="text-[12px] text-ink-500">{fmtDate(t.tx_date)}</span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[12px] text-ink-500">{fmtDate(t.tx_date)}</span>
+            <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[10px] font-mono text-ink-700 tabular-nums">
+              #{t.id}
+            </span>
+          </div>
           <span className="text-[11px] uppercase tracking-wider text-ink-400 mt-0.5">
             {isIn ? "Pemasukan" : "Pengeluaran"}
           </span>

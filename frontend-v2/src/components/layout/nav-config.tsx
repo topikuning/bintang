@@ -11,6 +11,7 @@ import {
   Coins,
   Database,
   FolderKanban,
+  HardDrive,
   History,
   Home,
   KeyRound,
@@ -87,6 +88,7 @@ export const DESKTOP_NAV: NavGroup[] = [
       { id: "settings", label: "Pengaturan", to: "/settings", icon: Settings },
       { id: "settings-system", label: "Sistem (API Keys)", to: "/settings/system", icon: KeyRound },
       { id: "settings-role-menus", label: "Akses Menu per Role", to: "/settings/role-menus", icon: ShieldCheck },
+      { id: "settings-orphan-files", label: "File Orphan", to: "/settings/orphan-files", icon: HardDrive },
     ],
   },
 ]
@@ -136,6 +138,7 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
       { id: "settings", label: "Pengaturan", to: "/settings", icon: Settings },
       { id: "settings-system", label: "Sistem (API Keys)", to: "/settings/system", icon: KeyRound },
       { id: "settings-role-menus", label: "Akses Menu per Role", to: "/settings/role-menus", icon: ShieldCheck },
+      { id: "settings-orphan-files", label: "File Orphan", to: "/settings/orphan-files", icon: HardDrive },
     ],
   },
 ]

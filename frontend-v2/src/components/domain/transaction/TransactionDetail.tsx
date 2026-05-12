@@ -55,11 +55,14 @@ export function TransactionDetail({
     <div className="flex flex-col">
       {/* Header amount */}
       <div className="flex flex-col gap-2 p-5 bg-surface-muted border-b">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">
             {isIn ? "Pemasukan" : "Pengeluaran"}
           </span>
           <StatusBadge domain="transaction" status={t.status} />
+          <span className="ml-auto rounded bg-ink-100 px-2 py-0.5 text-[11px] font-mono text-ink-700 tabular-nums">
+            #{t.id}
+          </span>
         </div>
         <AmountDisplay value={t.amount} type={t.type} colored size="lg" className="text-2xl" />
         <div className="text-[12px] text-ink-500">{fmtDate(t.tx_date, { fullMonth: true })}</div>
