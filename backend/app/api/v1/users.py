@@ -84,18 +84,10 @@ async def create_user(
     return UserOut.model_validate(user)
 
 
-@router.get("/{user_id}", response_model=UserOut)
-async def get_user(
-    user_id: int,
-    db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_superadmin),
-) -> UserOut:
-    u = await db.get(User, user_id)
-    if not u or u.deleted_at is not None:
-        raise HTTPException(404, "not_found")
-    return UserOut.model_validate(u)
-
-
+# PENTING: route literal seperti /lookup, /me/menu-config harus
+# di-deklarasikan SEBELUM /{user_id} -- FastAPI match dgn urutan
+# deklarasi. Kalau /{user_id} duluan, request /users/lookup nyangkut di
+# /{user_id} dgn 'lookup' yg gagal validate int -> 422.
 @router.get("/lookup")
 async def users_lookup(
     q: str | None = None,
@@ -119,6 +111,18 @@ async def users_lookup(
         {"id": u.id, "name": u.name, "email": u.email}
         for u in res.scalars().all()
     ]
+
+
+@router.get("/{user_id}", response_model=UserOut)
+async def get_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_superadmin),
+) -> UserOut:
+    u = await db.get(User, user_id)
+    if not u or u.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    return UserOut.model_validate(u)
 
 
 @router.get("/me/menu-config")
