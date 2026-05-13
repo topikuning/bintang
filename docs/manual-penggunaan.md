@@ -689,16 +689,44 @@ Untuk user non-scope-all, tambahkan proyek-proyek yang user boleh akses.
 Command yang didukung (Telegram & WhatsApp):
 
 ```
-/help                          - daftar command
-/keluar <proyek> <kategori> <nominal> [deskripsi]
-                               - cepat input tx pengeluaran (DRAFT)
-/masuk <proyek> <kategori> <nominal> [deskripsi]
-                               - cepat input tx pemasukan
-/saldo [proyek]                - cek saldo proyek
-/proyek                        - list proyek user
-/cancel <tx_id> <alasan>       - cancel tx
-/hapus <tx_id>                 - soft-delete tx (admin only)
+LIHAT DATA
+  /saldo [kode]              - saldo semua/specific proyek
+  /proyek                    - list proyek user
+  /pending                   - tx submitted (admin verify queue)
+  /invoice                   - invoice belum lunas
+  /draft                     - tx draft milik Anda (siap submit)
+  /lihat <tx_id>             - detail satu transaksi
+
+CATAT TRANSAKSI (DRAFT)
+  /keluar <kode> <nominal> <deskripsi>
+                             - cepat input tx pengeluaran
+  /masuk <kode> <nominal> <deskripsi>
+                             - cepat input tx pemasukan
+  Foto setelahnya: auto-attach ke tx terakhir.
+
+WORKFLOW VALIDASI
+  /submit <tx_id>            - kirim tx DRAFT/REJECTED utk validasi
+                               (alias: /kirim)
+  /verify <tx_id>            - admin verify tx SUBMITTED -> VERIFIED
+                               (alias: /verifikasi, /validasi)
+  /tolak <tx_id> <alasan>    - admin reject tx (alias: /reject)
+  /batal <tx_id> <alasan>    - cancel tx (alias: /cancel)
+
+LAMPIRAN
+  /buktitx <tx_id>           - buka jendela 5 menit utk attach
+                               foto/PDF (alias: /bukti, /lampiran)
+
+AKUN
+  /start                     - cek status akun
+  /link <kode>               - hubungkan akun (kode 6 digit dr Pengaturan)
+  /unlink                    - putus akun chat
+  /help                      - daftar command
 ```
+
+**Aturan permission**:
+- Submit/cancel: user yg punya akses tx
+- Verify/tolak: SUPERADMIN + CENTRAL_ADMIN saja
+- Tx VERIFIED: hanya SUPERADMIN yg boleh cancel
 
 Foto/gambar yang dikirim **setelah** `/keluar` atau `/masuk` (dalam jendela ~5 menit) **otomatis attach** ke transaksi terakhir.
 

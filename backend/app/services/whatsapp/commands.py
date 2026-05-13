@@ -68,11 +68,18 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "  /proyek — list proyek\n"
         "  /pending — transaksi belum diverifikasi (admin)\n"
         "  /invoice — invoice belum lunas\n"
+        "  /draft — daftar tx draft milik Anda\n"
+        "  /lihat <id> — detail satu transaksi\n"
         "\n*Catat transaksi (DRAFT):*\n"
         "  /keluar <kode> <jumlah> <deskripsi>\n"
         "  /masuk <kode> <jumlah> <deskripsi>\n"
         "  Contoh: ```/keluar PRJ-001 5000000 Beli semen 50 sak```\n"
         "  Foto yang dikirim setelahnya jadi attachment otomatis.\n"
+        "\n*Workflow validasi:*\n"
+        "  /submit <id> — kirim tx draft utk validasi\n"
+        "  /verify <id> — admin verify tx submitted\n"
+        "  /tolak <id> <alasan> — admin reject tx\n"
+        "  /batal <id> <alasan> — cancel tx\n"
         "\n*Lampirkan bukti ke transaksi yang sudah ada:*\n"
         "  /buktitx <id> — buka jendela 5 menit utk attach foto/PDF\n"
         "  Contoh: ```/buktitx 123``` lalu kirim foto/file.\n"
@@ -469,6 +476,18 @@ async def handle_media(
 # Dispatcher
 # ---------------------------------------------------------------------------
 
+# Wrapper utk command workflow dr chat_workflow -- adapter signature.
+def _wrap_workflow(fn):
+    async def _h(db, user, chat_id, args, msg) -> str:
+        if not user:
+            return "Akun belum ter-link. Ketik /link <kode> dulu."
+        return await fn(db, user, args)
+    return _h
+
+
+from app.services import chat_workflow as _wf  # noqa: E402
+
+
 REGISTRY: dict[str, CommandHandler] = {
     "start": cmd_start,
     "help": cmd_help,
@@ -486,6 +505,19 @@ REGISTRY: dict[str, CommandHandler] = {
     "buktitx": cmd_buktitx,
     "bukti": cmd_buktitx,
     "lampiran": cmd_buktitx,
+    # --- Workflow validasi ---
+    "submit": _wrap_workflow(_wf.cmd_submit),
+    "kirim": _wrap_workflow(_wf.cmd_submit),
+    "verify": _wrap_workflow(_wf.cmd_verify),
+    "verifikasi": _wrap_workflow(_wf.cmd_verify),
+    "validasi": _wrap_workflow(_wf.cmd_verify),
+    "tolak": _wrap_workflow(_wf.cmd_reject),
+    "reject": _wrap_workflow(_wf.cmd_reject),
+    "batal": _wrap_workflow(_wf.cmd_cancel),
+    "cancel": _wrap_workflow(_wf.cmd_cancel),
+    "lihat": _wrap_workflow(_wf.cmd_lihat),
+    "detail": _wrap_workflow(_wf.cmd_lihat),
+    "draft": _wrap_workflow(_wf.cmd_draft),
 }
 
 

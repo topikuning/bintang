@@ -89,11 +89,18 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "  /proyek — list proyek\n"
         "  /pending — transaksi belum diverifikasi (admin)\n"
         "  /invoice — invoice belum lunas\n"
+        "  /draft — daftar tx draft milik Anda\n"
+        "  /lihat &lt;id&gt; — detail satu transaksi\n"
         "\n<b>Catat transaksi (DRAFT):</b>\n"
         "  /keluar &lt;kode&gt; &lt;jumlah&gt; &lt;deskripsi&gt;\n"
         "  /masuk &lt;kode&gt; &lt;jumlah&gt; &lt;deskripsi&gt;\n"
         "  Contoh: <code>/keluar PRJ-001 5000000 Beli semen 50 sak</code>\n"
         "  Foto yang dikirim setelahnya jadi attachment otomatis.\n"
+        "\n<b>Workflow validasi:</b>\n"
+        "  /submit &lt;id&gt; — kirim tx draft utk validasi\n"
+        "  /verify &lt;id&gt; — admin verify tx submitted\n"
+        "  /tolak &lt;id&gt; &lt;alasan&gt; — admin reject tx\n"
+        "  /batal &lt;id&gt; &lt;alasan&gt; — cancel tx\n"
         "\n<b>Lampirkan bukti ke transaksi yang sudah ada:</b>\n"
         "  /buktitx &lt;id&gt; — buka jendela 5 menit utk attach foto/PDF\n"
         "  Contoh: <code>/buktitx 123</code> lalu kirim foto/file.\n"
@@ -491,6 +498,19 @@ async def handle_photo(
 # Dispatcher
 # ---------------------------------------------------------------------------
 
+# Wrapper utk command workflow dari chat_workflow module -- adapter
+# signature (db, user, chat_id, args, msg) -> (db, user, args).
+def _wrap_workflow(fn):
+    async def _h(db, user, chat_id, args, msg) -> str:
+        if not user:
+            return "Akun belum ter-link. Ketik /link &lt;kode&gt; dulu."
+        return await fn(db, user, args)
+    return _h
+
+
+from app.services import chat_workflow as _wf  # noqa: E402
+
+
 REGISTRY: dict[str, CommandHandler] = {
     "start": cmd_start,
     "help": cmd_help,
@@ -508,6 +528,19 @@ REGISTRY: dict[str, CommandHandler] = {
     "buktitx": cmd_buktitx,
     "bukti": cmd_buktitx,           # alias
     "lampiran": cmd_buktitx,        # alias
+    # --- Workflow validasi (PR perintah lengkap) ---
+    "submit": _wrap_workflow(_wf.cmd_submit),
+    "kirim": _wrap_workflow(_wf.cmd_submit),     # alias ID
+    "verify": _wrap_workflow(_wf.cmd_verify),
+    "verifikasi": _wrap_workflow(_wf.cmd_verify),
+    "validasi": _wrap_workflow(_wf.cmd_verify),
+    "tolak": _wrap_workflow(_wf.cmd_reject),
+    "reject": _wrap_workflow(_wf.cmd_reject),
+    "batal": _wrap_workflow(_wf.cmd_cancel),
+    "cancel": _wrap_workflow(_wf.cmd_cancel),
+    "lihat": _wrap_workflow(_wf.cmd_lihat),
+    "detail": _wrap_workflow(_wf.cmd_lihat),
+    "draft": _wrap_workflow(_wf.cmd_draft),
 }
 
 
