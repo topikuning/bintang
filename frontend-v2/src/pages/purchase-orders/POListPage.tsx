@@ -37,13 +37,19 @@ export function POListPage() {
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(50)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
-  // Project filter: initial dari URL ?project_id=N (drilldown).
-  const urlProjectIdInit = searchParams.get("project_id")
-  const [projectFilter, setProjectFilter] = useState<number | null>(
-    urlProjectIdInit && Number(urlProjectIdInit) > 0
-      ? Number(urlProjectIdInit)
-      : null,
-  )
+  // Project filter: URL = source of truth (hindari stale state saat URL
+  // berubah tanpa unmount).
+  const urlProjectIdRaw = searchParams.get("project_id")
+  const projectFilter: number | null =
+    urlProjectIdRaw && Number(urlProjectIdRaw) > 0
+      ? Number(urlProjectIdRaw)
+      : null
+  const setProjectFilter = (id: number | null) => {
+    const next = new URLSearchParams(searchParams)
+    if (id) next.set("project_id", String(id))
+    else next.delete("project_id")
+    setSearchParams(next, { replace: true })
+  }
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<PurchaseOrder | null>(null)
@@ -186,10 +192,6 @@ export function POListPage() {
                 onChange={(id) => {
                   setProjectFilter(id)
                   setPage(1)
-                  const next = new URLSearchParams(searchParams)
-                  if (id) next.set("project_id", String(id))
-                  else next.delete("project_id")
-                  setSearchParams(next, { replace: true })
                 }}
                 placeholder="Semua proyek"
               />
