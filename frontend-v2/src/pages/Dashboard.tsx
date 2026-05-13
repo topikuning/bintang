@@ -496,7 +496,7 @@ function WarningBanner({ warnings }: { warnings: string[] }) {
       </div>
       <ul className="ml-6 list-disc text-[13px] text-warning-700 space-y-0.5">
         {warnings.map((w, i) => (
-          <li key={i}>{w}</li>
+          <li key={`${i}:${w}`}>{w}</li>
         ))}
       </ul>
     </div>

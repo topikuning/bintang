@@ -24,6 +24,10 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 600,
+    // Eksplisit disable sourcemap di prod build supaya source code tidak
+    // ter-expose ke client (devtools). Default Vite memang false, tapi
+    // dieksplisitkan supaya commit history mencatat intent.
+    sourcemap: false,
     rollupOptions: {
       output: {
         // Manual chunks: pisahkan vendor besar supaya tidak satu blob

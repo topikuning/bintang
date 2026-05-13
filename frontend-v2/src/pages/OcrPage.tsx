@@ -653,7 +653,7 @@ function DraftCard({
                   </thead>
                   <tbody className="[&>tr]:border-t [&>tr>td]:px-2 [&>tr>td]:py-1.5 [&>tr>td]:align-top">
                     {items.map((it, i) => (
-                      <tr key={i}>
+                      <tr key={`${i}:${it.description ?? ""}`}>
                         <td className="text-ink-900">{it.description ?? "—"}</td>
                         <td className="text-right font-mono [font-variant-numeric:tabular-nums]">
                           {it.qty ?? "—"}
