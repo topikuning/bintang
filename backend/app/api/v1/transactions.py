@@ -410,20 +410,14 @@ async def update_transaction(
     items_payload = data.pop("items", None)
     new_kind = data.pop("kind", None)
 
-    # Ubah kind: aturan adaptive ke status tx.
-    # - DRAFT/SUBMITTED/REJECTED: admin (CENTRAL_ADMIN+SUPERADMIN) boleh ubah
-    #   selama tx blm ter-alokasi ke invoice.
-    # - VERIFIED: hanya SUPERADMIN (god-mode -- audit lock di-bypass).
-    # Alokasi invoice (invoice_id atau row InvoiceAllocation) hanya
-    # bermakna utk INVOICE_PAYMENT, jadi pindah kind akan rusak data.
+    # Ubah kind:
+    # - Status VERIFIED sudah di-block oleh rule 'verified_locked' di
+    #   atas (semua edit, termasuk kind) -- hanya SUPERADMIN yg bypass.
+    # - Selain VERIFIED: siapa pun yg lolos require_can_write boleh ubah
+    #   kind (tdk perlu admin -- tx DRAFT masih editable penuh).
+    # - TETAP CEK: alokasi invoice. Pindah kind dr INVOICE_PAYMENT setelah
+    #   ada allocation akan rusak data akunting -- block dgn 409.
     if new_kind is not None and new_kind != t.kind:
-        if t.status == TxnStatus.VERIFIED:
-            if user.role != UserRole.SUPERADMIN:
-                raise HTTPException(
-                    403,
-                    "kind_change_forbidden_verified: tx sudah tervalidasi -- "
-                    "hanya SUPERADMIN yg bisa ubah jenis (god-mode).",
-                )
         # Cek alokasi invoice (invoice_id langsung atau InvoiceAllocation row)
         alloc_exists = (await db.execute(
             select(InvoiceAllocation.id).where(
