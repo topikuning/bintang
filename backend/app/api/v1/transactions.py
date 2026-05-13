@@ -410,15 +410,20 @@ async def update_transaction(
     items_payload = data.pop("items", None)
     new_kind = data.pop("kind", None)
 
-    # Ubah kind: HANYA SUPERADMIN (god-mode), dan tx blm ter-alokasi ke
-    # invoice -- alokasi (invoice_id atau lewat invoice_allocations) hanya
+    # Ubah kind: aturan adaptive ke status tx.
+    # - DRAFT/SUBMITTED/REJECTED: admin (CENTRAL_ADMIN+SUPERADMIN) boleh ubah
+    #   selama tx blm ter-alokasi ke invoice.
+    # - VERIFIED: hanya SUPERADMIN (god-mode -- audit lock di-bypass).
+    # Alokasi invoice (invoice_id atau row InvoiceAllocation) hanya
     # bermakna utk INVOICE_PAYMENT, jadi pindah kind akan rusak data.
     if new_kind is not None and new_kind != t.kind:
-        if user.role != UserRole.SUPERADMIN:
-            raise HTTPException(
-                403,
-                "kind_change_forbidden: hanya SUPERADMIN yg bisa ubah jenis tx",
-            )
+        if t.status == TxnStatus.VERIFIED:
+            if user.role != UserRole.SUPERADMIN:
+                raise HTTPException(
+                    403,
+                    "kind_change_forbidden_verified: tx sudah tervalidasi -- "
+                    "hanya SUPERADMIN yg bisa ubah jenis (god-mode).",
+                )
         # Cek alokasi invoice (invoice_id langsung atau InvoiceAllocation row)
         alloc_exists = (await db.execute(
             select(InvoiceAllocation.id).where(
