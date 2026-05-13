@@ -17,6 +17,27 @@ export function useUsers(params: { page?: number; size?: number; q?: string } = 
   })
 }
 
+export interface UserLookupRow {
+  id: number
+  name: string
+  email: string
+}
+
+/** Lookup user minimal info (id/name/email) -- accessible semua role.
+ *  Dipakai utk picker di form (mis. penerima dana operasional). */
+export function useUsersLookup(params: { q?: string; limit?: number } = {}) {
+  return useQuery({
+    queryKey: ["users-lookup", params],
+    queryFn: async (): Promise<UserLookupRow[]> => {
+      const { data } = await api.get<UserLookupRow[]>("/users/lookup", {
+        params: { limit: 200, ...params },
+      })
+      return data
+    },
+    staleTime: 5 * 60_000,
+  })
+}
+
 export function useCreateUser() {
   const qc = useQueryClient()
   return useMutation({
