@@ -1,4 +1,4 @@
-from datetime import date, date as date_type
+from datetime import date, date as date_type, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
@@ -486,8 +486,7 @@ async def delete_invoice(
     inv = await db.get(Invoice, iid)
     if not inv or inv.deleted_at is not None:
         raise HTTPException(404, "not_found")
-    from sqlalchemy import func as sa_func
-    inv.deleted_at = sa_func.now()
+    inv.deleted_at = datetime.utcnow()
     await log(db, user_id=admin.id, entity="invoice", entity_id=inv.id,
               action=AuditAction.DELETE)
     await db.commit()

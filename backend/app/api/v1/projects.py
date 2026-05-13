@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -411,8 +412,7 @@ async def create_project(
     # Pakai Python datetime (BUKAN func.now()) supaya snapshot(p) di
     # bawah bisa JSON-serialize utk AuditLog.after. func.now() return SQL
     # FunctionElement object yg gagal json.dumps -> 500.
-    from datetime import datetime as _dt
-    p.approved_at = _dt.utcnow()
+    p.approved_at = datetime.utcnow()
     db.add(p)
     await db.flush()
     if funder_ids:
@@ -544,8 +544,7 @@ async def approve_proposal(
     # Pakai Python datetime (BUKAN func.now()) supaya snapshot(p) di
     # bawah bisa JSON-serialize utk AuditLog.after. func.now() return SQL
     # FunctionElement object yg gagal json.dumps -> 500.
-    from datetime import datetime as _dt
-    p.approved_at = _dt.utcnow()
+    p.approved_at = datetime.utcnow()
     p.rejection_reason = None
     if p.proposed_by_id and not existing_pu:
         db.add(ProjectUser(project_id=p.id, user_id=p.proposed_by_id))
@@ -582,8 +581,7 @@ async def reject_proposal(
     # Pakai Python datetime (BUKAN func.now()) supaya snapshot(p) di
     # bawah bisa JSON-serialize utk AuditLog.after. func.now() return SQL
     # FunctionElement object yg gagal json.dumps -> 500.
-    from datetime import datetime as _dt
-    p.approved_at = _dt.utcnow()
+    p.approved_at = datetime.utcnow()
     p.rejection_reason = reason
     await log(db, user_id=admin.id, entity="project_proposal", entity_id=p.id,
               action=AuditAction.REJECT, before=before, after=snapshot(p))
@@ -700,9 +698,8 @@ async def delete_project(
     p = await db.get(Project, pid)
     if not p or p.deleted_at is not None:
         raise HTTPException(404, "not_found")
-    from sqlalchemy import func as sa_func
     before = snapshot(p)
-    p.deleted_at = sa_func.now()
+    p.deleted_at = datetime.utcnow()
     await log(db, user_id=admin.id, entity="project", entity_id=p.id,
               action=AuditAction.DELETE, before=before)
     await db.commit()

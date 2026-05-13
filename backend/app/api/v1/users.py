@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -218,8 +220,7 @@ async def delete_user(
         raise HTTPException(400, "cannot_delete_self")
     before = snapshot(u)
     u.is_active = False
-    from sqlalchemy import func as sa_func
-    u.deleted_at = sa_func.now()
+    u.deleted_at = datetime.utcnow()
     await log(db, user_id=admin.id, entity="user", entity_id=u.id,
               action=AuditAction.DELETE, before=before)
     await db.commit()

@@ -607,9 +607,8 @@ async def delete_transaction(
         raise HTTPException(404, "not_found")
     if t.status == TxnStatus.VERIFIED:
         raise HTTPException(409, "verified_must_be_cancelled")
-    from sqlalchemy import func as sa_func
     before = snapshot(t)
-    t.deleted_at = sa_func.now()
+    t.deleted_at = datetime.utcnow()
     await log(db, user_id=admin.id, entity="transaction", entity_id=t.id,
               action=AuditAction.DELETE, before=before)
     await db.commit()
@@ -964,14 +963,12 @@ async def delete_cash_advance_settlement(
                 )
             )
             for alloc in res.scalars().all():
-                from sqlalchemy import func as _sa_func
-                alloc.deleted_at = _sa_func.now()
+                alloc.deleted_at = datetime.utcnow()
     # Top-up tx kalau ada -- soft delete
     if settlement.topup_tx_id:
-        from sqlalchemy import func as _sa_func
         topup = await db.get(Transaction, settlement.topup_tx_id)
         if topup and topup.deleted_at is None:
-            topup.deleted_at = _sa_func.now()
+            topup.deleted_at = datetime.utcnow()
     settlement_id_log = settlement.id
     await db.delete(settlement)
     # Recompute status invoice yg di-affect
