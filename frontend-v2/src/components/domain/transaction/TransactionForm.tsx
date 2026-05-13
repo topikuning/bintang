@@ -137,12 +137,22 @@ export function TransactionForm({
 
   const itemsArr = useFieldArray({ control, name: "items" })
   const usersQ = useUsers({ size: 200 })
-  // God-mode: SUPERADMIN bisa ubah kind walau edit -- selama tx belum
-  // ter-alokasi ke invoice. Backend tetap validate (403 kalau non-superadmin
-  // atau 409 kalau ada allocation).
+  // Kind change rule (mirror backend):
+  // - Tx belum verified: admin (CENTRAL_ADMIN+SUPERADMIN) boleh ubah kind
+  //   selama belum ter-alokasi ke invoice.
+  // - Tx VERIFIED: hanya SUPERADMIN (god-mode bypass audit lock).
+  // Backend tetap validate (403 / 409) sbg defense in depth.
   const role = useAuthStore((s) => s.user?.role)
   const isSuperAdmin = role === "SUPERADMIN"
-  const kindLocked = isEdit && !isSuperAdmin
+  const isAdmin = isSuperAdmin || role === "CENTRAL_ADMIN"
+  const isVerified = transaction?.status === "VERIFIED"
+  // Kind locked kalau:
+  //   - new tx (create) -> never locked
+  //   - edit + verified + bukan superadmin -> locked
+  //   - edit + non-admin (PROJECT_ADMIN/EXECUTIVE) -> locked
+  const kindLocked = isEdit && (
+    (isVerified && !isSuperAdmin) || !isAdmin
+  )
 
   // Reset saat sheet baru dibuka atau transaction berubah
   useEffect(() => {
@@ -347,15 +357,16 @@ export function TransactionForm({
                 />
                 {isEdit && kindLocked && (
                   <p className="text-[11px] text-ink-500">
-                    Jenis terkunci setelah transaksi dibuat (audit). Hubungi
-                    SUPERADMIN bila perlu koreksi.
+                    {isVerified && !isSuperAdmin
+                      ? "Tx sudah tervalidasi -- hanya SUPERADMIN yg bisa ubah jenis (god-mode)."
+                      : "Akses tidak cukup utk ubah jenis. Butuh CENTRAL_ADMIN atau SUPERADMIN."}
                   </p>
                 )}
-                {isEdit && isSuperAdmin && (
+                {isEdit && !kindLocked && (
                   <p className="text-[11px] text-warning-700">
-                    God-mode: jenis bisa diubah selama tx belum ter-alokasi
-                    ke invoice. Pindah jenis akan reset field yg tdk berlaku
-                    (mis. invoice_id, recipient, items).
+                    Bisa ubah jenis selama tx belum ter-alokasi ke invoice.
+                    Pindah jenis akan reset field yg tdk berlaku (mis.
+                    invoice_id, recipient, items).
                   </p>
                 )}
               </Field>
