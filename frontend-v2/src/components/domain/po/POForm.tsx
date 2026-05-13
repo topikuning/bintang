@@ -4,7 +4,6 @@ import { Loader2, Plus, Trash2 } from "lucide-react"
 import { z } from "zod"
 import { fmtIDR, toApiDate } from "@/lib/format"
 import { apiErrorMessage } from "@/lib/api"
-import { useUIPrefs } from "@/store/ui-prefs"
 import {
   useCreatePO,
   useUpdatePO,
@@ -56,10 +55,9 @@ interface POFormProps {
 
 export function POForm({ open, onClose, po, lockProjectId }: POFormProps) {
   const bp = useBreakpoint()
-  const { defaultProjectId } = useUIPrefs()
   const isEdit = !!po
   const todayIso = useMemo(() => toApiDate(new Date()) ?? "", [])
-  const initialProjectId = po?.project_id ?? lockProjectId ?? defaultProjectId ?? 0
+  const initialProjectId = po?.project_id ?? lockProjectId ?? 0
 
   const defaultValues: FormValues = useMemo(
     () => ({

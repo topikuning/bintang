@@ -5,31 +5,22 @@ import {
   ArrowUpRight,
   BadgeCheck,
   Clock,
-  Download,
   Flame,
   FolderKanban,
   Link2Off,
   PieChart as PieIcon,
-  Plus,
-  Receipt,
   TrendingUp,
   Wallet,
 } from "lucide-react"
 import { Link } from "react-router-dom"
-import { useUIPrefs } from "@/store/ui-prefs"
-import { useGlobalDashboard, useProjectDashboard } from "@/hooks/useDashboard"
+import { useGlobalDashboard } from "@/hooks/useDashboard"
 import { useProjectFilters } from "@/hooks/useProjectsStats"
 import { MultiCombobox } from "@/components/forms/MultiCombobox"
 import { ErrorState } from "@/components/data/ErrorState"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
 import { CashflowChart } from "@/components/charts/CashflowChart"
-import { RecentTransactions } from "@/components/domain/dashboard/RecentTransactions"
-import { UpcomingInvoices } from "@/components/domain/dashboard/UpcomingInvoices"
-import { BudgetProgress } from "@/components/domain/dashboard/BudgetProgress"
 import { SpendingBreakdown } from "@/components/domain/dashboard/SpendingBreakdown"
-import { FinanceBreakdown } from "@/components/domain/dashboard/FinanceBreakdown"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { fmtCompact, fmtIDR } from "@/lib/format"
 import { apiErrorMessage } from "@/lib/api"
@@ -38,211 +29,13 @@ import { cn } from "@/lib/utils"
 import type { GlobalDashboardProjectSummary, HealthStatus } from "@/types/dashboard"
 
 /**
- * Dashboard adaptif:
- *  - Project picker = "Semua Proyek" -> GlobalDashboard
- *  - Project picker = proyek tertentu -> ProjectDashboard
- *
- * Visual: pemasukan = hijau, pengeluaran = merah, saldo minus = merah,
- * konsisten di semua tempat (summary card, list, chart). Bahasa
- * Indonesia full.
+ * Dashboard global -- ringkasan semua proyek dgn filter Lokasi/Dinas/
+ * Pendana. Dashboard ini SELALU global; drilldown ke detail proyek
+ * lewat Hub Proyek -> /projects/:id (atau klik kartu di bagian
+ * "Ringkasan per Proyek" di bawah).
  */
 export function DashboardPage() {
-  const { defaultProjectId } = useUIPrefs()
-  return defaultProjectId ? (
-    <ProjectDashboard projectId={defaultProjectId} />
-  ) : (
-    <GlobalDashboard />
-  )
-}
-
-// ============================================================
-// Per-project dashboard
-// ============================================================
-function ProjectDashboard({ projectId }: { projectId: number }) {
-  const bp = useBreakpoint()
-  const q = useProjectDashboard(projectId)
-
-  if (q.isLoading) return <DashboardSkeleton />
-  if (q.error) {
-    return (
-      <Page>
-        <ErrorState
-          description={apiErrorMessage(q.error)}
-          onRetry={() => q.refetch()}
-        />
-      </Page>
-    )
-  }
-  if (!q.data) return null
-  const d = q.data
-  const healthStr = typeof d.health === "string" ? d.health : d.health.status
-
-  return (
-    <Page>
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-xl font-bold text-ink-900 sm:text-2xl">
-              {d.project.name}
-            </h1>
-            <HealthBadge status={healthStr} />
-          </div>
-          <p className="text-[13px] text-ink-500 mt-0.5 font-mono">
-            {d.project.code}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button asChild variant="primary" size={bp === "mobile" ? "sm" : "md"}>
-            <Link to="/transactions">
-              <Plus className="h-4 w-4" />
-              Transaksi
-            </Link>
-          </Button>
-          <Button
-            asChild
-            variant="secondary"
-            size={bp === "mobile" ? "sm" : "md"}
-            className="hidden sm:inline-flex"
-          >
-            <Link to="/reports">
-              <Download className="h-4 w-4" />
-              Laporan
-            </Link>
-          </Button>
-        </div>
-      </div>
-
-      {/* Warning banner */}
-      {d.warnings.length > 0 && <WarningBanner warnings={d.warnings} />}
-
-      {/* Pending + unlinked highlight (kalau ada) */}
-      {(d.pending_count > 0 || d.unlinked_out_count > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          {d.pending_count > 0 && (
-            <Link to="/transactions" className="block">
-              <HighlightCard
-                tone="warning"
-                icon={Clock}
-                label="Belum Verifikasi"
-                bigValue={`${d.pending_count} transaksi`}
-                hint={fmtIDR(d.pending_total)}
-              />
-            </Link>
-          )}
-          {d.unlinked_out_count > 0 && (
-            <Link to="/transactions" className="block">
-              <HighlightCard
-                tone="info"
-                icon={Link2Off}
-                label="Pengeluaran Belum Dialokasi"
-                bigValue={`${d.unlinked_out_count} transaksi`}
-                hint={`Sisa ${fmtIDR(d.unlinked_out_total)}`}
-              />
-            </Link>
-          )}
-        </div>
-      )}
-
-      {/* Summary cards: 4 KPI utama dgn warna sign-aware */}
-      <SummaryCardGrid>
-        <SummaryCard
-          icon={Wallet}
-          label="Saldo Proyek"
-          value={fmtCompact(d.totals.balance)}
-          hint={fmtIDR(d.totals.balance)}
-          tone={d.totals.balance < 0 ? "danger" : "success"}
-        />
-        <SummaryCard
-          icon={ArrowDownLeft}
-          label="Total Pemasukan"
-          value={fmtCompact(d.totals.in)}
-          hint={fmtIDR(d.totals.in)}
-          tone="success"
-        />
-        <SummaryCard
-          icon={ArrowUpRight}
-          label="Total Pengeluaran"
-          value={fmtCompact(d.totals.out)}
-          hint={fmtIDR(d.totals.out)}
-          tone="danger"
-        />
-        <SummaryCard
-          icon={Receipt}
-          label="Invoice Belum Lunas"
-          value={fmtCompact(d.invoice_open_total)}
-          hint={
-            d.invoice_paid_total > 0
-              ? `Lunas ${fmtCompact(d.invoice_paid_total)}`
-              : "—"
-          }
-          tone={d.invoice_open_total > 0 ? "warning" : "neutral"}
-        />
-      </SummaryCardGrid>
-
-      {/* 2-col grid utk lg+, 1-col mobile */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-4">
-          {/* Cashflow */}
-          <Section title="Cashflow 12 Bulan" icon={TrendingUp}>
-            <div className="rounded-md border bg-surface p-3">
-              <CashflowChart
-                data={d.monthly_cashflow}
-                height={bp === "mobile" ? 200 : 280}
-                compact={bp === "mobile"}
-              />
-            </div>
-          </Section>
-
-          {/* Recent transactions */}
-          <Section
-            title="Transaksi Terbaru"
-            icon={Receipt}
-            actionTo="/transactions"
-            actionLabel="Semua"
-          >
-            <RecentTransactions
-              items={d.recent_transactions}
-              limit={bp === "mobile" ? 5 : 8}
-            />
-          </Section>
-
-          {/* Pengeluaran per kategori (kalau ada) */}
-          {d.by_category.length > 0 && (
-            <Section title="Pengeluaran per Kategori" icon={PieIcon}>
-              <div className="rounded-md border bg-surface p-4">
-                <SpendingBreakdown
-                  total={d.totals.out}
-                  items={d.by_category.map((c) => ({
-                    name: c.category,
-                    value: c.total,
-                  }))}
-                  chartHeight={bp === "mobile" ? 180 : 220}
-                />
-              </div>
-            </Section>
-          )}
-        </div>
-
-        <div className="space-y-4">
-          <BudgetProgress budget={d.budget} />
-
-          {d.finance && d.finance.nilai_kontrak > 0 && (
-            <FinanceBreakdown finance={d.finance} />
-          )}
-
-          <Section
-            title="Invoice Perlu Tindakan"
-            icon={Receipt}
-            actionTo="/invoices"
-            actionLabel="Semua"
-          >
-            <UpcomingInvoices items={d.invoices} limit={bp === "mobile" ? 4 : 6} />
-          </Section>
-        </div>
-      </div>
-    </Page>
-  )
+  return <GlobalDashboard />
 }
 
 // ============================================================
@@ -526,7 +319,6 @@ function GlobalDashboard() {
 // ============================================================
 
 function ProjectSummaryCard({ project: p }: { project: GlobalDashboardProjectSummary }) {
-  const setProj = useUIPrefs((s) => s.setDefaultProject)
   const minus = p.balance < 0
   const usage = Math.min(100, Math.max(0, p.budget.usage_pct))
   const barColor =
@@ -537,9 +329,8 @@ function ProjectSummaryCard({ project: p }: { project: GlobalDashboardProjectSum
         : "bg-success-500"
 
   return (
-    <button
-      type="button"
-      onClick={() => setProj(p.id)}
+    <Link
+      to={`/projects/${p.id}`}
       className="block w-full rounded-md border bg-surface p-3 text-left transition-colors hover:border-brand-300 hover:bg-brand-50/30"
     >
       <div className="flex items-start justify-between gap-2">
@@ -624,7 +415,7 @@ function ProjectSummaryCard({ project: p }: { project: GlobalDashboardProjectSum
           </div>
         </div>
       )}
-    </button>
+    </Link>
   )
 }
 

@@ -11,7 +11,6 @@ import {
 } from "lucide-react"
 import { useInvoices } from "@/hooks/useInvoices"
 import { useProjects } from "@/hooks/useProjects"
-import { useUIPrefs } from "@/store/ui-prefs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -67,8 +66,7 @@ const TYPE_OPTIONS: Array<{ value: TypeFilter; label: string }> = [
 ]
 
 export function InvoiceItemsReportPage() {
-  const { defaultProjectId } = useUIPrefs()
-  const [projectId, setProjectId] = useState<number | null>(defaultProjectId)
+  const [projectId, setProjectId] = useState<number | null>(null)
   const [type, setType] = useState<TypeFilter>("ALL")
   const [status, setStatus] = useState<StatusFilter>("ALL")
   const [dateFrom, setDateFrom] = useState<string>("")

@@ -3,7 +3,6 @@ import { Download, FileSpreadsheet, FileText, Loader2 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { downloadFile } from "@/lib/download"
 import { apiErrorMessage } from "@/lib/api"
-import { useUIPrefs } from "@/store/ui-prefs"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
@@ -57,11 +56,9 @@ export function ReportSection({
   hideProjectFilter,
   hideDateRange,
 }: ReportSectionProps) {
-  const { defaultProjectId } = useUIPrefs()
-
   const [dateFrom, setDateFrom] = useState<string | null>(null)
   const [dateTo, setDateTo] = useState<string | null>(null)
-  const [projectId, setProjectId] = useState<number | null>(defaultProjectId)
+  const [projectId, setProjectId] = useState<number | null>(null)
   const [extraValues, setExtraValues] = useState<Record<string, string | undefined>>(
     Object.fromEntries(
       extraFilters.map((f) => [f.name, (initialValues[f.name] as string | undefined) ?? ""]),

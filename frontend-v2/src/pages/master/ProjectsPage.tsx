@@ -203,7 +203,7 @@ export function ProjectsPage() {
     <>
       <MasterPageShell
         title="Proyek"
-        description="Daftar proyek -- gunakan ProjectSwitcher di topbar untuk memilih scope aktif."
+        description="Daftar proyek -- klik kartu/baris untuk membuka dashboard proyek."
         isLoading={q.isLoading}
         error={q.error}
         onRetry={() => q.refetch()}
