@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { CheckCircle2, Clock, Plus, ShoppingCart, XCircle } from "lucide-react"
 import { usePO, usePOs, type POListParams } from "@/hooks/usePOs"
 import { useProjects } from "@/hooks/useProjects"
@@ -33,6 +34,7 @@ const STATUS_TABS: Array<{ value: StatusFilter; label: string }> = [
 export function POListPage() {
   const bp = useBreakpoint()
   const { defaultProjectId } = useUIPrefs()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(50)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
@@ -40,14 +42,41 @@ export function POListPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<PurchaseOrder | null>(null)
 
+  // Deep link: ?id=N auto-open detail. ?project_id + ?status override
+  // filter dr URL (mis. dari ProjectDashboard 'Lihat semua').
+  useEffect(() => {
+    const idStr = searchParams.get("id")
+    if (idStr) {
+      const id = Number(idStr)
+      if (Number.isFinite(id) && id > 0) {
+        setSelectedId(id)
+      }
+      const next = new URLSearchParams(searchParams)
+      next.delete("id")
+      setSearchParams(next, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const urlProjectId = searchParams.get("project_id")
+  const urlStatus = searchParams.get("status")
+  const effectiveProjectId =
+    urlProjectId && Number(urlProjectId) > 0
+      ? Number(urlProjectId)
+      : defaultProjectId ?? undefined
+  const effectiveStatus =
+    urlStatus && urlStatus !== "ALL"
+      ? (urlStatus as POStatus)
+      : statusFilter === "ALL" ? undefined : statusFilter
+
   const params: POListParams = useMemo(
     () => ({
       page,
       size,
-      project_id: defaultProjectId ?? undefined,
-      status: statusFilter === "ALL" ? undefined : statusFilter,
+      project_id: effectiveProjectId,
+      status: effectiveStatus,
     }),
-    [page, size, defaultProjectId, statusFilter],
+    [page, size, effectiveProjectId, effectiveStatus],
   )
 
   const poQuery = usePOs(params)

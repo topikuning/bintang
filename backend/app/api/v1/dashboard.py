@@ -539,6 +539,28 @@ async def project_dashboard(
             "status": inv.status.value,
         })
 
+    # PO list utk section "Purchase Order" di project dashboard
+    from app.models.models import PurchaseOrder
+    po_q = (
+        select(PurchaseOrder)
+        .where(PurchaseOrder.project_id == pid, PurchaseOrder.deleted_at.is_(None))
+        .order_by(PurchaseOrder.po_date.desc(), PurchaseOrder.id.desc())
+        .limit(15)
+    )
+    po_rows = (await db.execute(po_q)).scalars().all()
+    pos_list = [
+        {
+            "id": po.id,
+            "number": po.number,
+            "po_date": po.po_date.isoformat() if po.po_date else None,
+            "needed_date": po.needed_date.isoformat() if po.needed_date else None,
+            "vendor_name": po.vendor_name,
+            "total": float(po.total or 0),
+            "status": po.status.value if hasattr(po.status, "value") else str(po.status),
+        }
+        for po in po_rows
+    ]
+
     has_overdue = inv_open > 0 and (
         await db.execute(
             select(func.count()).select_from(Invoice).where(
@@ -611,5 +633,6 @@ async def project_dashboard(
         "monthly_cashflow": monthly,
         "recent_transactions": recent,
         "invoices": invoices_list,
+        "purchase_orders": pos_list,
         "warnings": warnings,
     }

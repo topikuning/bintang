@@ -470,6 +470,58 @@ export function ProjectDashboardPage() {
           )}
         </Section>
 
+        {/* PURCHASE ORDER LIST */}
+        <Section
+          title="Purchase Order"
+          right={
+            <Link
+              to={`/purchase-orders?project_id=${projectId}`}
+              className="text-[11px] text-brand-600 hover:underline"
+            >
+              Lihat semua
+            </Link>
+          }
+        >
+          {(dash.purchase_orders ?? []).length === 0 ? (
+            <EmptyHint>Belum ada PO.</EmptyHint>
+          ) : (
+            <div className="divide-y">
+              {(dash.purchase_orders ?? []).slice(0, 5).map((po) => (
+                <Link
+                  key={po.id}
+                  to={`/purchase-orders?id=${po.id}`}
+                  className="block px-3 sm:px-4 py-2.5 hover:bg-ink-50"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="h-8 w-8 shrink-0 rounded-full grid place-items-center text-[11px] font-bold bg-info-100 text-info-700">
+                      PO
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium truncate">
+                        {po.number}
+                      </div>
+                      <div className="text-[11px] text-ink-500 truncate">
+                        {po.po_date && fmtDate(po.po_date)}
+                        {po.needed_date && ` · butuh ${fmtDate(po.needed_date)}`}
+                        {po.vendor_name && ` · ${po.vendor_name}`}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div
+                        data-num
+                        className="font-mono text-sm font-semibold [font-variant-numeric:tabular-nums]"
+                      >
+                        {fmtIDR(po.total)}
+                      </div>
+                      <Badge tone="info">{po.status}</Badge>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </Section>
+
         {/* RECENT TRANSACTIONS */}
         <Section
           title="Transaksi Terbaru"
