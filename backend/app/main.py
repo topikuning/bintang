@@ -123,8 +123,32 @@ async def _sync_pg_enums(conn) -> None:
                 )
 
 
+_DEFAULT_SECRET_KEY = "dev-secret-change-me-please-rotate-in-prod"
+
+
+def _guard_production_config() -> None:
+    """Refuse to boot if production env still has insecure defaults.
+
+    Fernet (app_settings) key di-derive dari SECRET_KEY. Kalau default
+    terpakai di prod, semua secret terenkripsi (API key, TG/WA token)
+    bisa di-decrypt siapa pun yg tahu default -> compromise penuh.
+    """
+    if settings.APP_ENV.lower() in ("prod", "production"):
+        if settings.SECRET_KEY == _DEFAULT_SECRET_KEY:
+            raise RuntimeError(
+                "REFUSE_BOOT: SECRET_KEY masih default di APP_ENV=prod. "
+                "Generate via `python -c 'import secrets; print(secrets.token_urlsafe(48))'` "
+                "lalu set env SECRET_KEY sebelum boot."
+            )
+        if len(settings.SECRET_KEY) < 32:
+            raise RuntimeError(
+                "REFUSE_BOOT: SECRET_KEY terlalu pendek (<32 char) di prod."
+            )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    _guard_production_config()
     # Pastikan tabel ada untuk dev (SQLite). Untuk prod gunakan Alembic.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
