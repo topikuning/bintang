@@ -47,14 +47,18 @@ export function TransactionsListPage() {
   const [size, setSize] = useState(50)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL")
-  // Project filter: URL ?project_id=N override (mis. drilldown dari
-  // ProjectDashboard). Selain itu controlled via picker di page ini.
+  // Project filter: URL adalah single source of truth -- bukan local state
+  // -- supaya stale state tdk terjadi saat URL ganti tanpa unmount (mis.
+  // browser back/forward, link cross-page, deep link share).
   const urlProjectId = searchParams.get("project_id")
-  const initialProjectId =
+  const projectFilter: number | null =
     urlProjectId && Number(urlProjectId) > 0 ? Number(urlProjectId) : null
-  const [projectFilter, setProjectFilter] = useState<number | null>(
-    initialProjectId,
-  )
+  const setProjectFilter = (id: number | null) => {
+    const next = new URLSearchParams(searchParams)
+    if (id) next.set("project_id", String(id))
+    else next.delete("project_id")
+    setSearchParams(next, { replace: true })
+  }
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Transaction | null>(null)
@@ -62,16 +66,29 @@ export function TransactionsListPage() {
   // Reactive: berubah saat user search lagi dr Topbar tanpa reload.
   const q = searchParams.get("q")?.trim() ?? ""
 
+  // Deep link override: ?status=DRAFT & ?type=OUT dari ProjectDashboard
+  // drilldown link. Selain itu pakai filter chip state.
+  const urlStatus = searchParams.get("status")
+  const urlType = searchParams.get("type")
+  const effectiveStatus =
+    urlStatus && urlStatus !== "ALL"
+      ? (urlStatus as TxnStatus)
+      : statusFilter === "ALL" ? undefined : statusFilter
+  const effectiveType =
+    urlType && urlType !== "ALL"
+      ? (urlType as TxnType)
+      : typeFilter === "ALL" ? undefined : typeFilter
+
   const params: TransactionListParams = useMemo(
     () => ({
       page,
       size,
       project_id: projectFilter ?? undefined,
-      status: statusFilter === "ALL" ? undefined : statusFilter,
-      type: typeFilter === "ALL" ? undefined : typeFilter,
+      status: effectiveStatus,
+      type: effectiveType,
       q: q || undefined,
     }),
-    [page, size, projectFilter, statusFilter, typeFilter, q],
+    [page, size, projectFilter, effectiveStatus, effectiveType, q],
   )
 
   // Reset ke page 1 kalau query/filter berubah.
@@ -217,11 +234,6 @@ export function TransactionsListPage() {
                 onChange={(id) => {
                   setProjectFilter(id)
                   setPage(1)
-                  // Sync URL agar bisa dishare / refresh.
-                  const next = new URLSearchParams(searchParams)
-                  if (id) next.set("project_id", String(id))
-                  else next.delete("project_id")
-                  setSearchParams(next, { replace: true })
                 }}
                 placeholder="Semua proyek"
               />
