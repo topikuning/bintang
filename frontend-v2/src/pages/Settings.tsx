@@ -12,15 +12,12 @@ import {
 import { z } from "zod"
 import { useNavigate } from "react-router-dom"
 import { useAuthStore } from "@/store/auth"
-import { useUIPrefs } from "@/store/ui-prefs"
 import { useUpdateUser } from "@/hooks/useUsers"
-import { useProjects } from "@/hooks/useProjects"
 import { MessagingSection } from "@/components/domain/settings/MessagingSection"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select } from "@/components/ui/select"
 import { toast } from "@/components/ui/sonner"
 import { apiErrorMessage } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -58,8 +55,6 @@ export function SettingsPage() {
   const navigate = useNavigate()
 
   const update = useUpdateUser(user?.id ?? 0)
-  const projectsQ = useProjects({ status: "AKTIF" })
-  const { defaultProjectId, setDefaultProject } = useUIPrefs()
 
   const profileForm = useForm<ProfileForm>({
     defaultValues: { name: user?.name ?? "", phone: user?.phone ?? "" },
@@ -220,32 +215,6 @@ export function SettingsPage() {
             </Button>
           </div>
         </form>
-      </Section>
-
-      {/* Preferences */}
-      <Section
-        title="Preferensi Aplikasi"
-        icon={SettingsIcon}
-        description="Default scope proyek saat aplikasi dibuka."
-      >
-        <Field label="Default Proyek">
-          <Select
-            value={defaultProjectId ?? ""}
-            onChange={(e) =>
-              setDefaultProject(e.target.value === "" ? null : Number(e.target.value))
-            }
-          >
-            <option value="">Semua Proyek (global)</option>
-            {projectsQ.data?.items.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.code})
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <p className="text-[11px] text-ink-500 mt-1">
-          Tip: kamu juga bisa ganti proyek aktif kapan saja via picker di topbar.
-        </p>
       </Section>
 
       {/* Notifikasi (messaging) */}

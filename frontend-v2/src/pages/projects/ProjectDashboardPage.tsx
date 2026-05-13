@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import {
   AlertTriangle,
@@ -34,7 +34,6 @@ import {
 } from "@/hooks/useProjectAttachments"
 import { useProjectUsers, type ProjectMember } from "@/hooks/useProjectUsers"
 import { useAssignProject, useUnassignProject, useUsers } from "@/hooks/useUsers"
-import { useUIPrefs } from "@/store/ui-prefs"
 import { useAuthStore } from "@/store/auth"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -75,7 +74,6 @@ import { cn } from "@/lib/utils"
 export function ProjectDashboardPage() {
   const { id } = useParams<{ id: string }>()
   const projectId = Number(id)
-  const setDefaultProject = useUIPrefs((s) => s.setDefaultProject)
   const role = useAuthStore((s) => s.user?.role)
   const canWrite = role !== "EXECUTIVE"
   const isAdmin = role === "SUPERADMIN" || role === "CENTRAL_ADMIN"
@@ -87,12 +85,6 @@ export function ProjectDashboardPage() {
   const [txFormOpen, setTxFormOpen] = useState(false)
   const [invFormOpen, setInvFormOpen] = useState(false)
   const [poFormOpen, setPoFormOpen] = useState(false)
-
-  // Saat masuk ke halaman, sync ProjectSwitcher supaya konteks proyek
-  // konsisten antar halaman (transaksi/invoice/PO list akan ikut filter).
-  useEffect(() => {
-    if (projectId > 0) setDefaultProject(projectId)
-  }, [projectId, setDefaultProject])
 
   if (projectQ.isLoading || dashQ.isLoading) {
     return (

@@ -3,17 +3,17 @@ import { Sidebar } from "./Sidebar"
 import { NavRail } from "./NavRail"
 import { BottomNav } from "./BottomNav"
 import { Topbar } from "./Topbar"
-import { ProjectSwitcher } from "./ProjectSwitcher"
 
 /**
  * Layout shell tunggal yg adaptif lewat CSS responsive utilities --
  * tidak perlu re-render saat resize. Sidebar (lg+), NavRail (md),
- * BottomNav (<md). Bottom nav diberi space-filler 56px + safe-area.
+ * BottomNav (<md).
  *
- * min-h-[100dvh] (dynamic viewport) > min-h-screen (100vh): di iOS Safari
- * 100vh termasuk URL bar yg shrinkable -> page scrollable melebihi viewport
- * visible padahal kontennya pendek. 100dvh menyesuaikan ke viewport aktual,
- * sehingga tidak ada empty-scroll setelah modal/sheet panjang ditutup.
+ * NB: tidak ada global project switcher di topbar (sengaja). Dashboard
+ * selalu menampilkan ringkasan semua proyek; setiap halaman list punya
+ * filter proyek sendiri; drilldown ke detail satu proyek lewat Hub
+ * Proyek -> /projects/:id. Pola ini sama dgn Jurnal / QuickBooks utk
+ * menghindari "hidden global state" yg bikin user bingung.
  */
 export function AppShell() {
   return (
@@ -22,7 +22,7 @@ export function AppShell() {
       <NavRail />
 
       <div className="flex flex-1 flex-col min-w-0">
-        <Topbar leftSlot={<ProjectSwitcher />} />
+        <Topbar />
 
         {/* Main content. Padding bottom utk mobile bottom nav (56px + safe). */}
         <main className="flex-1 overflow-x-hidden pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">

@@ -4,7 +4,6 @@ import { Loader2, Plus, Trash2 } from "lucide-react"
 import { z } from "zod"
 import { toApiDate, fmtIDR } from "@/lib/format"
 import { apiErrorMessage } from "@/lib/api"
-import { useUIPrefs } from "@/store/ui-prefs"
 import {
   useCreateInvoice,
   useUpdateInvoice,
@@ -54,10 +53,9 @@ interface InvoiceFormProps {
 
 export function InvoiceForm({ open, onClose, invoice, lockProjectId }: InvoiceFormProps) {
   const bp = useBreakpoint()
-  const { defaultProjectId } = useUIPrefs()
   const isEdit = !!invoice
   const todayIso = useMemo(() => toApiDate(new Date()) ?? "", [])
-  const initialProjectId = invoice?.project_id ?? lockProjectId ?? defaultProjectId ?? 0
+  const initialProjectId = invoice?.project_id ?? lockProjectId ?? 0
 
   const defaultValues: FormValues = useMemo(
     () => ({

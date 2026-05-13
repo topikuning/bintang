@@ -4,7 +4,7 @@ import { ArrowDownLeft, ArrowUpRight, Plus, Search, Wallet, X } from "lucide-rea
 import { useTransaction, useTransactions, type TransactionListParams } from "@/hooks/useTransactions"
 import { useProjects } from "@/hooks/useProjects"
 import { useCategories } from "@/hooks/useCategories"
-import { useUIPrefs } from "@/store/ui-prefs"
+import { ProjectPicker } from "@/components/forms/ProjectPicker"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
@@ -42,12 +42,19 @@ const TYPE_TABS: Array<{ value: TypeFilter; label: string }> = [
 
 export function TransactionsListPage() {
   const bp = useBreakpoint()
-  const { defaultProjectId } = useUIPrefs()
   const [searchParams, setSearchParams] = useSearchParams()
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(50)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL")
+  // Project filter: URL ?project_id=N override (mis. drilldown dari
+  // ProjectDashboard). Selain itu controlled via picker di page ini.
+  const urlProjectId = searchParams.get("project_id")
+  const initialProjectId =
+    urlProjectId && Number(urlProjectId) > 0 ? Number(urlProjectId) : null
+  const [projectFilter, setProjectFilter] = useState<number | null>(
+    initialProjectId,
+  )
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Transaction | null>(null)
@@ -59,12 +66,12 @@ export function TransactionsListPage() {
     () => ({
       page,
       size,
-      project_id: defaultProjectId ?? undefined,
+      project_id: projectFilter ?? undefined,
       status: statusFilter === "ALL" ? undefined : statusFilter,
       type: typeFilter === "ALL" ? undefined : typeFilter,
       q: q || undefined,
     }),
-    [page, size, defaultProjectId, statusFilter, typeFilter, q],
+    [page, size, projectFilter, statusFilter, typeFilter, q],
   )
 
   // Reset ke page 1 kalau query/filter berubah.
@@ -104,8 +111,8 @@ export function TransactionsListPage() {
   const nPending = items.filter((t) => t.status === "SUBMITTED").length
 
   const columns = useMemo(
-    () => buildTransactionColumns({ projectMap, categoryMap, hideProject: defaultProjectId != null }),
-    [projectMap, categoryMap, defaultProjectId],
+    () => buildTransactionColumns({ projectMap, categoryMap, hideProject: projectFilter != null }),
+    [projectMap, categoryMap, projectFilter],
   )
 
   const detailOpen = selectedId != null
@@ -198,8 +205,28 @@ export function TransactionsListPage() {
           </div>
         )}
 
-        {/* Filter chip rows */}
+        {/* Filter rows */}
         <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] uppercase tracking-wider text-ink-500 shrink-0 w-12">
+              Proyek
+            </span>
+            <div className="flex-1 max-w-sm">
+              <ProjectPicker
+                value={projectFilter}
+                onChange={(id) => {
+                  setProjectFilter(id)
+                  setPage(1)
+                  // Sync URL agar bisa dishare / refresh.
+                  const next = new URLSearchParams(searchParams)
+                  if (id) next.set("project_id", String(id))
+                  else next.delete("project_id")
+                  setSearchParams(next, { replace: true })
+                }}
+                placeholder="Semua proyek"
+              />
+            </div>
+          </div>
           <FilterChips
             label="Arah"
             value={typeFilter}

@@ -4,7 +4,6 @@ import { Loader2, Plus, Trash2 } from "lucide-react"
 import { z } from "zod"
 import { toApiDate } from "@/lib/format"
 import { apiErrorMessage } from "@/lib/api"
-import { useUIPrefs } from "@/store/ui-prefs"
 import {
   useCreateTransaction,
   useUpdateTransaction,
@@ -92,10 +91,9 @@ export function TransactionForm({
   lockProjectId,
 }: TransactionFormProps) {
   const bp = useBreakpoint()
-  const { defaultProjectId } = useUIPrefs()
   const isEdit = !!transaction
   const initialProjectId =
-    transaction?.project_id ?? lockProjectId ?? defaultProjectId ?? 0
+    transaction?.project_id ?? lockProjectId ?? 0
 
   const todayIso = useMemo(() => toApiDate(new Date()) ?? "", [])
 

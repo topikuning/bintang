@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom"
 import { Clock, FileMinus, FilePlus, Plus, Receipt, Search, X } from "lucide-react"
 import { useInvoice, useInvoices, type InvoiceListParams } from "@/hooks/useInvoices"
 import { useProjects } from "@/hooks/useProjects"
-import { useUIPrefs } from "@/store/ui-prefs"
+import { ProjectPicker } from "@/components/forms/ProjectPicker"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
@@ -41,12 +41,19 @@ const TYPE_TABS: Array<{ value: TypeFilter; label: string }> = [
 
 export function InvoicesListPage() {
   const bp = useBreakpoint()
-  const { defaultProjectId } = useUIPrefs()
   const [searchParams, setSearchParams] = useSearchParams()
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(50)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL")
+  // Project filter: initial dari URL ?project_id=N (drilldown), selain
+  // itu controlled via picker.
+  const urlProjectIdInit = searchParams.get("project_id")
+  const [projectFilter, setProjectFilter] = useState<number | null>(
+    urlProjectIdInit && Number(urlProjectIdInit) > 0
+      ? Number(urlProjectIdInit)
+      : null,
+  )
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Invoice | null>(null)
@@ -63,16 +70,10 @@ export function InvoicesListPage() {
   // q dipasok via URL (dr Topbar global search /invoices?q=foo).
   const q = searchParams.get("q")?.trim() ?? ""
 
-  // Deep link filter dari query: ?project_id=N&status=ISSUED. Kalau ada,
-  // override defaultProjectId / statusFilter state. Useful utk link dari
-  // ProjectDashboard stat cards ("Invoice Belum Lunas" dll).
-  const urlProjectId = searchParams.get("project_id")
+  // Deep link filter: status/type via URL bisa override (link dari
+  // ProjectDashboard stat cards "Invoice Belum Lunas" dll).
   const urlStatus = searchParams.get("status")
   const urlType = searchParams.get("type")
-  const effectiveProjectId =
-    urlProjectId && Number(urlProjectId) > 0
-      ? Number(urlProjectId)
-      : defaultProjectId ?? undefined
   const effectiveStatus =
     urlStatus && urlStatus !== "ALL"
       ? (urlStatus as InvoiceStatus)
@@ -86,12 +87,12 @@ export function InvoicesListPage() {
     () => ({
       page,
       size,
-      project_id: effectiveProjectId,
+      project_id: projectFilter ?? undefined,
       status: effectiveStatus,
       type: effectiveType,
       q: q || undefined,
     }),
-    [page, size, effectiveProjectId, effectiveStatus, effectiveType, q],
+    [page, size, projectFilter, effectiveStatus, effectiveType, q],
   )
 
   useEffect(() => {
@@ -145,14 +146,14 @@ export function InvoicesListPage() {
     () =>
       buildInvoiceColumns({
         projectMap,
-        hideProject: defaultProjectId != null,
+        hideProject: projectFilter != null,
         expand: {
           isExpanded: (id) => expandedIds.has(id),
           toggle: toggleExpanded,
         },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projectMap, defaultProjectId, expandedIds],
+    [projectMap, projectFilter, expandedIds],
   )
 
   // Cast Set<number> ke Set<string|number> krn DataGrid generic key.
@@ -252,8 +253,27 @@ export function InvoicesListPage() {
           </div>
         )}
 
-        {/* Filter chips */}
+        {/* Filter rows */}
         <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] uppercase tracking-wider text-ink-500 shrink-0 w-12">
+              Proyek
+            </span>
+            <div className="flex-1 max-w-sm">
+              <ProjectPicker
+                value={projectFilter}
+                onChange={(id) => {
+                  setProjectFilter(id)
+                  setPage(1)
+                  const next = new URLSearchParams(searchParams)
+                  if (id) next.set("project_id", String(id))
+                  else next.delete("project_id")
+                  setSearchParams(next, { replace: true })
+                }}
+                placeholder="Semua proyek"
+              />
+            </div>
+          </div>
           <FilterChips
             label="Tipe"
             value={typeFilter}

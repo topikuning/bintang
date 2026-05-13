@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom"
 import { CheckCircle2, Clock, Plus, ShoppingCart, XCircle } from "lucide-react"
 import { usePO, usePOs, type POListParams } from "@/hooks/usePOs"
 import { useProjects } from "@/hooks/useProjects"
-import { useUIPrefs } from "@/store/ui-prefs"
+import { ProjectPicker } from "@/components/forms/ProjectPicker"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
@@ -33,11 +33,17 @@ const STATUS_TABS: Array<{ value: StatusFilter; label: string }> = [
 
 export function POListPage() {
   const bp = useBreakpoint()
-  const { defaultProjectId } = useUIPrefs()
   const [searchParams, setSearchParams] = useSearchParams()
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(50)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
+  // Project filter: initial dari URL ?project_id=N (drilldown).
+  const urlProjectIdInit = searchParams.get("project_id")
+  const [projectFilter, setProjectFilter] = useState<number | null>(
+    urlProjectIdInit && Number(urlProjectIdInit) > 0
+      ? Number(urlProjectIdInit)
+      : null,
+  )
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<PurchaseOrder | null>(null)
@@ -58,12 +64,7 @@ export function POListPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const urlProjectId = searchParams.get("project_id")
   const urlStatus = searchParams.get("status")
-  const effectiveProjectId =
-    urlProjectId && Number(urlProjectId) > 0
-      ? Number(urlProjectId)
-      : defaultProjectId ?? undefined
   const effectiveStatus =
     urlStatus && urlStatus !== "ALL"
       ? (urlStatus as POStatus)
@@ -73,10 +74,10 @@ export function POListPage() {
     () => ({
       page,
       size,
-      project_id: effectiveProjectId,
+      project_id: projectFilter ?? undefined,
       status: effectiveStatus,
     }),
-    [page, size, effectiveProjectId, effectiveStatus],
+    [page, size, projectFilter, effectiveStatus],
   )
 
   const poQuery = usePOs(params)
@@ -102,8 +103,8 @@ export function POListPage() {
   const nCancelled = items.filter((i) => i.status === "CANCELLED").length
 
   const columns = useMemo(
-    () => buildPOColumns({ projectMap, hideProject: defaultProjectId != null }),
-    [projectMap, defaultProjectId],
+    () => buildPOColumns({ projectMap, hideProject: projectFilter != null }),
+    [projectMap, projectFilter],
   )
 
   const detailOpen = selectedId != null
@@ -174,15 +175,36 @@ export function POListPage() {
           />
         </SummaryCardGrid>
 
-        <FilterChips
-          label="Status"
-          value={statusFilter}
-          options={STATUS_TABS}
-          onChange={(v) => {
-            setStatusFilter(v as StatusFilter)
-            setPage(1)
-          }}
-        />
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] uppercase tracking-wider text-ink-500 shrink-0 w-12">
+              Proyek
+            </span>
+            <div className="flex-1 max-w-sm">
+              <ProjectPicker
+                value={projectFilter}
+                onChange={(id) => {
+                  setProjectFilter(id)
+                  setPage(1)
+                  const next = new URLSearchParams(searchParams)
+                  if (id) next.set("project_id", String(id))
+                  else next.delete("project_id")
+                  setSearchParams(next, { replace: true })
+                }}
+                placeholder="Semua proyek"
+              />
+            </div>
+          </div>
+          <FilterChips
+            label="Status"
+            value={statusFilter}
+            options={STATUS_TABS}
+            onChange={(v) => {
+              setStatusFilter(v as StatusFilter)
+              setPage(1)
+            }}
+          />
+        </div>
 
         <div className="rounded-md bg-surface md:bg-transparent">
           <AdaptiveDataView

@@ -8,7 +8,6 @@ import {
 } from "@/hooks/useProjectsStats"
 import { useCompanies } from "@/hooks/useCompanies"
 import { useProposalCount } from "@/hooks/useProjectProposals"
-import { useUIPrefs } from "@/store/ui-prefs"
 import { useAuthStore } from "@/store/auth"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -239,14 +238,12 @@ function FilterTab({
 }
 
 function ProjectCard({ p }: { p: ProjectStats }) {
-  const setDefaultProject = useUIPrefs((s) => s.setDefaultProject)
   const tone = healthTone(p.health)
   const budgetTone = budgetTone_(p.budget.status)
 
   return (
     <Link
       to={`/projects/${p.id}`}
-      onClick={() => setDefaultProject(p.id)}
       className="group flex flex-col gap-2.5 rounded-md border bg-surface p-3 hover:border-brand-300 hover:shadow-sm active:bg-ink-50 transition-colors"
     >
       <div className="flex items-start justify-between gap-2">
