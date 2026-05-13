@@ -372,8 +372,7 @@ async def delete_po(
         raise HTTPException(404, "not_found")
     if po.status not in (POStatus.DRAFT, POStatus.CANCELLED):
         raise HTTPException(409, "approved_must_be_cancelled")
-    from sqlalchemy import func as sa_func
-    po.deleted_at = sa_func.now()
+    po.deleted_at = datetime.utcnow()
     await log(db, user_id=admin.id, entity="purchase_order", entity_id=po.id,
               action=AuditAction.DELETE)
     await db.commit()

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -114,9 +116,8 @@ async def delete_funder(
     f = await db.get(Funder, fid)
     if not f or f.deleted_at is not None:
         raise HTTPException(404, "not_found")
-    from sqlalchemy import func as sa_func
     before = snapshot(f)
-    f.deleted_at = sa_func.now()
+    f.deleted_at = datetime.utcnow()
     await log(
         db,
         user_id=admin.id,

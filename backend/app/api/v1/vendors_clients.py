@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -77,9 +79,8 @@ async def delete_vc(
     c = await db.get(VendorClient, cid)
     if not c or c.deleted_at is not None:
         raise HTTPException(404, "not_found")
-    from sqlalchemy import func as sa_func
     before = snapshot(c)
-    c.deleted_at = sa_func.now()
+    c.deleted_at = datetime.utcnow()
     await log(db, user_id=admin.id, entity="vendor_client", entity_id=c.id,
               action=AuditAction.DELETE, before=before)
     await db.commit()
