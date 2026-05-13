@@ -70,6 +70,16 @@ export interface DashboardInvoice {
   status: InvoiceStatus
 }
 
+export interface DashboardPurchaseOrder {
+  id: number
+  number: string
+  po_date: string | null
+  needed_date: string | null
+  vendor_name: string | null
+  total: number
+  status: string
+}
+
 export interface CategoryBreakdownItem {
   category: string
   total: number
@@ -109,6 +119,7 @@ export interface ProjectDashboardResponse {
   monthly_cashflow: MonthlyCashflowPoint[]
   recent_transactions: DashboardRecentTransaction[]
   invoices: DashboardInvoice[]
+  purchase_orders?: DashboardPurchaseOrder[]
   warnings: string[]
 }
 
