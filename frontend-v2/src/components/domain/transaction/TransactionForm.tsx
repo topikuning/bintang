@@ -10,7 +10,7 @@ import {
   useUpdateTransaction,
   type TransactionInput,
 } from "@/hooks/useTransactionMutations"
-import { useUsers } from "@/hooks/useUsers"
+import { useUsersLookup } from "@/hooks/useUsers"
 import { useAuthStore } from "@/store/auth"
 import type { PaymentMethod, Transaction, TxnKind, TxnType } from "@/types/api"
 import { Button } from "@/components/ui/button"
@@ -136,7 +136,7 @@ export function TransactionForm({
   } = useForm<FormValues>({ defaultValues })
 
   const itemsArr = useFieldArray({ control, name: "items" })
-  const usersQ = useUsers({ size: 200 })
+  const usersQ = useUsersLookup({ limit: 200 })
   // Kind change rule (mirror backend):
   // - Tx VERIFIED: hanya SUPERADMIN (god-mode bypass audit lock).
   // - Selain VERIFIED: siapa pun yg punya write access (sdh sampai
@@ -426,7 +426,7 @@ export function TransactionForm({
                         }
                       >
                         <option value="">— Pilih user —</option>
-                        {(usersQ.data?.items ?? []).map((u) => (
+                        {(usersQ.data ?? []).map((u) => (
                           <option key={u.id} value={u.id}>
                             {u.name} ({u.email})
                           </option>
