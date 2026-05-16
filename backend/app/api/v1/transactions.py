@@ -507,7 +507,7 @@ async def submit_transaction(
     await db.commit()
     # Notif multi-channel (Telegram + WhatsApp), best-effort.
     from app.services.messaging import notify_transaction_submitted
-    await notify_transaction_submitted(db, t)
+    await notify_transaction_submitted(db, t, actor_id=user.id)
     res = await db.execute(
         select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == t.id)
     )
@@ -537,7 +537,7 @@ async def verify_transaction(
               action=AuditAction.VERIFY, before=before, after=snapshot(t))
     await db.commit()
     from app.services.messaging import notify_transaction_verified
-    await notify_transaction_verified(db, t)
+    await notify_transaction_verified(db, t, actor_id=admin.id)
     res = await db.execute(
         select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == t.id)
     )
@@ -563,7 +563,7 @@ async def reject_transaction(
               action=AuditAction.UPDATE, before=before, after=snapshot(t), note="rejected")
     await db.commit()
     from app.services.messaging import notify_transaction_rejected
-    await notify_transaction_rejected(db, t)
+    await notify_transaction_rejected(db, t, actor_id=admin.id)
     res = await db.execute(
         select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == t.id)
     )
@@ -590,6 +590,8 @@ async def cancel_transaction(
     await log(db, user_id=admin.id, entity="transaction", entity_id=t.id,
               action=AuditAction.CANCEL, before=before, after=snapshot(t), note=body.reason)
     await db.commit()
+    from app.services.messaging import notify_transaction_cancelled
+    await notify_transaction_cancelled(db, t, actor_id=admin.id)
     res = await db.execute(
         select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == t.id)
     )
