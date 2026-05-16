@@ -168,7 +168,7 @@ def _full_options():
 
 @router.get("", response_model=Page[InvoiceOut])
 async def list_invoices(
-    project_id: int | None = None,
+    project_id: list[int] | None = Query(None),
     type: str | None = None,
     status: InvoiceStatus | None = None,
     vendor_client_id: int | None = None,
@@ -187,8 +187,9 @@ async def list_invoices(
             return Page(items=[], total=0, page=page, size=size)
         stmt = stmt.where(Invoice.project_id.in_(pids))
     if project_id:
-        await ensure_project_access(db, user, project_id)
-        stmt = stmt.where(Invoice.project_id == project_id)
+        for pid in project_id:
+            await ensure_project_access(db, user, pid)
+        stmt = stmt.where(Invoice.project_id.in_(project_id))
     if type:
         stmt = stmt.where(Invoice.type == type)
     if status:

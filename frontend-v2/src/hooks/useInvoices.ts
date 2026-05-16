@@ -6,7 +6,8 @@ import type { Invoice, InvoiceStatus, InvoiceType, Page } from "@/types/api"
 export interface InvoiceListParams {
   page?: number
   size?: number
-  project_id?: number
+  /** Multi-select project_id. */
+  project_id?: number[]
   type?: InvoiceType
   status?: InvoiceStatus
   vendor_client_id?: number

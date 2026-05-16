@@ -738,7 +738,7 @@ function InvoicePickerInline({
   const invQ = useInvoices({
     page: 1,
     size: 200,
-    project_id: projectId,
+    project_id: [projectId],
   })
   const items = (invQ.data?.items ?? []).filter(
     (inv) =>

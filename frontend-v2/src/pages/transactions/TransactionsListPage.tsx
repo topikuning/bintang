@@ -4,7 +4,7 @@ import { ArrowDownLeft, ArrowUpRight, Plus, Search, Wallet, X } from "lucide-rea
 import { useTransaction, useTransactions, type TransactionListParams } from "@/hooks/useTransactions"
 import { useProjects } from "@/hooks/useProjects"
 import { useCategories } from "@/hooks/useCategories"
-import { ProjectPicker } from "@/components/forms/ProjectPicker"
+import { MultiProjectPicker } from "@/components/forms/MultiProjectPicker"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
@@ -47,16 +47,17 @@ export function TransactionsListPage() {
   const [size, setSize] = useState(50)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL")
-  // Project filter: URL adalah single source of truth -- bukan local state
-  // -- supaya stale state tdk terjadi saat URL ganti tanpa unmount (mis.
-  // browser back/forward, link cross-page, deep link share).
-  const urlProjectId = searchParams.get("project_id")
-  const projectFilter: number | null =
-    urlProjectId && Number(urlProjectId) > 0 ? Number(urlProjectId) : null
-  const setProjectFilter = (id: number | null) => {
+  // Project filter: URL = single source of truth + MULTI-SELECT.
+  // URL format `?project_id=1&project_id=2&...` (axios paramsSerializer
+  // serialize array sbg repeated key, FastAPI parse list[int]).
+  const projectFilter: number[] = searchParams
+    .getAll("project_id")
+    .map((s) => Number(s))
+    .filter((n) => Number.isFinite(n) && n > 0)
+  const setProjectFilter = (ids: number[]) => {
     const next = new URLSearchParams(searchParams)
-    if (id) next.set("project_id", String(id))
-    else next.delete("project_id")
+    next.delete("project_id")
+    for (const id of ids) next.append("project_id", String(id))
     setSearchParams(next, { replace: true })
   }
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -83,7 +84,7 @@ export function TransactionsListPage() {
     () => ({
       page,
       size,
-      project_id: projectFilter ?? undefined,
+      project_id: projectFilter.length > 0 ? projectFilter : undefined,
       status: effectiveStatus,
       type: effectiveType,
       q: q || undefined,
@@ -128,7 +129,10 @@ export function TransactionsListPage() {
   const nPending = items.filter((t) => t.status === "SUBMITTED").length
 
   const columns = useMemo(
-    () => buildTransactionColumns({ projectMap, categoryMap, hideProject: projectFilter != null }),
+    // Sembunyikan kolom Proyek hanya kalau filter EXACTLY 1 proyek
+    // (drilldown). Multi-select tetap tampilkan supaya user bisa
+    // distinguish row antar proyek.
+    () => buildTransactionColumns({ projectMap, categoryMap, hideProject: projectFilter.length === 1 }),
     [projectMap, categoryMap, projectFilter],
   )
 
@@ -229,13 +233,12 @@ export function TransactionsListPage() {
               Proyek
             </span>
             <div className="flex-1 max-w-sm">
-              <ProjectPicker
+              <MultiProjectPicker
                 value={projectFilter}
-                onChange={(id) => {
-                  setProjectFilter(id)
+                onChange={(ids) => {
+                  setProjectFilter(ids)
                   setPage(1)
                 }}
-                placeholder="Semua proyek"
               />
             </div>
           </div>

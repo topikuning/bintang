@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom"
 import { CheckCircle2, Clock, Plus, ShoppingCart, XCircle } from "lucide-react"
 import { usePO, usePOs, type POListParams } from "@/hooks/usePOs"
 import { useProjects } from "@/hooks/useProjects"
-import { ProjectPicker } from "@/components/forms/ProjectPicker"
+import { MultiProjectPicker } from "@/components/forms/MultiProjectPicker"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
@@ -37,17 +37,15 @@ export function POListPage() {
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(50)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
-  // Project filter: URL = source of truth (hindari stale state saat URL
-  // berubah tanpa unmount).
-  const urlProjectIdRaw = searchParams.get("project_id")
-  const projectFilter: number | null =
-    urlProjectIdRaw && Number(urlProjectIdRaw) > 0
-      ? Number(urlProjectIdRaw)
-      : null
-  const setProjectFilter = (id: number | null) => {
+  // Project filter: URL = source of truth + MULTI-SELECT.
+  const projectFilter: number[] = searchParams
+    .getAll("project_id")
+    .map((s) => Number(s))
+    .filter((n) => Number.isFinite(n) && n > 0)
+  const setProjectFilter = (ids: number[]) => {
     const next = new URLSearchParams(searchParams)
-    if (id) next.set("project_id", String(id))
-    else next.delete("project_id")
+    next.delete("project_id")
+    for (const id of ids) next.append("project_id", String(id))
     setSearchParams(next, { replace: true })
   }
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -80,7 +78,7 @@ export function POListPage() {
     () => ({
       page,
       size,
-      project_id: projectFilter ?? undefined,
+      project_id: projectFilter.length > 0 ? projectFilter : undefined,
       status: effectiveStatus,
     }),
     [page, size, projectFilter, effectiveStatus],
@@ -109,7 +107,7 @@ export function POListPage() {
   const nCancelled = items.filter((i) => i.status === "CANCELLED").length
 
   const columns = useMemo(
-    () => buildPOColumns({ projectMap, hideProject: projectFilter != null }),
+    () => buildPOColumns({ projectMap, hideProject: projectFilter.length === 1 }),
     [projectMap, projectFilter],
   )
 
@@ -187,13 +185,12 @@ export function POListPage() {
               Proyek
             </span>
             <div className="flex-1 max-w-sm">
-              <ProjectPicker
+              <MultiProjectPicker
                 value={projectFilter}
-                onChange={(id) => {
-                  setProjectFilter(id)
+                onChange={(ids) => {
+                  setProjectFilter(ids)
                   setPage(1)
                 }}
-                placeholder="Semua proyek"
               />
             </div>
           </div>

@@ -80,7 +80,7 @@ export function InvoiceItemsReportPage() {
   const [maxSubtotal, setMaxSubtotal] = useState<string>("")
 
   const invQuery = useInvoices({
-    project_id: projectId ?? undefined,
+    project_id: projectId ? [projectId] : undefined,
     type: type === "ALL" ? undefined : type,
     status: status === "ALL" ? undefined : status,
     date_from: dateFrom || undefined,
