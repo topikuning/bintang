@@ -40,6 +40,12 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
+[tool.pytest.ini_options]
+# Auto-detect async test fns (decorator @pytest.mark.asyncio bisa
+# di-omit utk fn coroutine). Mode "auto" simplify writing tests.
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py313"
