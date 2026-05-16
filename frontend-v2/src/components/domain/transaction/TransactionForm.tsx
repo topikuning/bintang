@@ -82,6 +82,10 @@ interface TransactionFormProps {
   transaction?: Transaction | null
   /** Jika create dr context proyek tertentu, lock proyek. */
   lockProjectId?: number | null
+  /** Dipanggil setelah save sukses (create/update). Caller bisa pakai
+   * utk re-open detail panel supaya user bisa verifikasi hasil edit
+   * tanpa harus klik ulang dr list. */
+  onSaved?: (saved: Transaction) => void
 }
 
 export function TransactionForm({
@@ -89,6 +93,7 @@ export function TransactionForm({
   onClose,
   transaction,
   lockProjectId,
+  onSaved,
 }: TransactionFormProps) {
   const bp = useBreakpoint()
   const isEdit = !!transaction
@@ -213,16 +218,20 @@ export function TransactionForm({
             }))
           : undefined,
       }
+      let saved: Transaction
       if (isEdit && transaction) {
-        await update.mutateAsync(payload)
+        saved = await update.mutateAsync(payload)
         toast.success("Transaksi diperbarui")
       } else {
-        await create.mutateAsync(payload)
+        saved = await create.mutateAsync(payload)
         toast.success("Transaksi berhasil dibuat", {
           description: "Status awal: Draft. Submit utk validasi.",
         })
       }
       onClose()
+      // Callback OPSIONAL: caller (list page) bisa re-open detail
+      // panel utk tx ini supaya user bisa verifikasi hasil simpan.
+      onSaved?.(saved)
     } catch (err) {
       toast.error(isEdit ? "Gagal memperbarui" : "Gagal membuat transaksi", {
         description: apiErrorMessage(err),
