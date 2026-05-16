@@ -288,8 +288,21 @@ async def update_invoice(
     if not inv or inv.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, inv.project_id)
+    # Project IMMUTABLE via UPDATE -- audit trail keuangan harus tetap
+    # kuat. Reject explisit kalau payload kirim project_id beda current.
+    # Cara koreksi: CANCEL invoice + buat ulang di proyek benar.
+    if payload.project_id is not None and payload.project_id != inv.project_id:
+        raise HTTPException(
+            400,
+            "project_change_forbidden: invoice tidak bisa pindah proyek "
+            "via edit. Cancel invoice (POST /:id/cancel), lalu buat "
+            "ulang di proyek yang benar.",
+        )
     before = snapshot(inv)
     data = payload.model_dump(exclude_unset=True)
+    # Pop project_id supaya tdk masuk setattr loop di bawah (kita sudah
+    # validate di atas; kalau lolos validasi -> sama dgn current, no-op).
+    data.pop("project_id", None)
     items_data = data.pop("items", None)
 
     # Type change: aman bila masih DRAFT (siapa pun yg can_write).

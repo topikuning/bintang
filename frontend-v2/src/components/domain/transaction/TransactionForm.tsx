@@ -435,7 +435,16 @@ export function TransactionForm({
               />
             </Field>
 
-            <Field label="Proyek" required error={errors.project_id?.message}>
+            <Field
+              label="Proyek"
+              required
+              error={errors.project_id?.message}
+              hint={
+                isEdit
+                  ? "Proyek tdk bisa diubah via edit. Kalau salah proyek: cancel tx ini, lalu buat ulang di proyek benar."
+                  : undefined
+              }
+            >
               <Controller
                 control={control}
                 name="project_id"
@@ -443,7 +452,10 @@ export function TransactionForm({
                   <ProjectPicker
                     value={field.value || null}
                     onChange={(v) => field.onChange(v ?? 0)}
-                    disabled={!!lockProjectId}
+                    // Lock saat edit: project IMMUTABLE via UPDATE
+                    // (backend reject 400). Saat create: lock kalau ada
+                    // lockProjectId (mis. quick-add dari ProjectDashboard).
+                    disabled={isEdit || !!lockProjectId}
                   />
                 )}
               />

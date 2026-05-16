@@ -79,6 +79,13 @@ class TransactionCreate(TransactionBase):
 
 
 class TransactionUpdate(BaseModel):
+    # Project tidak boleh dipindah via UPDATE -- audit trail keuangan
+    # harus tetap kuat. Endpoint akan reject kalau project_id beda dari
+    # current. Cara koreksi: CANCEL tx, lalu buat ulang di project benar.
+    # Field tetap di-declare di sini SUPAYA payload yg salah-kirim
+    # ditolak explisit (400) -- bukan silent-ignore yg bikin user kira
+    # "berhasil tapi data tidak".
+    project_id: int | None = None
     tx_date: date | None = None
     # kind boleh diubah HANYA oleh SUPERADMIN (god-mode) DAN belum ada
     # invoice allocation. Validasi di endpoint.
@@ -318,6 +325,10 @@ class InvoiceCreate(InvoiceBase):
 
 
 class InvoiceUpdate(BaseModel):
+    # Sama dgn TransactionUpdate: project tdk boleh dipindah via UPDATE.
+    # Reject explisit di endpoint kalau payload kirim project_id beda
+    # dari current. Cara koreksi: CANCEL invoice, lalu buat ulang.
+    project_id: int | None = None
     number: str | None = None
     type: InvoiceType | None = None  # ubah Hutang/Piutang -- gated SUPERADMIN bila status >= ISSUED
     invoice_date: date | None = None

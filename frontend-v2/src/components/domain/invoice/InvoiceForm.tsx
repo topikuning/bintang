@@ -251,7 +251,16 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
               </Field>
             </div>
 
-            <Field label="Proyek" required error={errors.project_id?.message}>
+            <Field
+              label="Proyek"
+              required
+              error={errors.project_id?.message}
+              hint={
+                isEdit
+                  ? "Proyek tdk bisa diubah via edit. Kalau salah proyek: cancel invoice ini, lalu buat ulang di proyek benar."
+                  : undefined
+              }
+            >
               <Controller
                 control={control}
                 name="project_id"
@@ -259,7 +268,8 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
                   <ProjectPicker
                     value={field.value || null}
                     onChange={(v) => field.onChange(v ?? 0)}
-                    disabled={!!lockProjectId}
+                    // Lock saat edit: project IMMUTABLE (backend 400).
+                    disabled={isEdit || !!lockProjectId}
                   />
                 )}
               />
