@@ -9,6 +9,10 @@ import {
   useUpdateTransaction,
   type TransactionInput,
 } from "@/hooks/useTransactionMutations"
+import {
+  useLinkTransactionAttachment,
+  useUploadTransactionAttachment,
+} from "@/hooks/useTransactionAttachments"
 import { useUsersLookup } from "@/hooks/useUsers"
 import { useAuthStore } from "@/store/auth"
 import type { PaymentMethod, Transaction, TxnKind, TxnType } from "@/types/api"
@@ -21,6 +25,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { toast } from "@/components/ui/sonner"
 import { AmountInput } from "@/components/forms/AmountInput"
 import { DateInput } from "@/components/forms/DateInput"
+import { AttachmentUploader } from "@/components/forms/AttachmentUploader"
 import { ProjectPicker } from "@/components/forms/ProjectPicker"
 import { CategoryPicker } from "@/components/forms/CategoryPicker"
 import { VendorPicker } from "@/components/forms/VendorPicker"
@@ -159,7 +164,26 @@ export function TransactionForm({
 
   const create = useCreateTransaction()
   const update = useUpdateTransaction(transaction?.id ?? 0)
+  const upload = useUploadTransactionAttachment()
+  const link = useLinkTransactionAttachment()
   const [submitting, setSubmitting] = useState(false)
+  // After successful CREATE, switch form ke "attachment phase":
+  // tx sudah ter-save, user bisa langsung upload bukti tanpa harus
+  // tutup form + buka detail. Diisi hanya saat create (edit close-then
+  // re-open detail seperti biasa).
+  const [justCreatedTx, setJustCreatedTx] = useState<Transaction | null>(null)
+
+  // Reset attachment phase saat form ditutup atau di-reopen.
+  useEffect(() => {
+    if (!open) setJustCreatedTx(null)
+  }, [open])
+
+  const finishAndClose = () => {
+    const saved = justCreatedTx
+    setJustCreatedTx(null)
+    onClose()
+    if (saved) onSaved?.(saved)
+  }
 
   const onSubmit = async (raw: FormValues) => {
     const parsed = schema.safeParse(raw)
@@ -218,20 +242,20 @@ export function TransactionForm({
             }))
           : undefined,
       }
-      let saved: Transaction
       if (isEdit && transaction) {
-        saved = await update.mutateAsync(payload)
+        const saved = await update.mutateAsync(payload)
         toast.success("Transaksi diperbarui")
+        onClose()
+        onSaved?.(saved)
       } else {
-        saved = await create.mutateAsync(payload)
-        toast.success("Transaksi berhasil dibuat", {
-          description: "Status awal: Draft. Submit utk validasi.",
+        const saved = await create.mutateAsync(payload)
+        toast.success("Transaksi tersimpan", {
+          description: "Lanjut tambah bukti, atau klik Selesai.",
         })
+        // Jangan close -- switch ke attachment phase supaya user bisa
+        // langsung upload bukti tanpa harus buka detail dr list.
+        setJustCreatedTx(saved)
       }
-      onClose()
-      // Callback OPSIONAL: caller (list page) bisa re-open detail
-      // panel utk tx ini supaya user bisa verifikasi hasil simpan.
-      onSaved?.(saved)
     } catch (err) {
       toast.error(isEdit ? "Gagal memperbarui" : "Gagal membuat transaksi", {
         description: apiErrorMessage(err),
@@ -261,7 +285,7 @@ export function TransactionForm({
   }, [isDirect, itemsSum, setValue])
 
   return (
-    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+    <Sheet open={open} onOpenChange={(v) => !v && (justCreatedTx ? finishAndClose() : onClose())}>
       <SheetContent
         side={bp === "mobile" ? "full" : "right"}
         className={
@@ -275,17 +299,27 @@ export function TransactionForm({
         <SheetHeader className="border-b py-3 flex-row items-center justify-between gap-3 space-y-0 sticky top-0 bg-surface z-10">
           <button
             type="button"
-            onClick={onClose}
+            onClick={justCreatedTx ? finishAndClose : onClose}
             className="text-sm font-medium text-ink-600 hover:text-ink-900"
           >
-            Batal
+            {justCreatedTx ? "Selesai" : "Batal"}
           </button>
           <SheetTitle className="text-center flex-1">
-            {isEdit ? "Edit Transaksi" : "Tambah Transaksi"}
+            {justCreatedTx
+              ? `Tambah Bukti — Tx #${justCreatedTx.id}`
+              : isEdit ? "Edit Transaksi" : "Tambah Transaksi"}
           </SheetTitle>
           <div className="w-12" />
         </SheetHeader>
 
+        {justCreatedTx ? (
+          <AttachmentPhase
+            tx={justCreatedTx}
+            upload={upload}
+            link={link}
+            onFinish={finishAndClose}
+          />
+        ) : (
         <form
           onSubmit={handleSubmit(onSubmit)}
           className="flex flex-col flex-1 overflow-hidden"
@@ -624,8 +658,67 @@ export function TransactionForm({
             </Button>
           </div>
         </form>
+        )}
       </SheetContent>
     </Sheet>
+  )
+}
+
+interface AttachmentPhaseProps {
+  tx: Transaction
+  upload: ReturnType<typeof useUploadTransactionAttachment>
+  link: ReturnType<typeof useLinkTransactionAttachment>
+  onFinish: () => void
+}
+
+/**
+ * Sub-view setelah create tx sukses: user langsung bisa upload bukti
+ * (gambar/PDF) atau link external tanpa harus tutup form + buka detail
+ * dari list. Mengurangi friction "save -> close -> reopen detail ->
+ * scroll ke section bukti".
+ */
+function AttachmentPhase({ tx, upload, link, onFinish }: AttachmentPhaseProps) {
+  return (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div className="rounded-md border border-success-200 bg-success-50 p-3 text-[13px] text-success-800">
+          Transaksi <span className="font-mono font-semibold">#{tx.id}</span>{" "}
+          tersimpan sebagai Draft. Tambah bukti (struk/foto/link) sekarang,
+          atau klik <span className="font-semibold">Selesai</span> untuk
+          tutup.
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-ink-900 mb-2">
+            Bukti Transaksi
+          </h3>
+          <AttachmentUploader
+            uploadFile={(file, onProgress) =>
+              upload
+                .mutateAsync({ transactionId: tx.id, file, onProgress })
+                .then(() => undefined)
+            }
+            linkExternal={(url, label) =>
+              link
+                .mutateAsync({ transactionId: tx.id, url, label })
+                .then(() => undefined)
+            }
+            isLinking={link.isPending}
+          />
+        </div>
+
+        <p className="text-[11px] text-ink-500">
+          Tip: kamu juga bisa skip dulu, lalu tambah bukti dari detail tx
+          kapan saja.
+        </p>
+      </div>
+
+      <div className="border-t bg-surface px-5 py-3 flex gap-2 pb-safe sticky bottom-0">
+        <Button onClick={onFinish} className="flex-1">
+          Selesai
+        </Button>
+      </div>
+    </div>
   )
 }
 
