@@ -388,6 +388,19 @@ async def update_transaction(
     if not t or t.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
+    # Project IMMUTABLE via UPDATE -- audit trail keuangan harus tetap
+    # kuat. Reject explisit kalau payload kirim project_id beda current.
+    # Cara koreksi data entry error: CANCEL tx + buat ulang di proyek
+    # benar (audit log catat kedua aksi). Sebelumnya schema TransactionUpdate
+    # tdk punya field project_id -> Pydantic silent-ignore -> user kira
+    # "berhasil tapi data tidak". Sekarang explisit 400.
+    if payload.project_id is not None and payload.project_id != t.project_id:
+        raise HTTPException(
+            400,
+            "project_change_forbidden: tx tidak bisa pindah proyek via "
+            "edit. Cancel tx (POST /:id/cancel), lalu buat ulang di "
+            "proyek yang benar.",
+        )
     # VERIFIED: hanya SUPERADMIN yang boleh modifikasi (god-mode).
     # Audit trail keuangan harus kuat -- CENTRAL_ADMIN tidak boleh
     # ubah transaksi/lampiran yang sudah tervalidasi. Untuk koreksi,
@@ -409,6 +422,10 @@ async def update_transaction(
                 "settlement dulu kalau perlu koreksi.",
             )
     data = payload.model_dump(exclude_unset=True)
+    # project_id sudah di-validate di atas; drop dari setattr loop
+    # supaya tdk re-assign (no-op kalau sama, atau bypass guard kalau
+    # ada bug di check sebelumnya).
+    data.pop("project_id", None)
     items_payload = data.pop("items", None)
     new_kind = data.pop("kind", None)
 
