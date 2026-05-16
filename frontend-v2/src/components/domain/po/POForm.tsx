@@ -51,9 +51,12 @@ interface POFormProps {
   onClose: () => void
   po?: PurchaseOrder | null
   lockProjectId?: number | null
+  /** Dipanggil setelah save sukses (create/update). Caller bisa pakai
+   * utk re-open detail panel supaya user verifikasi hasil tanpa klik ulang. */
+  onSaved?: (saved: PurchaseOrder) => void
 }
 
-export function POForm({ open, onClose, po, lockProjectId }: POFormProps) {
+export function POForm({ open, onClose, po, lockProjectId, onSaved }: POFormProps) {
   const bp = useBreakpoint()
   const isEdit = !!po
   const todayIso = useMemo(() => toApiDate(new Date()) ?? "", [])
@@ -140,16 +143,18 @@ export function POForm({ open, onClose, po, lockProjectId }: POFormProps) {
           unit_price: it.unit_price,
         })),
       }
+      let saved: PurchaseOrder
       if (isEdit) {
-        await update.mutateAsync(payload)
+        saved = await update.mutateAsync(payload)
         toast.success("PO diperbarui")
       } else {
-        await create.mutateAsync(payload)
+        saved = await create.mutateAsync(payload)
         toast.success("PO dibuat", {
           description: "Status awal: DRAFT. Klik Terbitkan setelah final.",
         })
       }
       onClose()
+      onSaved?.(saved)
     } catch (err) {
       toast.error(isEdit ? "Gagal memperbarui" : "Gagal membuat PO", {
         description: apiErrorMessage(err),

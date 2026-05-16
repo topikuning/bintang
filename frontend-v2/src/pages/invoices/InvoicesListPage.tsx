@@ -412,7 +412,7 @@ export function InvoicesListPage() {
         </Sheet>
       )}
 
-      {/* Form */}
+      {/* Form. Setelah save, re-open detail panel utk verifikasi user. */}
       <InvoiceForm
         open={formOpen}
         onClose={() => {
@@ -420,6 +420,7 @@ export function InvoicesListPage() {
           setEditTarget(null)
         }}
         invoice={editTarget}
+        onSaved={(saved) => setSelectedId(saved.id)}
       />
     </>
   )
