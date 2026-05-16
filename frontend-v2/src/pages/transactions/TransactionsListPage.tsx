@@ -386,7 +386,8 @@ export function TransactionsListPage() {
         </Sheet>
       )}
 
-      {/* Create/edit form sheet */}
+      {/* Create/edit form sheet. Setelah save, re-open detail tx
+          (utk verifikasi user) -- bukan close semua. */}
       <TransactionForm
         open={formOpen}
         onClose={() => {
@@ -394,6 +395,7 @@ export function TransactionsListPage() {
           setEditTarget(null)
         }}
         transaction={editTarget}
+        onSaved={(saved) => setSelectedId(saved.id)}
       />
     </>
   )
