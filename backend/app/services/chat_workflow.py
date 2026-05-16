@@ -93,6 +93,8 @@ async def cmd_submit(
         action=AuditAction.SUBMIT, note="via chat bot",
     )
     await db.commit()
+    from app.services.messaging import notify_transaction_submitted
+    await notify_transaction_submitted(db, t, actor_id=user.id)
     return (
         f"✓ Tx #{tx_id} di-submit utk validasi.\n"
         f"{_fmt_tx_line(t, with_status=True)}\n"
@@ -128,6 +130,8 @@ async def cmd_verify(
         action=AuditAction.VERIFY, note="via chat bot",
     )
     await db.commit()
+    from app.services.messaging import notify_transaction_verified
+    await notify_transaction_verified(db, t, actor_id=user.id)
     return (
         f"✓ Tx #{tx_id} ter-VERIFIED.\n"
         f"{_fmt_tx_line(t, with_status=False)}\n"
@@ -159,11 +163,14 @@ async def cmd_reject(
     if t.status != TxnStatus.SUBMITTED:
         return f"Tx #{tx_id} status {t.status.value} -- hanya SUBMITTED yg bisa di-reject."
     t.status = TxnStatus.REJECTED
+    t.cancel_reason = reason
     await log(
         db, user_id=user.id, entity="transaction", entity_id=t.id,
         action=AuditAction.REJECT, note=f"via chat bot: {reason}",
     )
     await db.commit()
+    from app.services.messaging import notify_transaction_rejected
+    await notify_transaction_rejected(db, t, actor_id=user.id)
     return (
         f"⨯ Tx #{tx_id} di-REJECT.\n"
         f"Alasan: {reason}\n"
@@ -201,6 +208,8 @@ async def cmd_cancel(
         action=AuditAction.CANCEL, note=f"via chat bot: {reason}",
     )
     await db.commit()
+    from app.services.messaging import notify_transaction_cancelled
+    await notify_transaction_cancelled(db, t, actor_id=user.id)
     return f"⨯ Tx #{tx_id} di-CANCEL.\nAlasan: {reason}"
 
 

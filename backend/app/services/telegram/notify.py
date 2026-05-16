@@ -1,5 +1,10 @@
 """Notifikasi keluar dari sistem -> Telegram.
 
+Audience-based broadcast (kerangka 4-eyes):
+- creator (tx.created_by_id) + admin proyek (SUPERADMIN/CENTRAL_ADMIN/
+  PROJECT_ADMIN linked) menerima setiap perubahan state.
+- actor (orang yg trigger event) DI-EXCLUDE supaya tdk echo ke diri sendiri.
+
 Best-effort: tidak boleh menggagalkan transaksi DB. Semua call di-wrap
 try/except dan dijalankan setelah commit.
 """
@@ -35,48 +40,97 @@ def _esc(s) -> str:
     return html.escape(str(s), quote=False)
 
 
-async def _admins_for_project(db: AsyncSession, project_id: int) -> list[User]:
-    """User yang bisa verif transaksi di proyek tsb dan punya chat_id.
-    SUPERADMIN/CENTRAL_ADMIN selalu masuk; PROJECT_ADMIN hanya yang di-link
-    ke proyek tsb.
+async def _audience_for_tx(
+    db: AsyncSession,
+    tx: Transaction,
+    *,
+    exclude_user_id: int | None = None,
+) -> list[User]:
+    """Stakeholder Telegram untuk satu tx:
+
+    - **creator** (tx.created_by_id) — pembuat tx
+    - **central admins** (SUPERADMIN, CENTRAL_ADMIN) aktif
+    - **project admins** (PROJECT_ADMIN ditugaskan ke proyek tsb) aktif
+
+    Filter: hanya user yg sudah link `telegram_chat_id`. Dedup by user.id.
+    Exclude `exclude_user_id` (actor yg trigger event) supaya tdk dpt
+    notif echo ke diri sendiri.
     """
     rows: list[User] = []
-    # global admins
+
+    # 1. Creator
+    if tx.created_by_id:
+        creator = await db.get(User, tx.created_by_id)
+        if creator and creator.is_active and creator.telegram_chat_id:
+            rows.append(creator)
+
+    # 2. Central admins
     q = select(User).where(
         User.role.in_([UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN]),
         User.is_active.is_(True),
         User.telegram_chat_id.is_not(None),
     )
     rows.extend((await db.execute(q)).scalars().all())
-    # project admins yang ada di project_users
+
+    # 3. Project admins linked ke proyek
     pq = (
         select(User)
         .join(ProjectUser, ProjectUser.user_id == User.id)
         .where(
-            ProjectUser.project_id == project_id,
+            ProjectUser.project_id == tx.project_id,
             User.role == UserRole.PROJECT_ADMIN,
             User.is_active.is_(True),
             User.telegram_chat_id.is_not(None),
         )
     )
     rows.extend((await db.execute(pq)).scalars().all())
+
     seen: set[int] = set()
     out: list[User] = []
     for u in rows:
-        if u.id not in seen:
-            seen.add(u.id)
-            out.append(u)
+        if u.id == exclude_user_id:
+            continue
+        if u.id in seen:
+            continue
+        seen.add(u.id)
+        out.append(u)
     return out
 
 
-async def notify_transaction_submitted(db: AsyncSession, tx: Transaction) -> None:
-    """Ping admin saat transaksi disubmit untuk diverifikasi."""
+def _role_label(u: User) -> str:
+    if u.role == UserRole.SUPERADMIN:
+        return "Superadmin"
+    if u.role == UserRole.CENTRAL_ADMIN:
+        return "Admin Pusat"
+    if u.role == UserRole.PROJECT_ADMIN:
+        return "Admin Proyek"
+    return "User"
+
+
+async def _actor_name(db: AsyncSession, actor_id: int | None) -> str:
+    if not actor_id:
+        return "-"
+    u = await db.get(User, actor_id)
+    return u.name if u else "-"
+
+
+async def notify_transaction_submitted(
+    db: AsyncSession,
+    tx: Transaction,
+    *,
+    actor_id: int | None = None,
+) -> None:
+    """Notif saat tx disubmit utk validasi.
+
+    Audience: admin proyek + creator (kalau ada). Exclude submitter actor
+    -- biasanya = creator, jadi creator tdk dpt echo, tapi admin tetap dpt.
+    """
     try:
         proj = await db.get(Project, tx.project_id)
-        creator = await db.get(User, tx.created_by_id)
-        admins = await _admins_for_project(db, tx.project_id)
-        if not admins:
+        audience = await _audience_for_tx(db, tx, exclude_user_id=actor_id)
+        if not audience:
             return
+        actor_name = await _actor_name(db, actor_id) if actor_id else "-"
         sym = "−" if tx.type == TxnType.OUT else "+"
         desc = (tx.description or tx.party_name or "-")[:100]
         text = (
@@ -84,45 +138,103 @@ async def notify_transaction_submitted(db: AsyncSession, tx: Transaction) -> Non
             f"#{tx.id} <code>{_esc(proj.code if proj else '-')}</code> "
             f"{sym}Rp {_fmt_idr(tx.amount)}\n"
             f"<i>{_esc(desc)}</i>\n"
-            f"Dibuat oleh: {_esc(creator.name if creator else '-')}\n"
+            f"Disubmit oleh: {_esc(actor_name)}"
         )
-        for a in admins:
+        for a in audience:
             await tg.send_message(a.telegram_chat_id, text)
     except Exception:
         logger.exception("notify_transaction_submitted failed")
 
 
-async def notify_transaction_verified(db: AsyncSession, tx: Transaction) -> None:
+async def notify_transaction_verified(
+    db: AsyncSession,
+    tx: Transaction,
+    *,
+    actor_id: int | None = None,
+) -> None:
+    """Notif saat tx diverifikasi.
+
+    Audience: creator + admin proyek (PROJECT_ADMIN + central admin).
+    Exclude verifier (actor) supaya admin yg verify tdk dpt echo notif
+    ke diri sendiri.
+    """
     try:
-        creator = await db.get(User, tx.created_by_id)
-        if not creator or not creator.telegram_chat_id:
-            return
+        # fallback ke verified_by_id kalau actor_id tdk dipass
+        if actor_id is None:
+            actor_id = tx.verified_by_id
         proj = await db.get(Project, tx.project_id)
+        audience = await _audience_for_tx(db, tx, exclude_user_id=actor_id)
+        if not audience:
+            return
+        actor_name = await _actor_name(db, actor_id)
         sym = "−" if tx.type == TxnType.OUT else "+"
         desc = (tx.description or "-")[:100]
         text = (
             "✅ <b>Transaksi diverifikasi</b>\n"
             f"#{tx.id} <code>{_esc(proj.code if proj else '-')}</code> "
             f"{sym}Rp {_fmt_idr(tx.amount)}\n"
-            f"<i>{_esc(desc)}</i>"
+            f"<i>{_esc(desc)}</i>\n"
+            f"Diverifikasi oleh: {_esc(actor_name)}"
         )
-        await tg.send_message(creator.telegram_chat_id, text)
+        for a in audience:
+            await tg.send_message(a.telegram_chat_id, text)
     except Exception:
         logger.exception("notify_transaction_verified failed")
 
 
-async def notify_transaction_rejected(db: AsyncSession, tx: Transaction) -> None:
+async def notify_transaction_rejected(
+    db: AsyncSession,
+    tx: Transaction,
+    *,
+    actor_id: int | None = None,
+) -> None:
+    """Notif saat tx ditolak admin.
+
+    Audience: creator + admin proyek. Exclude rejecter (actor).
+    """
     try:
-        creator = await db.get(User, tx.created_by_id)
-        if not creator or not creator.telegram_chat_id:
-            return
         proj = await db.get(Project, tx.project_id)
+        audience = await _audience_for_tx(db, tx, exclude_user_id=actor_id)
+        if not audience:
+            return
+        actor_name = await _actor_name(db, actor_id) if actor_id else "-"
         text = (
             "❌ <b>Transaksi ditolak</b>\n"
             f"#{tx.id} <code>{_esc(proj.code if proj else '-')}</code> "
             f"Rp {_fmt_idr(tx.amount)}\n"
-            f"<i>Alasan:</i> {_esc(tx.cancel_reason or '-')}"
+            f"<i>Alasan:</i> {_esc(tx.cancel_reason or '-')}\n"
+            f"Ditolak oleh: {_esc(actor_name)}"
         )
-        await tg.send_message(creator.telegram_chat_id, text)
+        for a in audience:
+            await tg.send_message(a.telegram_chat_id, text)
     except Exception:
         logger.exception("notify_transaction_rejected failed")
+
+
+async def notify_transaction_cancelled(
+    db: AsyncSession,
+    tx: Transaction,
+    *,
+    actor_id: int | None = None,
+) -> None:
+    """Notif saat tx dibatalkan.
+
+    Audience: creator + admin proyek. Exclude pelaku cancel (actor).
+    """
+    try:
+        proj = await db.get(Project, tx.project_id)
+        audience = await _audience_for_tx(db, tx, exclude_user_id=actor_id)
+        if not audience:
+            return
+        actor_name = await _actor_name(db, actor_id) if actor_id else "-"
+        text = (
+            "🚫 <b>Transaksi dibatalkan</b>\n"
+            f"#{tx.id} <code>{_esc(proj.code if proj else '-')}</code> "
+            f"Rp {_fmt_idr(tx.amount)}\n"
+            f"<i>Alasan:</i> {_esc(tx.cancel_reason or '-')}\n"
+            f"Dibatalkan oleh: {_esc(actor_name)}"
+        )
+        for a in audience:
+            await tg.send_message(a.telegram_chat_id, text)
+    except Exception:
+        logger.exception("notify_transaction_cancelled failed")
