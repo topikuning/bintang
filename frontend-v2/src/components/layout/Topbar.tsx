@@ -127,7 +127,8 @@ function GlobalSearch({
       setActiveIdx((i) => (i - 1 + TARGETS.length) % TARGETS.length)
     } else if (e.key === "Enter") {
       e.preventDefault()
-      handlePick(TARGETS[activeIdx])
+      const target = TARGETS[activeIdx]
+      if (target) handlePick(target)
     } else if (e.key === "Escape") {
       e.preventDefault()
       setOpen(false)

@@ -111,7 +111,7 @@ export function RoleMenusPage() {
   const toggle = (roleKey: string, menuId: string) => {
     setDraft((prev) => {
       const next = { ...prev }
-      const set = new Set(next[roleKey] ?? new Set())
+      const set = new Set<string>(next[roleKey] ?? [])
       if (set.has(menuId)) set.delete(menuId)
       else set.add(menuId)
       next[roleKey] = set
