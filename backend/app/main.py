@@ -149,7 +149,15 @@ def _guard_production_config() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _guard_production_config()
-    # Pastikan tabel ada untuk dev (SQLite). Untuk prod gunakan Alembic.
+    # Schema bootstrap policy:
+    # - Dev (SQLite): `create_all` cukup (cepat, no migration friction).
+    # - Prod (Postgres): SEBAIKNYA jalankan `alembic upgrade head` di
+    #   deploy step sebelum app start. `create_all` di sini idempotent
+    #   (tidak overwrite tabel ada) + `_sync_pg_columns` di bawah cover
+    #   penambahan kolom legacy DB. Kombinasi ini back-compat dgn DB
+    #   prod sebelum Alembic di-introduce; setelah baseline stamp,
+    #   migration berikutnya yg jadi source of truth.
+    # Lihat backend/docs/migrations.md.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     # Sync enum + kolom baru (hanya Postgres). SQLite cukup create_all.
