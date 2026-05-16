@@ -324,6 +324,7 @@ export function POListPage() {
           setEditTarget(null)
         }}
         po={editTarget}
+        onSaved={(saved) => setSelectedId(saved.id)}
       />
     </>
   )

@@ -49,9 +49,12 @@ interface InvoiceFormProps {
   onClose: () => void
   invoice?: Invoice | null
   lockProjectId?: number | null
+  /** Dipanggil setelah save sukses (create/update). Caller bisa pakai
+   * utk re-open detail panel supaya user verifikasi hasil tanpa klik ulang. */
+  onSaved?: (saved: Invoice) => void
 }
 
-export function InvoiceForm({ open, onClose, invoice, lockProjectId }: InvoiceFormProps) {
+export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: InvoiceFormProps) {
   const bp = useBreakpoint()
   const isEdit = !!invoice
   const todayIso = useMemo(() => toApiDate(new Date()) ?? "", [])
@@ -136,16 +139,18 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId }: InvoiceFo
           unit_price: it.unit_price,
         })),
       }
+      let saved: Invoice
       if (isEdit) {
-        await update.mutateAsync(payload)
+        saved = await update.mutateAsync(payload)
         toast.success("Invoice diperbarui")
       } else {
-        await create.mutateAsync(payload)
+        saved = await create.mutateAsync(payload)
         toast.success("Invoice dibuat", {
           description: "Status awal: DRAFT. Klik Terbitkan setelah final.",
         })
       }
       onClose()
+      onSaved?.(saved)
     } catch (err) {
       toast.error(isEdit ? "Gagal memperbarui" : "Gagal membuat invoice", {
         description: apiErrorMessage(err),
