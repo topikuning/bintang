@@ -80,7 +80,7 @@ export function ProjectDashboardPage() {
 
   const projectQ = useProject(projectId)
   const dashQ = useProjectDashboard(projectId)
-  const recentTxQ = useTransactions({ project_id: projectId, size: 8 })
+  const recentTxQ = useTransactions({ project_id: [projectId], size: 8 })
 
   const [txFormOpen, setTxFormOpen] = useState(false)
   const [invFormOpen, setInvFormOpen] = useState(false)

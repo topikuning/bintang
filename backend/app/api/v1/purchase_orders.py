@@ -62,7 +62,7 @@ def _to_out(po: PurchaseOrder) -> POOut:
 
 @router.get("", response_model=Page[POOut])
 async def list_pos(
-    project_id: int | None = None,
+    project_id: list[int] | None = Query(None),
     status: POStatus | None = None,
     company_id: int | None = None,
     date_from: date_type | None = None,
@@ -80,8 +80,9 @@ async def list_pos(
             return Page(items=[], total=0, page=page, size=size)
         stmt = stmt.where(PurchaseOrder.project_id.in_(pids))
     if project_id:
-        await ensure_project_access(db, user, project_id)
-        stmt = stmt.where(PurchaseOrder.project_id == project_id)
+        for pid in project_id:
+            await ensure_project_access(db, user, pid)
+        stmt = stmt.where(PurchaseOrder.project_id.in_(project_id))
     if company_id:
         stmt = stmt.where(PurchaseOrder.company_id == company_id)
     if status:

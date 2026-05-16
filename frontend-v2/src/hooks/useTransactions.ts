@@ -6,7 +6,9 @@ import type { Page, Transaction, TxnStatus, TxnType } from "@/types/api"
 export interface TransactionListParams {
   page?: number
   size?: number
-  project_id?: number
+  /** Multi-select: backend terima ?project_id=1&project_id=2 via
+   * paramsSerializer custom di lib/api. */
+  project_id?: number[]
   type?: TxnType
   status?: TxnStatus
   category_id?: number

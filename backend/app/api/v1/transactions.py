@@ -176,7 +176,7 @@ async def _serialize_with_allocs(db: AsyncSession, t: Transaction) -> Transactio
 
 @router.get("", response_model=Page[TransactionOut])
 async def list_transactions(
-    project_id: int | None = None,
+    project_id: list[int] | None = Query(None),
     type: TxnType | None = None,
     status: TxnStatus | None = None,
     category_id: int | None = None,
@@ -197,8 +197,10 @@ async def list_transactions(
             return Page(items=[], total=0, page=page, size=size)
         stmt = stmt.where(Transaction.project_id.in_(pids))
     if project_id:
-        await ensure_project_access(db, user, project_id)
-        stmt = stmt.where(Transaction.project_id == project_id)
+        # Validate akses per project_id, lalu filter IN. Multi-select.
+        for pid in project_id:
+            await ensure_project_access(db, user, pid)
+        stmt = stmt.where(Transaction.project_id.in_(project_id))
     if type:
         stmt = stmt.where(Transaction.type == type)
     if status:

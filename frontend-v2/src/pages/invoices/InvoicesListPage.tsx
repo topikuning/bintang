@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom"
 import { Clock, FileMinus, FilePlus, Plus, Receipt, Search, X } from "lucide-react"
 import { useInvoice, useInvoices, type InvoiceListParams } from "@/hooks/useInvoices"
 import { useProjects } from "@/hooks/useProjects"
-import { ProjectPicker } from "@/components/forms/ProjectPicker"
+import { MultiProjectPicker } from "@/components/forms/MultiProjectPicker"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
@@ -46,17 +46,15 @@ export function InvoicesListPage() {
   const [size, setSize] = useState(50)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL")
-  // Project filter: URL = source of truth. Hindari stale state saat URL
-  // berubah tanpa unmount (browser back/forward, deep link share, dst).
-  const urlProjectIdRaw = searchParams.get("project_id")
-  const projectFilter: number | null =
-    urlProjectIdRaw && Number(urlProjectIdRaw) > 0
-      ? Number(urlProjectIdRaw)
-      : null
-  const setProjectFilter = (id: number | null) => {
+  // Project filter: URL = source of truth + MULTI-SELECT.
+  const projectFilter: number[] = searchParams
+    .getAll("project_id")
+    .map((s) => Number(s))
+    .filter((n) => Number.isFinite(n) && n > 0)
+  const setProjectFilter = (ids: number[]) => {
     const next = new URLSearchParams(searchParams)
-    if (id) next.set("project_id", String(id))
-    else next.delete("project_id")
+    next.delete("project_id")
+    for (const id of ids) next.append("project_id", String(id))
     setSearchParams(next, { replace: true })
   }
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -92,7 +90,7 @@ export function InvoicesListPage() {
     () => ({
       page,
       size,
-      project_id: projectFilter ?? undefined,
+      project_id: projectFilter.length > 0 ? projectFilter : undefined,
       status: effectiveStatus,
       type: effectiveType,
       q: q || undefined,
@@ -151,7 +149,7 @@ export function InvoicesListPage() {
     () =>
       buildInvoiceColumns({
         projectMap,
-        hideProject: projectFilter != null,
+        hideProject: projectFilter.length === 1,
         expand: {
           isExpanded: (id) => expandedIds.has(id),
           toggle: toggleExpanded,
@@ -265,13 +263,12 @@ export function InvoicesListPage() {
               Proyek
             </span>
             <div className="flex-1 max-w-sm">
-              <ProjectPicker
+              <MultiProjectPicker
                 value={projectFilter}
-                onChange={(id) => {
-                  setProjectFilter(id)
+                onChange={(ids) => {
+                  setProjectFilter(ids)
                   setPage(1)
                 }}
-                placeholder="Semua proyek"
               />
             </div>
           </div>

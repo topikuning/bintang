@@ -6,7 +6,8 @@ import type { Page, POStatus, PurchaseOrder } from "@/types/api"
 export interface POListParams {
   page?: number
   size?: number
-  project_id?: number
+  /** Multi-select project_id. */
+  project_id?: number[]
   company_id?: number
   vendor_client_id?: number
   status?: POStatus
