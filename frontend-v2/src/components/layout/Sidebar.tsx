@@ -8,8 +8,8 @@ export function Sidebar() {
   const allowed = cfgQ.data ? new Set(cfgQ.data.menu_ids) : undefined
   const groups = filterNavGroups(DESKTOP_NAV, allowed)
   return (
-    <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r bg-surface">
-      <div className="flex h-14 items-center gap-2 px-5 border-b">
+    <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r bg-surface sticky top-0 h-[100dvh] self-start">
+      <div className="flex h-14 items-center gap-2 px-5 border-b shrink-0">
         <div className="flex h-7 w-7 items-center justify-center rounded bg-brand-500 text-white font-bold text-[13px]">
           B
         </div>
@@ -21,7 +21,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 py-3">
+      <nav className="flex-1 overflow-y-auto px-2 py-3 min-h-0">
         {groups.map((group) => (
           <div key={group.label} className="mb-4">
             <div className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
@@ -52,7 +52,7 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t p-3 text-[11px] text-ink-500">
+      <div className="border-t p-3 text-[11px] text-ink-500 shrink-0">
         Bintang v2.0 · {new Date().getFullYear()}
       </div>
     </aside>
