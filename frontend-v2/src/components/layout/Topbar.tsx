@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { ArrowLeftRight, ClipboardList, Receipt, Search, X } from "lucide-react"
 import { UserMenu } from "./UserMenu"
 import { cn } from "@/lib/utils"
@@ -18,6 +18,20 @@ export function Topbar({ title, leftSlot, showSearch = true }: TopbarProps) {
 
   return (
     <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b bg-surface px-3 sm:px-5 pt-safe">
+      {/* Brand mobile-only: Sidebar/NavRail hidden di <md, jadi tanpa
+          ini area kiri Topbar kosong. Klik = ke /dashboard supaya
+          double sebagai home-button. */}
+      <Link
+        to="/dashboard"
+        className="md:hidden flex items-center gap-2 -ml-1 pr-1"
+        aria-label="Beranda"
+      >
+        <span className="flex h-7 w-7 items-center justify-center rounded bg-brand-500 text-white font-bold text-[13px]">
+          B
+        </span>
+        <span className="text-sm font-bold text-ink-900">Bintang</span>
+      </Link>
+
       {leftSlot}
       {title && (
         <div className="flex-1 min-w-0">
