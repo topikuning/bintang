@@ -10,9 +10,11 @@ import {
   Link2Off,
   Loader2,
   Paperclip,
+  Pencil,
   Plus,
   Receipt,
   ShoppingCart,
+  Trash2,
   UserMinus,
   UserPlus,
   Users,
@@ -50,6 +52,9 @@ import { ErrorState } from "@/components/data/ErrorState"
 import { TransactionForm } from "@/components/domain/transaction/TransactionForm"
 import { InvoiceForm } from "@/components/domain/invoice/InvoiceForm"
 import { POForm } from "@/components/domain/po/POForm"
+import { ProjectForm } from "@/components/domain/project/ProjectForm"
+import { useDeleteProject } from "@/hooks/useProjectMutations"
+import { useNavigate } from "react-router-dom"
 import { CashflowChart } from "@/components/charts/CashflowChart"
 import { SpendingBreakdown } from "@/components/domain/dashboard/SpendingBreakdown"
 import { AttachmentUploader } from "@/components/forms/AttachmentUploader"
@@ -85,6 +90,11 @@ export function ProjectDashboardPage() {
   const [txFormOpen, setTxFormOpen] = useState(false)
   const [invFormOpen, setInvFormOpen] = useState(false)
   const [poFormOpen, setPoFormOpen] = useState(false)
+  // Edit/delete proyek inline -- user tdk perlu balik ke master/projects.
+  const [editProjectOpen, setEditProjectOpen] = useState(false)
+  const [confirmDeleteProject, setConfirmDeleteProject] = useState(false)
+  const navigate = useNavigate()
+  const deleteProject = useDeleteProject()
 
   if (projectQ.isLoading || dashQ.isLoading) {
     return (
@@ -166,7 +176,38 @@ export function ProjectDashboardPage() {
                 )}
               </div>
             </div>
-            <Badge tone={healthTone(health)}>{healthLabel(health)}</Badge>
+            <div className="flex items-center gap-2 shrink-0">
+              <Badge tone={healthTone(health)}>{healthLabel(health)}</Badge>
+              {/* Edit + Hapus inline -- tdk perlu balik ke master/projects.
+                  Edit terbuka utk semua canWrite (PROJECT_ADMIN+) supaya
+                  field operasional (nama/lokasi/budget/dst) bisa di-tweak;
+                  backend tetap validate per-field rule (mis. code locked
+                  kalau ada tx/inv/PO). Hapus hanya admin pusat (SUPERADMIN/
+                  CENTRAL_ADMIN) krn destructive. */}
+              {canWrite && (
+                <button
+                  type="button"
+                  onClick={() => setEditProjectOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded border border-border-strong bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-700 hover:bg-ink-100"
+                  aria-label="Edit info proyek"
+                  title="Edit info proyek"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Edit
+                </button>
+              )}
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteProject(true)}
+                  className="inline-flex items-center justify-center h-7 w-7 rounded border border-danger-200 bg-surface text-danger-600 hover:bg-danger-50"
+                  aria-label="Hapus proyek"
+                  title="Hapus proyek"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -597,6 +638,62 @@ export function ProjectDashboardPage() {
         onClose={() => setPoFormOpen(false)}
         lockProjectId={projectId}
       />
+
+      {/* Edit proyek inline -- pakai komponen yg sama dgn master/projects */}
+      <ProjectForm
+        open={editProjectOpen}
+        onClose={() => setEditProjectOpen(false)}
+        project={project}
+      />
+
+      {/* Konfirmasi hapus proyek (soft-delete). Backend: cuma mark
+          deleted_at, transaksi/invoice/PO tdk ikut terhapus (jadi
+          orphan-reference). Kalau perlu pemulihan -- tanya dev. */}
+      <Dialog
+        open={confirmDeleteProject}
+        onOpenChange={(o) => !o && setConfirmDeleteProject(false)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Hapus proyek?</DialogTitle>
+            <DialogDescription>
+              <strong>{project.name}</strong> akan dihapus (soft-delete).
+              Transaksi/Invoice/PO yg menunjuk proyek ini TIDAK ikut
+              terhapus -- referensi proyeknya jadi orphan. Disarankan
+              cancel/hapus dependency dulu kalau mau bersih.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              onClick={() => setConfirmDeleteProject(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              variant="danger"
+              onClick={async () => {
+                try {
+                  await deleteProject.mutateAsync(projectId)
+                  toast.success("Proyek dihapus")
+                  setConfirmDeleteProject(false)
+                  navigate("/projects", { replace: true })
+                } catch (err) {
+                  toast.error("Gagal menghapus", {
+                    description: apiErrorMessage(err),
+                  })
+                }
+              }}
+              disabled={deleteProject.isPending}
+            >
+              {deleteProject.isPending && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+              Ya, Hapus
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
