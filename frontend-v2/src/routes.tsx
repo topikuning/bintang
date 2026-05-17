@@ -100,8 +100,8 @@ const OrphanFilesPage = lazy(() =>
 const MorePage = lazy(() =>
   import("@/pages/More").then((m) => ({ default: m.MorePage })),
 )
-const Placeholder = lazy(() =>
-  import("@/pages/Placeholder").then((m) => ({ default: m.Placeholder })),
+const BudgetPage = lazy(() =>
+  import("@/pages/budget/BudgetPage").then((m) => ({ default: m.BudgetPage })),
 )
 
 /**
@@ -154,17 +154,7 @@ export const router = createBrowserRouter([
           { path: "transactions/cash-advances", element: <L><CashAdvancePage /></L> },
           { path: "invoices", element: <L><InvoicesListPage /></L> },
           { path: "purchase-orders", element: <L><POListPage /></L> },
-          {
-            path: "budget",
-            element: (
-              <L>
-                <Placeholder
-                  title="Budget vs Actual"
-                  description="Realisasi anggaran per kategori & proyek."
-                />
-              </L>
-            ),
-          },
+          { path: "budget", element: <L><BudgetPage /></L> },
           { path: "reports", element: <L><ReportsPage /></L> },
           {
             path: "reports/invoice-items",
