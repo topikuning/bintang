@@ -6,6 +6,7 @@ import { useProjects } from "@/hooks/useProjects"
 import { useCategories } from "@/hooks/useCategories"
 import { MultiProjectPicker } from "@/components/forms/MultiProjectPicker"
 import { DateRangeFilter } from "@/components/forms/DateRangeFilter"
+import { usePageTitle } from "@/hooks/usePageTitle"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
@@ -42,6 +43,7 @@ const TYPE_TABS: Array<{ value: TypeFilter; label: string }> = [
 ]
 
 export function TransactionsListPage() {
+  usePageTitle("Transaksi")
   const bp = useBreakpoint()
   const [searchParams, setSearchParams] = useSearchParams()
   const [page, setPage] = useState(1)

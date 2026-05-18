@@ -54,6 +54,7 @@ import { InvoiceForm } from "@/components/domain/invoice/InvoiceForm"
 import { POForm } from "@/components/domain/po/POForm"
 import { ProjectForm } from "@/components/domain/project/ProjectForm"
 import { useDeleteProject } from "@/hooks/useProjectMutations"
+import { usePageTitle } from "@/hooks/usePageTitle"
 import { useNavigate } from "react-router-dom"
 import { CashflowChart } from "@/components/charts/CashflowChart"
 import { SpendingBreakdown } from "@/components/domain/dashboard/SpendingBreakdown"
@@ -78,6 +79,7 @@ import { cn } from "@/lib/utils"
  */
 export function ProjectDashboardPage() {
   const { id } = useParams<{ id: string }>()
+  usePageTitle(`Proyek #${id ?? ""}`)
   const projectId = Number(id)
   const role = useAuthStore((s) => s.user?.role)
   const canWrite = role !== "EXECUTIVE"
@@ -1324,14 +1326,21 @@ function AgingRow({
           />
         ))}
       </div>
-      {/* Breakdown numeric */}
+      {/* Breakdown numeric + color-blind safe color chip (di samping label
+          juga, supaya tdk hanya bergantung ke warna utk distinguish bucket). */}
       <div className="grid grid-cols-4 gap-1.5 text-[11px]">
         {buckets.map((b) => (
           <div
             key={b.key}
             className="rounded bg-surface-muted/40 px-1.5 py-1 text-center"
           >
-            <div className="text-ink-500">{b.label}</div>
+            <div className="text-ink-500 flex items-center justify-center gap-1">
+              <span
+                aria-hidden="true"
+                className={`inline-block h-2 w-2 rounded-full ${b.bg}`}
+              />
+              {b.label}
+            </div>
             <div className="font-mono tabular-nums font-semibold text-ink-900">
               {fmtIDR(b.v)}
             </div>

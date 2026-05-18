@@ -61,17 +61,69 @@ export function fileUrl(path?: string | null): string | undefined {
   return `${backendOrigin()}${finalPath}`
 }
 
+/**
+ * Map kode error backend -> pesan user-friendly Indonesia.
+ *
+ * Backend pakai code-style (mis. "verified_locked", "project_change_forbidden")
+ * supaya stable & i18n-able. Mapping di sini convert ke kalimat manusia.
+ * Kalau code tdk dikenal, fallback ke `detail` apa adanya (backend
+ * sering punya pesan eksplikatif setelah colon: "code: penjelasan").
+ */
+const ERROR_MESSAGES: Record<string, string> = {
+  // Auth & permission
+  not_authenticated: "Silakan login dulu.",
+  invalid_token: "Sesi tdk valid. Login ulang.",
+  user_inactive: "Akun tidak aktif.",
+  superadmin_only: "Hanya SUPERADMIN yang bisa lakukan ini.",
+  admin_only: "Hanya admin (CENTRAL_ADMIN/SUPERADMIN) yang bisa.",
+  read_only_role: "Role Anda hanya boleh lihat, tidak bisa ubah data.",
+  no_access_to_project: "Anda tidak punya akses ke proyek ini.",
+  // Workflow tx/invoice
+  verified_locked:
+    "Transaksi/Invoice sudah diverifikasi. Hanya SUPERADMIN yang bisa edit.",
+  invalid_state: "Status saat ini tidak mendukung aksi ini.",
+  project_change_forbidden:
+    "Proyek tidak bisa diubah via edit. Cancel item ini, lalu buat ulang di proyek yang benar.",
+  cash_advance_already_settled:
+    "Dana operasional sudah di-settle. Hapus settlement dulu jika mau koreksi.",
+  kind_change_blocked:
+    "Tx sudah ter-alokasi ke invoice. Hapus alokasi/unlink dulu sebelum ganti jenis.",
+  invoice_not_allocatable: "Invoice di status ini tidak bisa di-alokasi.",
+  // Common
+  not_found: "Data tidak ditemukan.",
+  recipient_user_not_found: "Penerima dana tidak ditemukan.",
+  project_code_already_used: "Kode proyek sudah dipakai proyek lain.",
+}
+
+/** Cek kalau detail string punya format "code:penjelasan" — return code. */
+function extractCode(detail: string): string {
+  const colon = detail.indexOf(":")
+  if (colon === -1) return detail.trim()
+  return detail.slice(0, colon).trim()
+}
+
 /** Parse pesan error dari response axios -> string yg user-friendly. */
 export function apiErrorMessage(err: unknown): string {
   if (err instanceof AxiosError) {
     const data = err.response?.data
     if (typeof data === "string") return data
     if (data && typeof data === "object") {
-      if ("detail" in data && typeof data.detail === "string") return data.detail
+      if ("detail" in data && typeof data.detail === "string") {
+        const detail = data.detail
+        const code = extractCode(detail)
+        // Kalau code dikenal di registry, gunakan friendly version.
+        if (ERROR_MESSAGES[code]) return ERROR_MESSAGES[code]
+        // Kalau detail punya format "code:penjelasan", trim code prefix
+        // supaya user lihat penjelasan saja (lebih readable).
+        if (detail.includes(":")) {
+          return detail.slice(detail.indexOf(":") + 1).trim() || detail
+        }
+        return detail
+      }
       if ("message" in data && typeof data.message === "string") return data.message
     }
-    return err.message || "Terjadi kesalahan jaringan"
+    return err.message || "Terjadi kesalahan jaringan."
   }
   if (err instanceof Error) return err.message
-  return "Terjadi kesalahan tidak diketahui"
+  return "Terjadi kesalahan tidak diketahui."
 }
