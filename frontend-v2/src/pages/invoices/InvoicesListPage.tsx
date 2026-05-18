@@ -9,6 +9,7 @@ import { usePageTitle } from "@/hooks/usePageTitle"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
+import { EmptyState } from "@/components/data/EmptyState"
 import { ErrorState } from "@/components/data/ErrorState"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -324,10 +325,28 @@ export function InvoicesListPage() {
             isLoading={invQuery.isLoading}
             columns={columns}
             onItemClick={(i) => setSelectedId(i.id)}
-            emptyMessage={
-              statusFilter !== "ALL" || typeFilter !== "ALL"
-                ? "Tidak ada invoice yang cocok dengan filter."
-                : "Belum ada invoice."
+            emptyState={
+              statusFilter !== "ALL" || typeFilter !== "ALL" || projectFilter.length > 0 || dateFrom || dateTo || q ? (
+                <EmptyState
+                  icon={Search}
+                  title="Tidak ada hasil"
+                  description="Coba ubah filter atau hapus pencarian."
+                  tone="neutral"
+                  compact
+                />
+              ) : (
+                <EmptyState
+                  icon={Receipt}
+                  title="Belum ada invoice"
+                  description="Catat invoice masuk (hutang ke vendor) atau invoice keluar (piutang ke klien) untuk mulai tracking pembayaran."
+                  actionLabel="Tambah Invoice"
+                  onAction={() => {
+                    setEditTarget(null)
+                    setFormOpen(true)
+                  }}
+                  tone="neutral"
+                />
+              )
             }
             renderCard={(inv) => (
               <InvoiceCard

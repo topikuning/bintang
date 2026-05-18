@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
-import { CheckCircle2, Clock, Plus, ShoppingCart, XCircle } from "lucide-react"
+import { CheckCircle2, Clock, Plus, Search, ShoppingCart, XCircle } from "lucide-react"
 import { usePO, usePOs, type POListParams } from "@/hooks/usePOs"
 import { useProjects } from "@/hooks/useProjects"
 import { MultiProjectPicker } from "@/components/forms/MultiProjectPicker"
@@ -9,6 +9,7 @@ import { usePageTitle } from "@/hooks/usePageTitle"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
+import { EmptyState } from "@/components/data/EmptyState"
 import { ErrorState } from "@/components/data/ErrorState"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -236,8 +237,28 @@ export function POListPage() {
             isLoading={poQuery.isLoading}
             columns={columns}
             onItemClick={(po) => setSelectedId(po.id)}
-            emptyMessage={
-              statusFilter !== "ALL" ? "Tidak ada PO yang cocok." : "Belum ada PO."
+            emptyState={
+              statusFilter !== "ALL" || projectFilter.length > 0 || dateFrom || dateTo ? (
+                <EmptyState
+                  icon={Search}
+                  title="Tidak ada hasil"
+                  description="Coba ubah filter."
+                  tone="neutral"
+                  compact
+                />
+              ) : (
+                <EmptyState
+                  icon={ShoppingCart}
+                  title="Belum ada Purchase Order"
+                  description="Buat PO untuk track komitmen pembelian ke vendor sebelum invoice masuk."
+                  actionLabel="Tambah PO"
+                  onAction={() => {
+                    setEditTarget(null)
+                    setFormOpen(true)
+                  }}
+                  tone="neutral"
+                />
+              )
             }
             renderCard={(po) => (
               <POCard

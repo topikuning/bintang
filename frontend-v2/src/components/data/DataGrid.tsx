@@ -23,6 +23,8 @@ export interface DataGridProps<T> {
   footer?: React.ReactNode
   /** Custom empty state, default tidak render apa-apa (parent handle). */
   emptyMessage?: string
+  /** Override -- pakai rich EmptyState. Menang dari emptyMessage. */
+  emptyState?: React.ReactNode
   /**
    * Expandable-row support. Kalau ketiga prop diisi, grid akan render
    * sub-row content di bawah row yg expanded.
@@ -40,6 +42,7 @@ export function DataGrid<T>({
   className,
   footer,
   emptyMessage = "Tidak ada data.",
+  emptyState,
   getRowId,
   expandedIds,
   renderExpandedRow,
@@ -136,9 +139,9 @@ export function DataGrid<T>({
               <tr>
                 <td
                   colSpan={columns.length}
-                  className="px-3 py-12 text-center text-sm text-ink-500"
+                  className="px-3 py-4 text-center text-sm text-ink-500"
                 >
-                  {emptyMessage}
+                  {emptyState ?? emptyMessage}
                 </td>
               </tr>
             ) : (
