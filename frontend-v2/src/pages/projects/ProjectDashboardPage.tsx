@@ -53,6 +53,7 @@ import { TransactionForm } from "@/components/domain/transaction/TransactionForm
 import { InvoiceForm } from "@/components/domain/invoice/InvoiceForm"
 import { POForm } from "@/components/domain/po/POForm"
 import { ProjectForm } from "@/components/domain/project/ProjectForm"
+import { ConfirmDeleteDialog } from "@/components/data/ConfirmDeleteDialog"
 import { useDeleteProject } from "@/hooks/useProjectMutations"
 import { usePageTitle } from "@/hooks/usePageTitle"
 import { useNavigate } from "react-router-dom"
@@ -648,54 +649,48 @@ export function ProjectDashboardPage() {
         project={project}
       />
 
-      {/* Konfirmasi hapus proyek (soft-delete). Backend: cuma mark
-          deleted_at, transaksi/invoice/PO tdk ikut terhapus (jadi
-          orphan-reference). Kalau perlu pemulihan -- tanya dev. */}
-      <Dialog
+      {/* Konfirmasi hapus proyek (soft-delete) dgn RETYPE-guard.
+          Project punya dampak destructive besar -- semua tx/inv/PO yg
+          menunjuk akan jadi orphan-reference. Retype mencegah accidental
+          click. */}
+      <ConfirmDeleteDialog
         open={confirmDeleteProject}
-        onOpenChange={(o) => !o && setConfirmDeleteProject(false)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Hapus proyek?</DialogTitle>
-            <DialogDescription>
-              <strong>{project.name}</strong> akan dihapus (soft-delete).
-              Transaksi/Invoice/PO yg menunjuk proyek ini TIDAK ikut
-              terhapus -- referensi proyeknya jadi orphan. Disarankan
-              cancel/hapus dependency dulu kalau mau bersih.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="secondary"
-              onClick={() => setConfirmDeleteProject(false)}
-            >
-              Batal
-            </Button>
-            <Button
-              variant="danger"
-              onClick={async () => {
-                try {
-                  await deleteProject.mutateAsync(projectId)
-                  toast.success("Proyek dihapus")
-                  setConfirmDeleteProject(false)
-                  navigate("/projects", { replace: true })
-                } catch (err) {
-                  toast.error("Gagal menghapus", {
-                    description: apiErrorMessage(err),
-                  })
-                }
-              }}
-              disabled={deleteProject.isPending}
-            >
-              {deleteProject.isPending && (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              )}
-              Ya, Hapus
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onOpenChange={setConfirmDeleteProject}
+        title="Hapus proyek?"
+        description={
+          <>
+            <strong>{project.name}</strong> akan dihapus (soft-delete).
+            Transaksi, invoice, dan PO yang menunjuk proyek ini{" "}
+            <strong>tidak ikut terhapus</strong> -- referensi proyeknya
+            jadi orphan. Tindakan ini tidak bisa di-undo via UI; pemulihan
+            butuh manual restore oleh admin database.
+          </>
+        }
+        confirmLabel="Ya, Hapus Proyek"
+        requireTypeText={project.code}
+        retypeLabel={
+          <>
+            Ketik kode proyek{" "}
+            <code className="font-mono bg-ink-100 px-1.5 py-0.5 rounded text-[11px]">
+              {project.code}
+            </code>{" "}
+            untuk konfirmasi
+          </>
+        }
+        isPending={deleteProject.isPending}
+        onConfirm={async () => {
+          try {
+            await deleteProject.mutateAsync(projectId)
+            toast.success("Proyek dihapus")
+            setConfirmDeleteProject(false)
+            navigate("/projects", { replace: true })
+          } catch (err) {
+            toast.error("Gagal menghapus", {
+              description: apiErrorMessage(err),
+            })
+          }
+        }}
+      />
     </>
   )
 }
