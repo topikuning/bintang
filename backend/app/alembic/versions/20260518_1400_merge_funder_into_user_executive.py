@@ -15,8 +15,8 @@ Setelah merge:
 ## Strategi data migration (Q1 = A)
 - Tiap Funder row -> User baru dgn:
   - email = `funder-{funder.id}@bintang.local` (placeholder unique)
-  - full_name = funder.name
-  - hashed_password = bcrypt random 32-char (effectively login disabled
+  - name = funder.name (truncated 120 char)
+  - password_hash = bcrypt random 32-char (effectively login disabled
     sampai admin reset). Kalau admin mau pendana login, set password
     ulang lewat Master User.
   - role = EXECUTIVE, scope_all_projects = False (Q4 = A, per-project)
@@ -69,7 +69,9 @@ def upgrade() -> None:
     funder_to_user: dict[int, int] = {}
     for f in funders:
         funder_id = f[0]
-        funder_name = f[1]
+        # User.name max 120 chars vs funders.name max 200 -- truncate
+        # supaya tdk crash di INSERT (jarang, tapi safe).
+        funder_name = (f[1] or f"Pendana {funder_id}")[:120]
         email = f"funder-{funder_id}@bintang.local"
         # Pendana mungkin sudah ada sbg user (jarang, tapi safe-guard).
         existing = conn.execute(
@@ -83,7 +85,7 @@ def upgrade() -> None:
         result = conn.execute(
             sa.text("""
                 INSERT INTO users (
-                    email, full_name, hashed_password, role,
+                    email, name, password_hash, role,
                     scope_all_projects, is_active, created_at, updated_at
                 ) VALUES (
                     :em, :fn, :pw, 'EXECUTIVE',

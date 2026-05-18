@@ -77,7 +77,7 @@ def _to_out(p: Project) -> ProjectOut:
         if u is None or u.role != UserRole.EXECUTIVE:
             continue
         funder_ids.append(u.id)
-        funder_names.append(u.full_name or u.email)
+        funder_names.append(u.name or u.email)
     out.funder_ids = funder_ids
     out.funder_names = funder_names
     return out
@@ -190,7 +190,7 @@ async def list_project_filters(
             u = link.user
             if u is None or u.role != UserRole.EXECUTIVE or u.deleted_at is not None:
                 continue
-            funders_map[u.id] = u.full_name or u.email
+            funders_map[u.id] = u.name or u.email
     funders_list = [
         {"id": uid, "name": name}
         for uid, name in sorted(funders_map.items(), key=lambda x: x[1].lower())
@@ -340,7 +340,7 @@ async def list_projects_with_stats(
                 if link.user is not None and link.user.role == UserRole.EXECUTIVE
             ],
             "funder_names": [
-                (link.user.full_name or link.user.email)
+                (link.user.name or link.user.email)
                 for link in (p.user_links or [])
                 if link.user is not None and link.user.role == UserRole.EXECUTIVE
             ],
