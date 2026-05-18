@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
-import { ArrowDownLeft, ArrowUpRight, Plus, Search, Wallet, X } from "lucide-react"
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Plus, Search, Wallet, X } from "lucide-react"
 import { useTransaction, useTransactions, type TransactionListParams } from "@/hooks/useTransactions"
 import { useProjects } from "@/hooks/useProjects"
 import { useCategories } from "@/hooks/useCategories"
@@ -10,6 +10,7 @@ import { usePageTitle } from "@/hooks/usePageTitle"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
+import { EmptyState } from "@/components/data/EmptyState"
 import { ErrorState } from "@/components/data/ErrorState"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -294,10 +295,28 @@ export function TransactionsListPage() {
             isLoading={txQuery.isLoading}
             columns={columns}
             onItemClick={(t) => setSelectedId(t.id)}
-            emptyMessage={
-              statusFilter !== "ALL" || typeFilter !== "ALL"
-                ? "Tidak ada transaksi yang cocok dengan filter."
-                : "Belum ada transaksi."
+            emptyState={
+              statusFilter !== "ALL" || typeFilter !== "ALL" || projectFilter.length > 0 || dateFrom || dateTo || q ? (
+                <EmptyState
+                  icon={Search}
+                  title="Tidak ada hasil"
+                  description="Coba ubah filter atau hapus pencarian."
+                  tone="neutral"
+                  compact
+                />
+              ) : (
+                <EmptyState
+                  icon={ArrowLeftRight}
+                  title="Belum ada transaksi"
+                  description="Mulai catat pemasukan / pengeluaran pertama. Setelah itu lakukan submit ke admin untuk verifikasi."
+                  actionLabel="Tambah Transaksi"
+                  onAction={() => {
+                    setEditTarget(null)
+                    setFormOpen(true)
+                  }}
+                  tone="neutral"
+                />
+              )
             }
             renderCard={(t) => (
               <TransactionCard

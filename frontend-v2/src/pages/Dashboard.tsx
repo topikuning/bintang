@@ -17,6 +17,7 @@ import { useGlobalDashboard } from "@/hooks/useDashboard"
 import { useProjectFilters } from "@/hooks/useProjectsStats"
 import { usePageTitle } from "@/hooks/usePageTitle"
 import { MultiCombobox } from "@/components/forms/MultiCombobox"
+import { EmptyState } from "@/components/data/EmptyState"
 import { ErrorState } from "@/components/data/ErrorState"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
 import { CashflowChart } from "@/components/charts/CashflowChart"
@@ -301,16 +302,22 @@ function GlobalDashboard() {
 
       {/* Ringkasan per proyek */}
       <Section title="Ringkasan per Proyek" icon={FolderKanban}>
-        <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-          {sortedProjects.length === 0 && (
-            <div className="col-span-full rounded-md border border-dashed bg-surface-muted p-6 text-center text-sm text-ink-500">
-              Belum ada proyek aktif.
-            </div>
-          )}
-          {sortedProjects.map((p) => (
-            <ProjectSummaryCard key={p.id} project={p} />
-          ))}
-        </div>
+        {sortedProjects.length === 0 ? (
+          <EmptyState
+            icon={FolderKanban}
+            title="Belum ada proyek aktif"
+            description="Mulai dengan membuat proyek baru atau aktifkan proyek yang ada di Hub Proyek."
+            actionLabel="Buka Hub Proyek"
+            to="/projects"
+            tone="neutral"
+          />
+        ) : (
+          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+            {sortedProjects.map((p) => (
+              <ProjectSummaryCard key={p.id} project={p} />
+            ))}
+          </div>
+        )}
       </Section>
     </Page>
   )

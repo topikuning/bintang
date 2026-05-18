@@ -13,6 +13,9 @@ interface AdaptiveDataViewProps<T> {
   /** Click handler utk row (desktop) / card (mobile). */
   onItemClick?: (item: T) => void
   emptyMessage?: string
+  /** Custom empty state -- override `emptyMessage`. Pakai utk EmptyState
+   * komponen rich (icon + CTA), bukan sekedar plain text. */
+  emptyState?: React.ReactNode
   /** Override -- paksa render mode tertentu, mis. utk halaman yg
       table-only di semua breakpoint. */
   forceMode?: "grid" | "card"
@@ -31,6 +34,7 @@ export function AdaptiveDataView<T>({
   renderCard,
   onItemClick,
   emptyMessage,
+  emptyState,
   forceMode,
   gridFooter,
   getRowId,
@@ -46,6 +50,7 @@ export function AdaptiveDataView<T>({
         items={data}
         isLoading={isLoading}
         emptyMessage={emptyMessage}
+        emptyState={emptyState}
         renderItem={(item, idx) => (
           <div onClick={onItemClick ? () => onItemClick(item) : undefined}>
             {renderCard(item, idx)}

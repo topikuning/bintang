@@ -8,6 +8,8 @@ interface CardListProps<T> {
   /** Custom key extractor (default: pakai `id` field). */
   keyExtractor?: (item: T, index: number) => string | number
   emptyMessage?: string
+  /** Override -- pakai rich EmptyState component. Menang dari emptyMessage. */
+  emptyState?: React.ReactNode
   className?: string
 }
 
@@ -17,6 +19,7 @@ export function CardList<T>({
   renderItem,
   keyExtractor,
   emptyMessage = "Tidak ada data.",
+  emptyState,
   className,
 }: CardListProps<T>) {
   if (isLoading) {
@@ -30,6 +33,9 @@ export function CardList<T>({
   }
 
   if (items.length === 0) {
+    if (emptyState) {
+      return <div className={className}>{emptyState}</div>
+    }
     return (
       <div
         className={cn(
