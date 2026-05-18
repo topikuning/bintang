@@ -8,6 +8,8 @@ import {
   useCreateInvoice,
   useUpdateInvoice,
   type InvoiceCreateInput,
+  useUploadInvoiceAttachment,
+  useLinkInvoiceAttachment,
 } from "@/hooks/useInvoiceMutations"
 import type { Invoice, InvoiceType } from "@/types/api"
 import { Button } from "@/components/ui/button"
@@ -17,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { toast } from "@/components/ui/sonner"
 import { AmountInput } from "@/components/forms/AmountInput"
+import { AttachmentUploader } from "@/components/forms/AttachmentUploader"
 import { DateInput } from "@/components/forms/DateInput"
 import { ProjectPicker } from "@/components/forms/ProjectPicker"
 import { VendorPicker } from "@/components/forms/VendorPicker"
@@ -103,7 +106,22 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
 
   const create = useCreateInvoice()
   const update = useUpdateInvoice(invoice?.id ?? 0)
+  const upload = useUploadInvoiceAttachment()
+  const link = useLinkInvoiceAttachment()
   const [submitting, setSubmitting] = useState(false)
+  // After CREATE -> switch ke attachment phase (sama dgn TransactionForm).
+  const [justCreatedInv, setJustCreatedInv] = useState<Invoice | null>(null)
+
+  useEffect(() => {
+    if (!open) setJustCreatedInv(null)
+  }, [open])
+
+  const finishAndClose = () => {
+    const saved = justCreatedInv
+    setJustCreatedInv(null)
+    onClose()
+    if (saved) onSaved?.(saved)
+  }
 
   // Live total
   const items = watch("items") ?? []
@@ -139,18 +157,20 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
           unit_price: it.unit_price,
         })),
       }
-      let saved: Invoice
       if (isEdit) {
-        saved = await update.mutateAsync(payload)
+        const saved = await update.mutateAsync(payload)
         toast.success("Invoice diperbarui")
+        onClose()
+        onSaved?.(saved)
       } else {
-        saved = await create.mutateAsync(payload)
-        toast.success("Invoice dibuat", {
-          description: "Status awal: DRAFT. Klik Terbitkan setelah final.",
+        const saved = await create.mutateAsync(payload)
+        toast.success("Invoice tersimpan", {
+          description: "Lanjut tambah bukti, atau klik Selesai.",
         })
+        // Switch ke attachment phase -- user langsung upload bukti tanpa
+        // harus tutup form + buka detail (konsisten dgn TransactionForm).
+        setJustCreatedInv(saved)
       }
-      onClose()
-      onSaved?.(saved)
     } catch (err) {
       toast.error(isEdit ? "Gagal memperbarui" : "Gagal membuat invoice", {
         description: apiErrorMessage(err),
@@ -163,7 +183,7 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
   const currentType = watch("type") as InvoiceType
 
   return (
-    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+    <Sheet open={open} onOpenChange={(v) => !v && (justCreatedInv ? finishAndClose() : onClose())}>
       <SheetContent
         side={bp === "mobile" ? "full" : "right"}
         className={
@@ -176,17 +196,27 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
         <SheetHeader className="border-b py-3 flex-row items-center justify-between gap-3 space-y-0 sticky top-0 bg-surface z-10">
           <button
             type="button"
-            onClick={onClose}
+            onClick={justCreatedInv ? finishAndClose : onClose}
             className="text-sm font-medium text-ink-600 hover:text-ink-900"
           >
-            Batal
+            {justCreatedInv ? "Selesai" : "Batal"}
           </button>
           <SheetTitle className="text-center flex-1">
-            {isEdit ? "Edit Invoice" : "Tambah Invoice"}
+            {justCreatedInv
+              ? `Tambah Bukti — Invoice #${justCreatedInv.id}`
+              : isEdit ? "Edit Invoice" : "Tambah Invoice"}
           </SheetTitle>
           <div className="w-12" />
         </SheetHeader>
 
+        {justCreatedInv ? (
+          <InvoiceAttachmentPhase
+            invoice={justCreatedInv}
+            upload={upload}
+            link={link}
+            onFinish={finishAndClose}
+          />
+        ) : (
         <form
           onSubmit={handleSubmit(onSubmit)}
           className="flex flex-col flex-1 overflow-hidden"
@@ -451,8 +481,64 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
             </Button>
           </div>
         </form>
+        )}
       </SheetContent>
     </Sheet>
+  )
+}
+
+interface InvoiceAttachmentPhaseProps {
+  invoice: Invoice
+  upload: ReturnType<typeof useUploadInvoiceAttachment>
+  link: ReturnType<typeof useLinkInvoiceAttachment>
+  onFinish: () => void
+}
+
+function InvoiceAttachmentPhase({
+  invoice,
+  upload,
+  link,
+  onFinish,
+}: InvoiceAttachmentPhaseProps) {
+  return (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div className="rounded-md border border-success-200 bg-success-50 p-3 text-[13px] text-success-800">
+          Invoice <span className="font-mono font-semibold">#{invoice.id}</span>{" "}
+          tersimpan sebagai DRAFT. Tambah bukti (file/link), atau klik{" "}
+          <span className="font-semibold">Selesai</span> untuk tutup.
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-ink-900 mb-2">
+            Bukti Invoice
+          </h3>
+          <AttachmentUploader
+            uploadFile={(file, onProgress) =>
+              upload
+                .mutateAsync({ invoiceId: invoice.id, file, onProgress })
+                .then(() => undefined)
+            }
+            linkExternal={(url, label) =>
+              link
+                .mutateAsync({ invoiceId: invoice.id, url, label })
+                .then(() => undefined)
+            }
+            isLinking={link.isPending}
+          />
+        </div>
+
+        <p className="text-[11px] text-ink-500">
+          Tip: bisa skip dulu, tambah bukti dari detail invoice kapan saja.
+        </p>
+      </div>
+
+      <div className="border-t bg-surface px-5 py-3 flex gap-2 pb-safe sticky bottom-0">
+        <Button onClick={onFinish} className="flex-1">
+          Selesai
+        </Button>
+      </div>
+    </div>
   )
 }
 
