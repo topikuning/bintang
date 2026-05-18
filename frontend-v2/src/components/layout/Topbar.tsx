@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { ArrowLeftRight, ClipboardList, Receipt, Search, X } from "lucide-react"
+import { NotificationBell } from "./NotificationBell"
 import { UserMenu } from "./UserMenu"
 import { cn } from "@/lib/utils"
 
@@ -60,6 +61,7 @@ export function Topbar({ title, leftSlot, showSearch = true }: TopbarProps) {
         </>
       )}
 
+      <NotificationBell />
       <UserMenu />
 
       {showSearch && mobileOpen && (
