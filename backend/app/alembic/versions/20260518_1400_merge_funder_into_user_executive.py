@@ -47,10 +47,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def _hash_random_password() -> str:
     """Generate placeholder password hash. Unguessable -- user wajib
-    minta admin reset via Master User sebelum bisa login."""
-    from passlib.context import CryptContext
-    ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    return ctx.hash(secrets.token_urlsafe(32))
+    minta admin reset via Master User sebelum bisa login.
+
+    Pakai `bcrypt` langsung (dep eksplisit di pyproject.toml).
+    Sebelumnya: passlib.context.CryptContext -- TIDAK ter-install di
+    container, migration crash di production. Lihat
+    app/core/security.py utk pattern yg konsisten dgn app runtime.
+    """
+    import bcrypt
+    raw = secrets.token_urlsafe(32).encode("utf-8")
+    return bcrypt.hashpw(raw, bcrypt.gensalt()).decode("utf-8")
 
 
 def upgrade() -> None:
