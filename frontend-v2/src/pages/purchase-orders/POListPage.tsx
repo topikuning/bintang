@@ -4,6 +4,7 @@ import { CheckCircle2, Clock, Plus, ShoppingCart, XCircle } from "lucide-react"
 import { usePO, usePOs, type POListParams } from "@/hooks/usePOs"
 import { useProjects } from "@/hooks/useProjects"
 import { MultiProjectPicker } from "@/components/forms/MultiProjectPicker"
+import { DateRangeFilter } from "@/components/forms/DateRangeFilter"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
@@ -74,14 +75,28 @@ export function POListPage() {
       ? (urlStatus as POStatus)
       : statusFilter === "ALL" ? undefined : statusFilter
 
+  // Date range filter di URL state.
+  const dateFrom = searchParams.get("date_from") || null
+  const dateTo = searchParams.get("date_to") || null
+  const setDateRange = (next: { from: string | null; to: string | null }) => {
+    const u = new URLSearchParams(searchParams)
+    if (next.from) u.set("date_from", next.from)
+    else u.delete("date_from")
+    if (next.to) u.set("date_to", next.to)
+    else u.delete("date_to")
+    setSearchParams(u, { replace: true })
+  }
+
   const params: POListParams = useMemo(
     () => ({
       page,
       size,
       project_id: projectFilter.length > 0 ? projectFilter : undefined,
       status: effectiveStatus,
+      date_from: dateFrom ?? undefined,
+      date_to: dateTo ?? undefined,
     }),
-    [page, size, projectFilter, effectiveStatus],
+    [page, size, projectFilter, effectiveStatus, dateFrom, dateTo],
   )
 
   const poQuery = usePOs(params)
@@ -194,6 +209,14 @@ export function POListPage() {
               />
             </div>
           </div>
+          <DateRangeFilter
+            from={dateFrom}
+            to={dateTo}
+            onChange={(next) => {
+              setDateRange(next)
+              setPage(1)
+            }}
+          />
           <FilterChips
             label="Status"
             value={statusFilter}

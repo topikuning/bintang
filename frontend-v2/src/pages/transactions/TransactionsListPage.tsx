@@ -5,6 +5,7 @@ import { useTransaction, useTransactions, type TransactionListParams } from "@/h
 import { useProjects } from "@/hooks/useProjects"
 import { useCategories } from "@/hooks/useCategories"
 import { MultiProjectPicker } from "@/components/forms/MultiProjectPicker"
+import { DateRangeFilter } from "@/components/forms/DateRangeFilter"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
@@ -67,6 +68,18 @@ export function TransactionsListPage() {
   // Reactive: berubah saat user search lagi dr Topbar tanpa reload.
   const q = searchParams.get("q")?.trim() ?? ""
 
+  // Date range filter -- URL state (shareable/bookmarkable).
+  const dateFrom = searchParams.get("date_from") || null
+  const dateTo = searchParams.get("date_to") || null
+  const setDateRange = (next: { from: string | null; to: string | null }) => {
+    const u = new URLSearchParams(searchParams)
+    if (next.from) u.set("date_from", next.from)
+    else u.delete("date_from")
+    if (next.to) u.set("date_to", next.to)
+    else u.delete("date_to")
+    setSearchParams(u, { replace: true })
+  }
+
   // Deep link override: ?status=DRAFT & ?type=OUT dari ProjectDashboard
   // drilldown link. Selain itu pakai filter chip state.
   const urlStatus = searchParams.get("status")
@@ -88,8 +101,10 @@ export function TransactionsListPage() {
       status: effectiveStatus,
       type: effectiveType,
       q: q || undefined,
+      date_from: dateFrom ?? undefined,
+      date_to: dateTo ?? undefined,
     }),
-    [page, size, projectFilter, effectiveStatus, effectiveType, q],
+    [page, size, projectFilter, effectiveStatus, effectiveType, q, dateFrom, dateTo],
   )
 
   // Reset ke page 1 kalau query/filter berubah.
@@ -242,6 +257,14 @@ export function TransactionsListPage() {
               />
             </div>
           </div>
+          <DateRangeFilter
+            from={dateFrom}
+            to={dateTo}
+            onChange={(next) => {
+              setDateRange(next)
+              setPage(1)
+            }}
+          />
           <FilterChips
             label="Arah"
             value={typeFilter}

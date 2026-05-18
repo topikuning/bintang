@@ -4,6 +4,7 @@ import { Clock, FileMinus, FilePlus, Plus, Receipt, Search, X } from "lucide-rea
 import { useInvoice, useInvoices, type InvoiceListParams } from "@/hooks/useInvoices"
 import { useProjects } from "@/hooks/useProjects"
 import { MultiProjectPicker } from "@/components/forms/MultiProjectPicker"
+import { DateRangeFilter } from "@/components/forms/DateRangeFilter"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
@@ -73,6 +74,18 @@ export function InvoicesListPage() {
   // q dipasok via URL (dr Topbar global search /invoices?q=foo).
   const q = searchParams.get("q")?.trim() ?? ""
 
+  // Date range filter di URL state.
+  const dateFrom = searchParams.get("date_from") || null
+  const dateTo = searchParams.get("date_to") || null
+  const setDateRange = (next: { from: string | null; to: string | null }) => {
+    const u = new URLSearchParams(searchParams)
+    if (next.from) u.set("date_from", next.from)
+    else u.delete("date_from")
+    if (next.to) u.set("date_to", next.to)
+    else u.delete("date_to")
+    setSearchParams(u, { replace: true })
+  }
+
   // Deep link filter: status/type via URL bisa override (link dari
   // ProjectDashboard stat cards "Invoice Belum Lunas" dll).
   const urlStatus = searchParams.get("status")
@@ -94,8 +107,10 @@ export function InvoicesListPage() {
       status: effectiveStatus,
       type: effectiveType,
       q: q || undefined,
+      date_from: dateFrom ?? undefined,
+      date_to: dateTo ?? undefined,
     }),
-    [page, size, projectFilter, effectiveStatus, effectiveType, q],
+    [page, size, projectFilter, effectiveStatus, effectiveType, q, dateFrom, dateTo],
   )
 
   useEffect(() => {
@@ -272,6 +287,14 @@ export function InvoicesListPage() {
               />
             </div>
           </div>
+          <DateRangeFilter
+            from={dateFrom}
+            to={dateTo}
+            onChange={(next) => {
+              setDateRange(next)
+              setPage(1)
+            }}
+          />
           <FilterChips
             label="Tipe"
             value={typeFilter}

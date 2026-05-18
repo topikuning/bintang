@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate, useParams } from "react-router-dom"
 import { AppShell } from "@/components/layout/AppShell"
 import { RequireAuth } from "@/components/auth/RequireAuth"
 import { LoginPage } from "@/pages/Login"
+import { NotFoundPage } from "@/pages/NotFound"
 import { RouteErrorBoundary } from "@/components/data/RouteErrorBoundary"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -190,5 +191,7 @@ export const router = createBrowserRouter([
       },
     ],
   },
-  { path: "*", element: <Navigate to="/dashboard" replace /> },
+  // Catch-all 404 -- tampilkan NotFound (BUKAN silent redirect ke dashboard)
+  // supaya user tahu URL-nya salah, bukan crash atau "mysteriously redirected".
+  { path: "*", element: <NotFoundPage /> },
 ])
