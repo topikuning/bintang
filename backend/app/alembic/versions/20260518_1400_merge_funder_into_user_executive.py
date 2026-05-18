@@ -72,7 +72,11 @@ def upgrade() -> None:
         # User.name max 120 chars vs funders.name max 200 -- truncate
         # supaya tdk crash di INSERT (jarang, tapi safe).
         funder_name = (f[1] or f"Pendana {funder_id}")[:120]
-        email = f"funder-{funder_id}@bintang.local"
+        # `.example` adalah RFC 2606 reserved TLD utk documentation --
+        # di-accept pydantic EmailStr (tidak seperti `.local` yg
+        # special-use RFC 6762 dan di-reject sebagai "reserved name").
+        # Lihat migration a7e9f3c8b2d1 utk fix data lama.
+        email = f"funder-{funder_id}@bintang.example"
         # Pendana mungkin sudah ada sbg user (jarang, tapi safe-guard).
         existing = conn.execute(
             sa.text("SELECT id FROM users WHERE email = :em"),
