@@ -1,22 +1,14 @@
 import { useState } from "react"
 import type { ColumnDef } from "@tanstack/react-table"
-import { ExternalLink, FolderKanban, Loader2, Pencil, Trash2 } from "lucide-react"
+import { ExternalLink, FolderKanban, Pencil, Trash2 } from "lucide-react"
 import { Link as RouterLink } from "react-router-dom"
 import { useProjects } from "@/hooks/useProjects"
 import { useDeleteProject } from "@/hooks/useProjectMutations"
 import { useCompanies } from "@/hooks/useCompanies"
 import { MasterPageShell } from "@/components/master/MasterPageShell"
 import { ProjectForm, PROJECT_STATUS_LABEL } from "@/components/domain/project/ProjectForm"
+import { ConfirmDeleteDialog } from "@/components/data/ConfirmDeleteDialog"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { toast } from "@/components/ui/sonner"
 import { fmtCompact, fmtIDR } from "@/lib/format"
 import { apiErrorMessage } from "@/lib/api"
@@ -222,27 +214,34 @@ export function ProjectsPage() {
         project={target}
       />
 
-      <Dialog open={!!confirmDel} onOpenChange={(o) => !o && setConfirmDel(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Hapus proyek?</DialogTitle>
-            <DialogDescription>
-              <strong>{confirmDel?.name}</strong> akan dihapus. Transaksi/Invoice/PO
-              yang menunjuk proyek ini tidak akan ikut terhapus, tetapi referensi
-              proyeknya jadi orphan.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setConfirmDel(null)}>
-              Batal
-            </Button>
-            <Button variant="danger" onClick={handleDelete} disabled={del.isPending}>
-              {del.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Ya, Hapus
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDeleteDialog
+        open={!!confirmDel}
+        onOpenChange={(o) => !o && setConfirmDel(null)}
+        title="Hapus proyek?"
+        description={
+          <>
+            <strong>{confirmDel?.name}</strong> akan dihapus. Transaksi,
+            invoice, dan PO yang menunjuk proyek ini{" "}
+            <strong>tidak akan ikut terhapus</strong> -- referensi
+            proyeknya jadi orphan. Tindakan ini tidak bisa di-undo via UI.
+          </>
+        }
+        confirmLabel="Ya, Hapus Proyek"
+        requireTypeText={confirmDel?.code}
+        retypeLabel={
+          confirmDel ? (
+            <>
+              Ketik kode proyek{" "}
+              <code className="font-mono bg-ink-100 px-1.5 py-0.5 rounded text-[11px]">
+                {confirmDel.code}
+              </code>{" "}
+              untuk konfirmasi
+            </>
+          ) : undefined
+        }
+        isPending={del.isPending}
+        onConfirm={handleDelete}
+      />
     </>
   )
 }
