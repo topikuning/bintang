@@ -340,9 +340,14 @@ function ProjectSummaryCard({ project: p }: { project: GlobalDashboardProjectSum
   return (
     <Link
       to={`/projects/${p.id}`}
-      className="block w-full rounded-md border bg-surface p-3 text-left transition-colors hover:border-brand-300 hover:bg-brand-50/30"
+      // `overflow-hidden` + `min-w-0` di card root supaya kalau ada
+      // child dgn intrinsic min-width >cell (mis. judul project panjang
+      // 50+ char tanpa space), card tetap clipped & tdk push grid cell
+      // jadi lebih lebar dari viewport. Sebelumnya: judul terpotong di
+      // luar viewport tanpa ellipsis di mobile.
+      className="block w-full min-w-0 overflow-hidden rounded-md border bg-surface p-3 text-left transition-colors hover:border-brand-300 hover:bg-brand-50/30"
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-2 min-w-0">
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-ink-900 truncate">{p.name}</div>
           <div className="text-[11px] text-ink-500 truncate font-mono">
@@ -353,31 +358,35 @@ function ProjectSummaryCard({ project: p }: { project: GlobalDashboardProjectSum
         <HealthBadge status={p.health} />
       </div>
 
+      {/* min-w-0 di setiap grid cell supaya nomor panjang (mis.
+          "Rp 1.234,5 jt") shrink, bukan push grid cell jadi lebih lebar
+          dari 1fr. truncate fallback supaya tetap rapi kalau super
+          panjang. */}
       <div className="mt-2 grid grid-cols-3 gap-2">
-        <div>
+        <div className="min-w-0">
           <div className="text-[10px] uppercase tracking-wider text-ink-500">Masuk</div>
           <div
             data-num
-            className="font-mono text-[13px] font-semibold text-success-700 [font-variant-numeric:tabular-nums]"
+            className="font-mono text-[13px] font-semibold text-success-700 [font-variant-numeric:tabular-nums] truncate"
           >
             {fmtCompact(p.total_in)}
           </div>
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="text-[10px] uppercase tracking-wider text-ink-500">Keluar</div>
           <div
             data-num
-            className="font-mono text-[13px] font-semibold text-danger-700 [font-variant-numeric:tabular-nums]"
+            className="font-mono text-[13px] font-semibold text-danger-700 [font-variant-numeric:tabular-nums] truncate"
           >
             {fmtCompact(p.total_out)}
           </div>
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="text-[10px] uppercase tracking-wider text-ink-500">Saldo</div>
           <div
             data-num
             className={cn(
-              "font-mono text-[13px] font-semibold [font-variant-numeric:tabular-nums]",
+              "font-mono text-[13px] font-semibold [font-variant-numeric:tabular-nums] truncate",
               minus ? "text-danger-700" : "text-ink-900",
             )}
           >
@@ -516,7 +525,14 @@ function WarningBanner({ warnings }: { warnings: string[] }) {
 // Helpers
 // ============================================================
 function Page({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-col gap-4 p-3 sm:p-5 lg:p-6">{children}</div>
+  // `min-w-0` + `overflow-x-hidden` defensif: kalau ada child (tabel,
+  // chart, badge dgn long-text) yg punya min-width >viewport, page
+  // tetap clipped & tdk push card lain jadi overflow.
+  return (
+    <div className="flex flex-col gap-4 p-3 sm:p-5 lg:p-6 min-w-0 overflow-x-hidden">
+      {children}
+    </div>
+  )
 }
 
 function Section({
