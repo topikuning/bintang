@@ -8,7 +8,6 @@ import {
   BarChart3,
   Building2,
   ClipboardList,
-  Coins,
   Database,
   FolderKanban,
   HardDrive,
@@ -76,7 +75,8 @@ export const DESKTOP_NAV: NavGroup[] = [
       { id: "master-companies", label: "Perusahaan", to: "/master/companies", icon: Building2 },
       { id: "master-categories", label: "Kategori", to: "/master/categories", icon: Tag },
       { id: "master-vendors-clients", label: "Vendor / Klien", to: "/master/vendors-clients", icon: ClipboardList },
-      { id: "master-funders", label: "Pendana", to: "/master/funders", icon: Coins },
+      // NOTE: "Pendana" merged ke User EXECUTIVE -- gunakan shortcut filter
+      // di Master Pengguna (?role=EXECUTIVE).
       { id: "master-users", label: "Pengguna", to: "/master/users", icon: Users },
     ],
   },
@@ -126,7 +126,8 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
       { id: "master-companies", label: "Perusahaan", to: "/master/companies", icon: Building2 },
       { id: "master-categories", label: "Kategori", to: "/master/categories", icon: Tag },
       { id: "master-vendors-clients", label: "Vendor / Klien", to: "/master/vendors-clients", icon: ClipboardList },
-      { id: "master-funders", label: "Pendana", to: "/master/funders", icon: Coins },
+      // NOTE: "Pendana" merged ke User EXECUTIVE -- gunakan shortcut filter
+      // di Master Pengguna (?role=EXECUTIVE).
       { id: "master-users", label: "Pengguna", to: "/master/users", icon: Users },
     ],
   },

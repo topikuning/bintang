@@ -39,7 +39,8 @@ MENU_REGISTRY: list[dict[str, Any]] = [
     {"id": "master-companies", "label": "Master Perusahaan", "group": "master"},
     {"id": "master-categories", "label": "Master Kategori", "group": "master"},
     {"id": "master-vendors-clients", "label": "Master Vendor/Klien", "group": "master"},
-    {"id": "master-funders", "label": "Master Pendana", "group": "master"},
+    # NOTE: master-funders dihapus -- pendana merge ke users (role=EXECUTIVE).
+    # Kelola lewat master-users dgn filter role.
     {"id": "master-users", "label": "Master Pengguna", "group": "master"},
     # Sistem
     {"id": "imports", "label": "Import Data", "group": "sistem"},

@@ -306,10 +306,6 @@ class Project(TimestampMixin, Base):
         back_populates="project", cascade="all,delete-orphan",
         order_by="ProjectAttachment.id",
     )
-    funders: Mapped[list["ProjectFunder"]] = relationship(
-        back_populates="project", cascade="all,delete-orphan",
-        order_by="ProjectFunder.id",
-    )
 
 
 class ProjectAttachment(TimestampMixin, Base):
@@ -334,38 +330,9 @@ class ProjectAttachment(TimestampMixin, Base):
     project: Mapped[Project] = relationship(back_populates="attachments")
 
 
-class Funder(TimestampMixin, Base):
-    """Master pendana proyek (APBN/APBD/Swasta/dll). M2M ke Project."""
-    __tablename__ = "funders"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False, index=True)
-
-    projects: Mapped[list["ProjectFunder"]] = relationship(
-        back_populates="funder", cascade="all,delete-orphan"
-    )
-
-
-class ProjectFunder(TimestampMixin, Base):
-    """Link table Project <-> Funder (many-to-many).
-    Many-to-many supaya 1 proyek bisa multi pendana + 1 pendana di banyak
-    proyek (filter cross-project per pendana di hub).
-    """
-    __tablename__ = "project_funders"
-    __table_args__ = (
-        UniqueConstraint("project_id", "funder_id", name="uq_project_funder"),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    funder_id: Mapped[int] = mapped_column(
-        ForeignKey("funders.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-
-    project: Mapped[Project] = relationship(back_populates="funders")
-    funder: Mapped[Funder] = relationship(back_populates="projects")
+# NOTE: Funder + ProjectFunder dihapus -- entitas pendana sekarang
+# disimpan sbg User(role=EXECUTIVE) dgn link via ProjectUser. Lihat
+# migration 20260518_1400_merge_funder_into_user_executive.
 
 
 class ProjectUser(TimestampMixin, Base):

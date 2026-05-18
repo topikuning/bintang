@@ -106,7 +106,9 @@ async def global_dashboard(
     q: str | None = None,
     company_id: int | None = None,
     # Multi-value filters. FastAPI parse repeated ?location=A&location=B -> list.
-    # Case-insensitive match (lowercase). Funder pakai JOIN ke project_funders.
+    # Case-insensitive match (lowercase). Pendana = User(EXECUTIVE) JOIN
+    # lewat project_users (sebelumnya project_funders, lihat migration
+    # 20260518_1400).
     location: list[str] | None = Query(None),
     client_name: list[str] | None = Query(None),
     funder_id: list[int] | None = Query(None),
@@ -153,11 +155,17 @@ async def global_dashboard(
     if client_name:
         proj_q = proj_q.where(func.lower(Project.client_name).in_([s.lower() for s in client_name]))
     if funder_id:
-        # JOIN lewat project_funders. distinct() supaya proyek dgn multi
-        # funder yg semua match tdk dobel.
-        from app.models.models import ProjectFunder as _PF
-        proj_q = proj_q.join(_PF, _PF.project_id == Project.id).where(
-            _PF.funder_id.in_(funder_id)
+        # Pendana sekarang = User(role=EXECUTIVE) ter-link via project_users.
+        # JOIN ke users supaya filter role-nya benar (jangan ke-include
+        # PROJECT_ADMIN yg kebetulan user_id-nya match).
+        from app.models.models import ProjectUser as _PU
+        from app.models.models import User as _User
+        from app.models.models import UserRole as _UR
+        proj_q = proj_q.join(_PU, _PU.project_id == Project.id).join(
+            _User, _User.id == _PU.user_id
+        ).where(
+            _PU.user_id.in_(funder_id),
+            _User.role == _UR.EXECUTIVE,
         ).distinct()
     projects = (await db.execute(proj_q)).scalars().all()
     project_ids = [p.id for p in projects]

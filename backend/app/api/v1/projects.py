@@ -17,11 +17,9 @@ from app.core.deps import (
 from app.db.session import get_db
 from app.models.models import (
     AuditAction,
-    Funder,
     Project,
     ProjectAttachment,
     ProjectDocType,
-    ProjectFunder,
     ProjectStatus,
     ProjectUser,
     User,
@@ -54,6 +52,10 @@ def _to_out(p: Project) -> ProjectOut:
     """Serialize Project + isi company_name + nama pengaju/approver +
     funder_ids/funder_names dari relasi (perlu sudah eager-loaded).
 
+    Pendana = User(role=EXECUTIVE) ter-link via project_users. Field
+    `funder_*` di FE tetap dipertahankan utk semantic clarity & backward-
+    compat, walaupun source data sekarang dari tabel users.
+
     approved_at = datetime di model_validate -> Pydantic handle serialize
     ke ISO string otomatis di response JSON dump.
     """
@@ -65,36 +67,26 @@ def _to_out(p: Project) -> ProjectOut:
     approved_by = getattr(p, "_approved_by_user", None)
     if approved_by is not None:
         out.approved_by_name = approved_by.name
-    # Funders dr relasi project_funders (selectinload-ed).
-    funder_links = getattr(p, "funders", []) or []
-    out.funder_ids = [pf.funder_id for pf in funder_links]
-    # Bulk-loaded di endpoint via _attach_funder_names utk dapat name.
-    funder_names_map: dict[int, str] = getattr(p, "_funder_names_map", {})
-    out.funder_names = [
-        funder_names_map.get(pf.funder_id, "") for pf in funder_links
-    ]
+    # Pendana = User(role=EXECUTIVE) ter-link via project_users
+    # (selectinload-ed di endpoint). Filter di Python supaya project_users
+    # row utk PROJECT_ADMIN tdk ke-include sbg "pendana".
+    funder_ids: list[int] = []
+    funder_names: list[str] = []
+    for link in getattr(p, "user_links", []) or []:
+        u = getattr(link, "user", None)
+        if u is None or u.role != UserRole.EXECUTIVE:
+            continue
+        funder_ids.append(u.id)
+        funder_names.append(u.full_name or u.email)
+    out.funder_ids = funder_ids
+    out.funder_names = funder_names
     return out
 
 
-async def _attach_funder_names(db: AsyncSession, projects: list[Project]) -> None:
-    """Bulk-load nama Funder utk semua proyek, tempel sbg dict in-memory
-    supaya _to_out bisa pakai tanpa N+1 query."""
-    fids: set[int] = set()
-    for p in projects:
-        for pf in getattr(p, "funders", []) or []:
-            fids.add(pf.funder_id)
-    if not fids:
-        return
-    res = await db.execute(select(Funder).where(Funder.id.in_(fids)))
-    name_map = {f.id: f.name for f in res.scalars().all()}
-    for p in projects:
-        p._funder_names_map = name_map
-
-
 async def _attach_relations(db: AsyncSession, projects: list[Project]) -> None:
-    """Convenience: attach proposal users + funder names utk list proyek."""
+    """Convenience: attach proposal users utk list proyek. Funder names
+    sudah ter-include via selectinload(Project.user_links).user."""
     await _attach_proposal_users(db, projects)
-    await _attach_funder_names(db, projects)
 
 
 async def _attach_proposal_users(db: AsyncSession, projects: list[Project]) -> None:
@@ -155,7 +147,10 @@ async def list_projects(
         stmt = stmt.where(Project.company_id == company_id)
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     stmt = (
-        stmt.options(selectinload(Project.company), selectinload(Project.funders))
+        stmt.options(
+            selectinload(Project.company),
+            selectinload(Project.user_links).selectinload(ProjectUser.user),
+        )
         .order_by(Project.id.desc())
         .offset((page - 1) * size)
         .limit(size)
@@ -171,9 +166,12 @@ async def list_project_filters(
     user: User = Depends(get_current_user),
 ) -> dict:
     """Distinct values utk filter dropdown di hub proyek. Hormat scoping
-    user. Termasuk funders {id,name} yg tertaut ke proyek yg user akses.
+    user. Termasuk funders {id,name} -- pendana = User(role=EXECUTIVE)
+    ter-link via project_users.
     """
-    stmt = select(Project).options(selectinload(Project.funders)).where(
+    stmt = select(Project).options(
+        selectinload(Project.user_links).selectinload(ProjectUser.user)
+    ).where(
         Project.deleted_at.is_(None),
         Project.status != ProjectStatus.MENUNGGU_PERSETUJUAN,
     )
@@ -185,16 +183,18 @@ async def list_project_filters(
     projects = (await db.execute(stmt)).scalars().all()
     locations = sorted({(p.location or "").strip() for p in projects if p.location})
     clients = sorted({(p.client_name or "").strip() for p in projects if p.client_name})
-    # Funder yg tertaut ke proyek user (subset Funder table, sorted by name).
-    fids = {pf.funder_id for p in projects for pf in (p.funders or [])}
-    funders_list: list[dict] = []
-    if fids:
-        res = await db.execute(
-            select(Funder)
-            .where(Funder.id.in_(fids), Funder.deleted_at.is_(None))
-            .order_by(Funder.name)
-        )
-        funders_list = [{"id": f.id, "name": f.name} for f in res.scalars().all()]
+    # Funder yg tertaut ke proyek user (subset User EXECUTIVE, sorted by name).
+    funders_map: dict[int, str] = {}
+    for p in projects:
+        for link in (p.user_links or []):
+            u = link.user
+            if u is None or u.role != UserRole.EXECUTIVE or u.deleted_at is not None:
+                continue
+            funders_map[u.id] = u.full_name or u.email
+    funders_list = [
+        {"id": uid, "name": name}
+        for uid, name in sorted(funders_map.items(), key=lambda x: x[1].lower())
+    ]
     return {"locations": locations, "clients": clients, "funders": funders_list}
 
 
@@ -242,25 +242,24 @@ async def list_projects_with_stats(
             func.lower(Project.client_name).in_([s.lower() for s in client_name])
         )
     if funder_id:
-        # JOIN lewat project_funders + distinct() supaya proyek dgn multi
-        # funder yg ke-match tdk muncul dobel.
+        # JOIN lewat project_users -> users, filter role=EXECUTIVE.
+        # distinct() supaya proyek dgn multi pendana yg ke-match tdk dobel.
         stmt = stmt.join(
-            ProjectFunder, ProjectFunder.project_id == Project.id
-        ).where(ProjectFunder.funder_id.in_(funder_id)).distinct()
-    stmt = stmt.options(selectinload(Project.funders)).order_by(Project.id.desc())
+            ProjectUser, ProjectUser.project_id == Project.id
+        ).join(
+            User, User.id == ProjectUser.user_id
+        ).where(
+            ProjectUser.user_id.in_(funder_id),
+            User.role == UserRole.EXECUTIVE,
+        ).distinct()
+    stmt = stmt.options(
+        selectinload(Project.user_links).selectinload(ProjectUser.user)
+    ).order_by(Project.id.desc())
     projects = (await db.execute(stmt)).scalars().all()
 
     # company map
     cmap_q = select(_Company)
     cmap = {c.id: c for c in (await db.execute(cmap_q)).scalars().all()}
-    # Funder name map utk display chip di card
-    funder_ids_all = {pf.funder_id for p in projects for pf in (p.funders or [])}
-    fname_map: dict[int, str] = {}
-    if funder_ids_all:
-        fres = await db.execute(
-            select(Funder).where(Funder.id.in_(funder_ids_all))
-        )
-        fname_map = {f.id: f.name for f in fres.scalars().all()}
 
     out: list[dict] = []
     active_tx_statuses = (_TxnStatus.DRAFT, _TxnStatus.SUBMITTED, _TxnStatus.VERIFIED)
@@ -335,9 +334,15 @@ async def list_projects_with_stats(
                 "status": bstatus,
             },
             "health": health,
-            "funder_ids": [pf.funder_id for pf in (p.funders or [])],
+            # Pendana = User(role=EXECUTIVE) ter-link via project_users.
+            "funder_ids": [
+                link.user.id for link in (p.user_links or [])
+                if link.user is not None and link.user.role == UserRole.EXECUTIVE
+            ],
             "funder_names": [
-                fname_map.get(pf.funder_id, "") for pf in (p.funders or [])
+                (link.user.full_name or link.user.email)
+                for link in (p.user_links or [])
+                if link.user is not None and link.user.role == UserRole.EXECUTIVE
             ],
         })
     return out
@@ -348,7 +353,7 @@ async def _load_with_company(db: AsyncSession, pid: int) -> Project | None:
         select(Project)
         .options(
             selectinload(Project.company),
-            selectinload(Project.funders),
+            selectinload(Project.user_links).selectinload(ProjectUser.user),
         )
         .where(Project.id == pid)
     )
@@ -358,39 +363,61 @@ async def _load_with_company(db: AsyncSession, pid: int) -> Project | None:
 async def _replace_project_funders(
     db: AsyncSession, project_id: int, new_funder_ids: list[int]
 ) -> None:
-    """Replace seluruh link funder utk proyek. Validate semua ID exist,
-    drop yg lama, insert yg baru. Idempoten saat list sama dgn DB."""
+    """Replace seluruh link pendana (User role=EXECUTIVE) utk proyek.
+
+    Penting: project_users juga dipakai utk scope PROJECT_ADMIN.
+    Fungsi ini HANYA touch row dgn user.role=EXECUTIVE -- jangan
+    delete PROJECT_ADMIN assignments accidentally.
+    """
     new_set = set(int(x) for x in (new_funder_ids or []))
     if new_set:
-        # Validasi: pastikan semua ID exist & belum di-soft-delete.
-        valid = (
+        # Validasi: semua ID exist sbg User aktif dgn role EXECUTIVE.
+        valid_rows = (
             await db.execute(
-                select(Funder.id).where(
-                    Funder.id.in_(new_set), Funder.deleted_at.is_(None)
+                select(User.id).where(
+                    User.id.in_(new_set),
+                    User.role == UserRole.EXECUTIVE,
+                    User.deleted_at.is_(None),
                 )
             )
         ).scalars().all()
-        invalid = new_set - set(valid)
+        invalid = new_set - set(valid_rows)
         if invalid:
             raise HTTPException(
                 400,
-                f"funder_id_invalid: {sorted(invalid)} tidak ada / sudah dihapus",
+                f"funder_id_invalid: {sorted(invalid)} tidak ada / bukan role EXECUTIVE",
             )
-    existing = (
-        await db.execute(
-            select(ProjectFunder).where(ProjectFunder.project_id == project_id)
+
+    # Load existing EXECUTIVE links saja (jangan touch PROJECT_ADMIN).
+    existing_q = (
+        select(ProjectUser)
+        .join(User, User.id == ProjectUser.user_id)
+        .where(
+            ProjectUser.project_id == project_id,
+            User.role == UserRole.EXECUTIVE,
         )
-    ).scalars().all()
-    existing_set = {pf.funder_id for pf in existing}
-    # Drop yg sudah tdk di list baru
+    )
+    existing = (await db.execute(existing_q)).scalars().all()
+    existing_set = {link.user_id for link in existing}
+
+    # Drop EXECUTIVE link yg sudah tdk ada di list baru.
     to_drop = existing_set - new_set
-    for pf in existing:
-        if pf.funder_id in to_drop:
-            await db.delete(pf)
-    # Insert yg baru
+    for link in existing:
+        if link.user_id in to_drop:
+            await db.delete(link)
+
+    # Insert link baru. Avoid duplicate kalau user EXECUTIVE kebetulan
+    # juga sudah ter-link sbg PROJECT_ADMIN (extremely rare, tapi safe).
     to_add = new_set - existing_set
-    for fid in to_add:
-        db.add(ProjectFunder(project_id=project_id, funder_id=fid))
+    for uid in to_add:
+        dup = (await db.execute(
+            select(ProjectUser).where(
+                ProjectUser.project_id == project_id,
+                ProjectUser.user_id == uid,
+            )
+        )).scalar_one_or_none()
+        if dup is None:
+            db.add(ProjectUser(project_id=project_id, user_id=uid))
 
 
 @router.post("", response_model=ProjectOut, status_code=201)
@@ -448,7 +475,10 @@ async def list_proposal_queue(
     )
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     stmt = (
-        stmt.options(selectinload(Project.company), selectinload(Project.funders))
+        stmt.options(
+            selectinload(Project.company),
+            selectinload(Project.user_links).selectinload(ProjectUser.user),
+        )
         .order_by(Project.id.desc())
         .offset((page - 1) * size)
         .limit(size)
@@ -685,7 +715,6 @@ async def update_project(
               action=AuditAction.UPDATE, before=before, after=after_data)
     await db.commit()
     p = await _load_with_company(db, p.id)
-    await _attach_funder_names(db, [p])
     return _to_out(p)
 
 
