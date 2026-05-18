@@ -67,6 +67,23 @@ export function TransactionsListPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Transaction | null>(null)
+
+  // Deep link: ?id=N auto-open detail. Pakai pattern sama dgn POListPage
+  // dan InvoicesListPage -- baca sekali di mount, strip dari URL supaya
+  // bisa close tanpa back-loop, lalu state biasa.
+  useEffect(() => {
+    const idStr = searchParams.get("id")
+    if (idStr) {
+      const id = Number(idStr)
+      if (Number.isFinite(id) && id > 0) {
+        setSelectedId(id)
+      }
+      const next = new URLSearchParams(searchParams)
+      next.delete("id")
+      setSearchParams(next, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   // q dipasok via URL (mis. dr Topbar global search /transactions?q=foo).
   // Reactive: berubah saat user search lagi dr Topbar tanpa reload.
   const q = searchParams.get("q")?.trim() ?? ""
