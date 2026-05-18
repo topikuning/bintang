@@ -8,6 +8,7 @@ import {
 } from "@/hooks/useProjectsStats"
 import { useCompanies } from "@/hooks/useCompanies"
 import { useProposalCount } from "@/hooks/useProjectProposals"
+import { usePageTitle } from "@/hooks/usePageTitle"
 import { useAuthStore } from "@/store/auth"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -32,6 +33,7 @@ import { cn } from "@/lib/utils"
  * Master CRUD (tambah/edit/hapus) tetap di /master/projects.
  */
 export function ProjectsHubPage() {
+  usePageTitle("Hub Proyek")
   const role = useAuthStore((s) => s.user?.role)
   const isAdmin = role === "SUPERADMIN" || role === "CENTRAL_ADMIN"
   const canPropose = role !== "EXECUTIVE"

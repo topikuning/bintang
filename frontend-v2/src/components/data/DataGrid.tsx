@@ -152,8 +152,11 @@ export function DataGrid<T>({
                       onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                       className={cn(
                         "border-b last:border-b-0 transition-colors",
-                        onRowClick && "cursor-pointer hover:bg-brand-50/50",
-                        isExpanded && "bg-brand-50/30",
+                        // Hover lebih kuat (saturation + cursor + subtle shadow) supaya
+                        // user clear bahwa row clickable. Sebelumnya `brand-50/50` tipis.
+                        onRowClick &&
+                          "cursor-pointer hover:bg-brand-50 hover:shadow-[inset_2px_0_0_0] hover:shadow-brand-400",
+                        isExpanded && "bg-brand-50/40",
                       )}
                     >
                       {row.getVisibleCells().map((cell, idx) => {

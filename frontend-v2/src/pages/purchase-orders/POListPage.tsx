@@ -5,6 +5,7 @@ import { usePO, usePOs, type POListParams } from "@/hooks/usePOs"
 import { useProjects } from "@/hooks/useProjects"
 import { MultiProjectPicker } from "@/components/forms/MultiProjectPicker"
 import { DateRangeFilter } from "@/components/forms/DateRangeFilter"
+import { usePageTitle } from "@/hooks/usePageTitle"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
@@ -33,6 +34,7 @@ const STATUS_TABS: Array<{ value: StatusFilter; label: string }> = [
 ]
 
 export function POListPage() {
+  usePageTitle("Purchase Order")
   const bp = useBreakpoint()
   const [searchParams, setSearchParams] = useSearchParams()
   const [page, setPage] = useState(1)

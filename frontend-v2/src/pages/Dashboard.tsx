@@ -15,6 +15,7 @@ import {
 import { Link } from "react-router-dom"
 import { useGlobalDashboard } from "@/hooks/useDashboard"
 import { useProjectFilters } from "@/hooks/useProjectsStats"
+import { usePageTitle } from "@/hooks/usePageTitle"
 import { MultiCombobox } from "@/components/forms/MultiCombobox"
 import { ErrorState } from "@/components/data/ErrorState"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
@@ -42,6 +43,7 @@ export function DashboardPage() {
 // Global dashboard (multi-project)
 // ============================================================
 function GlobalDashboard() {
+  usePageTitle("Beranda")
   const bp = useBreakpoint()
   // Filter state -- multi-value (sesuai backend yg sdh terima list[]).
   const [locations, setLocations] = useState<string[]>([])

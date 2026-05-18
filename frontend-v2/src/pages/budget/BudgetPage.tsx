@@ -10,6 +10,7 @@ import {
   XCircle,
 } from "lucide-react"
 import { useBudgetSummary, type BudgetStatus } from "@/hooks/useBudget"
+import { usePageTitle } from "@/hooks/usePageTitle"
 import { MultiProjectPicker } from "@/components/forms/MultiProjectPicker"
 import { SummaryCard, SummaryCardGrid } from "@/components/data/SummaryCard"
 import { ErrorState } from "@/components/data/ErrorState"
@@ -26,6 +27,7 @@ const STATUS_META: Record<BudgetStatus, { label: string; tone: "success" | "warn
 }
 
 export function BudgetPage() {
+  usePageTitle("Budget vs Actual")
   const [projectFilter, setProjectFilter] = useState<number[]>([])
   const [includeNoBudget, setIncludeNoBudget] = useState(false)
 
