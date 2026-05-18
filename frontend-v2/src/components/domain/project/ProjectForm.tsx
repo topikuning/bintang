@@ -20,7 +20,7 @@ import {
   type ProjectInput,
 } from "@/hooks/useProjectMutations"
 import { useProjectDashboard } from "@/hooks/useDashboard"
-import { useFunders } from "@/hooks/useFunders"
+import { useUsersLookup } from "@/hooks/useUsers"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -248,7 +248,7 @@ export function ProjectForm({ open, onClose, project, onSaved }: ProjectFormProp
       </Field>
       <Field
         label="Pendana"
-        hint="Bisa lebih dari satu. Master di Lainnya → Pendana."
+        hint="Bisa lebih dari satu. Pendana = User dgn role EXECUTIVE (kelola di Master → Pengguna)."
       >
         <Controller
           control={control}
@@ -413,6 +413,13 @@ function Field({
   )
 }
 
+/**
+ * Picker pendana proyek = User dgn role EXECUTIVE.
+ * Source data: useUsersLookup({ role: "EXECUTIVE" }) -- endpoint
+ * accessible semua role authenticated, return minimal field.
+ * Sebelumnya: useFunders (tabel funders terpisah). Sekarang merged ke
+ * users (lihat migration 20260518_1400).
+ */
 function FunderMultiSelect({
   value,
   onChange,
@@ -420,8 +427,8 @@ function FunderMultiSelect({
   value: number[]
   onChange: (next: number[]) => void
 }) {
-  const q = useFunders()
-  const items = q.data?.items ?? []
+  const q = useUsersLookup({ role: "EXECUTIVE", limit: 500 })
+  const items = q.data ?? []
   const selected = new Set(value)
 
   const toggle = (id: number) => {
@@ -437,11 +444,15 @@ function FunderMultiSelect({
   if (items.length === 0) {
     return (
       <div className="rounded-md border border-dashed bg-surface-muted/40 p-3 text-[12px] text-ink-500">
-        Belum ada master pendana. Tambahkan dulu di menu{" "}
-        <RouterLink to="/master/funders" className="text-brand-600 hover:underline">
-          Master → Pendana
+        Belum ada user dgn role <strong>EXECUTIVE</strong>. Buat dulu di
+        menu{" "}
+        <RouterLink
+          to="/master/users?role=EXECUTIVE"
+          className="text-brand-600 hover:underline"
+        >
+          Master → Pengguna
         </RouterLink>
-        .
+        , set role <code>EXECUTIVE</code>.
       </div>
     )
   }
@@ -487,7 +498,8 @@ function FunderMultiSelect({
                 onChange={() => toggle(f.id)}
                 className="h-4 w-4 accent-brand-600"
               />
-              <span>{f.name}</span>
+              <span className="flex-1">{f.name}</span>
+              <span className="text-[10px] text-ink-500 font-mono">{f.email}</span>
             </label>
           )
         })}

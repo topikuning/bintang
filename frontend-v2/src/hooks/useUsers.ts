@@ -21,11 +21,19 @@ export interface UserLookupRow {
   id: number
   name: string
   email: string
+  role: string
 }
 
-/** Lookup user minimal info (id/name/email) -- accessible semua role.
- *  Dipakai utk picker di form (mis. penerima dana operasional). */
-export function useUsersLookup(params: { q?: string; limit?: number } = {}) {
+/** Lookup user minimal info (id/name/email/role) -- accessible semua
+ *  role authenticated. Dipakai utk picker di form (mis. penerima dana
+ *  operasional, atau pendana = role EXECUTIVE).
+ *
+ *  Optional `role` filter: lewatkan utk semua role, set "EXECUTIVE"
+ *  (atau lainnya) untuk filter ke role spesifik.
+ */
+export function useUsersLookup(
+  params: { q?: string; limit?: number; role?: string } = {},
+) {
   return useQuery({
     queryKey: ["users-lookup", params],
     queryFn: async (): Promise<UserLookupRow[]> => {

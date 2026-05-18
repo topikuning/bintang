@@ -68,18 +68,11 @@ export interface Project {
   approved_by_name?: string | null
   approved_at?: string | null
   rejection_reason?: string | null
-  // Pendana (many-to-many lewat project_funders)
+  // Pendana = User(role=EXECUTIVE) ter-link via project_users.
+  // Field name `funder_*` dipertahankan utk backward-compat & semantic
+  // domain (lihat migration 20260518_1400). Value = user.id, name = user.full_name.
   funder_ids?: number[]
   funder_names?: string[]
-}
-
-export interface Funder {
-  id: number
-  name: string
-}
-
-export interface FunderInput {
-  name: string
 }
 
 export interface Page<T> {

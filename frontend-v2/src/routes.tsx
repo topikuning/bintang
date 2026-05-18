@@ -78,9 +78,6 @@ const CategoriesPage = lazy(() =>
 const VendorsPage = lazy(() =>
   import("@/pages/master/VendorsPage").then((m) => ({ default: m.VendorsPage })),
 )
-const FundersPage = lazy(() =>
-  import("@/pages/master/FundersPage").then((m) => ({ default: m.FundersPage })),
-)
 const UsersPage = lazy(() =>
   import("@/pages/master/UsersPage").then((m) => ({ default: m.UsersPage })),
 )
@@ -180,7 +177,12 @@ export const router = createBrowserRouter([
           { path: "master/companies", element: <L><CompaniesPage /></L> },
           { path: "master/categories", element: <L><CategoriesPage /></L> },
           { path: "master/vendors-clients", element: <L><VendorsPage /></L> },
-          { path: "master/funders", element: <L><FundersPage /></L> },
+          {
+            // Backward-compat: link lama /master/funders redirect ke
+            // /master/users?role=EXECUTIVE (pendana sekarang user EXECUTIVE).
+            path: "master/funders",
+            element: <Navigate to="/master/users?role=EXECUTIVE" replace />,
+          },
           { path: "master/users", element: <L><UsersPage /></L> },
           { path: "settings", element: <L><SettingsPage /></L> },
           { path: "settings/system", element: <L><SystemSettingsPage /></L> },

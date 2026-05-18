@@ -94,23 +94,36 @@ async def create_user(
 async def users_lookup(
     q: str | None = None,
     limit: int = 200,
+    role: str | None = None,
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> list[dict]:
     """Lookup user minimal info (id/name/email) untuk picker -- mis. utk
-    pilih penerima dana operasional. Dipakai role apa pun yg ter-authenticate
-    (TIDAK SUPERADMIN-only).
+    pilih penerima dana operasional, atau pendana (role=EXECUTIVE) di
+    project form. Dipakai role apa pun yg ter-authenticate (TIDAK
+    SUPERADMIN-only).
 
-    Return field minimal supaya tidak bocor info sensitif (role/phone/dll).
+    Optional `role` query: filter ke role tertentu (mis. EXECUTIVE).
+    Invalid role -> abaikan (return semua).
+
+    Return field minimal supaya tidak bocor info sensitif (phone/dll).
     """
     stmt = select(User).where(User.deleted_at.is_(None), User.is_active.is_(True))
     if q:
         like = f"%{q}%"
         stmt = stmt.where((User.name.ilike(like)) | (User.email.ilike(like)))
+    if role:
+        # Validate role string aman -- skip kalau bukan UserRole valid.
+        from app.models.models import UserRole as _UR
+        try:
+            role_enum = _UR(role.upper())
+            stmt = stmt.where(User.role == role_enum)
+        except ValueError:
+            pass
     stmt = stmt.order_by(User.name).limit(min(max(limit, 1), 500))
     res = await db.execute(stmt)
     return [
-        {"id": u.id, "name": u.name, "email": u.email}
+        {"id": u.id, "name": u.name, "email": u.email, "role": u.role.value}
         for u in res.scalars().all()
     ]
 
