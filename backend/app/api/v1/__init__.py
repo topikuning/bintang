@@ -16,6 +16,7 @@ from app.api.v1 import (
     imports,
     invoices,
     messaging,
+    notifications,
     ocr,
     projects,
     purchase_orders,
@@ -45,6 +46,7 @@ api_router.include_router(
 api_router.include_router(attachments.router, prefix="/attachments", tags=["attachments"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(budget.router, prefix="/budget", tags=["budget"])
+api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(audit_logs.router, prefix="/audit-logs", tags=["audit-logs"])
 api_router.include_router(admin_settings.router, prefix="/admin/settings", tags=["admin-settings"])
