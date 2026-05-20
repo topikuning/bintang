@@ -1,7 +1,9 @@
-import { CheckCircle2, Info, MessageCircle, Send, XCircle } from "lucide-react"
+import { CheckCircle2, Info, Loader2, MessageCircle, Send, XCircle } from "lucide-react"
 import {
   useMessagingConfig,
   useUpdateMessagingConfig,
+  useWhatsAppTest,
+  type WhatsAppTestResult,
 } from "@/hooks/useMessaging"
 import { useAuthStore } from "@/store/auth"
 import { apiErrorMessage } from "@/lib/api"
@@ -28,6 +30,7 @@ export function MessagingSection({ className }: MessagingSectionProps) {
   const isSuperAdmin = role === "SUPERADMIN"
   const q = useMessagingConfig()
   const update = useUpdateMessagingConfig()
+  const waTest = useWhatsAppTest()
 
   if (q.isLoading) {
     return (
@@ -108,6 +111,21 @@ export function MessagingSection({ className }: MessagingSectionProps) {
             ? `${cfg.whatsapp_base_url} · session ${cfg.whatsapp_session ?? "default"}`
             : undefined
         }
+        testButton={
+          isSuperAdmin ? (
+            <WhatsAppTestPanel
+              isPending={waTest.isPending}
+              result={waTest.data}
+              error={waTest.error}
+              onTest={() => {
+                waTest.mutate(undefined, {
+                  onError: (err) =>
+                    toast.error("Test gagal", { description: apiErrorMessage(err) }),
+                })
+              }}
+            />
+          ) : undefined
+        }
       />
 
       {!isSuperAdmin && (
@@ -130,6 +148,7 @@ function ChannelRow({
   isUpdating,
   onToggle,
   meta,
+  testButton,
 }: {
   icon: React.ComponentType<{ className?: string }>
   title: string
@@ -140,6 +159,7 @@ function ChannelRow({
   isUpdating: boolean
   onToggle: (next: boolean) => void
   meta?: string
+  testButton?: React.ReactNode
 }) {
   const disabled = !canToggle || !configured
 
@@ -188,6 +208,122 @@ function ChannelRow({
           Set env var di backend service Railway, lalu redeploy backend.
           Toggle baru dapat di-aktifkan setelah backend mendeteksi token.
         </p>
+      )}
+      {testButton}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp test panel
+// ---------------------------------------------------------------------------
+
+function CheckItem({ ok, label, detail }: { ok: boolean | null; label: string; detail?: string }) {
+  return (
+    <div className="flex items-start gap-2 text-[12px]">
+      {ok === null ? (
+        <span className="h-4 w-4 shrink-0 rounded-full bg-ink-200 mt-0.5" />
+      ) : ok ? (
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-success-600 mt-0.5" />
+      ) : (
+        <XCircle className="h-4 w-4 shrink-0 text-danger-500 mt-0.5" />
+      )}
+      <div>
+        <span className={cn("font-medium", ok === false && "text-danger-700")}>{label}</span>
+        {detail && <span className="ml-1 text-ink-500">{detail}</span>}
+      </div>
+    </div>
+  )
+}
+
+function WhatsAppTestPanel({
+  isPending,
+  result,
+  error,
+  onTest,
+}: {
+  isPending: boolean
+  result?: WhatsAppTestResult
+  error?: unknown
+  onTest: () => void
+}) {
+  const allOk =
+    result &&
+    result.configured &&
+    result.toggle_enabled &&
+    result.waha_reachable &&
+    result.session_status === "WORKING"
+
+  return (
+    <div className="border-t pt-2 mt-1 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+          Test Koneksi
+        </span>
+        <button
+          type="button"
+          onClick={onTest}
+          disabled={isPending}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-[12px] font-medium transition-colors",
+            "bg-brand-50 text-brand-700 hover:bg-brand-100",
+            "disabled:opacity-50 disabled:cursor-not-allowed",
+          )}
+        >
+          {isPending && <Loader2 className="h-3 w-3 animate-spin" />}
+          {isPending ? "Mengecek…" : "Cek Sekarang"}
+        </button>
+      </div>
+
+      {!!error && !result && (
+        <p className="text-[12px] text-danger-600">
+          Gagal menjalankan test. Pastikan kamu login sebagai SUPERADMIN.
+        </p>
+      )}
+
+      {result && (
+        <div className="rounded-md bg-ink-50 p-3 space-y-1.5">
+          <div className="flex items-center gap-1.5 mb-2">
+            {allOk ? (
+              <>
+                <CheckCircle2 className="h-4 w-4 text-success-600" />
+                <span className="text-[13px] font-semibold text-success-700">Semua OK — WhatsApp terhubung</span>
+              </>
+            ) : (
+              <>
+                <XCircle className="h-4 w-4 text-danger-500" />
+                <span className="text-[13px] font-semibold text-danger-700">Ada masalah koneksi</span>
+              </>
+            )}
+          </div>
+
+          <CheckItem
+            ok={result.configured}
+            label="WHATSAPP_BASE_URL dikonfigurasi"
+            detail={result.waha_url ?? undefined}
+          />
+          <CheckItem
+            ok={result.toggle_enabled}
+            label="Toggle diaktifkan"
+            detail={result.toggle_enabled ? undefined : "Aktifkan toggle di atas"}
+          />
+          <CheckItem
+            ok={result.waha_reachable}
+            label="WAHA dapat dihubungi"
+            detail={result.configured && !result.waha_reachable ? "Periksa URL dan API key" : undefined}
+          />
+          <CheckItem
+            ok={result.session_status === "WORKING"}
+            label="Session aktif"
+            detail={
+              result.session_status
+                ? `status: ${result.session_status}${result.engine ? ` · ${result.engine}` : ""}${result.session_name ? ` · session: ${result.session_name}` : ""}`
+                : result.waha_reachable
+                ? "Session tidak ditemukan"
+                : undefined
+            }
+          />
+        </div>
       )}
     </div>
   )
