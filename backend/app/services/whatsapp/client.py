@@ -301,6 +301,15 @@ async def logout_session() -> bool:
         return False
 
 
+def config_info() -> dict:
+    """Return current config values (non-secret) untuk diagnostics."""
+    return {
+        "base_url": get_cached("WHATSAPP_BASE_URL") or None,
+        "session": _session(),
+        "has_api_key": bool(get_cached("WHATSAPP_API_KEY")),
+    }
+
+
 async def set_webhook(url: str) -> bool:
     """Daftarkan webhook ke WAHA agar event `message` di-push ke kita.
 

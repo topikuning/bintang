@@ -37,3 +37,22 @@ export function useUpdateMessagingConfig() {
     onSuccess: (data) => qc.setQueryData(KEY, data),
   })
 }
+
+export interface WhatsAppTestResult {
+  configured: boolean
+  toggle_enabled: boolean
+  waha_reachable: boolean
+  session_status: string | null
+  session_name: string | null
+  waha_url: string | null
+  engine: string | null
+}
+
+export function useWhatsAppTest() {
+  return useMutation({
+    mutationFn: async (): Promise<WhatsAppTestResult> => {
+      const { data } = await api.post<WhatsAppTestResult>("/whatsapp/test")
+      return data
+    },
+  })
+}

@@ -92,6 +92,43 @@ async def whatsapp_logout(_: User = Depends(require_superadmin)) -> dict:
     return {"ok": ok}
 
 
+@router.post("/test")
+async def whatsapp_test(
+    _: User = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Cek koneksi WhatsApp end-to-end: konfigurasi → toggle → WAHA session."""
+    cfg = await messaging.get_config(db)
+    await db.commit()
+
+    configured = wa.is_enabled()
+    info = wa.config_info()
+
+    result: dict = {
+        "configured": configured,
+        "toggle_enabled": cfg.whatsapp_enabled,
+        "waha_reachable": False,
+        "session_status": None,
+        "session_name": info["session"],
+        "waha_url": info["base_url"],
+        "engine": None,
+    }
+
+    if configured:
+        session_data = await wa.session_status()
+        if session_data is not None:
+            result["waha_reachable"] = True
+            result["session_status"] = (
+                session_data.get("status")
+                or session_data.get("state")
+            )
+            result["engine"] = session_data.get("engine") or (
+                (session_data.get("config") or {}).get("engine")
+            )
+
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Webhook receiver
 # ---------------------------------------------------------------------------
