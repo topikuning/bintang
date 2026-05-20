@@ -32,6 +32,13 @@ interface MultiComboboxProps<T extends string | number> {
  *
  * Desktop: Radix Popover.
  * Mobile: bottom Sheet.
+ *
+ * Keyboard support:
+ *  - Saat dropdown open, focus auto ke search input (override Radix
+ *    default supaya konsisten)
+ *  - ArrowDown/ArrowUp: navigasi highlight di list filtered
+ *  - Enter: toggle item yg ter-highlight
+ *  - Esc: tutup (handled native by Radix)
  */
 export function MultiCombobox<T extends string | number>({
   value,
@@ -48,6 +55,9 @@ export function MultiCombobox<T extends string | number>({
   const bp = useBreakpoint()
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
+  const [activeIdx, setActiveIdx] = React.useState(0)
+  const inputRef = React.useRef<HTMLInputElement>(null)
+  const listRef = React.useRef<HTMLUListElement>(null)
 
   const selectedSet = new Set<T>(value)
   const selectedOpts = options.filter((o) => selectedSet.has(o.value as T))
@@ -61,6 +71,31 @@ export function MultiCombobox<T extends string | number>({
     )
   }, [options, query])
 
+  // Reset state saat tutup. Saat buka, focus & activeIdx di-handle
+  // di handler khusus di bawah (onOpenAutoFocus / Sheet open).
+  React.useEffect(() => {
+    if (!open) {
+      setQuery("")
+      setActiveIdx(0)
+    }
+  }, [open])
+
+  // Clamp activeIdx saat filter berubah (mis. user ketik & list shrink).
+  React.useEffect(() => {
+    if (activeIdx >= filtered.length) {
+      setActiveIdx(Math.max(0, filtered.length - 1))
+    }
+  }, [filtered.length, activeIdx])
+
+  // Scroll item aktif ke viewport saat ArrowUp/Down.
+  React.useEffect(() => {
+    if (!open || filtered.length === 0) return
+    const el = listRef.current?.querySelector<HTMLElement>(
+      `[data-idx="${activeIdx}"]`,
+    )
+    el?.scrollIntoView({ block: "nearest" })
+  }, [activeIdx, open, filtered.length])
+
   const toggle = (v: T) => {
     const next = new Set(selectedSet)
     if (next.has(v)) next.delete(v)
@@ -71,6 +106,22 @@ export function MultiCombobox<T extends string | number>({
   const clearAll = (e: React.MouseEvent) => {
     e.stopPropagation()
     onChange([])
+  }
+
+  // Keyboard handler di search input -- handle ↑/↓/Enter.
+  const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (filtered.length === 0) return
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      setActiveIdx((i) => (i + 1) % filtered.length)
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault()
+      setActiveIdx((i) => (i - 1 + filtered.length) % filtered.length)
+    } else if (e.key === "Enter") {
+      e.preventDefault()
+      const opt = filtered[activeIdx]
+      if (opt) toggle(opt.value as T)
+    }
   }
 
   const triggerLabel = (() => {
@@ -118,20 +169,24 @@ export function MultiCombobox<T extends string | number>({
   )
 
   const list = (
-    <ul className="max-h-[400px] overflow-y-auto">
+    <ul ref={listRef} className="max-h-[400px] overflow-y-auto">
       {filtered.length === 0 ? (
         <li className="px-3 py-6 text-center text-sm text-ink-500">{emptyMessage}</li>
       ) : (
-        filtered.map((opt) => {
+        filtered.map((opt, idx) => {
           const isSelected = selectedSet.has(opt.value as T)
+          const isActive = idx === activeIdx
           return (
-            <li key={opt.value}>
+            <li key={opt.value} data-idx={idx}>
               <button
                 type="button"
                 onClick={() => toggle(opt.value as T)}
+                onMouseEnter={() => setActiveIdx(idx)}
                 className={cn(
                   "flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors",
-                  isSelected ? "bg-brand-50 text-brand-700" : "hover:bg-ink-100",
+                  isSelected && !isActive && "bg-brand-50 text-brand-700",
+                  isActive && "bg-brand-100 text-brand-800",
+                  !isSelected && !isActive && "hover:bg-ink-50",
                 )}
               >
                 <div
@@ -158,7 +213,8 @@ export function MultiCombobox<T extends string | number>({
     </ul>
   )
 
-  // Footer-shared antara desktop & mobile (Pilih semua / Bersihkan / Tutup).
+  // Footer dgn counter "X dari Y" supaya saat list di-filter user tahu
+  // posisi (mis. "2 dari 18 proyek").
   const footer = (
     <div className="flex items-center justify-between gap-2 border-t bg-surface px-3 py-2 text-[12px]">
       <button
@@ -176,7 +232,10 @@ export function MultiCombobox<T extends string | number>({
           ? "Bersihkan semua"
           : "Pilih semua"}
       </button>
-      <span className="text-ink-500">{selectedOpts.length} terpilih</span>
+      <span className="text-ink-500 tabular-nums">
+        {selectedOpts.length} dari {filtered.length} terpilih
+        {query && filtered.length !== options.length && ` (${options.length} total)`}
+      </span>
       <button
         type="button"
         onClick={() => setOpen(false)}
@@ -200,9 +259,14 @@ export function MultiCombobox<T extends string | number>({
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
                 <input
+                  ref={inputRef}
                   type="search"
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  onChange={(e) => {
+                    setQuery(e.target.value)
+                    setActiveIdx(0)
+                  }}
+                  onKeyDown={onKey}
                   placeholder="Cari…"
                   className="h-10 w-full rounded border border-border-strong bg-surface pl-8 pr-3 text-sm focus:outline-none focus:border-brand-500"
                   autoFocus
@@ -224,18 +288,30 @@ export function MultiCombobox<T extends string | number>({
         <Popover.Content
           align="start"
           sideOffset={4}
-          className="z-50 w-[--radix-popover-trigger-width] min-w-[260px] rounded-md border bg-surface shadow-md outline-none"
+          // Override Radix default focus behaviour -- force focus ke
+          // search input. Default-nya Radix focus ke first focusable
+          // child, kadang nyangkut di trigger atau scroll viewport.
+          // rAF supaya popover fully mounted dulu sebelum focus.
+          onOpenAutoFocus={(e) => {
+            e.preventDefault()
+            requestAnimationFrame(() => inputRef.current?.focus())
+          }}
+          className="z-50 w-[--radix-popover-trigger-width] min-w-[280px] rounded-md border bg-surface shadow-md outline-none"
         >
           <div className="border-b p-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
               <input
+                ref={inputRef}
                 type="search"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Cari…"
+                onChange={(e) => {
+                  setQuery(e.target.value)
+                  setActiveIdx(0)
+                }}
+                onKeyDown={onKey}
+                placeholder="Cari (↑↓ Enter)…"
                 className="h-9 w-full rounded border border-border-strong bg-surface pl-8 pr-3 text-sm focus:outline-none focus:border-brand-500"
-                autoFocus
               />
             </div>
           </div>
