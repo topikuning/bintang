@@ -275,7 +275,7 @@ function WhatsAppTestPanel({
         </button>
       </div>
 
-      {error && !result && (
+      {!!error && !result && (
         <p className="text-[12px] text-danger-600">
           Gagal menjalankan test. Pastikan kamu login sebagai SUPERADMIN.
         </p>
