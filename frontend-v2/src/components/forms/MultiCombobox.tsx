@@ -169,7 +169,7 @@ export function MultiCombobox<T extends string | number>({
   )
 
   const list = (
-    <ul ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
+    <ul ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
       {filtered.length === 0 ? (
         <li className="px-3 py-6 text-center text-sm text-ink-500">{emptyMessage}</li>
       ) : (
@@ -298,10 +298,12 @@ export function MultiCombobox<T extends string | number>({
             requestAnimationFrame(() => inputRef.current?.focus())
           }}
           // Constrain tinggi ke ruang viewport tersedia (CSS var dari
-          // Radix). Flex column supaya search/list/footer tetap terlihat
-          // saat popover open ke arah yg sempit.
-          style={{ maxHeight: "var(--radix-popover-content-available-height)" }}
-          className="z-50 flex w-[--radix-popover-trigger-width] min-w-[280px] flex-col overflow-hidden rounded-md border bg-surface shadow-md outline-none"
+          // Radix), fallback ke 70vh kalau var belum ter-set. Tanpa
+          // max-height efektif, flex-1 list expand ke konten alami ->
+          // overflow-y-auto tdk pernah aktif -> wheel scroll mati.
+          // max-h-[70vh] class = safety net kedua.
+          style={{ maxHeight: "var(--radix-popover-content-available-height, 70vh)" }}
+          className="z-50 flex max-h-[70vh] w-[--radix-popover-trigger-width] min-w-[280px] flex-col overflow-hidden rounded-md border bg-surface shadow-md outline-none"
         >
           <div className="border-b p-2 shrink-0">
             <div className="relative">

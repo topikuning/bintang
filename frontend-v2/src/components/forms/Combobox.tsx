@@ -177,7 +177,7 @@ export function Combobox({
   )
 
   const list = (
-    <ul ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
+    <ul ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
       {filtered.length === 0 ? (
         <li className="px-3 py-6 text-center text-sm text-ink-500">{emptyMessage}</li>
       ) : (
@@ -278,11 +278,17 @@ export function Combobox({
             requestAnimationFrame(() => inputRef.current?.focus())
           }}
           // Constrain tinggi total ke ruang yg tersedia (CSS var dari
-          // Radix). Flex column supaya search header tetap visible di
-          // top + list scroll di tengah + footer di bawah, walau ruang
-          // sempit (mis. trigger di bawah side-sheet).
-          style={{ maxHeight: "var(--radix-popover-content-available-height)" }}
-          className="z-50 flex w-[--radix-popover-trigger-width] min-w-[280px] flex-col overflow-hidden rounded-md border bg-surface shadow-md outline-none"
+          // Radix), fallback ke 70vh kalau var belum ter-set (kadang
+          // terjadi sebelum collision detection jalan -- contoh saat
+          // Popover dirender pertama kali di dalam Sheet child).
+          // Tanpa max-height efektif, `flex-1` di list expand ke ukuran
+          // konten alami -> `overflow-y-auto` tdk pernah aktif ->
+          // mouse wheel tdk ada yg di-scroll.
+          //
+          // Tailwind class `max-h-[70vh]` adalah safety net kedua untuk
+          // case CSS engine reject inline var() di awal mounting.
+          style={{ maxHeight: "var(--radix-popover-content-available-height, 70vh)" }}
+          className="z-50 flex max-h-[70vh] w-[--radix-popover-trigger-width] min-w-[280px] flex-col overflow-hidden rounded-md border bg-surface shadow-md outline-none"
         >
           <div className="border-b p-2 shrink-0">
             <div className="relative">
