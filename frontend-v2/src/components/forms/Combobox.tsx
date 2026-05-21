@@ -177,7 +177,7 @@ export function Combobox({
   )
 
   const list = (
-    <ul ref={listRef} className="flex-1 overflow-y-auto">
+    <ul ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
       {filtered.length === 0 ? (
         <li className="px-3 py-6 text-center text-sm text-ink-500">{emptyMessage}</li>
       ) : (
