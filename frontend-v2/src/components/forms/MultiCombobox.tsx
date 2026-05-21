@@ -108,6 +108,19 @@ export function MultiCombobox<T extends string | number>({
     onChange([])
   }
 
+  // Wheel handler manual -- workaround react-remove-scroll dari Radix
+  // Dialog. Detail di Combobox.tsx (file kembar). Conditional
+  // `defaultPrevented` cegah double-scroll saat native jalan normal
+  // (kasus MultiCombobox saat ini di top page tanpa Sheet wrapper).
+  const onWheel = (e: React.WheelEvent<HTMLUListElement>) => {
+    if (!e.defaultPrevented || !listRef.current) return
+    const ul = listRef.current
+    let delta = e.deltaY
+    if (e.deltaMode === 1) delta *= 16
+    if (e.deltaMode === 2) delta *= ul.clientHeight
+    ul.scrollTop += delta
+  }
+
   // Keyboard handler di search input -- handle ↑/↓/Enter.
   const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (filtered.length === 0) return
@@ -169,7 +182,7 @@ export function MultiCombobox<T extends string | number>({
   )
 
   const list = (
-    <ul ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+    <ul ref={listRef} onWheel={onWheel} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
       {filtered.length === 0 ? (
         <li className="px-3 py-6 text-center text-sm text-ink-500">{emptyMessage}</li>
       ) : (
