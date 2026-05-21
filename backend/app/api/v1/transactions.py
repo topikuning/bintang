@@ -404,19 +404,33 @@ async def update_transaction(
     if not t or t.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
-    # Project IMMUTABLE via UPDATE -- audit trail keuangan harus tetap
-    # kuat. Reject explisit kalau payload kirim project_id beda current.
-    # Cara koreksi data entry error: CANCEL tx + buat ulang di proyek
-    # benar (audit log catat kedua aksi). Sebelumnya schema TransactionUpdate
-    # tdk punya field project_id -> Pydantic silent-ignore -> user kira
-    # "berhasil tapi data tidak". Sekarang explisit 400.
+    # Project change rules:
+    # - DRAFT: BOLEH pindah ke proyek lain (termasuk ke/dari NON_PROJECT).
+    #   Belum mempengaruhi laporan apapun (semua agregat filter VERIFIED)
+    #   jadi audit trail belum kuat. Use case: user salah pilih proyek
+    #   saat create, sadar sebelum submit. Audit log catat perpindahan.
+    # - SUBMITTED/VERIFIED/REJECTED/CANCELLED: IMMUTABLE. Audit trail
+    #   keuangan harus kuat -- koreksi via CANCEL + buat ulang.
     if payload.project_id is not None and payload.project_id != t.project_id:
-        raise HTTPException(
-            400,
-            "project_change_forbidden: tx tidak bisa pindah proyek via "
-            "edit. Cancel tx (POST /:id/cancel), lalu buat ulang di "
-            "proyek yang benar.",
-        )
+        if t.status != TxnStatus.DRAFT:
+            raise HTTPException(
+                400,
+                "project_change_forbidden: tx non-DRAFT tidak bisa pindah "
+                "proyek via edit. Cancel tx (POST /:id/cancel), lalu buat "
+                "ulang di proyek yang benar.",
+            )
+        # Validate akses ke proyek tujuan + proyek exists & not deleted.
+        await ensure_project_access(db, user, payload.project_id)
+        target = (
+            await db.execute(
+                select(Project).where(
+                    Project.id == payload.project_id,
+                    Project.deleted_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(400, "target_project_not_found")
     # VERIFIED: hanya SUPERADMIN yang boleh modifikasi (god-mode).
     # Audit trail keuangan harus kuat -- CENTRAL_ADMIN tidak boleh
     # ubah transaksi/lampiran yang sudah tervalidasi. Untuk koreksi,
