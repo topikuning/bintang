@@ -43,6 +43,19 @@ class ProjectStatus(str, enum.Enum):
     DIBATALKAN = "DIBATALKAN"
 
 
+class ProjectKind(str, enum.Enum):
+    """Klasifikasi proyek utk pemisahan agregasi keuangan.
+
+    - REGULAR: proyek konstruksi normal -- ikut semua agregat dashboard,
+      cashflow, beban, dll.
+    - NON_PROJECT: bucket "Catatan Non-Proyek" -- 1 system project per
+      company. Tx di sini IS-A "side ledger" yg by default TIDAK ikut
+      agregat global. Dikontrol per-tahun lewat NonProjectYearSetting.
+    """
+    REGULAR = "REGULAR"
+    NON_PROJECT = "NON_PROJECT"
+
+
 class ProjectDocType(str, enum.Enum):
     """Tipe dokumen lampiran proyek (kategorisasi utk audit).
     Disimpan sbg VARCHAR di DB supaya luwes nambah tipe baru tanpa
@@ -276,6 +289,13 @@ class Project(TimestampMixin, Base):
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[ProjectStatus] = mapped_column(Enum(ProjectStatus), default=ProjectStatus.AKTIF)
+    # Klasifikasi proyek: REGULAR (default, perilaku lama) atau
+    # NON_PROJECT (bucket Catatan Non-Proyek, 1 per company). Disimpan
+    # sbg VARCHAR supaya luwes nambah kind baru tanpa ALTER TYPE Postgres.
+    # Lihat juga: NonProjectYearSetting utk toggle inklusi per tahun.
+    kind: Mapped[str] = mapped_column(
+        String(20), default=ProjectKind.REGULAR.value, nullable=False, index=True
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # budget control
@@ -333,6 +353,36 @@ class ProjectAttachment(TimestampMixin, Base):
 # NOTE: Funder + ProjectFunder dihapus -- entitas pendana sekarang
 # disimpan sbg User(role=EXECUTIVE) dgn link via ProjectUser. Lihat
 # migration 20260518_1400_merge_funder_into_user_executive.
+
+
+class NonProjectYearSetting(TimestampMixin, Base):
+    """Toggle per-tahun utk inklusi tx di bucket Catatan Non-Proyek
+    (`Project.kind=NON_PROJECT`) ke agregat keuangan global.
+
+    Semantik:
+    - Setting per (company_id, year)
+    - include_in_global=True -> tx non-proyek di tahun itu IKUT semua
+      agregat (saldo kas, beban total, cashflow, dashboard, laporan)
+      seperti tx proyek REGULAR
+    - include_in_global=False -> tx jadi SIDE LEDGER: hanya muncul di
+      halaman Catatan Non-Proyek, tdk menyentuh angka manapun
+    - Tahun yg belum ada baris di tabel ini -> default OFF (tidak masuk)
+    - Modify setting hanya boleh SUPERADMIN (audit-sensitive).
+    """
+    __tablename__ = "non_project_year_settings"
+    __table_args__ = (
+        UniqueConstraint("company_id", "year", name="uq_non_project_year"),
+        Index("ix_non_project_year_company_year", "company_id", "year"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    include_in_global: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
 class ProjectUser(TimestampMixin, Base):

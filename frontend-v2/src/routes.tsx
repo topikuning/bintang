@@ -101,6 +101,16 @@ const MorePage = lazy(() =>
 const BudgetPage = lazy(() =>
   import("@/pages/budget/BudgetPage").then((m) => ({ default: m.BudgetPage })),
 )
+const NonProjectPage = lazy(() =>
+  import("@/pages/non-project/NonProjectPage").then((m) => ({
+    default: m.NonProjectPage,
+  })),
+)
+const NonProjectSettingsPage = lazy(() =>
+  import("@/pages/non-project/NonProjectSettingsPage").then((m) => ({
+    default: m.NonProjectSettingsPage,
+  })),
+)
 
 /**
  * Page-level loading fallback. Menjaga visual stability supaya saat
@@ -153,6 +163,8 @@ export const router = createBrowserRouter([
           { path: "invoices", element: <L><InvoicesListPage /></L> },
           { path: "purchase-orders", element: <L><POListPage /></L> },
           { path: "budget", element: <L><BudgetPage /></L> },
+          { path: "non-project", element: <L><NonProjectPage /></L> },
+          { path: "settings/non-project", element: <L><NonProjectSettingsPage /></L> },
           { path: "reports", element: <L><ReportsPage /></L> },
           {
             path: "reports/invoice-items",

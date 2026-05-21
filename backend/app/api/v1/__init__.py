@@ -15,6 +15,7 @@ from app.api.v1 import (
     imports,
     invoices,
     messaging,
+    non_project,
     notifications,
     ocr,
     projects,
@@ -55,6 +56,7 @@ api_router.include_router(ocr.router, prefix="/ocr", tags=["ocr"])
 api_router.include_router(telegram.router, prefix="/telegram", tags=["telegram"])
 api_router.include_router(whatsapp.router, prefix="/whatsapp", tags=["whatsapp"])
 api_router.include_router(messaging.router, prefix="/messaging", tags=["messaging"])
+api_router.include_router(non_project.router, prefix="/non-project", tags=["non-project"])
 # allocations dipasang di prefix root karena rutenya bercampur:
 #   /invoices/{id}/allocations, /transactions/{id}/allocations, /allocations/{id}
 api_router.include_router(allocations.router, tags=["allocations"])

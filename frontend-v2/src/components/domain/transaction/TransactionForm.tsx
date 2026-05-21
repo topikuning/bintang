@@ -87,6 +87,10 @@ interface TransactionFormProps {
   transaction?: Transaction | null
   /** Jika create dr context proyek tertentu, lock proyek. */
   lockProjectId?: number | null
+  /** Jika true, propagate ke ProjectPicker supaya project NON_PROJECT
+   * juga muncul di options (kebutuhan halaman Catatan Non-Proyek yg
+   * pakai lockProjectId ke system project). */
+  allowNonProject?: boolean
   /** Dipanggil setelah save sukses (create/update). Caller bisa pakai
    * utk re-open detail panel supaya user bisa verifikasi hasil edit
    * tanpa harus klik ulang dr list. */
@@ -98,6 +102,7 @@ export function TransactionForm({
   onClose,
   transaction,
   lockProjectId,
+  allowNonProject,
   onSaved,
 }: TransactionFormProps) {
   const bp = useBreakpoint()
@@ -465,6 +470,10 @@ export function TransactionForm({
                     // (backend reject 400). Saat create: lock kalau ada
                     // lockProjectId (mis. quick-add dari ProjectDashboard).
                     disabled={isEdit || !!lockProjectId}
+                    // Halaman Catatan Non-Proyek pakai lockProjectId ke
+                    // system project NON_PROJECT -- propagate supaya
+                    // label proyek tampil benar (bukan placeholder).
+                    includeNonProject={allowNonProject}
                   />
                 )}
               />

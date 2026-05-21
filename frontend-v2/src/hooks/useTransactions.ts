@@ -16,6 +16,9 @@ export interface TransactionListParams {
   date_from?: string
   date_to?: string
   q?: string
+  /** true -> hanya tx di bucket NON_PROJECT (Catatan Non-Proyek).
+   *  undefined/false -> tx reguler saja (NON_PROJECT di-exclude). */
+  non_project?: boolean
 }
 
 export function useTransactions(params: TransactionListParams = {}) {

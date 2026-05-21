@@ -30,6 +30,7 @@ MENU_REGISTRY: list[dict[str, Any]] = [
     {"id": "invoices", "label": "Invoice", "group": "operasional"},
     {"id": "purchase-orders", "label": "Purchase Order", "group": "operasional"},
     {"id": "budget", "label": "Budget", "group": "operasional"},
+    {"id": "non-project", "label": "Catatan Non-Proyek", "group": "operasional"},
     # Laporan
     {"id": "reports", "label": "Laporan", "group": "laporan"},
     {"id": "reports-invoice-items", "label": "Detail Invoice (Interaktif)", "group": "laporan"},
@@ -49,6 +50,7 @@ MENU_REGISTRY: list[dict[str, Any]] = [
     {"id": "settings-system", "label": "Sistem (API Keys)", "group": "sistem"},
     {"id": "settings-role-menus", "label": "Akses Menu per Role", "group": "sistem"},
     {"id": "settings-orphan-files", "label": "File Orphan", "group": "sistem"},
+    {"id": "settings-non-project", "label": "Inklusi Catatan Non-Proyek", "group": "sistem"},
 ]
 MENU_IDS = {m["id"] for m in MENU_REGISTRY}
 

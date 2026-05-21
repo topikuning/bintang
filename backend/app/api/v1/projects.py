@@ -20,6 +20,7 @@ from app.models.models import (
     Project,
     ProjectAttachment,
     ProjectDocType,
+    ProjectKind,
     ProjectStatus,
     ProjectUser,
     User,
@@ -115,12 +116,18 @@ async def list_projects(
     status: str | None = None,
     company_id: int | None = None,
     include_pending: bool = False,
-    page: int = Query(1, ge=1),
-    size: int = Query(50, ge=1, le=2000),
+    # Default exclude proyek system NON_PROJECT supaya ProjectPicker
+    # & list operasional bersih. Halaman Catatan Non-Proyek pakai
+    # include_non_project=true.
+    include_non_project: bool = False,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=2000),
 ) -> Page[ProjectOut]:
     stmt = select(Project).where(Project.deleted_at.is_(None))
+    if not include_non_project:
+        stmt = stmt.where(Project.kind != ProjectKind.NON_PROJECT.value)
     pids = await user_project_ids(db, user)
     if pids is not None:
         if not pids:
@@ -174,6 +181,7 @@ async def list_project_filters(
     ).where(
         Project.deleted_at.is_(None),
         Project.status != ProjectStatus.MENUNGGU_PERSETUJUAN,
+        Project.kind != ProjectKind.NON_PROJECT.value,
     )
     pids = await user_project_ids(db, user)
     if pids is not None:
@@ -216,7 +224,12 @@ async def list_projects_with_stats(
     Filter location & client_name: exact match (case-insensitive). Dipakai
     di hub proyek utk filter berdasarkan kota/instansi.
     """
-    stmt = select(Project).where(Project.deleted_at.is_(None))
+    stmt = select(Project).where(
+        Project.deleted_at.is_(None),
+        # /stats utk hub proyek operasional -- selalu exclude NON_PROJECT
+        # (bucket Catatan Non-Proyek punya halaman sendiri).
+        Project.kind != ProjectKind.NON_PROJECT.value,
+    )
     pids = await user_project_ids(db, user)
     if pids is not None:
         if not pids:
@@ -431,6 +444,10 @@ async def create_project(
         raise HTTPException(409, "project_code_already_used")
     payload_data = payload.model_dump(exclude={"funder_ids"})
     funder_ids = payload.funder_ids
+    # Force kind=REGULAR di endpoint user-facing. System project
+    # NON_PROJECT cuma dibuat lewat migrasi seed -- mencegah duplikasi
+    # (1 NON_PROJECT per company invariant).
+    payload_data["kind"] = ProjectKind.REGULAR.value
     p = Project(**payload_data)
     # Proyek yg dibuat langsung oleh admin -> AKTIF + ter-approve oleh dirinya.
     if p.status == ProjectStatus.MENUNGGU_PERSETUJUAN:
@@ -727,6 +744,10 @@ async def delete_project(
     p = await db.get(Project, pid)
     if not p or p.deleted_at is not None:
         raise HTTPException(404, "not_found")
+    # Cegah delete system project NON_PROJECT -- harus ada 1 per company
+    # supaya halaman Catatan Non-Proyek tetap fungsional.
+    if p.kind == ProjectKind.NON_PROJECT.value:
+        raise HTTPException(400, "cannot_delete_system_non_project")
     before = snapshot(p)
     p.deleted_at = datetime.utcnow()
     await log(db, user_id=admin.id, entity="project", entity_id=p.id,
