@@ -12,6 +12,9 @@ interface ListParams {
   /** Default backend hide proyek MENUNGGU_PERSETUJUAN dr list operasional.
    *  Set true di master CRUD supaya admin tetap bisa kelola proposal. */
   include_pending?: boolean
+  /** Default backend exclude proyek system NON_PROJECT (Catatan Non-Proyek).
+   *  Set true di form catatan non-proyek supaya project ter-lock-nya muncul. */
+  include_non_project?: boolean
 }
 
 export function useProjects(params: ListParams = {}) {

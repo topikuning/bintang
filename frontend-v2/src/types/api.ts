@@ -41,6 +41,8 @@ export type ProjectStatus =
   | "DITAHAN"
   | "DIBATALKAN"
 
+export type ProjectKind = "REGULAR" | "NON_PROJECT"
+
 export interface Project {
   id: number
   code: string
@@ -53,6 +55,9 @@ export interface Project {
   start_date: string | null
   end_date: string | null
   status: ProjectStatus
+  /** Klasifikasi proyek (REGULAR / NON_PROJECT). System project
+   *  Catatan Non-Proyek = NON_PROJECT (1 per company). */
+  kind: ProjectKind
   notes: string | null
   project_value: string | number
   budget_amount: string | number

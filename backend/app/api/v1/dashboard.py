@@ -20,6 +20,7 @@ from app.models.models import (
     InvoiceStatus,
     InvoiceType,
     Project,
+    ProjectKind,
     ProjectStatus,
     Transaction,
     TxnStatus,
@@ -28,6 +29,7 @@ from app.models.models import (
     UserRole,
 )
 from app.services.budget import budget_status, health_status, project_totals
+from app.services.non_project import transaction_eligibility_clause
 
 router = APIRouter()
 
@@ -116,7 +118,13 @@ async def global_dashboard(
     user: User = Depends(get_current_user),
 ) -> dict:
     pids = await user_project_ids(db, user)  # None=all, []=no access, [..]=scoped
-    proj_q = select(Project).where(Project.deleted_at.is_(None))
+    # Hub proyek operasional -- exclude bucket NON_PROJECT (punya halaman
+    # sendiri di /catatan-non-proyek). Kontribusi NP ke totals/cashflow
+    # ditambahkan terpisah di bawah, hormati year toggle.
+    proj_q = select(Project).where(
+        Project.deleted_at.is_(None),
+        Project.kind != ProjectKind.NON_PROJECT.value,
+    )
 
     # Shape default utk early-return (user tanpa proyek / setelah filter
     # tdk ada proyek). Wajib include SEMUA field yg dipakai FE supaya tdk
@@ -139,6 +147,7 @@ async def global_dashboard(
             "monthly_cashflow": [],
             "projects": [],
             "warnings": [],
+            "non_project": {"eligible_in": 0, "eligible_out": 0, "accessible_count": 0},
         }
 
     if pids is not None:
@@ -173,22 +182,50 @@ async def global_dashboard(
     if not project_ids:
         return _empty_global()
 
+    # NON_PROJECT pids accessible ke user. Cuma muncul di agregat
+    # (totals, monthly_cashflow) -- dgn year toggle dr NonProjectYearSetting.
+    np_pids_q = select(Project.id).where(
+        Project.deleted_at.is_(None),
+        Project.kind == ProjectKind.NON_PROJECT.value,
+    )
+    if pids is not None:
+        np_pids_q = np_pids_q.where(Project.id.in_(pids))
+    np_pids = list((await db.execute(np_pids_q)).scalars().all())
+    elig_clause = await transaction_eligibility_clause(db) if np_pids else None
+
     # totals_in/out dihitung lewat proj_summary di bawah agar konsisten
 
-    # monthly cashflow last 12 months
-    monthly_q = (
-        select(
-            _ym_expr().label("ym"),
-            func.coalesce(func.sum(case((Transaction.type == TxnType.IN, Transaction.amount), else_=0)), 0).label("in_"),
-            func.coalesce(func.sum(case((Transaction.type == TxnType.OUT, Transaction.amount), else_=0)), 0).label("out_"),
+    # monthly cashflow last 12 months. Gabungan tx REGULAR (semua di
+    # project_ids) + tx NON_PROJECT (eligible per year toggle).
+    monthly_pids = project_ids + np_pids
+    monthly_filters = [
+        Transaction.project_id.in_(monthly_pids),
+        Transaction.status == TxnStatus.VERIFIED,
+        Transaction.deleted_at.is_(None),
+    ]
+    if elig_clause is not None:
+        # JOIN Project supaya klausa eligibility bisa baca kind/company_id
+        monthly_q = (
+            select(
+                _ym_expr().label("ym"),
+                func.coalesce(func.sum(case((Transaction.type == TxnType.IN, Transaction.amount), else_=0)), 0).label("in_"),
+                func.coalesce(func.sum(case((Transaction.type == TxnType.OUT, Transaction.amount), else_=0)), 0).label("out_"),
+            )
+            .select_from(Transaction)
+            .join(Project, Project.id == Transaction.project_id)
+            .where(*monthly_filters, elig_clause)
+            .group_by("ym").order_by("ym")
         )
-        .where(
-            Transaction.project_id.in_(project_ids),
-            Transaction.status == TxnStatus.VERIFIED,
-            Transaction.deleted_at.is_(None),
+    else:
+        monthly_q = (
+            select(
+                _ym_expr().label("ym"),
+                func.coalesce(func.sum(case((Transaction.type == TxnType.IN, Transaction.amount), else_=0)), 0).label("in_"),
+                func.coalesce(func.sum(case((Transaction.type == TxnType.OUT, Transaction.amount), else_=0)), 0).label("out_"),
+            )
+            .where(*monthly_filters)
+            .group_by("ym").order_by("ym")
         )
-        .group_by("ym").order_by("ym")
-    )
     rows = (await db.execute(monthly_q)).all()
     monthly = [{"month": r.ym, "in": float(r.in_), "out": float(r.out_)} for r in rows[-12:]]
 
@@ -330,6 +367,31 @@ async def global_dashboard(
     sum_pending_in = sum((Decimal(str(p["pending_in"])) for p in proj_summary), Decimal("0"))
     sum_pending_out = sum((Decimal(str(p["pending_out"])) for p in proj_summary), Decimal("0"))
 
+    # Kontribusi NON_PROJECT (year toggle = ON) ke totals.
+    np_in_eligible = Decimal("0")
+    np_out_eligible = Decimal("0")
+    if np_pids and elig_clause is not None:
+        np_totals_q = (
+            select(
+                func.coalesce(func.sum(case((Transaction.type == TxnType.IN, Transaction.amount), else_=0)), 0),
+                func.coalesce(func.sum(case((Transaction.type == TxnType.OUT, Transaction.amount), else_=0)), 0),
+            )
+            .select_from(Transaction)
+            .join(Project, Project.id == Transaction.project_id)
+            .where(
+                Transaction.project_id.in_(np_pids),
+                Project.kind == ProjectKind.NON_PROJECT.value,
+                elig_clause,
+                Transaction.status == TxnStatus.VERIFIED,
+                Transaction.deleted_at.is_(None),
+            )
+        )
+        np_in_raw, np_out_raw = (await db.execute(np_totals_q)).one()
+        np_in_eligible = Decimal(np_in_raw or 0)
+        np_out_eligible = Decimal(np_out_raw or 0)
+        sum_in_total += np_in_eligible
+        sum_out_total += np_out_eligible
+
     return {
         "totals": {
             "in": float(sum_in_total),
@@ -353,6 +415,14 @@ async def global_dashboard(
         "monthly_cashflow": monthly,
         "projects": proj_summary,
         "warnings": warnings,
+        # Ringkasan kontribusi Catatan Non-Proyek (year toggle = ON).
+        # FE pakai utk banner di dashboard ("Catatan Non-Proyek 2025
+        # ikut dihitung: -Rp X").
+        "non_project": {
+            "eligible_in": float(np_in_eligible),
+            "eligible_out": float(np_out_eligible),
+            "accessible_count": len(np_pids),
+        },
     }
 
 

@@ -25,6 +25,7 @@ from app.models.models import (
     InvoiceType,
     POStatus,
     Project,
+    ProjectKind,
     PurchaseOrder,
     Transaction,
     TransactionItem,
@@ -36,6 +37,7 @@ from app.models.models import (
     VendorClient,
 )
 from app.services.excel.builder import build_xlsx
+from app.services.non_project import transaction_eligibility_clause
 from app.services.pdf.render import html_to_pdf_async, inline_image, render_html
 
 router = APIRouter()
@@ -255,19 +257,34 @@ async def cashflow(
     if date_to:
         base_filters.append(Transaction.tx_date <= date_to)
 
+    # Eligibility utk bucket NON_PROJECT (year toggle). Tx di Catatan
+    # Non-Proyek hanya muncul di laporan arus kas kalau (company, year)
+    # punya setting include_in_global=True. JOIN Project utk kondisi.
+    elig_clause = await transaction_eligibility_clause(db)
+    base_filters_with_join = base_filters + [elig_clause]
+
     # Diagnostik: hitung jumlah & nominal per (type, status) tanpa filter
     # status -- agar user bisa lihat kalau IN-nya masih SUBMITTED/DRAFT,
     # bukan VERIFIED, sehingga tidak masuk ke arus kas.
-    diag_q = select(
-        Transaction.type, Transaction.status,
-        func.count(Transaction.id), func.coalesce(func.sum(Transaction.amount), 0),
-    ).where(*base_filters).group_by(Transaction.type, Transaction.status)
+    diag_q = (
+        select(
+            Transaction.type, Transaction.status,
+            func.count(Transaction.id), func.coalesce(func.sum(Transaction.amount), 0),
+        )
+        .select_from(Transaction)
+        .join(Project, Project.id == Transaction.project_id)
+        .where(*base_filters_with_join)
+        .group_by(Transaction.type, Transaction.status)
+    )
     diag_rows = (await db.execute(diag_q)).all()
 
     # Data utama: hanya VERIFIED
-    stmt = select(Transaction).where(*base_filters,
-                                     Transaction.status == TxnStatus.VERIFIED
-                                     ).order_by(Transaction.tx_date.asc())
+    stmt = (
+        select(Transaction)
+        .join(Project, Project.id == Transaction.project_id)
+        .where(*base_filters_with_join, Transaction.status == TxnStatus.VERIFIED)
+        .order_by(Transaction.tx_date.asc())
+    )
     txs = (await db.execute(stmt)).scalars().all()
 
     proj_ids = {t.project_id for t in txs}

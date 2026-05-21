@@ -16,11 +16,13 @@ import {
   KeyRound,
   type LucideIcon,
   MoreHorizontal,
+  Notebook,
   Receipt,
   ScanLine,
   Settings,
   ShieldCheck,
   ShoppingCart,
+  SlidersHorizontal,
   Tag,
   Users,
   Wallet,
@@ -58,6 +60,7 @@ export const DESKTOP_NAV: NavGroup[] = [
       { id: "invoices", label: "Invoice", to: "/invoices", icon: Receipt },
       { id: "purchase-orders", label: "Purchase Order", to: "/purchase-orders", icon: ShoppingCart },
       { id: "budget", label: "Budget", to: "/budget", icon: BadgeDollarSign },
+      { id: "non-project", label: "Catatan Non-Proyek", to: "/non-project", icon: Notebook },
     ],
   },
   {
@@ -89,6 +92,7 @@ export const DESKTOP_NAV: NavGroup[] = [
       { id: "settings-system", label: "Sistem (API Keys)", to: "/settings/system", icon: KeyRound },
       { id: "settings-role-menus", label: "Akses Menu per Role", to: "/settings/role-menus", icon: ShieldCheck },
       { id: "settings-orphan-files", label: "File Orphan", to: "/settings/orphan-files", icon: HardDrive },
+      { id: "settings-non-project", label: "Inklusi Catatan Non-Proyek", to: "/settings/non-project", icon: SlidersHorizontal },
     ],
   },
 ]
@@ -109,6 +113,7 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
     items: [
       { id: "purchase-orders", label: "Purchase Order", to: "/purchase-orders", icon: ShoppingCart },
       { id: "budget", label: "Budget", to: "/budget", icon: BadgeDollarSign },
+      { id: "non-project", label: "Catatan Non-Proyek", to: "/non-project", icon: Notebook },
     ],
   },
   {
@@ -140,6 +145,7 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
       { id: "settings-system", label: "Sistem (API Keys)", to: "/settings/system", icon: KeyRound },
       { id: "settings-role-menus", label: "Akses Menu per Role", to: "/settings/role-menus", icon: ShieldCheck },
       { id: "settings-orphan-files", label: "File Orphan", to: "/settings/orphan-files", icon: HardDrive },
+      { id: "settings-non-project", label: "Inklusi Catatan Non-Proyek", to: "/settings/non-project", icon: SlidersHorizontal },
     ],
   },
 ]

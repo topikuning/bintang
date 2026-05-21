@@ -41,4 +41,9 @@ export const queryKeys = {
     list: (params?: object) => ["pos", "list", params ?? {}] as const,
     detail: (id: number | string) => ["pos", "detail", id] as const,
   },
+  nonProject: {
+    all: () => ["non-project"] as const,
+    companies: () => ["non-project", "companies"] as const,
+    years: (params?: object) => ["non-project", "years", params ?? {}] as const,
+  },
 } as const

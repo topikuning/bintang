@@ -57,6 +57,10 @@ class ProjectBase(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     status: ProjectStatus = ProjectStatus.AKTIF
+    # Klasifikasi proyek: REGULAR (default) atau NON_PROJECT (system
+    # bucket Catatan Non-Proyek). Disimpan sbg string supaya FE bisa
+    # bandingkan langsung dgn "REGULAR" / "NON_PROJECT".
+    kind: str = "REGULAR"
     notes: str | None = None
     project_value: Decimal = Decimal("0")
     budget_amount: Decimal = Decimal("0")

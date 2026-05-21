@@ -9,6 +9,9 @@ interface ProjectPickerProps {
   disabled?: boolean
   /** Default true -- hanya tampilkan proyek aktif. */
   activeOnly?: boolean
+  /** Default false -- exclude system project NON_PROJECT. Set true di
+   *  form Catatan Non-Proyek (utk locked project_id). */
+  includeNonProject?: boolean
 }
 
 export function ProjectPicker({
@@ -17,8 +20,12 @@ export function ProjectPicker({
   placeholder = "Pilih proyek",
   disabled,
   activeOnly = true,
+  includeNonProject = false,
 }: ProjectPickerProps) {
-  const { data, isLoading } = useProjects(activeOnly ? { status: "AKTIF" } : {})
+  const { data, isLoading } = useProjects({
+    ...(activeOnly ? { status: "AKTIF" } : {}),
+    ...(includeNonProject ? { include_non_project: true } : {}),
+  })
   const options = useMemo<ComboboxOption[]>(() => {
     return (data?.items ?? []).map((p) => ({
       value: p.id,

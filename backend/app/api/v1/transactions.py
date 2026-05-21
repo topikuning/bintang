@@ -21,6 +21,8 @@ from app.models.models import (
     CashAdvanceSettlementItem,
     Invoice,
     InvoiceAllocation,
+    Project,
+    ProjectKind,
     Transaction,
     TransactionAttachment,
     TransactionItem,
@@ -185,12 +187,26 @@ async def list_transactions(
     date_from: date_type | None = None,
     date_to: date_type | None = None,
     q: str | None = None,
+    # Filter berdasarkan kind proyek (REGULAR vs NON_PROJECT).
+    # None/false (default) -> exclude tx di bucket NON_PROJECT (halaman
+    # /transactions normal bersih dari catatan non-proyek).
+    # True -> ONLY tx non-proyek (halaman /catatan-non-proyek).
+    non_project: bool | None = None,
     page: int = Query(1, ge=1),
     size: int = Query(50, ge=1, le=2000),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Page[TransactionOut]:
     stmt = select(Transaction).where(Transaction.deleted_at.is_(None))
+    # Sub-query daftar project_id yg kind=NON_PROJECT (biasanya cuma 1
+    # per company). Pakai utk include/exclude di filter tx.
+    np_pids_subq = select(Project.id).where(
+        Project.kind == ProjectKind.NON_PROJECT.value
+    ).scalar_subquery()
+    if non_project is True:
+        stmt = stmt.where(Transaction.project_id.in_(np_pids_subq))
+    else:
+        stmt = stmt.where(~Transaction.project_id.in_(np_pids_subq))
     pids = await user_project_ids(db, user)
     if pids is not None:
         if not pids:
