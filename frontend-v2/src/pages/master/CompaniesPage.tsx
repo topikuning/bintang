@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Building2, Loader2, Pencil, Trash2 } from "lucide-react"
 import { z } from "zod"
@@ -27,7 +27,15 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/sonner"
 import { apiErrorMessage } from "@/lib/api"
 import { useBreakpoint } from "@/lib/breakpoint"
+import { useProjects } from "@/hooks/useProjects"
+import { useUpdateProject } from "@/hooks/useProjectMutations"
 import type { Company, CompanyInput } from "@/types/api"
+
+// Format kode singkat: huruf besar/angka/dash, 2-20 char. Dipakai utk
+// override kode default NON_PROJECT system project ('NON-PROJECT-{id}')
+// supaya enak diketik di bot Telegram/WhatsApp. Validator opsional --
+// boleh kosong (artinya pakai default backend).
+const NP_CODE_RE = /^[A-Z0-9-]{2,20}$/
 
 const schema = z.object({
   name: z.string().min(1, "Nama wajib"),
@@ -41,11 +49,19 @@ const schema = z.object({
   bank_account: z.string().nullable().optional(),
   logo_url: z.string().nullable().optional(),
   letterhead_url: z.string().nullable().optional(),
+  non_project_code: z
+    .string()
+    .nullable()
+    .optional()
+    .refine(
+      (v) => !v || NP_CODE_RE.test(v),
+      "Kode hanya boleh huruf besar/angka/dash, 2-20 karakter (mis. NP1, KS-NP)",
+    ),
 })
 
 type FormValues = z.infer<typeof schema>
 
-function buildDefaults(c: Company | null): FormValues {
+function buildDefaults(c: Company | null, npCode: string = ""): FormValues {
   return {
     name: c?.name ?? "",
     npwp: c?.npwp ?? "",
@@ -56,6 +72,7 @@ function buildDefaults(c: Company | null): FormValues {
     bank_account: c?.bank_account ?? "",
     logo_url: c?.logo_url ?? "",
     letterhead_url: c?.letterhead_url ?? "",
+    non_project_code: npCode,
   }
 }
 
@@ -251,6 +268,26 @@ function CompanyForm({
   const create = useCreateCompany()
   const update = useUpdateCompany(company?.id ?? 0)
 
+  // NON_PROJECT system project utk company ini. Saat edit company, kita
+  // tarik proyek system-nya supaya user bisa rename kode-nya di form ini
+  // (1 form, 1 tempat). Backend invariant: 1 NON_PROJECT per company,
+  // ada otomatis sejak company dibuat (migrasi seed) -- jadi kalau ada
+  // perusahaan tanpa NP, anggap belum siap & sembunyikan field.
+  const npQuery = useProjects(
+    isEdit && open && company?.id
+      ? { company_id: company.id, include_non_project: true }
+      : { company_id: -1 }, // disable query effectively (no project id=-1)
+  )
+  const nonProject = useMemo(() => {
+    if (!isEdit || !company?.id) return null
+    return (
+      npQuery.data?.items?.find(
+        (p) => p.kind === "NON_PROJECT" && p.company_id === company.id,
+      ) ?? null
+    )
+  }, [npQuery.data, isEdit, company?.id])
+  const updateNp = useUpdateProject(nonProject?.id ?? 0)
+
   const {
     register,
     handleSubmit,
@@ -261,8 +298,8 @@ function CompanyForm({
   })
 
   useEffect(() => {
-    if (open) reset(buildDefaults(company))
-  }, [company, open, reset])
+    if (open) reset(buildDefaults(company, nonProject?.code ?? ""))
+  }, [company, open, reset, nonProject?.code])
 
   const onSubmit = async (raw: FormValues) => {
     const parsed = schema.safeParse(raw)
@@ -284,6 +321,24 @@ function CompanyForm({
       }
       if (isEdit) {
         await update.mutateAsync(payload)
+        // Rename kode NON_PROJECT kalau berubah. Lakukan setelah update
+        // company supaya kalau npm gagal, company tetap tersimpan.
+        const desiredCode = (parsed.data.non_project_code ?? "").trim().toUpperCase()
+        if (
+          nonProject &&
+          desiredCode &&
+          desiredCode !== nonProject.code
+        ) {
+          try {
+            await updateNp.mutateAsync({ code: desiredCode })
+          } catch (err) {
+            toast.error("Gagal rename kode Catatan Non-Proyek", {
+              description: apiErrorMessage(err),
+            })
+            // Tetap close form -- update company sudah sukses. User bisa
+            // retry rename di pembukaan form berikutnya.
+          }
+        }
         toast.success("Perusahaan diperbarui")
       } else {
         await create.mutateAsync(payload)
@@ -333,6 +388,25 @@ function CompanyForm({
       <Field label="Rekening Bank" hint="Tampil di footer invoice (mis. BCA 1234567890 a.n. PT ...)">
         <Input {...register("bank_account")} placeholder="BCA 1234567890 a.n. PT ABC" />
       </Field>
+      {isEdit && nonProject && (
+        <Field
+          label="Kode Catatan Non-Proyek"
+          hint={`Dipakai di bot Telegram/WhatsApp (mis. /keluar ${
+            nonProject.code
+          } 50000 makan tim). Default: ${nonProject.code}. Ganti ke kode pendek supaya enak diketik (huruf besar, angka, dash; 2-20 char).`}
+          error={errors.non_project_code?.message}
+        >
+          <Input
+            {...register("non_project_code")}
+            placeholder="NP1, KS-NP, dst."
+            className="font-mono uppercase"
+            onChange={(e) => {
+              // Auto-uppercase saat ngetik
+              e.target.value = e.target.value.toUpperCase()
+            }}
+          />
+        </Field>
+      )}
       <div className="grid grid-cols-1 gap-3">
         <Field label="URL Logo" hint="Logo perusahaan utk PDF (opsional)">
           <Input {...register("logo_url")} placeholder="https://..." />

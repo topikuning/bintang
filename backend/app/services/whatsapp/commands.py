@@ -74,6 +74,8 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "  /keluar <kode> <jumlah> <deskripsi>\n"
         "  /masuk <kode> <jumlah> <deskripsi>\n"
         "  Contoh: ```/keluar PRJ-001 5000000 Beli semen 50 sak```\n"
+        "  Catatan non-proyek: pakai kode Catatan Non-Proyek perusahaan "
+        "(setel kode pendek di master Perusahaan).\n"
         "  Foto yang dikirim setelahnya jadi attachment otomatis.\n"
         "\n*Workflow validasi:*\n"
         "  /submit <id> — kirim tx draft utk validasi\n"
