@@ -107,6 +107,9 @@ export function TransactionForm({
 }: TransactionFormProps) {
   const bp = useBreakpoint()
   const isEdit = !!transaction
+  // DRAFT tx boleh pindah proyek (termasuk ke/dari Catatan Non-Proyek).
+  // Status lain di-block backend (audit trail keuangan harus kuat).
+  const isDraftEdit = isEdit && transaction?.status === "DRAFT"
   const initialProjectId =
     transaction?.project_id ?? lockProjectId ?? 0
 
@@ -454,8 +457,10 @@ export function TransactionForm({
               required
               error={errors.project_id?.message}
               hint={
-                isEdit
-                  ? "Proyek tdk bisa diubah via edit. Kalau salah proyek: cancel tx ini, lalu buat ulang di proyek benar."
+                isDraftEdit
+                  ? "Tx masih DRAFT -- boleh pindah proyek (termasuk ke/dari Catatan Non-Proyek)."
+                  : isEdit
+                  ? "Proyek tdk bisa diubah setelah submit. Kalau salah proyek: cancel tx, buat ulang di proyek benar."
                   : undefined
               }
             >
@@ -466,14 +471,19 @@ export function TransactionForm({
                   <ProjectPicker
                     value={field.value || null}
                     onChange={(v) => field.onChange(v ?? 0)}
-                    // Lock saat edit: project IMMUTABLE via UPDATE
-                    // (backend reject 400). Saat create: lock kalau ada
-                    // lockProjectId (mis. quick-add dari ProjectDashboard).
-                    disabled={isEdit || !!lockProjectId}
+                    // Lock saat edit non-DRAFT: project IMMUTABLE via
+                    // UPDATE (backend reject 400 utk status non-DRAFT).
+                    // Saat edit DRAFT: ALLOW pindah proyek (termasuk
+                    // ke/dari Catatan Non-Proyek).
+                    // Saat create: lock kalau ada lockProjectId (mis.
+                    // quick-add dari ProjectDashboard).
+                    disabled={(isEdit && !isDraftEdit) || !!lockProjectId}
                     // Halaman Catatan Non-Proyek pakai lockProjectId ke
                     // system project NON_PROJECT -- propagate supaya
                     // label proyek tampil benar (bukan placeholder).
-                    includeNonProject={allowNonProject}
+                    // Saat DRAFT-edit: izinkan picker tampilkan NON_PROJECT
+                    // supaya user bisa pindah tx ke side ledger.
+                    includeNonProject={allowNonProject || isDraftEdit}
                   />
                 )}
               />
