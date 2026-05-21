@@ -44,6 +44,12 @@ async def _sync_pg_columns(conn) -> None:
         "CREATE INDEX IF NOT EXISTS ix_transactions_recipient_user_id ON transactions (recipient_user_id)",
         # Settlement item: link ke invoice eksternal yg dibayar lewat dana ops
         "ALTER TABLE cash_advance_settlement_items ADD COLUMN IF NOT EXISTS invoice_id INTEGER REFERENCES invoices(id)",
+        # Catatan Non-Proyek (Project.kind enum REGULAR|NON_PROJECT).
+        # Default REGULAR utk data legacy. Migrasi alembic
+        # c4d2a9e1f7b8 juga add column ini -- _sync di sini hanya
+        # safety net kalau deploy tdk run alembic upgrade.
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS kind VARCHAR(20) NOT NULL DEFAULT 'REGULAR'",
+        "CREATE INDEX IF NOT EXISTS ix_projects_kind ON projects (kind)",
     ]
     for sql in statements:
         try:
