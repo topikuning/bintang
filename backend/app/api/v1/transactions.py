@@ -452,10 +452,9 @@ async def update_transaction(
                 "settlement dulu kalau perlu koreksi.",
             )
     data = payload.model_dump(exclude_unset=True)
-    # project_id sudah di-validate di atas; drop dari setattr loop
-    # supaya tdk re-assign (no-op kalau sama, atau bypass guard kalau
-    # ada bug di check sebelumnya).
-    data.pop("project_id", None)
+    # project_id sudah di-validate di atas: kalau berubah, status harus
+    # DRAFT + user punya akses ke proyek tujuan + proyek tujuan exists.
+    # Lolos guard -> boleh setattr (akan masuk loop di bawah).
     items_payload = data.pop("items", None)
     new_kind = data.pop("kind", None)
 
