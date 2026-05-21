@@ -34,7 +34,7 @@ import {
 import { ProjectPicker } from "@/components/forms/ProjectPicker"
 import { VendorPicker } from "@/components/forms/VendorPicker"
 import { useAuthStore } from "@/store/auth"
-import { apiErrorMessage } from "@/lib/api"
+import { apiErrorMessage, fileUrl as resolveFileUrl } from "@/lib/api"
 import { fmtDateTime, fmtPct } from "@/lib/format"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -587,7 +587,13 @@ function DraftCard({
               Source
             </div>
             <a
-              href={draft.source_url}
+              // `draft.source_url` dari backend = relative path
+              // (mis. "/files/ocr/xxx.pdf") atau absolute URL (mis.
+              // "https://..."). resolveFileUrl() prepend backend
+              // origin utk relative path supaya tdk ke-resolve ke
+              // domain FE (yg SPA fallback ke index.html -> redirect
+              // ke dashboard).
+              href={resolveFileUrl(draft.source_url) || draft.source_url}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[12px] font-mono text-brand-600 hover:underline break-all"

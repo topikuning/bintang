@@ -65,8 +65,35 @@ export function Combobox({
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
   const [activeIdx, setActiveIdx] = React.useState(0)
+  const [portalContainer, setPortalContainer] = React.useState<HTMLElement | null>(null)
   const inputRef = React.useRef<HTMLInputElement>(null)
   const listRef = React.useRef<HTMLUListElement>(null)
+
+  // Callback ref di trigger button -- saat trigger mount, walk DOM ke
+  // atas cari ancestor dgn role="dialog" (Radix Dialog/Sheet). Kalau
+  // ketemu, render Popover.Portal ke dalam Dialog content supaya
+  // `react-remove-scroll` (yg dipakai Radix Dialog utk lock body
+  // scroll) memperlakukan popover sbg "di dalam scope" -> wheel scroll
+  // event tdk ke-block.
+  //
+  // Kalau Combobox dipakai di luar Dialog (mis. filter di top page),
+  // container tetap null -> Portal default ke <body>, behaviour
+  // standar.
+  const triggerRefCallback = React.useCallback((node: HTMLButtonElement | null) => {
+    if (!node) {
+      setPortalContainer(null)
+      return
+    }
+    let el: HTMLElement | null = node.parentElement
+    while (el && el !== document.body) {
+      if (el.getAttribute("role") === "dialog") {
+        setPortalContainer(el)
+        return
+      }
+      el = el.parentElement
+    }
+    setPortalContainer(null)
+  }, [])
 
   const selected = options.find((o) => o.value === value)
 
@@ -123,27 +150,6 @@ export function Combobox({
     setOpen(false)
   }
 
-  // Wheel handler manual -- workaround utk react-remove-scroll yg
-  // dipakai Radix Dialog (Sheet pembungkus form). Library itu pasang
-  // wheel listener di document dgn capture+preventDefault utk lock
-  // body scroll. Combobox dirender via Popover.Portal ke <body>, yaitu
-  // di LUAR scope Dialog -> wheel event di list ke-block (scroll
-  // native mati). Scrollbar drag tetap jalan karena lewat pointer
-  // event.
-  //
-  // Solusi: kalau native sudah ke-preventDefault, scroll manual via
-  // scrollTop. Programmatic scroll tdk diblok preventDefault.
-  // Conditional `e.defaultPrevented` cegah double-scroll saat native
-  // sebenarnya jalan (mis. MultiCombobox di top page tanpa Sheet).
-  const onWheel = (e: React.WheelEvent<HTMLUListElement>) => {
-    if (!e.defaultPrevented || !listRef.current) return
-    const ul = listRef.current
-    let delta = e.deltaY
-    if (e.deltaMode === 1) delta *= 16            // line -> ~16px
-    if (e.deltaMode === 2) delta *= ul.clientHeight // page
-    ul.scrollTop += delta
-  }
-
   // Keyboard handler di search input -- handle ↑/↓/Enter.
   const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (filtered.length === 0) return
@@ -162,6 +168,7 @@ export function Combobox({
 
   const trigger = (
     <button
+      ref={triggerRefCallback}
       type="button"
       disabled={disabled}
       onClick={() => !disabled && setOpen(true)}
@@ -198,7 +205,7 @@ export function Combobox({
   )
 
   const list = (
-    <ul ref={listRef} onWheel={onWheel} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+    <ul ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
       {filtered.length === 0 ? (
         <li className="px-3 py-6 text-center text-sm text-ink-500">{emptyMessage}</li>
       ) : (
@@ -286,7 +293,7 @@ export function Combobox({
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>{trigger}</Popover.Trigger>
-      <Popover.Portal>
+      <Popover.Portal container={portalContainer ?? undefined}>
         <Popover.Content
           align="start"
           sideOffset={4}

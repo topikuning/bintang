@@ -56,8 +56,29 @@ export function MultiCombobox<T extends string | number>({
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
   const [activeIdx, setActiveIdx] = React.useState(0)
+  const [portalContainer, setPortalContainer] = React.useState<HTMLElement | null>(null)
   const inputRef = React.useRef<HTMLInputElement>(null)
   const listRef = React.useRef<HTMLUListElement>(null)
+
+  // Lihat penjelasan di Combobox.tsx (file kembar). Detect Dialog
+  // ancestor lewat DOM walk supaya Portal target = Dialog content
+  // (bukan body) ketika Combobox dirender di dalam Sheet -> wheel
+  // event tdk diblok react-remove-scroll.
+  const triggerRefCallback = React.useCallback((node: HTMLButtonElement | null) => {
+    if (!node) {
+      setPortalContainer(null)
+      return
+    }
+    let el: HTMLElement | null = node.parentElement
+    while (el && el !== document.body) {
+      if (el.getAttribute("role") === "dialog") {
+        setPortalContainer(el)
+        return
+      }
+      el = el.parentElement
+    }
+    setPortalContainer(null)
+  }, [])
 
   const selectedSet = new Set<T>(value)
   const selectedOpts = options.filter((o) => selectedSet.has(o.value as T))
@@ -108,19 +129,6 @@ export function MultiCombobox<T extends string | number>({
     onChange([])
   }
 
-  // Wheel handler manual -- workaround react-remove-scroll dari Radix
-  // Dialog. Detail di Combobox.tsx (file kembar). Conditional
-  // `defaultPrevented` cegah double-scroll saat native jalan normal
-  // (kasus MultiCombobox saat ini di top page tanpa Sheet wrapper).
-  const onWheel = (e: React.WheelEvent<HTMLUListElement>) => {
-    if (!e.defaultPrevented || !listRef.current) return
-    const ul = listRef.current
-    let delta = e.deltaY
-    if (e.deltaMode === 1) delta *= 16
-    if (e.deltaMode === 2) delta *= ul.clientHeight
-    ul.scrollTop += delta
-  }
-
   // Keyboard handler di search input -- handle ↑/↓/Enter.
   const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (filtered.length === 0) return
@@ -149,6 +157,7 @@ export function MultiCombobox<T extends string | number>({
 
   const trigger = (
     <button
+      ref={triggerRefCallback}
       type="button"
       disabled={disabled}
       onClick={() => !disabled && setOpen(true)}
@@ -182,7 +191,7 @@ export function MultiCombobox<T extends string | number>({
   )
 
   const list = (
-    <ul ref={listRef} onWheel={onWheel} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+    <ul ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
       {filtered.length === 0 ? (
         <li className="px-3 py-6 text-center text-sm text-ink-500">{emptyMessage}</li>
       ) : (
@@ -297,7 +306,7 @@ export function MultiCombobox<T extends string | number>({
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>{trigger}</Popover.Trigger>
-      <Popover.Portal>
+      <Popover.Portal container={portalContainer ?? undefined}>
         <Popover.Content
           align="start"
           sideOffset={4}
