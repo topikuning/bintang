@@ -46,4 +46,9 @@ export const queryKeys = {
     companies: () => ["non-project", "companies"] as const,
     years: (params?: object) => ["non-project", "years", params ?? {}] as const,
   },
+  cashRequests: {
+    all: () => ["cash-requests"] as const,
+    list: (params?: object) => ["cash-requests", "list", params ?? {}] as const,
+    detail: (id: number | string) => ["cash-requests", "detail", id] as const,
+  },
 } as const

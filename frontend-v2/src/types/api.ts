@@ -459,3 +459,75 @@ export interface UserUpdateInput {
   /** Direct WAHA format (override whatsapp_phone). */
   whatsapp_chat_id?: string | null
 }
+
+
+// ===== Cash Requests (Pengajuan Dana) =====
+export type CashRequestStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "CANCELLED"
+
+export interface CashRequestItem {
+  id: number
+  category_id: number | null
+  category_name: string | null
+  description: string
+  quantity: string | null
+  unit_price: string | null
+  amount: string
+}
+
+export interface CashRequestItemInput {
+  category_id?: number | null
+  description: string
+  quantity?: string | number | null
+  unit_price?: string | number | null
+  amount: string | number
+}
+
+export interface CashRequest {
+  id: number
+  number: string
+  project_id: number
+  project_code: string | null
+  project_name: string | null
+  requester_id: number
+  requester_name: string | null
+  recipient_user_id: number | null
+  recipient_name: string | null
+  request_date: string
+  title: string
+  notes: string | null
+  total_amount: string
+  status: CashRequestStatus
+  approved_by_id: number | null
+  approved_by_name: string | null
+  approved_at: string | null
+  rejected_by_id: number | null
+  rejected_by_name: string | null
+  rejected_at: string | null
+  rejection_reason: string | null
+  disbursement_tx_id: number | null
+  items: CashRequestItem[]
+  created_at: string
+  updated_at: string
+}
+
+export interface CashRequestCreateInput {
+  project_id: number
+  recipient_user_id?: number | null
+  request_date: string
+  title: string
+  notes?: string | null
+  items: CashRequestItemInput[]
+}
+
+export interface CashRequestUpdateInput {
+  project_id?: number
+  recipient_user_id?: number | null
+  request_date?: string
+  title?: string
+  notes?: string | null
+  items?: CashRequestItemInput[]
+}

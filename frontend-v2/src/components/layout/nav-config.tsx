@@ -9,6 +9,7 @@ import {
   Building2,
   ClipboardList,
   Database,
+  FileText,
   FolderKanban,
   HardDrive,
   History,
@@ -57,6 +58,7 @@ export const DESKTOP_NAV: NavGroup[] = [
     items: [
       { id: "transactions", label: "Transaksi", to: "/transactions", icon: ArrowLeftRight },
       { id: "cash-advances", label: "Dana Operasional", to: "/transactions/cash-advances", icon: Wallet },
+      { id: "cash-requests", label: "Pengajuan Dana", to: "/cash-requests", icon: FileText },
       { id: "invoices", label: "Invoice", to: "/invoices", icon: Receipt },
       { id: "purchase-orders", label: "Purchase Order", to: "/purchase-orders", icon: ShoppingCart },
       { id: "budget", label: "Budget", to: "/budget", icon: BadgeDollarSign },
@@ -111,6 +113,7 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
   {
     label: "Operasional",
     items: [
+      { id: "cash-requests", label: "Pengajuan Dana", to: "/cash-requests", icon: FileText },
       { id: "purchase-orders", label: "Purchase Order", to: "/purchase-orders", icon: ShoppingCart },
       { id: "budget", label: "Budget", to: "/budget", icon: BadgeDollarSign },
       { id: "non-project", label: "Catatan Non-Proyek", to: "/non-project", icon: Notebook },

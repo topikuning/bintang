@@ -111,6 +111,16 @@ const NonProjectSettingsPage = lazy(() =>
     default: m.NonProjectSettingsPage,
   })),
 )
+const CashRequestsListPage = lazy(() =>
+  import("@/pages/cash-requests/CashRequestsListPage").then((m) => ({
+    default: m.CashRequestsListPage,
+  })),
+)
+const CashRequestDetailPage = lazy(() =>
+  import("@/pages/cash-requests/CashRequestDetailPage").then((m) => ({
+    default: m.CashRequestDetailPage,
+  })),
+)
 
 /**
  * Page-level loading fallback. Menjaga visual stability supaya saat
@@ -165,6 +175,8 @@ export const router = createBrowserRouter([
           { path: "budget", element: <L><BudgetPage /></L> },
           { path: "non-project", element: <L><NonProjectPage /></L> },
           { path: "settings/non-project", element: <L><NonProjectSettingsPage /></L> },
+          { path: "cash-requests", element: <L><CashRequestsListPage /></L> },
+          { path: "cash-requests/:id", element: <L><CashRequestDetailPage /></L> },
           { path: "reports", element: <L><ReportsPage /></L> },
           {
             path: "reports/invoice-items",

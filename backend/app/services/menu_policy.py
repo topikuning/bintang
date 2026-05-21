@@ -27,6 +27,7 @@ MENU_REGISTRY: list[dict[str, Any]] = [
     # Operasional
     {"id": "transactions", "label": "Transaksi", "group": "operasional"},
     {"id": "cash-advances", "label": "Dana Operasional", "group": "operasional"},
+    {"id": "cash-requests", "label": "Pengajuan Dana", "group": "operasional"},
     {"id": "invoices", "label": "Invoice", "group": "operasional"},
     {"id": "purchase-orders", "label": "Purchase Order", "group": "operasional"},
     {"id": "budget", "label": "Budget", "group": "operasional"},
