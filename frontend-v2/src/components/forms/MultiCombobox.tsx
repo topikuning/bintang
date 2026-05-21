@@ -169,7 +169,7 @@ export function MultiCombobox<T extends string | number>({
   )
 
   const list = (
-    <ul ref={listRef} className="max-h-[400px] overflow-y-auto">
+    <ul ref={listRef} className="flex-1 overflow-y-auto">
       {filtered.length === 0 ? (
         <li className="px-3 py-6 text-center text-sm text-ink-500">{emptyMessage}</li>
       ) : (
@@ -216,7 +216,7 @@ export function MultiCombobox<T extends string | number>({
   // Footer dgn counter "X dari Y" supaya saat list di-filter user tahu
   // posisi (mis. "2 dari 18 proyek").
   const footer = (
-    <div className="flex items-center justify-between gap-2 border-t bg-surface px-3 py-2 text-[12px]">
+    <div className="flex shrink-0 items-center justify-between gap-2 border-t bg-surface px-3 py-2 text-[12px]">
       <button
         type="button"
         onClick={() => {
@@ -288,6 +288,7 @@ export function MultiCombobox<T extends string | number>({
         <Popover.Content
           align="start"
           sideOffset={4}
+          collisionPadding={8}
           // Override Radix default focus behaviour -- force focus ke
           // search input. Default-nya Radix focus ke first focusable
           // child, kadang nyangkut di trigger atau scroll viewport.
@@ -296,9 +297,13 @@ export function MultiCombobox<T extends string | number>({
             e.preventDefault()
             requestAnimationFrame(() => inputRef.current?.focus())
           }}
-          className="z-50 w-[--radix-popover-trigger-width] min-w-[280px] rounded-md border bg-surface shadow-md outline-none"
+          // Constrain tinggi ke ruang viewport tersedia (CSS var dari
+          // Radix). Flex column supaya search/list/footer tetap terlihat
+          // saat popover open ke arah yg sempit.
+          style={{ maxHeight: "var(--radix-popover-content-available-height)" }}
+          className="z-50 flex w-[--radix-popover-trigger-width] min-w-[280px] flex-col overflow-hidden rounded-md border bg-surface shadow-md outline-none"
         >
-          <div className="border-b p-2">
+          <div className="border-b p-2 shrink-0">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
               <input
