@@ -12,6 +12,10 @@ interface ProjectPickerProps {
   /** Default false -- exclude system project NON_PROJECT. Set true di
    *  form Catatan Non-Proyek (utk locked project_id). */
   includeNonProject?: boolean
+  /** Optional: scope list ke 1 company. Berguna utk skenario pindah
+   *  proyek dlm 1 perusahaan (mis. DRAFT tx) supaya picker tidak
+   *  menampilkan proyek company lain. */
+  companyId?: number | null
 }
 
 export function ProjectPicker({
@@ -21,17 +25,24 @@ export function ProjectPicker({
   disabled,
   activeOnly = true,
   includeNonProject = false,
+  companyId,
 }: ProjectPickerProps) {
   const { data, isLoading } = useProjects({
     ...(activeOnly ? { status: "AKTIF" } : {}),
     ...(includeNonProject ? { include_non_project: true } : {}),
+    ...(companyId ? { company_id: companyId } : {}),
   })
   const options = useMemo<ComboboxOption[]>(() => {
-    return (data?.items ?? []).map((p) => ({
-      value: p.id,
-      label: p.name,
-      hint: p.code,
-    }))
+    return (data?.items ?? []).map((p) => {
+      // System project NON_PROJECT punya nama generik "Catatan Non-Proyek"
+      // -- 1 per company. Tanpa suffix company_name, multi-company user
+      // lihat banyak baris identik. Tambah suffix supaya bisa dibedakan.
+      const isNp = p.kind === "NON_PROJECT"
+      const label = isNp && p.company_name
+        ? `${p.name} — ${p.company_name}`
+        : p.name
+      return { value: p.id, label, hint: p.code }
+    })
   }, [data])
 
   return (

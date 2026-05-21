@@ -27,6 +27,7 @@ import { AmountInput } from "@/components/forms/AmountInput"
 import { DateInput } from "@/components/forms/DateInput"
 import { AttachmentUploader } from "@/components/forms/AttachmentUploader"
 import { ProjectPicker } from "@/components/forms/ProjectPicker"
+import { useProject } from "@/hooks/useProjects"
 import { CategoryPicker } from "@/components/forms/CategoryPicker"
 import { VendorPicker } from "@/components/forms/VendorPicker"
 import { useBreakpoint } from "@/lib/breakpoint"
@@ -110,6 +111,12 @@ export function TransactionForm({
   // DRAFT tx boleh pindah proyek (termasuk ke/dari Catatan Non-Proyek).
   // Status lain di-block backend (audit trail keuangan harus kuat).
   const isDraftEdit = isEdit && transaction?.status === "DRAFT"
+  // Saat DRAFT-move: scope ProjectPicker ke company tx -- mencegah
+  // cross-company move (jarang dimaksudkan & bikin NON_PROJECT picker
+  // tampil 28 baris di multi-company tenant).
+  const { data: currentProject } = useProject(
+    isDraftEdit ? transaction?.project_id : null,
+  )
   const initialProjectId =
     transaction?.project_id ?? lockProjectId ?? 0
 
@@ -458,7 +465,7 @@ export function TransactionForm({
               error={errors.project_id?.message}
               hint={
                 isDraftEdit
-                  ? "Tx masih DRAFT -- boleh pindah proyek (termasuk ke/dari Catatan Non-Proyek)."
+                  ? "Tx masih DRAFT -- boleh pindah ke proyek lain dlm perusahaan yg sama (termasuk Catatan Non-Proyek)."
                   : isEdit
                   ? "Proyek tdk bisa diubah setelah submit. Kalau salah proyek: cancel tx, buat ulang di proyek benar."
                   : undefined
@@ -484,6 +491,9 @@ export function TransactionForm({
                     // Saat DRAFT-edit: izinkan picker tampilkan NON_PROJECT
                     // supaya user bisa pindah tx ke side ledger.
                     includeNonProject={allowNonProject || isDraftEdit}
+                    companyId={
+                      isDraftEdit ? currentProject?.company_id ?? null : null
+                    }
                   />
                 )}
               />
