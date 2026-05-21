@@ -35,6 +35,7 @@ from app.models.models import (
     Category,
     PaymentMethod,
     Project,
+    ProjectKind,
     Transaction,
     TxnKind,
     TxnStatus,
@@ -211,6 +212,12 @@ async def create_cash_request(
     proj = await db.get(Project, payload.project_id)
     if not proj or proj.deleted_at is not None:
         raise HTTPException(404, "project_not_found")
+    # Catatan Non-Proyek tdk boleh jadi target pengajuan dana --
+    # ini bucket pencatatan SUPERADMIN, bukan operasional proyek.
+    # Pengeluaran di NP harus dicatat langsung sbg tx, bukan via
+    # workflow pengajuan dana.
+    if proj.kind == ProjectKind.NON_PROJECT.value:
+        raise HTTPException(400, "cannot_request_against_non_project")
 
     cr = CashRequest(
         number=await _next_cr_number(db, payload.request_date),
@@ -287,6 +294,8 @@ async def update_cash_request(
         proj_new = await db.get(Project, data["project_id"])
         if not proj_new or proj_new.deleted_at is not None:
             raise HTTPException(404, "project_not_found")
+        if proj_new.kind == ProjectKind.NON_PROJECT.value:
+            raise HTTPException(400, "cannot_request_against_non_project")
     new_items = data.pop("items", None)
     for k, v in data.items():
         if k == "title" and isinstance(v, str):

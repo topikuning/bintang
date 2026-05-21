@@ -25,6 +25,7 @@ from app.models.models import (
     CashRequestStatus,
     Company,
     Project,
+    ProjectKind,
     ProjectStatus,
     ProjectUser,
     Transaction,
@@ -34,6 +35,7 @@ from app.models.models import (
     User,
     UserRole,
 )
+from fastapi import HTTPException
 from app.schemas.cash_requests import (
     CashRequestCreate,
     CashRequestItemIn,
@@ -141,3 +143,32 @@ async def test_approve_uses_recipient_when_set(db):
     tx = await db.get(Transaction, approved.disbursement_tx_id)
     assert tx.recipient_user_id == recipient.id
     assert tx.recipient_name == "Mandor B"
+
+
+@pytest.mark.asyncio
+async def test_cannot_request_against_non_project(db):
+    """Pengajuan dana ke project kind=NON_PROJECT harus ditolak --
+    NP itu bucket SUPERADMIN-only utk pencatatan langsung, bukan
+    workflow operasional proyek."""
+    co, _, requester, _admin = await _seed(db)
+    # Bikin system project NON_PROJECT manual (seed migration tdk jalan
+    # di test env in-memory).
+    np_proj = Project(
+        code=f"NON-PROJECT-{co.id}", name="Catatan Non-Proyek",
+        company_id=co.id, status=ProjectStatus.AKTIF,
+        kind=ProjectKind.NON_PROJECT.value,
+    )
+    db.add(np_proj); await db.flush()
+    db.add(ProjectUser(project_id=np_proj.id, user_id=requester.id))
+    await db.flush()
+
+    payload = CashRequestCreate(
+        project_id=np_proj.id,
+        request_date=date(2026, 5, 21),
+        title="Should fail",
+        items=[CashRequestItemIn(description="x", amount=Decimal("100000"))],
+    )
+    with pytest.raises(HTTPException) as exc:
+        await create_cash_request(payload=payload, db=db, user=requester)
+    assert exc.value.status_code == 400
+    assert "non_project" in exc.value.detail

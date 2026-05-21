@@ -55,6 +55,12 @@ MENU_REGISTRY: list[dict[str, Any]] = [
 ]
 MENU_IDS = {m["id"] for m in MENU_REGISTRY}
 
+# Menu yg hanya boleh dilihat SUPERADMIN, terlepas dari role_menu_policies.
+# Catatan Non-Proyek = bucket pencatatan off-the-books rahasia milik
+# SUPERADMIN; role lain (CENTRAL_ADMIN sekalipun) tidak boleh tahu
+# keberadaannya supaya konsep "rahasia" terjaga.
+SUPERADMIN_ONLY_MENU_IDS = {"non-project", "settings-non-project"}
+
 # Cache: role -> set of hidden menu_ids, dgn TTL
 _CACHE_TTL = 60.0
 _hidden_cache: dict[UserRole, tuple[set[str], float]] = {}
@@ -89,6 +95,8 @@ async def get_hidden(db: AsyncSession, role: UserRole) -> set[str]:
 async def list_user_menus(db: AsyncSession, role: UserRole) -> list[str]:
     """List menu_id yg user (role tsb) BOLEH lihat."""
     hidden = await get_hidden(db, role)
+    if role != UserRole.SUPERADMIN:
+        hidden = hidden | SUPERADMIN_ONLY_MENU_IDS
     return [m["id"] for m in MENU_REGISTRY if m["id"] not in hidden]
 
 

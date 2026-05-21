@@ -211,11 +211,11 @@ export function CashRequestFormSheet({ open, onClose, target }: Props) {
           />
         </Field>
         <Field label="Proyek" required>
-          <ProjectPicker
-            value={projectId}
-            onChange={setProjectId}
-            includeNonProject
-          />
+          {/* Sengaja TIDAK include NON_PROJECT: pengajuan dana adalah
+              workflow operasional proyek, bukan bucket Catatan Non-Proyek
+              (yg SUPERADMIN-only & untuk pencatatan langsung tanpa
+              workflow). Backend juga reject project_id NON_PROJECT. */}
+          <ProjectPicker value={projectId} onChange={setProjectId} />
         </Field>
       </div>
       <Field label="Judul / Maksud Pengajuan" required>

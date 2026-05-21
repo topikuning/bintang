@@ -29,6 +29,7 @@ import { apiErrorMessage } from "@/lib/api"
 import { useBreakpoint } from "@/lib/breakpoint"
 import { useProjects } from "@/hooks/useProjects"
 import { useUpdateProject } from "@/hooks/useProjectMutations"
+import { useAuthStore } from "@/store/auth"
 import type { Company, CompanyInput } from "@/types/api"
 
 // Format kode singkat: huruf besar/angka/dash, 2-20 char. Dipakai utk
@@ -267,14 +268,15 @@ function CompanyForm({
   const isEdit = !!company
   const create = useCreateCompany()
   const update = useUpdateCompany(company?.id ?? 0)
+  const currentUser = useAuthStore((s) => s.user)
+  const isSuperadmin = currentUser?.role === "SUPERADMIN"
 
-  // NON_PROJECT system project utk company ini. Saat edit company, kita
-  // tarik proyek system-nya supaya user bisa rename kode-nya di form ini
-  // (1 form, 1 tempat). Backend invariant: 1 NON_PROJECT per company,
-  // ada otomatis sejak company dibuat (migrasi seed) -- jadi kalau ada
-  // perusahaan tanpa NP, anggap belum siap & sembunyikan field.
+  // NON_PROJECT system project utk company ini. Hanya SUPERADMIN yg
+  // boleh lihat/rename kode -- NP itu rahasia, role lain (CENTRAL
+  // sekalipun) tdk perlu tahu keberadaannya. Backend juga filter:
+  // include_non_project=true di-honor hanya utk SUPERADMIN.
   const npQuery = useProjects(
-    isEdit && open && company?.id
+    isEdit && open && company?.id && isSuperadmin
       ? { company_id: company.id, include_non_project: true }
       : { company_id: -1 }, // disable query effectively (no project id=-1)
   )
@@ -388,7 +390,7 @@ function CompanyForm({
       <Field label="Rekening Bank" hint="Tampil di footer invoice (mis. BCA 1234567890 a.n. PT ...)">
         <Input {...register("bank_account")} placeholder="BCA 1234567890 a.n. PT ABC" />
       </Field>
-      {isEdit && nonProject && (
+      {isEdit && isSuperadmin && nonProject && (
         <Field
           label="Kode Catatan Non-Proyek"
           hint={`Dipakai di bot Telegram/WhatsApp (mis. /keluar ${

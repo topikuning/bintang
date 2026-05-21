@@ -23,6 +23,7 @@ from app.db.session import get_db
 from app.models.models import (
     Category,
     Project,
+    ProjectKind,
     ProjectStatus,
     Transaction,
     TxnType,
@@ -98,6 +99,11 @@ async def budget_summary(
     stmt = select(Project).where(
         Project.deleted_at.is_(None),
         Project.status == ProjectStatus.AKTIF,
+        # Exclude Catatan Non-Proyek -- bucket SUPERADMIN-only di luar
+        # konsep budget operasional. NP tdk punya budget_amount realistis
+        # dan kebocorannya ke halaman Budget akan reveal keberadaannya
+        # ke role lain.
+        Project.kind != ProjectKind.NON_PROJECT.value,
     )
     if pids is not None:
         if not pids:

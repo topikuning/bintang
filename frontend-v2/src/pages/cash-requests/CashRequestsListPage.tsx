@@ -95,7 +95,9 @@ export function CashRequestsListPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<CashRequest | null>(null)
 
-  const projectsQuery = useProjects({ include_non_project: true })
+  // Dropdown filter proyek: TANPA NON_PROJECT (rahasia SUPERADMIN +
+  // tdk relevan utk pengajuan dana operasional).
+  const projectsQuery = useProjects()
   const projects = projectsQuery.data?.items ?? []
 
   const params = useMemo(

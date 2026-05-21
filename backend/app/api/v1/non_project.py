@@ -77,7 +77,7 @@ class NonProjectYearUpdate(BaseModel):
 @router.get("/companies", response_model=list[NonProjectCompanyEntry])
 async def list_non_project_companies(
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_admin),
+    user: User = Depends(require_superadmin),
 ) -> list[NonProjectCompanyEntry]:
     """Daftar company + ID system project NON_PROJECT-nya. Dipakai FE
     di halaman Catatan Non-Proyek utk:
@@ -129,7 +129,7 @@ async def list_non_project_companies(
 async def list_year_settings(
     company_id: int | None = None,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_admin),
+    user: User = Depends(require_superadmin),
 ) -> list[NonProjectYearStatus]:
     """Daftar status inklusi per tahun per company.
 

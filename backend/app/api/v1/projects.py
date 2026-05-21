@@ -126,7 +126,11 @@ async def list_projects(
     size: int = Query(50, ge=1, le=2000),
 ) -> Page[ProjectOut]:
     stmt = select(Project).where(Project.deleted_at.is_(None))
-    if not include_non_project:
+    # Catatan Non-Proyek = bucket SUPERADMIN-only (rahasia). Walau ada
+    # query param include_non_project=true, role lain tetap di-block utk
+    # mencegah dropdown/picker apapun mem-bocorkan kode/nama NON_PROJECT.
+    allow_np = include_non_project and user.role == UserRole.SUPERADMIN
+    if not allow_np:
         stmt = stmt.where(Project.kind != ProjectKind.NON_PROJECT.value)
     pids = await user_project_ids(db, user)
     if pids is not None:
