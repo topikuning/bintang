@@ -104,6 +104,14 @@ class TxnStatus(str, enum.Enum):
     CANCELLED = "CANCELLED"
 
 
+class CashRequestStatus(str, enum.Enum):
+    """Status pengajuan dana operasional (CashRequest)."""
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    CANCELLED = "CANCELLED"
+
+
 class PaymentMethod(str, enum.Enum):
     CASH = "CASH"
     TRANSFER = "TRANSFER"
@@ -597,6 +605,125 @@ class CashAdvanceSettlementItem(TimestampMixin, Base):
     )
 
     settlement: Mapped[CashAdvanceSettlement] = relationship(back_populates="items")
+
+
+class CashRequest(TimestampMixin, Base):
+    """Pengajuan dana operasional internal (sebelum jadi tx KELUAR).
+
+    Mirip invoice tapi utk pengeluaran internal team (bukan ke vendor
+    eksternal). Header + line items (rincian belanja yg direncanakan).
+
+    Flow:
+      1. Requester (non-EXECUTIVE) bikin pengajuan dgn rincian items.
+         Status: PENDING. Belum ada tx, belum masuk hitungan saldo.
+      2. CENTRAL/SUPERADMIN approve atau reject.
+      3. Saat APPROVED, sistem auto-create Transaction OUT kind=CASH_ADVANCE
+         status DRAFT di proyek tsb (recipient = recipient_user_id atau
+         requester). Link disbursement_tx_id. Tx masuk hitungan pending.
+      4. Admin keuangan verify tx lewat flow Transaksi existing saat
+         dana ditransfer -> VERIFIED, masuk saldo.
+      5. Pertanggungjawaban pakai CashAdvanceSettlement existing.
+    """
+    __tablename__ = "cash_requests"
+    __table_args__ = (
+        Index("ix_cash_requests_project_status", "project_id", "status"),
+        Index("ix_cash_requests_requester", "requester_id"),
+        Index("ix_cash_requests_deleted_at", "deleted_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Format: CR/YYYY/MM/#### (sequential per bulan, global).
+    number: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id"), nullable=False, index=True
+    )
+
+    # Yang mengajukan.
+    requester_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), nullable=False, index=True
+    )
+    # Calon penerima dana (kalau berbeda dari requester). Saat APPROVED,
+    # ini jadi recipient_user_id di tx CASH_ADVANCE. Null -> default ke
+    # requester.
+    recipient_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+
+    request_date: Mapped[date] = mapped_column(Date, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Sum(items.amount). Disimpan utk performance & filter range.
+    total_amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, default=Decimal("0")
+    )
+
+    # String (bukan native enum) -- konsisten dgn pola Project.kind:
+    # luwes nambah status baru tanpa ALTER TYPE Postgres.
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=CashRequestStatus.PENDING.value, index=True
+    )
+
+    approved_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    rejected_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    rejected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Link ke tx CASH_ADVANCE yg auto-created saat APPROVED. SET NULL
+    # kalau tx-nya di-hard-delete (jarang -- tx pakai soft-delete). Unique:
+    # 1 pengajuan = 1 tx pencairan.
+    disbursement_tx_id: Mapped[int | None] = mapped_column(
+        ForeignKey("transactions.id", ondelete="SET NULL"),
+        nullable=True, unique=True,
+    )
+
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    items: Mapped[list["CashRequestItem"]] = relationship(
+        back_populates="request",
+        cascade="all,delete-orphan",
+        order_by="CashRequestItem.id",
+    )
+
+
+class CashRequestItem(TimestampMixin, Base):
+    """Rincian belanja yang direncanakan utk satu pengajuan dana.
+    1 item = 1 baris (kategori + deskripsi + qty/harga atau amount langsung).
+    Total request = SUM(items.amount).
+    """
+    __tablename__ = "cash_request_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    request_id: Mapped[int] = mapped_column(
+        ForeignKey("cash_requests.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id"), nullable=True
+    )
+    description: Mapped[str] = mapped_column(String(300), nullable=False)
+    # Qty & unit_price opsional -- user boleh isi amount langsung.
+    quantity: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 3), nullable=True
+    )
+    unit_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 2), nullable=True
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+
+    request: Mapped[CashRequest] = relationship(back_populates="items")
 
 
 class TransactionAttachment(TimestampMixin, Base):
