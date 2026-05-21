@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { toast } from "@/components/ui/sonner"
 import { AmountInput } from "@/components/forms/AmountInput"
 import { DateInput } from "@/components/forms/DateInput"
@@ -309,6 +309,15 @@ export function TransactionForm({
               ? `Tambah Bukti — Tx #${justCreatedTx.id}`
               : isEdit ? "Edit Transaksi" : "Tambah Transaksi"}
           </SheetTitle>
+          {/* sr-only deskripsi -- penuhi Radix Dialog a11y requirement
+              (aria-describedby). Tanpa ini console warning. */}
+          <SheetDescription className="sr-only">
+            {justCreatedTx
+              ? "Lampirkan bukti transaksi (struk, kwitansi, foto)."
+              : isEdit
+                ? "Form edit transaksi yang sudah ada."
+                : "Form input transaksi baru: tanggal, nominal, proyek, kategori, vendor, dan deskripsi."}
+          </SheetDescription>
           <div className="w-12" />
         </SheetHeader>
 
