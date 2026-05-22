@@ -455,6 +455,10 @@ class Transaction(TimestampMixin, Base):
         # Lookup dari invoice_allocations / detail invoice.
         Index("ix_transactions_invoice_id", "invoice_id"),
         Index("ix_transactions_vendor_client", "vendor_client_id"),
+        # Defense-in-depth: pencegahan amount negatif di level DB.
+        # Validasi sudah ada di Pydantic, tapi direct SQL/ORM bug bisa
+        # bypass. Audit 2026-05-22 #C4.
+        CheckConstraint("amount > 0", name="ck_transactions_amount_positive"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -533,6 +537,9 @@ class TransactionItem(TimestampMixin, Base):
     """Multi-line item breakdown utk transaksi (terutama DIRECT_EXPENSE).
     Total transaksi = SUM(items.amount). Validasi di endpoint."""
     __tablename__ = "transaction_items"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_transaction_items_amount_positive"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     transaction_id: Mapped[int] = mapped_column(
@@ -556,6 +563,13 @@ class CashAdvanceSettlement(TimestampMixin, Base):
     (kind=DIRECT_EXPENSE, parent_advance_tx_id = advance).
     """
     __tablename__ = "cash_advance_settlements"
+    __table_args__ = (
+        # Nominal kembali ke kas tdk boleh negatif (zero OK = tdk ada sisa).
+        CheckConstraint(
+            "returned_to_kas >= 0",
+            name="ck_cash_advance_settlements_returned_nonneg",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     cash_advance_tx_id: Mapped[int] = mapped_column(
@@ -591,6 +605,12 @@ class CashAdvanceSettlementItem(TimestampMixin, Base):
     """Rincian penggunaan uang muka. 1 item = 1 baris pertanggungjawaban
     (kategori + deskripsi + amount + opsional URL struk)."""
     __tablename__ = "cash_advance_settlement_items"
+    __table_args__ = (
+        CheckConstraint(
+            "amount > 0",
+            name="ck_cash_advance_settlement_items_amount_positive",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     settlement_id: Mapped[int] = mapped_column(
@@ -637,6 +657,12 @@ class CashRequest(TimestampMixin, Base):
         Index("ix_cash_requests_project_status", "project_id", "status"),
         Index("ix_cash_requests_requester", "requester_id"),
         Index("ix_cash_requests_deleted_at", "deleted_at"),
+        # Total tdk boleh negatif. Zero OK utk PENDING tanpa item
+        # (defensive default), tapi item-nya wajib > 0.
+        CheckConstraint(
+            "total_amount >= 0",
+            name="ck_cash_requests_total_nonneg",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -712,6 +738,12 @@ class CashRequestItem(TimestampMixin, Base):
     Total request = SUM(items.amount).
     """
     __tablename__ = "cash_request_items"
+    __table_args__ = (
+        CheckConstraint(
+            "amount > 0",
+            name="ck_cash_request_items_amount_positive",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     request_id: Mapped[int] = mapped_column(
@@ -760,6 +792,11 @@ class Invoice(TimestampMixin, Base):
         Index("ix_invoices_deleted_at", "deleted_at"),
         Index("ix_invoices_due_date", "due_date"),
         Index("ix_invoices_invoice_date", "invoice_date"),
+        # Amount fields tdk boleh negatif (credit note di-modelkan terpisah
+        # nanti kalau perlu, bukan via invoice negatif).
+        CheckConstraint("subtotal >= 0", name="ck_invoices_subtotal_nonneg"),
+        CheckConstraint("tax >= 0", name="ck_invoices_tax_nonneg"),
+        CheckConstraint("total >= 0", name="ck_invoices_total_nonneg"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -837,6 +874,12 @@ class InvoiceAllocation(TimestampMixin, Base):
 
 class InvoiceItem(TimestampMixin, Base):
     __tablename__ = "invoice_items"
+    __table_args__ = (
+        # Quantity > 0 wajib (line item kosong tdk masuk akal).
+        CheckConstraint("quantity > 0", name="ck_invoice_items_quantity_positive"),
+        # Unit price boleh 0 (mis. free promo/sample item), tapi tdk negatif.
+        CheckConstraint("unit_price >= 0", name="ck_invoice_items_unit_price_nonneg"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id", ondelete="CASCADE"))
@@ -870,6 +913,11 @@ class PurchaseOrder(TimestampMixin, Base):
         Index("ix_po_project_status", "project_id", "status"),
         Index("ix_po_deleted_at", "deleted_at"),
         Index("ix_po_po_date", "po_date"),
+        # Amount fields tdk boleh negatif.
+        CheckConstraint("subtotal >= 0", name="ck_po_subtotal_nonneg"),
+        CheckConstraint("tax >= 0", name="ck_po_tax_nonneg"),
+        CheckConstraint("discount >= 0", name="ck_po_discount_nonneg"),
+        CheckConstraint("total >= 0", name="ck_po_total_nonneg"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -906,6 +954,10 @@ class PurchaseOrder(TimestampMixin, Base):
 
 class POItem(TimestampMixin, Base):
     __tablename__ = "po_items"
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="ck_po_items_quantity_positive"),
+        CheckConstraint("unit_price >= 0", name="ck_po_items_unit_price_nonneg"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     po_id: Mapped[int] = mapped_column(ForeignKey("purchase_orders.id", ondelete="CASCADE"))
