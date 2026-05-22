@@ -53,7 +53,11 @@ async def list_users(
     stmt = select(User).where(User.deleted_at.is_(None))
     if q:
         like = f"%{q}%"
-        stmt = stmt.where((User.email.ilike(like)) | (User.name.ilike(like)))
+        stmt = stmt.where(
+            (User.email.ilike(like))
+            | (User.name.ilike(like))
+            | (User.username.ilike(like))
+        )
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     stmt = stmt.order_by(User.id.desc()).offset((page - 1) * size).limit(size)
     items = (await db.execute(stmt)).scalars().all()
@@ -69,8 +73,17 @@ async def create_user(
     exists = (await db.execute(select(User).where(User.email == payload.email))).scalar_one_or_none()
     if exists:
         raise HTTPException(status_code=409, detail="email_already_used")
+    # Username validation sudah di-handle pydantic (lowercase + format).
+    # Cek uniqueness di sini.
+    if payload.username:
+        dup = (await db.execute(
+            select(User).where(User.username == payload.username)
+        )).scalar_one_or_none()
+        if dup:
+            raise HTTPException(status_code=409, detail="username_already_used")
     user = User(
         email=payload.email,
+        username=payload.username,
         password_hash=hash_password(payload.password),
         name=payload.name,
         role=payload.role,
@@ -111,7 +124,11 @@ async def users_lookup(
     stmt = select(User).where(User.deleted_at.is_(None), User.is_active.is_(True))
     if q:
         like = f"%{q}%"
-        stmt = stmt.where((User.name.ilike(like)) | (User.email.ilike(like)))
+        stmt = stmt.where(
+            (User.name.ilike(like))
+            | (User.email.ilike(like))
+            | (User.username.ilike(like))
+        )
     if role:
         # Validate role string aman -- skip kalau bukan UserRole valid.
         from app.models.models import UserRole as _UR
@@ -123,7 +140,13 @@ async def users_lookup(
     stmt = stmt.order_by(User.name).limit(min(max(limit, 1), 500))
     res = await db.execute(stmt)
     return [
-        {"id": u.id, "name": u.name, "email": u.email, "role": u.role.value}
+        {
+            "id": u.id,
+            "name": u.name,
+            "email": u.email,
+            "username": u.username,
+            "role": u.role.value,
+        }
         for u in res.scalars().all()
     ]
 
@@ -180,15 +203,27 @@ async def update_user(
     before = snapshot(u)
     data = payload.model_dump(exclude_unset=True)
 
-    # Self-update (non-SUPERADMIN): tolak field sensitif.
+    # Self-update (non-SUPERADMIN): tolak field sensitif. Username juga
+    # masuk sensitif -- ganti username = ganti identitas login, harus
+    # SUPERADMIN.
     if is_self and not is_super:
         forbidden = {
-            "role", "is_active", "scope_all_projects",
+            "role", "is_active", "scope_all_projects", "username",
             "telegram_chat_id", "whatsapp_phone", "whatsapp_chat_id",
         }
         bad = forbidden & set(data.keys())
         if bad:
             raise HTTPException(403, f"field_forbidden_for_self_update: {','.join(sorted(bad))}")
+
+    # Validasi uniqueness username kalau diubah ke value baru.
+    if "username" in data and data["username"] is not None:
+        dup = (await db.execute(
+            select(User).where(
+                User.username == data["username"], User.id != u.id,
+            )
+        )).scalar_one_or_none()
+        if dup:
+            raise HTTPException(status_code=409, detail="username_already_used")
 
     if "password" in data:
         pw = data.pop("password")

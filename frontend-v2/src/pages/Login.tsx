@@ -12,8 +12,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "@/components/ui/sonner"
 
+// Identifier = email atau username. Validasi minimal saja (server yg
+// otoritatif). Email kalau berisi '@', else dianggap username.
 const schema = z.object({
-  email: z.string().email("Email tidak valid").min(1, "Email wajib diisi"),
+  identifier: z
+    .string()
+    .min(1, "Email atau username wajib diisi")
+    .max(255),
   password: z.string().min(1, "Password wajib diisi"),
 })
 
@@ -32,7 +37,7 @@ export function LoginPage() {
     handleSubmit,
     formState: { errors },
   } = useForm<FormValues>({
-    defaultValues: { email: "", password: "" },
+    defaultValues: { identifier: "", password: "" },
   })
 
   // Sudah login? Redirect.
@@ -47,9 +52,10 @@ export function LoginPage() {
     setSubmitting(true)
     try {
       // Backend pakai OAuth2PasswordRequestForm -- WAJIB form-encoded
-      // body dgn field 'username' (bukan 'email') + 'password'.
+      // body dgn field 'username' (di sisi OAuth2 spec) + 'password'.
+      // Server detect '@' di nilai utk pilih lookup email vs username.
       const form = new URLSearchParams()
-      form.set("username", parsed.data.email)
+      form.set("username", parsed.data.identifier.trim())
       form.set("password", parsed.data.password)
       const { data: token } = await api.post<TokenResponse>(
         "/auth/login",
@@ -59,8 +65,9 @@ export function LoginPage() {
       // Token lulus -> simpan dulu (interceptor akan attach Authorization)
       // lalu fetch profile user dr /auth/me.
       setSession(token.access_token, {
-        // Placeholder user supaya guard tidak redirect; akan di-overwrite.
-        id: 0, email: parsed.data.email, name: "",
+        // Placeholder user supaya guard tidak redirect; akan di-overwrite
+        // dgn data dari /auth/me di bawah.
+        id: 0, email: "", name: "",
         role: "EXECUTIVE", scope_all_projects: false, is_active: true,
       })
       const { data: me } = await api.get<User>("/auth/me")
@@ -101,19 +108,19 @@ export function LoginPage() {
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="identifier">Email atau Username</Label>
                 <Input
-                  id="email"
-                  type="email"
+                  id="identifier"
+                  type="text"
                   inputMode="email"
                   autoComplete="username"
                   autoFocus
-                  placeholder="nama@perusahaan.id"
-                  aria-invalid={!!errors.email}
-                  {...register("email")}
+                  placeholder="nama@perusahaan.id atau username"
+                  aria-invalid={!!errors.identifier}
+                  {...register("identifier")}
                 />
-                {errors.email && (
-                  <p className="text-[12px] text-danger-600">{errors.email.message}</p>
+                {errors.identifier && (
+                  <p className="text-[12px] text-danger-600">{errors.identifier.message}</p>
                 )}
               </div>
 

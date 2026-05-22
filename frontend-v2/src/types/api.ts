@@ -15,6 +15,8 @@ export type UserRole =
 export interface User {
   id: number
   email: string
+  /** Username opsional utk login alternatif (selain email). Lowercase. */
+  username?: string | null
   name: string
   role: UserRole
   scope_all_projects: boolean
@@ -438,6 +440,8 @@ export interface AuditLogEntry {
 // User mutation types
 export interface UserCreateInput {
   email: string
+  /** Opsional, 3-50 char [a-z0-9._-]. Backend force lowercase. */
+  username?: string | null
   password: string
   name: string
   role: UserRole
@@ -447,6 +451,8 @@ export interface UserCreateInput {
 
 export interface UserUpdateInput {
   name?: string
+  /** SUPERADMIN-only. Empty string = clear; omit = no change. */
+  username?: string | null
   role?: UserRole
   is_active?: boolean
   phone?: string | null

@@ -61,8 +61,20 @@ const ROLE_TONE: Record<UserRole, "danger" | "warning" | "info" | "neutral"> = {
   EXECUTIVE: "neutral",
 }
 
+// Username: optional, 3-50 char, lowercase alphanumeric + dot/underscore/dash.
+// FE convert ke lowercase saat submit; server tetap re-validate.
+const usernameSchema = z
+  .string()
+  .nullable()
+  .optional()
+  .refine(
+    (v) => !v || /^[a-z0-9._-]{3,50}$/i.test(v),
+    "Username: 3-50 karakter, hanya huruf/angka/titik/garis-bawah/strip",
+  )
+
 const createSchema = z.object({
   email: z.string().email("Email tidak valid"),
+  username: usernameSchema,
   password: z.string().min(6, "Password minimal 6 karakter"),
   name: z.string().min(1, "Nama wajib"),
   role: z.enum(["SUPERADMIN", "CENTRAL_ADMIN", "PROJECT_ADMIN", "EXECUTIVE"]),
@@ -75,6 +87,7 @@ const createSchema = z.object({
 
 const updateSchema = z.object({
   name: z.string().min(1, "Nama wajib"),
+  username: usernameSchema,
   role: z.enum(["SUPERADMIN", "CENTRAL_ADMIN", "PROJECT_ADMIN", "EXECUTIVE"]),
   is_active: z.boolean(),
   phone: z.string().nullable().optional(),
@@ -89,6 +102,7 @@ type FormValues = z.infer<typeof createSchema>
 function buildDefaults(user: User | null): FormValues {
   return {
     email: user?.email ?? "",
+    username: user?.username ?? "",
     password: "",
     name: user?.name ?? "",
     role: user?.role ?? "PROJECT_ADMIN",
@@ -135,7 +149,12 @@ export function UsersPage() {
           </span>
           <div>
             <div className="text-sm font-medium">{row.original.name}</div>
-            <div className="text-[11px] text-ink-500">{row.original.email}</div>
+            <div className="text-[11px] text-ink-500">
+              {row.original.email}
+              {row.original.username && (
+                <span className="ml-1 font-mono">· @{row.original.username}</span>
+              )}
+            </div>
           </div>
         </div>
       ),
@@ -254,7 +273,12 @@ export function UsersPage() {
                   <span className="text-sm font-semibold truncate">{u.name}</span>
                   {!u.is_active && <Badge tone="neutral">Nonaktif</Badge>}
                 </div>
-                <div className="text-[11px] text-ink-500 truncate">{u.email}</div>
+                <div className="text-[11px] text-ink-500 truncate">
+                  {u.email}
+                  {u.username && (
+                    <span className="ml-1 font-mono">· @{u.username}</span>
+                  )}
+                </div>
               </div>
               <Badge tone={ROLE_TONE[u.role]}>{ROLE_LABEL[u.role]}</Badge>
             </div>
@@ -354,9 +378,13 @@ function UserForm({
   }, [user, open, reset])
 
   const onSubmit = async (raw: FormValues) => {
+    // Normalize username: trim + lowercase (server juga normalize, ini
+    // utk UX -- tampilan immediate & validator regex case-insensitive).
+    const normalizedUsername = (raw.username ?? "").trim().toLowerCase() || null
     if (isEdit) {
       const parsed = updateSchema.safeParse({
         name: raw.name,
+        username: normalizedUsername,
         role: raw.role,
         is_active: user?.is_active ?? true,
         phone: raw.phone,
@@ -372,6 +400,12 @@ function UserForm({
       try {
         await update.mutateAsync({
           name: parsed.data.name,
+          // Kirim username hanya kalau berubah dari nilai existing supaya
+          // tdk overwrite ke null kalau user edit field lain tanpa
+          // mengisi ulang username (form pre-filled).
+          ...(parsed.data.username !== (user?.username ?? null)
+            ? { username: parsed.data.username ?? "" }
+            : {}),
           role: parsed.data.role,
           is_active: parsed.data.is_active,
           phone: parsed.data.phone?.trim() || null,
@@ -387,7 +421,10 @@ function UserForm({
         toast.error("Gagal update", { description: apiErrorMessage(err) })
       }
     } else {
-      const parsed = createSchema.safeParse(raw)
+      const parsed = createSchema.safeParse({
+        ...raw,
+        username: normalizedUsername,
+      })
       if (!parsed.success) {
         toast.error(parsed.error.issues[0]?.message ?? "Periksa isian")
         return
@@ -395,6 +432,7 @@ function UserForm({
       try {
         const payload: UserCreateInput = {
           email: parsed.data.email,
+          username: parsed.data.username,
           password: parsed.data.password,
           name: parsed.data.name,
           role: parsed.data.role,
@@ -427,6 +465,20 @@ function UserForm({
           inputMode="email"
           placeholder="nama@perusahaan.id"
           disabled={isEdit}
+        />
+      </Field>
+      <Field
+        label="Username (opsional)"
+        hint="Login alternatif selain email. 3-50 karakter, huruf kecil/angka/titik/strip. Auto-lowercase saat disimpan."
+        error={errors.username?.message}
+      >
+        <Input
+          {...register("username")}
+          placeholder="mis. andi atau andi.budi"
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          className="font-mono"
         />
       </Field>
       <Field

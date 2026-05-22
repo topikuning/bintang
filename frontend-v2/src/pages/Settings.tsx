@@ -134,7 +134,12 @@ export function SettingsPage() {
                 <Badge tone="neutral">Akses semua proyek</Badge>
               )}
             </div>
-            <div className="text-[12px] text-ink-500 break-all">{user.email}</div>
+            <div className="text-[12px] text-ink-500 break-all">
+              {user.email}
+              {user.username && (
+                <span className="ml-1 font-mono">· @{user.username}</span>
+              )}
+            </div>
           </div>
         </div>
 

@@ -17,10 +17,23 @@ async def login(
     form: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
 ) -> TokenOut:
-    """Login pakai form-encoded body (username = email, password).
+    """Login pakai form-encoded body (username field = email atau username,
+    password). Auto-detect: ada '@' -> lookup email; tdk ada -> lookup
+    username (case-insensitive via normalize ke lowercase).
     Kompatibel dengan Swagger Authorize button dan OAuth2 password flow.
     """
-    res = await db.execute(select(User).where(User.email == form.username))
+    raw = (form.username or "").strip()
+    if "@" in raw:
+        # Email -- email kita unique tapi case-sensitive di DB. Mayoritas
+        # user input email lowercase, tapi safety: lookup as-is (sesuai
+        # convention sebelumnya).
+        res = await db.execute(select(User).where(User.email == raw))
+    else:
+        # Username -- selalu di-store lowercase, jadi normalize input.
+        uname = raw.lower()
+        if not uname:
+            raise HTTPException(status_code=401, detail="invalid_credentials")
+        res = await db.execute(select(User).where(User.username == uname))
     user = res.scalar_one_or_none()
     if not user or not user.is_active or user.deleted_at is not None:
         raise HTTPException(status_code=401, detail="invalid_credentials")
@@ -39,6 +52,7 @@ async def me(
     return UserMe(
         id=user.id,
         email=user.email,
+        username=user.username,
         name=user.name,
         role=user.role,
         is_active=user.is_active,

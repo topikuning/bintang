@@ -50,6 +50,11 @@ async def _sync_pg_columns(conn) -> None:
         # safety net kalau deploy tdk run alembic upgrade.
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS kind VARCHAR(20) NOT NULL DEFAULT 'REGULAR'",
         "CREATE INDEX IF NOT EXISTS ix_projects_kind ON projects (kind)",
+        # Username opsional utk login alternatif. Migrasi alembic
+        # f3a7b9c5d2e8 juga add column ini -- _sync di sini hanya
+        # safety net.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(50)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)",
     ]
     for sql in statements:
         try:

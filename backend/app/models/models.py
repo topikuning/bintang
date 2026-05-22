@@ -186,6 +186,14 @@ class User(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    # Username opsional utk login alternatif (selain email). Selalu di-store
+    # lowercase + dibatasi char aman ([a-z0-9._-]{3,50}). Nullable supaya
+    # user lama tdk perlu di-backfill; mereka tetap login pakai email.
+    # Lookup di endpoint login: deteksi '@' di input -> route ke email
+    # vs username column. Backend force lowercase saat write.
+    username: Mapped[str | None] = mapped_column(
+        String(50), unique=True, nullable=True, index=True
+    )
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.PROJECT_ADMIN)
