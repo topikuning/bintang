@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.deps import get_current_user
+from app.core.rate_limit import telegram_link_limiter
 from app.db.session import get_db
 from app.models.models import TelegramLinkCode, User
 from app.services import messaging
@@ -127,6 +128,11 @@ async def issue_my_link_code(
     user: User = Depends(get_current_user),
 ) -> dict:
     """Generate kode 6 digit; user ketik `/link <kode>` di bot Telegram."""
+    # Audit #H10: rate-limit per user supaya tdk bisa spam regenerate code
+    # (yg akan invalidate code aktif sebelumnya -> potensi DoS internal).
+    allowed, _ = telegram_link_limiter.check(f"tglink:{user.id}")
+    if not allowed:
+        raise HTTPException(429, "rate_limited: tunggu sebentar sebelum generate ulang kode link.")
     if not tg.is_enabled():
         raise HTTPException(503, "telegram_disabled")
     cfg = await messaging.get_config(db)

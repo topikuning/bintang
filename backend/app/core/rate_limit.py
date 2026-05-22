@@ -57,3 +57,19 @@ class RateLimiter:
 # Tunable: login 5 attempts / 60 detik per IP (cukup ketat utk cegah
 # brute-force credential stuffing, ringan utk user normal yg sesekali typo).
 login_limiter = RateLimiter(max_calls=5, period_seconds=60.0)
+
+# Audit 2026-05-22 #H9: OCR extract dipanggil ke LLM/vision API
+# (Claude/Mistral) -- biaya per request, dan upload file besar bisa
+# memory-heavy. Throttle agresif per user supaya tdk meledak cost
+# kalau client buggy (mis. retry loop) atau akun di-abuse.
+# Per user: 20 OCR per menit (1 setiap 3 detik) -- normal usage paling
+# 1-5 OCR/menit saat input bulk receipt.
+ocr_limiter = RateLimiter(max_calls=20, period_seconds=60.0)
+
+# Audit 2026-05-22 #H10: Telegram link-code generation dipanggil tanpa
+# proof-of-work apapun. Brute-force enumeration code (000000-999999)
+# pakai endpoint /api/v1/telegram/me/link-code (re-generate) tdk akan
+# work langsung -- tapi rate-limit utk cegah abuse generate code spam
+# yg bisa invalidasi kode aktif user lain.
+# Per user: 5 generate/menit.
+telegram_link_limiter = RateLimiter(max_calls=5, period_seconds=60.0)

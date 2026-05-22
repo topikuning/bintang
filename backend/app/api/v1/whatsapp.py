@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.deps import get_current_user, require_superadmin
+from app.core.rate_limit import telegram_link_limiter as _link_limiter
 from app.db.session import get_db
 from app.models.models import MessagingConfig, User
 from app.services import messaging
@@ -310,6 +311,11 @@ async def issue_my_link_code(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
+    # Audit #H10: share rate-limit dgn Telegram link-code (sama-sama
+    # generate code 6 digit yg invalidate previous).
+    allowed, _ = _link_limiter.check(f"walink:{user.id}")
+    if not allowed:
+        raise HTTPException(429, "rate_limited: tunggu sebentar sebelum generate ulang kode link.")
     if not wa.is_enabled():
         raise HTTPException(503, "whatsapp_disabled")
     cfg = await messaging.get_config(db)

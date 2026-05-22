@@ -16,6 +16,7 @@ from app.core.deps import (
     require_can_write,
     require_superadmin,
 )
+from app.core.rate_limit import ocr_limiter
 from app.db.session import get_db
 from app.models.models import (
     AIExtraction,
@@ -158,6 +159,10 @@ async def extract(
     payload.engine: opsional, override engine OCR per request
         ('claude' | 'mistral' | None=default env).
     """
+    # Audit #H9: rate-limit per user (LLM/vision API berbayar per call).
+    allowed, _ = ocr_limiter.check(f"ocr:{user.id}")
+    if not allowed:
+        raise HTTPException(429, "rate_limited: terlalu banyak OCR. Tunggu sebentar.")
     adapter = get_ocr_adapter(payload.engine)
     try:
         result = await adapter.extract_invoice(payload.file_url)
@@ -206,6 +211,10 @@ async def extract_upload(
     engine: opsional, override engine OCR per request
         ('claude' | 'mistral' | None=default env).
     """
+    # Audit #H9: rate-limit per user (LLM/vision API berbayar per call).
+    allowed, _ = ocr_limiter.check(f"ocr:{user.id}")
+    if not allowed:
+        raise HTTPException(429, "rate_limited: terlalu banyak OCR. Tunggu sebentar.")
     if file.content_type not in ALLOWED_MIME:
         raise HTTPException(415, f"unsupported_media_type: {file.content_type}")
 
