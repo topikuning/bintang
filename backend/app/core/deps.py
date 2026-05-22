@@ -30,6 +30,21 @@ async def get_current_user(
     user = await db.get(User, int(sub))
     if not user or not user.is_active or user.deleted_at is not None:
         raise HTTPException(status_code=401, detail="user_inactive")
+    # Audit 2026-05-22 #C5: server-side revocation. Kalau user logout
+    # (atau super-admin force-revoke), tokens_revoked_after di-set ke
+    # waktu logout. Token dgn iat sebelum/sama dgn cutoff dianggap
+    # revoked. Legacy token tanpa iat (di-issued sebelum #C5) tetap
+    # accepted -- tdk pecahkan session existing saat deploy.
+    if user.tokens_revoked_after is not None:
+        iat = payload.get("iat")
+        if iat is not None:
+            from datetime import datetime, timezone
+            token_issued = datetime.fromtimestamp(int(iat), tz=timezone.utc)
+            cutoff = user.tokens_revoked_after
+            if cutoff.tzinfo is None:
+                cutoff = cutoff.replace(tzinfo=timezone.utc)
+            if token_issued <= cutoff:
+                raise HTTPException(status_code=401, detail="token_revoked")
     return user
 
 

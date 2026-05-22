@@ -1,6 +1,7 @@
 import { LogOut, User as UserIcon } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { useAuthStore } from "@/store/auth"
+import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -52,7 +53,15 @@ export function UserMenu() {
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onSelect={() => {
+          onSelect={async () => {
+            // Server-side revocation: invalidate semua token user ini
+            // (semua device). Best-effort -- kalau API gagal (mis. token
+            // sudah expired), tetap clear client-side.
+            try {
+              await api.post("/auth/logout")
+            } catch {
+              /* fall-through: still clear client */
+            }
             logout()
             navigate("/login", { replace: true })
           }}

@@ -13,7 +13,10 @@ from fastapi import HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 
+from fastapi import Request
+
 from app.api.v1.auth import login
+from app.core.rate_limit import login_limiter
 from app.core.security import hash_password
 from app.models.models import User, UserRole
 
@@ -35,17 +38,38 @@ def _form(username: str, password: str) -> OAuth2PasswordRequestForm:
     return OAuth2PasswordRequestForm(username=username, password=password, scope="")
 
 
+def _req(ip: str = "127.0.0.1") -> Request:
+    scope = {"type": "http", "method": "POST", "headers": [], "client": (ip, 0)}
+    return Request(scope)
+
+
+class _Resp:
+    def __init__(self):
+        self.headers: dict[str, str] = {}
+
+
+async def _do_login(db, username: str, password: str, ip: str = "127.0.0.1"):
+    # Reset rate-limit per-test supaya tdk leak antar test.
+    login_limiter.reset(f"login:{ip}")
+    return await login(
+        request=_req(ip),
+        response=_Resp(),  # type: ignore[arg-type]
+        form=_form(username, password),
+        db=db,
+    )
+
+
 @pytest.mark.asyncio
 async def test_login_with_email_works(db):
     await _seed_user(db, email="boss@x.com", password="secret123")
-    out = await login(form=_form("boss@x.com", "secret123"), db=db)
+    out = await _do_login(db, "boss@x.com", "secret123")
     assert out.access_token
 
 
 @pytest.mark.asyncio
 async def test_login_with_username_works(db):
     await _seed_user(db, email="boss@x.com", password="secret123", username="boss")
-    out = await login(form=_form("boss", "secret123"), db=db)
+    out = await _do_login(db, "boss", "secret123")
     assert out.access_token
 
 
@@ -53,7 +77,7 @@ async def test_login_with_username_works(db):
 async def test_login_username_case_insensitive(db):
     # Stored lowercase; input mixed-case tetap match.
     await _seed_user(db, email="x@x", password="pw123456", username="admin01")
-    out = await login(form=_form("Admin01", "pw123456"), db=db)
+    out = await _do_login(db, "Admin01", "pw123456")
     assert out.access_token
 
 
@@ -61,7 +85,7 @@ async def test_login_username_case_insensitive(db):
 async def test_login_wrong_username_rejected(db):
     await _seed_user(db, email="boss@x.com", password="secret123", username="boss")
     with pytest.raises(HTTPException) as exc:
-        await login(form=_form("ghost", "secret123"), db=db)
+        await _do_login(db, "ghost", "secret123")
     assert exc.value.status_code == 401
 
 
@@ -69,7 +93,7 @@ async def test_login_wrong_username_rejected(db):
 async def test_login_wrong_password_rejected(db):
     await _seed_user(db, email="boss@x.com", password="secret123", username="boss")
     with pytest.raises(HTTPException) as exc:
-        await login(form=_form("boss", "wrong"), db=db)
+        await _do_login(db, "boss", "wrong")
     assert exc.value.status_code == 401
 
 
@@ -77,9 +101,7 @@ async def test_login_wrong_password_rejected(db):
 async def test_legacy_user_without_username_uses_email(db):
     """User lama (username=None) harus tetap bisa login via email."""
     await _seed_user(db, email="old@x.com", password="legacy123")
-    # Login via email -> ok
-    out = await login(form=_form("old@x.com", "legacy123"), db=db)
+    out = await _do_login(db, "old@x.com", "legacy123")
     assert out.access_token
-    # Login via dummy "old" tanpa @ -> miss (username field NULL)
     with pytest.raises(HTTPException):
-        await login(form=_form("old", "legacy123"), db=db)
+        await _do_login(db, "old", "legacy123")

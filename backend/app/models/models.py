@@ -217,6 +217,12 @@ class User(TimestampMixin, Base):
     telegram_chat_id: Mapped[str | None] = mapped_column(String(40), unique=True, nullable=True)
     # WhatsApp via WAHA: nomor WA user dlm format internal WAHA "<msisdn>@c.us"
     whatsapp_chat_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    # Token revocation cutoff. Kalau di-set, JWT dgn iat <= cutoff dianggap
+    # invalid -> user "logout from all devices". Audit 2026-05-22 #C5.
+    # Logout endpoint set kolom ini ke now(). Default NULL = no revocation.
+    tokens_revoked_after: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     project_links: Mapped[list[ProjectUser]] = relationship(back_populates="user", cascade="all,delete-orphan")
 

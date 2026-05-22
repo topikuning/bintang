@@ -55,6 +55,9 @@ async def _sync_pg_columns(conn) -> None:
         # safety net.
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(50)",
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)",
+        # Token revocation cutoff (audit #C5). Logout set ke now() supaya
+        # JWT dgn iat <= cutoff dianggap revoked. Migrasi c8e1d4f2a6b9.
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS tokens_revoked_after TIMESTAMP WITH TIME ZONE",
         # Invoice number wajib unik. Drop index lama (non-unique) lalu
         # buat unique index. Tdk pakai DROP IF EXISTS sebelum CREATE
         # supaya idempoten -- kalau sudah unique, CREATE UNIQUE INDEX IF

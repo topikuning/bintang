@@ -19,8 +19,16 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(subject: str | int, extra: dict[str, Any] | None = None) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    payload: dict[str, Any] = {"sub": str(subject), "exp": expire}
+    """Issue JWT. Selalu include `iat` (issued at) supaya revocation
+    server-side bisa check 'invalidate all tokens issued before X' --
+    lihat User.tokens_revoked_after di get_current_user."""
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    payload: dict[str, Any] = {
+        "sub": str(subject),
+        "iat": int(now.timestamp()),
+        "exp": expire,
+    }
     if extra:
         payload.update(extra)
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)

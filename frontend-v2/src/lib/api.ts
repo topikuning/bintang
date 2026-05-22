@@ -73,6 +73,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   // Auth & permission
   not_authenticated: "Silakan login dulu.",
   invalid_token: "Sesi tdk valid. Login ulang.",
+  token_revoked: "Sesi sudah berakhir (logout dari device lain). Login ulang.",
+  rate_limited: "Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.",
   user_inactive: "Akun tidak aktif.",
   superadmin_only: "Hanya SUPERADMIN yang bisa lakukan ini.",
   admin_only: "Hanya admin (CENTRAL_ADMIN/SUPERADMIN) yang bisa.",
