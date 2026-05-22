@@ -234,6 +234,14 @@ async def create_invoice(
     user: User = Depends(require_can_write),
 ) -> InvoiceOut:
     await ensure_project_access(db, user, payload.project_id)
+    # Cek dup nomor invoice -- harus unik global (legal: Faktur Pajak).
+    # Cek SOFT-DELETE included supaya nomor yg pernah dipakai tdk recycled
+    # (audit trail tetap stabil di laporan historis).
+    dup = (await db.execute(
+        select(Invoice).where(Invoice.number == payload.number)
+    )).scalar_one_or_none()
+    if dup is not None:
+        raise HTTPException(409, "invoice_number_already_used")
     data = payload.model_dump(exclude={"items"})
     inv = Invoice(**data, status=InvoiceStatus.DRAFT, created_by_id=user.id)
     for it in payload.items:
@@ -303,6 +311,15 @@ async def update_invoice(
     # Pop project_id supaya tdk masuk setattr loop di bawah (kita sudah
     # validate di atas; kalau lolos validasi -> sama dgn current, no-op).
     data.pop("project_id", None)
+    # Cek dup kalau number diubah ke value baru.
+    if "number" in data and data["number"] != inv.number:
+        clash = (await db.execute(
+            select(Invoice).where(
+                Invoice.number == data["number"], Invoice.id != inv.id,
+            )
+        )).scalar_one_or_none()
+        if clash is not None:
+            raise HTTPException(409, "invoice_number_already_used")
     items_data = data.pop("items", None)
 
     # Type change: aman bila masih DRAFT (siapa pun yg can_write).

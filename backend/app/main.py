@@ -55,6 +55,13 @@ async def _sync_pg_columns(conn) -> None:
         # safety net.
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(50)",
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)",
+        # Invoice number wajib unik. Drop index lama (non-unique) lalu
+        # buat unique index. Tdk pakai DROP IF EXISTS sebelum CREATE
+        # supaya idempoten -- kalau sudah unique, CREATE UNIQUE INDEX IF
+        # NOT EXISTS no-op. Kalau masih index biasa: harus DROP dulu
+        # baru CREATE UNIQUE -- itu kerja migrasi alembic. Sini cuma
+        # safety net utk fresh deploy yg lewatin alembic.
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_invoices_number ON invoices (number)",
     ]
     for sql in statements:
         try:

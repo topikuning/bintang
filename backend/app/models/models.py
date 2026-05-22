@@ -763,7 +763,12 @@ class Invoice(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    number: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    # Nomor invoice WAJIB unik global. Sumber kebenaran utk dokumen legal
+    # (Faktur Pajak ID hrs unik per perusahaan; kita pakai global utk
+    # invariant terkuat -- format bisa di-embed company prefix).
+    # Sebelumnya hanya index, bukan unique -> bug data integrity (dup
+    # bisa terjadi).
+    number: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
     type: Mapped[InvoiceType] = mapped_column(Enum(InvoiceType), nullable=False, index=True)
     invoice_date: Mapped[date] = mapped_column(Date, nullable=False)
