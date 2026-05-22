@@ -4,6 +4,9 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response as StarletteResponse
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import text
 
@@ -171,6 +174,25 @@ def _guard_production_config() -> None:
             raise RuntimeError(
                 "REFUSE_BOOT: SECRET_KEY terlalu pendek (<32 char) di prod."
             )
+        # Audit 2026-05-22 #H6: validate CORS allowed_origins di prod.
+        # Wildcard '*' + localhost reference = misconfig dangerous.
+        origins = [o.strip() for o in settings.allowed_origins_list]
+        if not origins:
+            raise RuntimeError(
+                "REFUSE_BOOT: ALLOWED_ORIGINS kosong di prod. Set ke "
+                "URL frontend eksplisit (mis. https://app.bintang.com)."
+            )
+        if any(o == "*" for o in origins):
+            raise RuntimeError(
+                "REFUSE_BOOT: ALLOWED_ORIGINS='*' tdk boleh di prod -- "
+                "credentials akan ter-expose ke origin manapun."
+            )
+        bad = [o for o in origins if "localhost" in o or "127.0.0.1" in o]
+        if bad:
+            raise RuntimeError(
+                f"REFUSE_BOOT: ALLOWED_ORIGINS punya localhost/127.0.0.1 "
+                f"di prod ({bad}). Pakai URL prod yg sebenarnya."
+            )
 
 
 @asynccontextmanager
@@ -258,6 +280,49 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+
+class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Pasang security headers di setiap response (audit #H5).
+
+    - X-Frame-Options DENY: cegah clickjacking embed di iframe pihak ke-3.
+    - X-Content-Type-Options nosniff: cegah MIME sniffing.
+    - Referrer-Policy strict-origin-when-cross-origin: minimal referrer leak.
+    - Permissions-Policy: disable feature browser yg tdk kita pakai.
+    - Strict-Transport-Security: HANYA di prod (HTTPS enforce 1 tahun).
+      Dev tdk pakai (browser cache HSTS bisa lock dev http).
+    - Content-Security-Policy: SKIP utk sekarang -- butuh audit per-page
+      (inline scripts, image sources, dll). Tunda.
+    """
+    def __init__(self, app, *, is_prod: bool):
+        super().__init__(app)
+        self._is_prod = is_prod
+
+    async def dispatch(self, request: StarletteRequest, call_next) -> StarletteResponse:
+        response = await call_next(request)
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault(
+            "Referrer-Policy", "strict-origin-when-cross-origin"
+        )
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+        )
+        if self._is_prod:
+            # HSTS 1 tahun, include subdomains. Pakai 'preload' kalau
+            # operator submit ke hsts preload list (manual, optional).
+            response.headers.setdefault(
+                "Strict-Transport-Security",
+                "max-age=31536000; includeSubDomains",
+            )
+        return response
+
+
+app.add_middleware(
+    _SecurityHeadersMiddleware,
+    is_prod=settings.APP_ENV.lower() in ("prod", "production"),
 )
 
 upload_path = Path(settings.UPLOAD_DIR)
