@@ -831,13 +831,25 @@ async def settle_cash_advance(
     """
     from datetime import datetime as _dt
     from decimal import Decimal as _D
-    t = await db.get(Transaction, tid)
+    # Audit 2026-05-22 #H8: cegah race condition concurrent settle req.
+    # Lock baris transaction-nya dgn SELECT ... FOR UPDATE supaya dua
+    # request paralel ter-serialize (req kedua tunggu req pertama commit,
+    # lalu lihat existing settlement -> 409 already_settled).
+    # SKIP_LOCKED tdk dipakai -- kita mau wait, bukan skip. SQLite tdk
+    # support FOR UPDATE -- dialect.name check supaya dev SQLite tdk
+    # crash (SQLite single-writer, no concurrent settle race anyway).
+    is_pg = db.bind.dialect.name == "postgresql" if db.bind else False
+    lock_stmt = select(Transaction).where(Transaction.id == tid)
+    if is_pg:
+        lock_stmt = lock_stmt.with_for_update()
+    t = (await db.execute(lock_stmt)).scalar_one_or_none()
     if not t or t.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
     if t.kind != TxnKind.CASH_ADVANCE:
         raise HTTPException(400, "not_cash_advance: tx ini bukan uang muka")
-    # Cek sudah ada settlement?
+    # Cek sudah ada settlement -- sekarang aman thd race krn row tx
+    # ter-lock.
     existing = (await db.execute(
         select(CashAdvanceSettlement).where(
             CashAdvanceSettlement.cash_advance_tx_id == tid
