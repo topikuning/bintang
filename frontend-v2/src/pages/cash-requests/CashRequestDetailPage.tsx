@@ -43,6 +43,7 @@ const STATUS_LABEL: Record<CashRequestStatus, string> = {
   APPROVED: "Disetujui",
   REJECTED: "Ditolak",
   CANCELLED: "Dibatalkan",
+  DISBURSEMENT_CANCELLED: "Pencairan Dibatalkan",
 }
 
 function StatusPill({ status }: { status: CashRequestStatus }) {
@@ -65,6 +66,11 @@ function StatusPill({ status }: { status: CashRequestStatus }) {
     CANCELLED: {
       bg: "bg-ink-100",
       text: "text-ink-600",
+      Icon: XCircle,
+    },
+    DISBURSEMENT_CANCELLED: {
+      bg: "bg-danger-100",
+      text: "text-danger-800",
       Icon: XCircle,
     },
   }[status]
@@ -299,7 +305,7 @@ export function CashRequestDetailPage() {
           </div>
         )}
 
-        {cr.disbursement_tx_id && (
+        {cr.disbursement_tx_id && cr.status === "APPROVED" && (
           <div className="mt-3 flex items-center justify-between rounded border border-success-300 bg-success-50 px-3 py-2">
             <div className="text-[13px] text-success-800">
               <strong>Transaksi pencairan:</strong> dana operasional DRAFT
@@ -311,6 +317,23 @@ export function CashRequestDetailPage() {
             >
               <ExternalLink className="h-3 w-3" />
               Buka Tx
+            </Link>
+          </div>
+        )}
+
+        {cr.disbursement_tx_id && cr.status === "DISBURSEMENT_CANCELLED" && (
+          <div className="mt-3 flex items-center justify-between rounded border border-danger-300 bg-danger-50 px-3 py-2">
+            <div className="text-[13px] text-danger-800">
+              <strong>Pencairan dibatalkan:</strong> transaksi pencairan
+              terhubung sudah di-cancel. Pengajuan ini final -- buat
+              pengajuan baru kalau masih perlu dana.
+            </div>
+            <Link
+              to={`/transactions?id=${cr.disbursement_tx_id}`}
+              className="inline-flex items-center gap-1 rounded bg-danger-600 px-2 py-1 text-[12px] font-medium text-white hover:bg-danger-700"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Lihat Tx
             </Link>
           </div>
         )}

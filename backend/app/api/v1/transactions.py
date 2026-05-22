@@ -19,6 +19,8 @@ from app.models.models import (
     AuditAction,
     CashAdvanceSettlement,
     CashAdvanceSettlementItem,
+    CashRequest,
+    CashRequestStatus,
     Invoice,
     InvoiceAllocation,
     Project,
@@ -640,6 +642,24 @@ async def cancel_transaction(
         inv = await db.get(Invoice, t.invoice_id)
         if inv:
             await recompute_invoice_status(db, inv)
+    # Audit 2026-05-22 #H4: reverse-link ke CashRequest.
+    # Kalau tx ini adalah disbursement dari CashRequest yg di-approve,
+    # update CR status ke DISBURSEMENT_CANCELLED (final state per user
+    # Q5 decision). CR tdk kembali ke PENDING -- kalau perlu pengajuan
+    # ulang, requester buat CR baru. Konsistensi: cegah data drift
+    # 'CR=APPROVED tapi disbursement_tx=CANCELLED'.
+    cr_linked = (await db.execute(
+        select(CashRequest).where(CashRequest.disbursement_tx_id == t.id)
+    )).scalar_one_or_none()
+    if cr_linked is not None and cr_linked.status == CashRequestStatus.APPROVED.value:
+        cr_before = snapshot(cr_linked)
+        cr_linked.status = CashRequestStatus.DISBURSEMENT_CANCELLED.value
+        await log(
+            db, user_id=admin.id, entity="cash_request",
+            entity_id=cr_linked.id, action=AuditAction.UPDATE,
+            before=cr_before, after=snapshot(cr_linked),
+            note=f"Auto-update: tx pencairan #{t.id} di-cancel ({body.reason})",
+        )
     await log(db, user_id=admin.id, entity="transaction", entity_id=t.id,
               action=AuditAction.CANCEL, before=before, after=snapshot(t), note=body.reason)
     await db.commit()

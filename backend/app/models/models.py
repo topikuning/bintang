@@ -105,11 +105,22 @@ class TxnStatus(str, enum.Enum):
 
 
 class CashRequestStatus(str, enum.Enum):
-    """Status pengajuan dana operasional (CashRequest)."""
+    """Status pengajuan dana operasional (CashRequest).
+
+    Transitions:
+      PENDING -> APPROVED  (auto-create tx CASH_ADVANCE DRAFT)
+              -> REJECTED  (admin reject + reason)
+              -> CANCELLED (requester self-cancel sblm approve)
+      APPROVED -> DISBURSEMENT_CANCELLED  (kalau tx pencairan di-CANCEL
+              di flow /transactions/{id}/cancel). Final state -- bukan
+              dikembalikan ke PENDING (audit Q5 keputusan: finally state).
+              Kalau perlu pengajuan baru, requester buat CR baru.
+    """
     PENDING = "PENDING"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
     CANCELLED = "CANCELLED"
+    DISBURSEMENT_CANCELLED = "DISBURSEMENT_CANCELLED"
 
 
 class PaymentMethod(str, enum.Enum):

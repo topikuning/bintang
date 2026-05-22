@@ -37,6 +37,7 @@ const STATUS_TABS: Array<{
   { value: "APPROVED", label: "Disetujui" },
   { value: "REJECTED", label: "Ditolak" },
   { value: "CANCELLED", label: "Dibatalkan" },
+  { value: "DISBURSEMENT_CANCELLED", label: "Pencairan Batal" },
 ]
 
 function StatusBadge({ status }: { status: CashRequestStatus }) {
@@ -66,6 +67,12 @@ function StatusBadge({ status }: { status: CashRequestStatus }) {
       label: "Dibatalkan",
       bg: "bg-ink-100",
       text: "text-ink-600",
+      Icon: XCircle,
+    },
+    DISBURSEMENT_CANCELLED: {
+      label: "Pencairan Dibatalkan",
+      bg: "bg-danger-100",
+      text: "text-danger-800",
       Icon: XCircle,
     },
   }

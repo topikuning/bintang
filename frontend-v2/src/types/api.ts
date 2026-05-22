@@ -473,6 +473,9 @@ export type CashRequestStatus =
   | "APPROVED"
   | "REJECTED"
   | "CANCELLED"
+  /** Disbursement tx CASH_ADVANCE-nya di-cancel setelah CR approved.
+   *  Final state -- CR tidak kembali ke PENDING. */
+  | "DISBURSEMENT_CANCELLED"
 
 export interface CashRequestItem {
   id: number
