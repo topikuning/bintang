@@ -22,6 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+from app.services.field_crypto import EncryptedString
 
 
 # --- Enums ---
@@ -301,7 +302,9 @@ class Company(TimestampMixin, Base):
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     letterhead_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     director_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    bank_account: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Encrypted at rest (Fernet via field_crypto). Audit 2026-05-22 #C3.
+    # Length 500 cover Fernet ciphertext + prefix utk plaintext hingga ~120 char.
+    bank_account: Mapped[str | None] = mapped_column(EncryptedString(500), nullable=True)
 
     projects: Mapped[list[Project]] = relationship(back_populates="company")
 
@@ -456,7 +459,8 @@ class VendorClient(TimestampMixin, Base):
     contact: Mapped[str | None] = mapped_column(String(120), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     email: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    bank_account: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Encrypted at rest. Audit 2026-05-22 #C3.
+    bank_account: Mapped[str | None] = mapped_column(EncryptedString(500), nullable=True)
 
 
 # --- Transaction ---
@@ -508,7 +512,8 @@ class Transaction(TimestampMixin, Base):
     party_type: Mapped[PartyType | None] = mapped_column(Enum(PartyType), nullable=True)
     party_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     party_id_number: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    party_account: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Encrypted at rest (nomor rekening pihak ke-3). Audit 2026-05-22 #C3.
+    party_account: Mapped[str | None] = mapped_column(EncryptedString(500), nullable=True)
     vendor_client_id: Mapped[int | None] = mapped_column(
         ForeignKey("vendors_clients.id"), nullable=True
     )

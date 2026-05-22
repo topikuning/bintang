@@ -58,6 +58,12 @@ async def _sync_pg_columns(conn) -> None:
         # Token revocation cutoff (audit #C5). Logout set ke now() supaya
         # JWT dgn iat <= cutoff dianggap revoked. Migrasi c8e1d4f2a6b9.
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS tokens_revoked_after TIMESTAMP WITH TIME ZONE",
+        # Encrypt-at-rest utk bank_account & party_account (audit #C3).
+        # Widen kolom 200 -> 500 supaya cukup Fernet ciphertext. Postgres
+        # ALTER COLUMN TYPE OK; SQLite skip (try/except wrapping).
+        "ALTER TABLE companies ALTER COLUMN bank_account TYPE VARCHAR(500)",
+        "ALTER TABLE vendors_clients ALTER COLUMN bank_account TYPE VARCHAR(500)",
+        "ALTER TABLE transactions ALTER COLUMN party_account TYPE VARCHAR(500)",
         # Invoice number wajib unik. Drop index lama (non-unique) lalu
         # buat unique index. Tdk pakai DROP IF EXISTS sebelum CREATE
         # supaya idempoten -- kalau sudah unique, CREATE UNIQUE INDEX IF
