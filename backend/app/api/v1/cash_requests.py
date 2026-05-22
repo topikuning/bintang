@@ -83,33 +83,55 @@ async def _fetch_with_relations(db: AsyncSession, cr_id: int) -> CashRequest | N
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
-async def _to_out(db: AsyncSession, cr: CashRequest) -> CashRequestOut:
-    """Hydrasi nama-nama relasi utk display di FE (project_code/_name,
-    requester_name, recipient_name, approver/rejecter name, category_name)."""
+async def _to_out(
+    db: AsyncSession,
+    cr: CashRequest,
+    *,
+    project_map: dict[int, Project] | None = None,
+    user_map: dict[int, User] | None = None,
+    cat_map: dict[int, str] | None = None,
+) -> CashRequestOut:
+    """Hydrasi nama-nama relasi utk display di FE.
+
+    Kalau dipanggil dr list endpoint, caller harus bulk-load semua
+    project/user/category dulu dan pass map -- supaya tdk N+1
+    (audit #M3). Kalau map None, fallback ke per-row db.get() (dipakai
+    di detail endpoint single-row).
+    """
     # Project
-    proj = await db.get(Project, cr.project_id)
+    if project_map is not None:
+        proj = project_map.get(cr.project_id)
+    else:
+        proj = await db.get(Project, cr.project_id)
     # Users
-    requester = await db.get(User, cr.requester_id)
-    recipient = (
-        await db.get(User, cr.recipient_user_id)
-        if cr.recipient_user_id else None
-    )
-    approver = (
-        await db.get(User, cr.approved_by_id)
-        if cr.approved_by_id else None
-    )
-    rejecter = (
-        await db.get(User, cr.rejected_by_id)
-        if cr.rejected_by_id else None
-    )
+    if user_map is not None:
+        requester = user_map.get(cr.requester_id)
+        recipient = user_map.get(cr.recipient_user_id) if cr.recipient_user_id else None
+        approver = user_map.get(cr.approved_by_id) if cr.approved_by_id else None
+        rejecter = user_map.get(cr.rejected_by_id) if cr.rejected_by_id else None
+    else:
+        requester = await db.get(User, cr.requester_id)
+        recipient = (
+            await db.get(User, cr.recipient_user_id)
+            if cr.recipient_user_id else None
+        )
+        approver = (
+            await db.get(User, cr.approved_by_id)
+            if cr.approved_by_id else None
+        )
+        rejecter = (
+            await db.get(User, cr.rejected_by_id)
+            if cr.rejected_by_id else None
+        )
     # Items + category names
-    cat_ids = [it.category_id for it in cr.items if it.category_id]
-    cat_map: dict[int, str] = {}
-    if cat_ids:
-        rows = (await db.execute(
-            select(Category.id, Category.name).where(Category.id.in_(cat_ids))
-        )).all()
-        cat_map = {cid: name for cid, name in rows}
+    if cat_map is None:
+        cat_ids = [it.category_id for it in cr.items if it.category_id]
+        cat_map = {}
+        if cat_ids:
+            rows = (await db.execute(
+                select(Category.id, Category.name).where(Category.id.in_(cat_ids))
+            )).all()
+            cat_map = {cid: name for cid, name in rows}
     items_out = [
         CashRequestItemOut(
             id=it.id,
@@ -197,7 +219,49 @@ async def list_cash_requests(
         .limit(size)
     )
     rows = (await db.execute(stmt)).scalars().all()
-    items_out = [await _to_out(db, cr) for cr in rows]
+    # Audit #M3: bulk pre-load relationship supaya _to_out tdk N+1.
+    # Tanpa ini: 50 row × 4 user lookup × 1 category bulk = 200+ query.
+    # Dgn ini: 3 IN-query total (project, user, category).
+    if rows:
+        project_ids = {cr.project_id for cr in rows}
+        user_ids: set[int] = set()
+        for cr in rows:
+            user_ids.add(cr.requester_id)
+            if cr.recipient_user_id:
+                user_ids.add(cr.recipient_user_id)
+            if cr.approved_by_id:
+                user_ids.add(cr.approved_by_id)
+            if cr.rejected_by_id:
+                user_ids.add(cr.rejected_by_id)
+        cat_ids: set[int] = set()
+        for cr in rows:
+            for it in cr.items:
+                if it.category_id:
+                    cat_ids.add(it.category_id)
+
+        proj_rows = (await db.execute(
+            select(Project).where(Project.id.in_(project_ids))
+        )).scalars().all()
+        project_map = {p.id: p for p in proj_rows}
+
+        user_rows = (await db.execute(
+            select(User).where(User.id.in_(user_ids))
+        )).scalars().all() if user_ids else []
+        user_map = {u.id: u for u in user_rows}
+
+        cat_rows = (await db.execute(
+            select(Category.id, Category.name).where(Category.id.in_(cat_ids))
+        )).all() if cat_ids else []
+        cat_map = {cid: name for cid, name in cat_rows}
+    else:
+        project_map = {}
+        user_map = {}
+        cat_map = {}
+
+    items_out = [
+        await _to_out(db, cr, project_map=project_map, user_map=user_map, cat_map=cat_map)
+        for cr in rows
+    ]
     return Page(items=items_out, total=total, page=page, size=size)
 
 

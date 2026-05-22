@@ -283,30 +283,52 @@ async def list_projects_with_stats(
     open_inv_statuses = (
         _InvoiceStatus.ISSUED, _InvoiceStatus.PARTIALLY_PAID, _InvoiceStatus.OVERDUE,
     )
-    for p in projects:
-        # totals_in / totals_out (active)
-        in_q = select(func.coalesce(func.sum(_Transaction.amount), 0)).where(
-            _Transaction.project_id == p.id,
-            _Transaction.type == _TxnType.IN,
-            _Transaction.status.in_(active_tx_statuses),
-            _Transaction.deleted_at.is_(None),
-        )
-        out_q = select(func.coalesce(func.sum(_Transaction.amount), 0)).where(
-            _Transaction.project_id == p.id,
-            _Transaction.type == _TxnType.OUT,
-            _Transaction.status.in_(active_tx_statuses),
-            _Transaction.deleted_at.is_(None),
-        )
-        total_in = float((await db.execute(in_q)).scalar_one() or 0)
-        total_out = float((await db.execute(out_q)).scalar_one() or 0)
 
-        # invoice open
-        inv_open_q = select(func.coalesce(func.sum(_Invoice.total), 0)).where(
-            _Invoice.project_id == p.id,
-            _Invoice.status.in_(open_inv_statuses),
-            _Invoice.deleted_at.is_(None),
-        )
-        inv_open = float((await db.execute(inv_open_q)).scalar_one() or 0)
+    # Audit #M3: bulk GROUP BY supaya tdk 3-query-per-project N+1.
+    # Sebelumnya: 20 project × 3 SUM = 60 query. Sesudah: 3 query total.
+    pids = [p.id for p in projects]
+    if pids:
+        in_rows = (await db.execute(
+            select(_Transaction.project_id, func.coalesce(func.sum(_Transaction.amount), 0))
+            .where(
+                _Transaction.project_id.in_(pids),
+                _Transaction.type == _TxnType.IN,
+                _Transaction.status.in_(active_tx_statuses),
+                _Transaction.deleted_at.is_(None),
+            )
+            .group_by(_Transaction.project_id)
+        )).all()
+        in_map = {pid: float(s or 0) for pid, s in in_rows}
+
+        out_rows = (await db.execute(
+            select(_Transaction.project_id, func.coalesce(func.sum(_Transaction.amount), 0))
+            .where(
+                _Transaction.project_id.in_(pids),
+                _Transaction.type == _TxnType.OUT,
+                _Transaction.status.in_(active_tx_statuses),
+                _Transaction.deleted_at.is_(None),
+            )
+            .group_by(_Transaction.project_id)
+        )).all()
+        out_map = {pid: float(s or 0) for pid, s in out_rows}
+
+        inv_rows = (await db.execute(
+            select(_Invoice.project_id, func.coalesce(func.sum(_Invoice.total), 0))
+            .where(
+                _Invoice.project_id.in_(pids),
+                _Invoice.status.in_(open_inv_statuses),
+                _Invoice.deleted_at.is_(None),
+            )
+            .group_by(_Invoice.project_id)
+        )).all()
+        inv_open_map = {pid: float(s or 0) for pid, s in inv_rows}
+    else:
+        in_map = out_map = inv_open_map = {}
+
+    for p in projects:
+        total_in = in_map.get(p.id, 0.0)
+        total_out = out_map.get(p.id, 0.0)
+        inv_open = inv_open_map.get(p.id, 0.0)
 
         budget = float(p.budget_amount or 0)
         spent = total_out
