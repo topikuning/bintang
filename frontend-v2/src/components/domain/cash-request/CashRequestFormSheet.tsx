@@ -1,5 +1,8 @@
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { Loader2, Plus, Trash2 } from "lucide-react"
+import { useForm, useFieldArray, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -36,15 +39,35 @@ interface Props {
   target: CashRequest | null
 }
 
-interface FormItem {
-  category_id: number | null
-  description: string
-  quantity: string
-  unit_price: string
-  amount: string
-}
+// Audit 2026-05-22 #H7: refactor dari 7 useState ad-hoc ke RHF + zod.
+// Manfaat: validasi terpusat, field array utk items, control re-render
+// per-field (sebelumnya tiap keystroke re-render seluruh form).
+//
+// Strategi parsing angka: input string ("5.000.000" Indonesian thousands),
+// disimpan as string di form, di-parse jadi number saat submit/total.
+// Validasi di submit time -- bukan di-coerce di schema -- supaya placeholder
+// tdk dianggap invalid saat user belum input.
 
-function emptyItem(): FormItem {
+const itemSchema = z.object({
+  category_id: z.number().nullable(),
+  description: z.string(),
+  quantity: z.string(),
+  unit_price: z.string(),
+  amount: z.string(),
+})
+
+const formSchema = z.object({
+  project_id: z.number().nullable(),
+  recipient_user_id: z.number().nullable(),
+  request_date: z.string().min(1, "Tanggal wajib"),
+  title: z.string().trim().min(1, "Judul wajib").max(200),
+  notes: z.string(),
+  items: z.array(itemSchema).min(1),
+})
+
+type FormValues = z.infer<typeof formSchema>
+
+function emptyItem(): FormValues["items"][number] {
   return {
     category_id: null,
     description: "",
@@ -63,33 +86,15 @@ function toNum(s: string): number {
   return Number.isFinite(n) ? n : 0
 }
 
-export function CashRequestFormSheet({ open, onClose, target }: Props) {
-  const bp = useBreakpoint()
-  const isEdit = !!target
-  const create = useCreateCashRequest()
-  const update = useUpdateCashRequest(target?.id ?? 0)
-  const usersQuery = useUsersLookup()
-  const catQuery = useCategories()
-
-  const [projectId, setProjectId] = useState<number | null>(null)
-  const [recipientUserId, setRecipientUserId] = useState<number | null>(null)
-  const [requestDate, setRequestDate] = useState(
-    new Date().toISOString().slice(0, 10),
-  )
-  const [title, setTitle] = useState("")
-  const [notes, setNotes] = useState("")
-  const [items, setItems] = useState<FormItem[]>([emptyItem()])
-  const [submitting, setSubmitting] = useState(false)
-
-  useEffect(() => {
-    if (!open) return
-    if (target) {
-      setProjectId(target.project_id)
-      setRecipientUserId(target.recipient_user_id ?? null)
-      setRequestDate(target.request_date)
-      setTitle(target.title)
-      setNotes(target.notes ?? "")
-      setItems(
+function defaultValues(target: CashRequest | null): FormValues {
+  if (target) {
+    return {
+      project_id: target.project_id,
+      recipient_user_id: target.recipient_user_id ?? null,
+      request_date: target.request_date,
+      title: target.title,
+      notes: target.notes ?? "",
+      items:
         target.items.length > 0
           ? target.items.map((it) => ({
               category_id: it.category_id,
@@ -99,55 +104,72 @@ export function CashRequestFormSheet({ open, onClose, target }: Props) {
               amount: String(it.amount),
             }))
           : [emptyItem()],
-      )
-    } else {
-      setProjectId(null)
-      setRecipientUserId(null)
-      setRequestDate(new Date().toISOString().slice(0, 10))
-      setTitle("")
-      setNotes("")
-      setItems([emptyItem()])
     }
-  }, [open, target])
+  }
+  return {
+    project_id: null,
+    recipient_user_id: null,
+    request_date: new Date().toISOString().slice(0, 10),
+    title: "",
+    notes: "",
+    items: [emptyItem()],
+  }
+}
 
+export function CashRequestFormSheet({ open, onClose, target }: Props) {
+  const bp = useBreakpoint()
+  const isEdit = !!target
+  const create = useCreateCashRequest()
+  const update = useUpdateCashRequest(target?.id ?? 0)
+  const usersQuery = useUsersLookup()
+  const catQuery = useCategories()
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: defaultValues(target),
+    mode: "onSubmit",
+  })
+  const {
+    register,
+    control,
+    handleSubmit,
+    reset,
+    watch,
+    setValue,
+    formState: { isSubmitting },
+  } = form
+  const { fields, append, remove } = useFieldArray({ control, name: "items" })
+
+  // Re-seed values saat sheet dibuka utk target berbeda.
+  useEffect(() => {
+    if (open) reset(defaultValues(target))
+  }, [open, target, reset])
+
+  const items = watch("items")
   const totalAmount = items.reduce((sum, it) => sum + toNum(it.amount), 0)
 
-  // Auto-fill amount dari qty * unit_price kalau user isi keduanya.
-  const updateItem = (idx: number, patch: Partial<FormItem>) => {
-    setItems((prev) =>
-      prev.map((it, i) => {
-        if (i !== idx) return it
-        const next = { ...it, ...patch }
-        if (
-          ("quantity" in patch || "unit_price" in patch) &&
-          next.quantity &&
-          next.unit_price
-        ) {
-          const qty = toNum(next.quantity)
-          const price = toNum(next.unit_price)
-          if (qty > 0 && price > 0) {
-            next.amount = String(Math.round(qty * price))
-          }
-        }
-        return next
-      }),
-    )
+  // Auto-fill amount dari qty * unit_price saat keduanya terisi.
+  const handleQtyOrPriceChange = (idx: number) => {
+    const cur = items[idx]
+    if (!cur) return
+    const qty = toNum(cur.quantity)
+    const price = toNum(cur.unit_price)
+    if (qty > 0 && price > 0) {
+      setValue(`items.${idx}.amount`, String(Math.round(qty * price)), {
+        shouldDirty: true,
+      })
+    }
   }
 
-  const addItem = () => setItems((p) => [...p, emptyItem()])
-  const removeItem = (idx: number) =>
-    setItems((p) => (p.length <= 1 ? p : p.filter((_, i) => i !== idx)))
-
-  const handleSubmit = async () => {
-    if (!projectId) {
+  const onSubmit = async (values: FormValues) => {
+    // project_id null guarded di submit (zod schema nullable supaya
+    // resolver type tdk konflik dgn defaultValues null).
+    if (values.project_id == null) {
       toast.error("Pilih proyek")
       return
     }
-    if (!title.trim()) {
-      toast.error("Judul pengajuan wajib diisi")
-      return
-    }
-    const validItems = items
+    const projectId = values.project_id
+    const validItems = values.items
       .filter((it) => it.description.trim() && toNum(it.amount) > 0)
       .map<CashRequestItemInput>((it) => ({
         category_id: it.category_id,
@@ -160,15 +182,14 @@ export function CashRequestFormSheet({ open, onClose, target }: Props) {
       toast.error("Minimal 1 item dgn deskripsi & jumlah > 0")
       return
     }
-    setSubmitting(true)
     try {
       if (isEdit) {
         const payload: CashRequestUpdateInput = {
           project_id: projectId,
-          recipient_user_id: recipientUserId,
-          request_date: requestDate,
-          title: title.trim(),
-          notes: notes.trim() || null,
+          recipient_user_id: values.recipient_user_id,
+          request_date: values.request_date,
+          title: values.title.trim(),
+          notes: values.notes.trim() || null,
           items: validItems,
         }
         await update.mutateAsync(payload)
@@ -176,10 +197,10 @@ export function CashRequestFormSheet({ open, onClose, target }: Props) {
       } else {
         const payload: CashRequestCreateInput = {
           project_id: projectId,
-          recipient_user_id: recipientUserId,
-          request_date: requestDate,
-          title: title.trim(),
-          notes: notes.trim() || null,
+          recipient_user_id: values.recipient_user_id,
+          request_date: values.request_date,
+          title: values.title.trim(),
+          notes: values.notes.trim() || null,
           items: validItems,
         }
         await create.mutateAsync(payload)
@@ -192,9 +213,12 @@ export function CashRequestFormSheet({ open, onClose, target }: Props) {
       toast.error(isEdit ? "Gagal update" : "Gagal buat pengajuan", {
         description: apiErrorMessage(err),
       })
-    } finally {
-      setSubmitting(false)
     }
+  }
+
+  const onInvalid = (errors: typeof form.formState.errors) => {
+    const first = errors.title?.message || errors.request_date?.message
+    if (typeof first === "string") toast.error(first)
   }
 
   const users = usersQuery.data ?? []
@@ -204,45 +228,55 @@ export function CashRequestFormSheet({ open, onClose, target }: Props) {
     <div className="flex flex-col gap-3 px-4 py-4 sm:px-5">
       <div className="grid grid-cols-2 gap-3">
         <Field label="Tanggal" required>
-          <Input
-            type="date"
-            value={requestDate}
-            onChange={(e) => setRequestDate(e.target.value)}
-          />
+          <Input type="date" {...register("request_date")} />
         </Field>
         <Field label="Proyek" required>
           {/* Sengaja TIDAK include NON_PROJECT: pengajuan dana adalah
               workflow operasional proyek, bukan bucket Catatan Non-Proyek
               (yg SUPERADMIN-only & untuk pencatatan langsung tanpa
               workflow). Backend juga reject project_id NON_PROJECT. */}
-          <ProjectPicker value={projectId} onChange={setProjectId} />
+          <Controller
+            control={control}
+            name="project_id"
+            render={({ field }) => (
+              <ProjectPicker
+                value={field.value}
+                onChange={(v) => field.onChange(v)}
+              />
+            )}
+          />
         </Field>
       </div>
       <Field label="Judul / Maksud Pengajuan" required>
         <Input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
           placeholder="Mis. Belanja material minggu 12 Mei"
           maxLength={200}
+          {...register("title")}
         />
       </Field>
       <Field
         label="Penerima Dana"
         hint="Kosongkan kalau penerima = pengaju (Anda sendiri)."
       >
-        <Select
-          value={recipientUserId ?? ""}
-          onChange={(e) =>
-            setRecipientUserId(e.target.value ? Number(e.target.value) : null)
-          }
-        >
-          <option value="">— Saya sendiri —</option>
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.name}
-            </option>
-          ))}
-        </Select>
+        <Controller
+          control={control}
+          name="recipient_user_id"
+          render={({ field }) => (
+            <Select
+              value={field.value ?? ""}
+              onChange={(e) =>
+                field.onChange(e.target.value ? Number(e.target.value) : null)
+              }
+            >
+              <option value="">— Saya sendiri —</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        />
       </Field>
 
       {/* Items */}
@@ -255,7 +289,7 @@ export function CashRequestFormSheet({ open, onClose, target }: Props) {
             type="button"
             variant="ghost"
             size="sm"
-            onClick={addItem}
+            onClick={() => append(emptyItem())}
             className="h-7 text-[12px]"
           >
             <Plus className="h-3 w-3" />
@@ -263,43 +297,44 @@ export function CashRequestFormSheet({ open, onClose, target }: Props) {
           </Button>
         </div>
 
-        {items.map((it, idx) => (
+        {fields.map((f, idx) => (
           <div
-            key={idx}
+            key={f.id}
             className="flex flex-col gap-2 rounded border bg-surface p-2"
           >
             <div className="flex items-start gap-2">
               <div className="flex-1 grid grid-cols-1 sm:grid-cols-[1fr_140px] gap-2">
                 <Input
-                  value={it.description}
-                  onChange={(e) =>
-                    updateItem(idx, { description: e.target.value })
-                  }
                   placeholder="Deskripsi (mis. Semen 50 sak)"
                   maxLength={300}
+                  {...register(`items.${idx}.description`)}
                 />
-                <Select
-                  value={it.category_id ?? ""}
-                  onChange={(e) =>
-                    updateItem(idx, {
-                      category_id: e.target.value
-                        ? Number(e.target.value)
-                        : null,
-                    })
-                  }
-                >
-                  <option value="">Tanpa kategori</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </Select>
+                <Controller
+                  control={control}
+                  name={`items.${idx}.category_id`}
+                  render={({ field }) => (
+                    <Select
+                      value={field.value ?? ""}
+                      onChange={(e) =>
+                        field.onChange(
+                          e.target.value ? Number(e.target.value) : null,
+                        )
+                      }
+                    >
+                      <option value="">Tanpa kategori</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                />
               </div>
-              {items.length > 1 && (
+              {fields.length > 1 && (
                 <button
                   type="button"
-                  onClick={() => removeItem(idx)}
+                  onClick={() => remove(idx)}
                   className="flex h-9 w-9 items-center justify-center rounded text-danger-500 hover:bg-danger-50 shrink-0"
                   aria-label="Hapus baris"
                 >
@@ -310,33 +345,30 @@ export function CashRequestFormSheet({ open, onClose, target }: Props) {
             <div className="grid grid-cols-3 gap-2">
               <Field label="Qty" compact>
                 <Input
-                  value={it.quantity}
-                  onChange={(e) =>
-                    updateItem(idx, { quantity: e.target.value })
-                  }
                   inputMode="decimal"
                   placeholder="(opsional)"
                   className="font-mono text-right"
+                  {...register(`items.${idx}.quantity`, {
+                    onChange: () => handleQtyOrPriceChange(idx),
+                  })}
                 />
               </Field>
               <Field label="Harga Satuan" compact>
                 <Input
-                  value={it.unit_price}
-                  onChange={(e) =>
-                    updateItem(idx, { unit_price: e.target.value })
-                  }
                   inputMode="decimal"
                   placeholder="(opsional)"
                   className="font-mono text-right"
+                  {...register(`items.${idx}.unit_price`, {
+                    onChange: () => handleQtyOrPriceChange(idx),
+                  })}
                 />
               </Field>
               <Field label="Total" compact>
                 <Input
-                  value={it.amount}
-                  onChange={(e) => updateItem(idx, { amount: e.target.value })}
                   inputMode="decimal"
                   placeholder="0"
                   className="font-mono text-right font-semibold"
+                  {...register(`items.${idx}.amount`)}
                 />
               </Field>
             </div>
@@ -353,10 +385,9 @@ export function CashRequestFormSheet({ open, onClose, target }: Props) {
 
       <Field label="Catatan" hint="Opsional. Tampil di detail pengajuan.">
         <Textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
           rows={2}
           placeholder="Detail tambahan / justifikasi"
+          {...register("notes")}
         />
       </Field>
     </div>
@@ -374,11 +405,11 @@ export function CashRequestFormSheet({ open, onClose, target }: Props) {
       </Button>
       <Button
         type="button"
-        onClick={handleSubmit}
+        onClick={handleSubmit(onSubmit, onInvalid)}
         className="flex-1"
-        disabled={submitting}
+        disabled={isSubmitting}
       >
-        {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+        {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
         {isEdit ? "Simpan" : "Ajukan"}
       </Button>
     </div>
