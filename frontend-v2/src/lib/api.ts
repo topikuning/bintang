@@ -89,6 +89,14 @@ const ERROR_MESSAGES: Record<string, string> = {
   kind_change_blocked:
     "Tx sudah ter-alokasi ke invoice. Hapus alokasi/unlink dulu sebelum ganti jenis.",
   invoice_not_allocatable: "Invoice di status ini tidak bisa di-alokasi.",
+  transaction_not_allocatable:
+    "Transaksi hanya bisa di-alokasi setelah status VERIFIED. Submit & verify tx dulu.",
+  non_project_superadmin_only:
+    "Hanya SUPERADMIN yang dapat mengakses bucket Catatan Non-Proyek.",
+  invoice_number_already_used:
+    "Nomor invoice sudah dipakai. Pakai nomor yang berbeda.",
+  cannot_request_against_non_project:
+    "Tidak bisa mengajukan dana ke bucket Catatan Non-Proyek.",
   // Common
   not_found: "Data tidak ditemukan.",
   recipient_user_not_found: "Penerima dana tidak ditemukan.",

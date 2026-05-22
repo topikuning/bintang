@@ -56,7 +56,7 @@ async def test_allocation_cross_project_rejected(db):
     tx = Transaction(
         project_id=pb.id, type=TxnType.OUT, kind=TxnKind.INVOICE_PAYMENT,
         amount=Decimal("500"), tx_date=date.today(),
-        status=TxnStatus.SUBMITTED, created_by_id=u.id,
+        status=TxnStatus.VERIFIED, created_by_id=u.id,
     )
     db.add(tx); await db.commit()
 
@@ -91,7 +91,7 @@ async def test_allocation_same_project_accepted(db):
     tx = Transaction(
         project_id=p.id, type=TxnType.OUT, kind=TxnKind.INVOICE_PAYMENT,
         amount=Decimal("500"), tx_date=date.today(),
-        status=TxnStatus.SUBMITTED, created_by_id=u.id,
+        status=TxnStatus.VERIFIED, created_by_id=u.id,
     )
     db.add(tx); await db.commit()
 

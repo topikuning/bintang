@@ -57,12 +57,13 @@ ALLOCATABLE_INVOICE_STATUSES = (
     InvoiceStatus.PARTIALLY_PAID,
     InvoiceStatus.OVERDUE,
 )
-# DRAFT juga diizinkan agar form pembayaran bisa langsung di-attach saat
-# user membuat invoice + langsung mark paid (issue + allocate). Backend
-# auto-issue kalau invoice masih DRAFT.
+# Audit 2026-05-22 #H3: hanya VERIFIED yg boleh di-allocate ke invoice.
+# Sebelumnya DRAFT & SUBMITTED juga diizinkan -> invoice bisa status
+# PARTIALLY_PAID padahal dananya belum diverifikasi (laporan "lunas semu").
+# User keputusan: strict policy -- payment hrs verified dulu sebelum
+# di-claim ke invoice. Kalau perlu attach saat create, user submit+verify
+# dulu di flow tx, baru link ke invoice.
 ALLOCATABLE_TXN_STATUSES = (
-    TxnStatus.DRAFT,
-    TxnStatus.SUBMITTED,
     TxnStatus.VERIFIED,
 )
 
