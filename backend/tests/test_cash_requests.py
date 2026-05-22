@@ -147,12 +147,15 @@ async def test_approve_uses_recipient_when_set(db):
 
 @pytest.mark.asyncio
 async def test_cannot_request_against_non_project(db):
-    """Pengajuan dana ke project kind=NON_PROJECT harus ditolak --
-    NP itu bucket SUPERADMIN-only utk pencatatan langsung, bukan
-    workflow operasional proyek."""
+    """Pengajuan dana ke project kind=NON_PROJECT harus ditolak.
+
+    Setelah audit 2026-05-22 #C2: NP rahasia utk non-SUPERADMIN.
+    ensure_project_access raise 404 (bukan 403 atau 400) supaya tdk
+    bocorkan keberadaan NP. Dengan demikian, requester PROJECT_ADMIN/
+    CENTRAL_ADMIN tdk pernah sampai ke explicit NP-check di endpoint
+    cash_requests -- mereka di-block lebih awal di ensure_project_access.
+    SUPERADMIN tetap di-block di endpoint explicit NP-check (400)."""
     co, _, requester, _admin = await _seed(db)
-    # Bikin system project NON_PROJECT manual (seed migration tdk jalan
-    # di test env in-memory).
     np_proj = Project(
         code=f"NON-PROJECT-{co.id}", name="Catatan Non-Proyek",
         company_id=co.id, status=ProjectStatus.AKTIF,
@@ -168,7 +171,21 @@ async def test_cannot_request_against_non_project(db):
         title="Should fail",
         items=[CashRequestItemIn(description="x", amount=Decimal("100000"))],
     )
+    # PROJECT_ADMIN -> 404 not_found (NP rahasia, return 404 supaya tdk
+    # ekspos keberadaan).
     with pytest.raises(HTTPException) as exc:
         await create_cash_request(payload=payload, db=db, user=requester)
-    assert exc.value.status_code == 400
-    assert "non_project" in exc.value.detail
+    assert exc.value.status_code == 404
+    assert exc.value.detail == "not_found"
+
+    # SUPERADMIN -> 400 cannot_request_against_non_project (visible tapi
+    # tetap reject scopa pengajuan ke NP).
+    super_user = User(
+        name="Super", email="su@x", password_hash="x",
+        role=UserRole.SUPERADMIN,
+    )
+    db.add(super_user); await db.flush()
+    with pytest.raises(HTTPException) as exc2:
+        await create_cash_request(payload=payload, db=db, user=super_user)
+    assert exc2.value.status_code == 400
+    assert "non_project" in exc2.value.detail

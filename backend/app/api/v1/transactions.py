@@ -198,6 +198,11 @@ async def list_transactions(
     user: User = Depends(get_current_user),
 ) -> Page[TransactionOut]:
     stmt = select(Transaction).where(Transaction.deleted_at.is_(None))
+    # NON_PROJECT = bucket SUPERADMIN-only (rahasia). Audit 2026-05-22 #C2:
+    # role lain (CENTRAL_ADMIN sekalipun) tdk boleh akses lewat
+    # ?non_project=true. Default behavior tetap exclude NP.
+    if non_project is True and user.role != UserRole.SUPERADMIN:
+        raise HTTPException(403, "non_project_superadmin_only")
     # Sub-query daftar project_id yg kind=NON_PROJECT (biasanya cuma 1
     # per company). Pakai utk include/exclude di filter tx.
     np_pids_subq = select(Project.id).where(
