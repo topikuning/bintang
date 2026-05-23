@@ -22,6 +22,7 @@ import { AmountInput } from "@/components/forms/AmountInput"
 import { AttachmentUploader } from "@/components/forms/AttachmentUploader"
 import { DateInput } from "@/components/forms/DateInput"
 import { ProjectPicker } from "@/components/forms/ProjectPicker"
+import { ScanButton, type ExtractedFields } from "@/components/forms/ScanButton"
 import { VendorPicker } from "@/components/forms/VendorPicker"
 import { useBreakpoint } from "@/lib/breakpoint"
 
@@ -93,11 +94,47 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
     register,
     handleSubmit,
     reset,
+    setValue,
     watch,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ defaultValues })
 
   const itemsField = useFieldArray({ control, name: "items" })
+
+  // Audit 2026-05-23 UX integration A: scan button populate form values
+  // dari OCR. Vendor match (kalau ada) di-suggest via toast, user bisa
+  // accept/ignore (defer ke VendorPicker manual).
+  const handleScanResult = (extracted: ExtractedFields) => {
+    if (extracted.invoice_number)
+      setValue("number", extracted.invoice_number, { shouldDirty: true })
+    if (extracted.invoice_date)
+      setValue("invoice_date", extracted.invoice_date, { shouldDirty: true })
+    if (extracted.due_date)
+      setValue("due_date", extracted.due_date, { shouldDirty: true })
+    if (extracted.vendor_name && !getValues("party_name"))
+      setValue("party_name", extracted.vendor_name, { shouldDirty: true })
+    if (extracted.tax != null)
+      setValue("tax", Number(extracted.tax) || 0, { shouldDirty: true })
+    if (extracted.items && extracted.items.length > 0) {
+      const mapped = extracted.items.map((it) => ({
+        description: it.description || "(tanpa deskripsi)",
+        quantity: Number(it.qty ?? 1) || 1,
+        unit: it.unit ?? null,
+        unit_price: Number(it.price ?? it.amount ?? 0) || 0,
+      }))
+      setValue("items", mapped, { shouldDirty: true })
+    }
+    if (extracted.notes)
+      setValue("notes", (getValues("notes") || "") + (getValues("notes") ? "\n" : "") + extracted.notes, { shouldDirty: true })
+    // Vendor match suggestion: tampilkan info toast (user pilih
+    // manual via VendorPicker krn kompleks utk auto-set FK).
+    if (extracted.vendor_match) {
+      toast.message("Vendor cocok di database", {
+        description: `${extracted.vendor_match.name} (skor ${Math.round(extracted.vendor_match.score * 100)}%). Pilih manual di dropdown vendor.`,
+      })
+    }
+  }
 
   useEffect(() => {
     if (open) reset(defaultValues)
@@ -206,7 +243,17 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
               ? `Tambah Bukti — Invoice #${justCreatedInv.id}`
               : isEdit ? "Edit Invoice" : "Tambah Invoice"}
           </SheetTitle>
-          <div className="w-12" />
+          {!justCreatedInv && !isEdit ? (
+            <ScanButton
+              onResult={handleScanResult}
+              label="Scan"
+              size="sm"
+              iconStyle="camera"
+              disabled={isSubmitting}
+            />
+          ) : (
+            <div className="w-12" />
+          )}
         </SheetHeader>
 
         {justCreatedInv ? (

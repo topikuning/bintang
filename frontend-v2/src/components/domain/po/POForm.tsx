@@ -20,6 +20,7 @@ import { AmountInput } from "@/components/forms/AmountInput"
 import { DateInput } from "@/components/forms/DateInput"
 import { ProjectPicker } from "@/components/forms/ProjectPicker"
 import { CompanyPicker } from "@/components/forms/CompanyPicker"
+import { ScanButton, type ExtractedFields } from "@/components/forms/ScanButton"
 import { VendorPicker } from "@/components/forms/VendorPicker"
 import { useBreakpoint } from "@/lib/breakpoint"
 
@@ -93,11 +94,47 @@ export function POForm({ open, onClose, po, lockProjectId, onSaved }: POFormProp
     register,
     handleSubmit,
     reset,
+    setValue,
+    getValues,
     watch,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ defaultValues })
 
   const itemsField = useFieldArray({ control, name: "items" })
+
+  // Audit 2026-05-23 UX integration A: scan button populate form values
+  // dari OCR (struk/PO foto). Field invoice_number diabaikan utk PO
+  // (PO number di-generate auto/manual). due_date -> needed_date.
+  const handleScanResult = (extracted: ExtractedFields) => {
+    if (extracted.invoice_date)
+      setValue("po_date", extracted.invoice_date, { shouldDirty: true })
+    if (extracted.due_date)
+      setValue("needed_date", extracted.due_date, { shouldDirty: true })
+    if (extracted.vendor_name && !getValues("vendor_name"))
+      setValue("vendor_name", extracted.vendor_name, { shouldDirty: true })
+    if (extracted.tax != null)
+      setValue("tax", Number(extracted.tax) || 0, { shouldDirty: true })
+    if (extracted.items && extracted.items.length > 0) {
+      const mapped = extracted.items.map((it) => ({
+        description: it.description || "(tanpa deskripsi)",
+        quantity: Number(it.qty ?? 1) || 1,
+        unit: it.unit ?? null,
+        unit_price: Number(it.price ?? it.amount ?? 0) || 0,
+      }))
+      setValue("items", mapped, { shouldDirty: true })
+    }
+    if (extracted.notes) {
+      const existing = getValues("notes") || ""
+      setValue("notes", existing + (existing ? "\n" : "") + extracted.notes, {
+        shouldDirty: true,
+      })
+    }
+    if (extracted.vendor_match) {
+      toast.message("Vendor cocok di database", {
+        description: `${extracted.vendor_match.name} (skor ${Math.round(extracted.vendor_match.score * 100)}%). Pilih manual di dropdown vendor.`,
+      })
+    }
+  }
 
   useEffect(() => {
     if (open) reset(defaultValues)
@@ -186,7 +223,17 @@ export function POForm({ open, onClose, po, lockProjectId, onSaved }: POFormProp
           <SheetTitle className="text-center flex-1">
             {isEdit ? "Edit PO" : "Tambah PO"}
           </SheetTitle>
-          <div className="w-12" />
+          {!isEdit ? (
+            <ScanButton
+              onResult={handleScanResult}
+              label="Scan"
+              size="sm"
+              iconStyle="camera"
+              disabled={isSubmitting}
+            />
+          ) : (
+            <div className="w-12" />
+          )}
         </SheetHeader>
 
         <form
