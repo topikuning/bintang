@@ -12,6 +12,7 @@ from app.api.v1 import (
     cash_requests,
     categories,
     companies,
+    ai,
     dashboard,
     imports,
     invoices,
@@ -54,6 +55,7 @@ api_router.include_router(admin_role_menus.router, prefix="/admin/role-menus", t
 api_router.include_router(admin_orphans.router, prefix="/admin/orphan-files", tags=["admin-orphans"])
 api_router.include_router(imports.router, prefix="/imports", tags=["imports"])
 api_router.include_router(ocr.router, prefix="/ocr", tags=["ocr"])
+api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
 api_router.include_router(telegram.router, prefix="/telegram", tags=["telegram"])
 api_router.include_router(whatsapp.router, prefix="/whatsapp", tags=["whatsapp"])
 api_router.include_router(messaging.router, prefix="/messaging", tags=["messaging"])
