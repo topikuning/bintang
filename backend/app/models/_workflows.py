@@ -299,6 +299,73 @@ class OCRCache(TimestampMixin, Base):
     )
 
 
+class AICache(TimestampMixin, Base):
+    """Generic AI response cache. Audit 2026-05-23 AI foundation.
+
+    Lebih luas dari OCRCache: namespace-based supaya bisa cache hasil
+    chat (kategori suggest, justifier, dll) selain OCR. Key bebas
+    (caller bertanggung jawab buat key unik per (namespace, input)).
+
+    Namespace convention:
+      ocr:invoice           -- OCR invoice/struk/PO (key=sha256(bytes))
+      chat:category         -- saran kategori (key=hash(prompt))
+      chat:po-cover         -- generate PO cover letter
+      ...
+
+    Cache existing `ocr_cache` table tetap utk OCR (data lama).
+    Tabel ini fresh, generic.
+    """
+    __tablename__ = "ai_cache"
+    __table_args__ = (
+        UniqueConstraint("namespace", "cache_key", name="uq_ai_cache_ns_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    namespace: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    cache_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    # Hasil call AI (bisa struktur apapun -- dict/list/string wrapped dict)
+    value: Mapped[dict] = mapped_column(JSON, nullable=False)
+    # Info source (model, engine, cost, etc) utk audit trail
+    source_info: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    hits: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_hit_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
+
+class AICallLog(TimestampMixin, Base):
+    """Log setiap call AI utk analytics + cost tracking + audit.
+    Audit 2026-05-23 AI foundation.
+
+    Dipakai utk:
+    - Monitor biaya per-feature per-user per-tenant.
+    - Identify abuse (user X spam OCR / chat).
+    - Iterate prompt: lihat input/output token vs hasil quality.
+    - Compliance: log siapa minta apa ke AI.
+
+    Tdk simpan full request/response (privacy + storage). Hanya
+    metadata: feature, model, tokens, cost, latency, cached, success.
+    """
+    __tablename__ = "ai_call_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True,
+    )
+    # Feature ID -- e.g. "ocr:invoice", "chat:category", "chat:po-cover".
+    feature: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    model: Mapped[str] = mapped_column(String(80), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Estimasi cost USD (dihitung di runtime dgn tabel price per-model).
+    # String supaya tahan precision tanpa Numeric overhead.
+    cost_usd: Mapped[str] = mapped_column(String(20), default="0", nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    cached: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    success: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class OCRJob(TimestampMixin, Base):
     """Async OCR job utk fire-and-forget upload bulk.
 
