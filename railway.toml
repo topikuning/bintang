@@ -1,0 +1,22 @@
+# Konfigurasi Railway utk service combined (FE + Backend 1 service).
+#
+# Aktif HANYA jika service Railway di-set Root Directory = `/` (root repo).
+# Service backend & frontend eksisting tdk pakai file ini (mereka punya
+# railway.toml masing-2 di subfolder dgn Root Directory berbeda).
+#
+# Doc: https://docs.railway.com/reference/config-as-code
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# uvicorn jalan dari WORKDIR /app (Dockerfile), serve FastAPI + SPA static.
+startCommand = "sh -c 'uvicorn app.main:app --host 0.0.0.0 --port ${PORT}'"
+# Healthcheck timeout 60s karena lifespan jalan create_all + ALTER IF NOT
+# EXISTS + bootstrap_cache + register Telegram/WAHA webhook -- bisa
+# beberapa detik saat first cold start.
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
