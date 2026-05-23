@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Building2, Loader2, Pencil, Trash2 } from "lucide-react"
 import { z } from "zod"
-import { useForm } from "react-hook-form"
+import { useForm, type UseFormRegister } from "react-hook-form"
 import {
   useCompanies,
   useCreateCompany,
   useDeleteCompany,
   useUpdateCompany,
+  useUploadCompanyAsset,
 } from "@/hooks/useCompanies"
 import { MasterPageShell } from "@/components/master/MasterPageShell"
 import { Button } from "@/components/ui/button"
@@ -294,6 +295,8 @@ function CompanyForm({
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     defaultValues: buildDefaults(company),
@@ -410,12 +413,24 @@ function CompanyForm({
         </Field>
       )}
       <div className="grid grid-cols-1 gap-3">
-        <Field label="URL Logo" hint="Logo perusahaan utk PDF (opsional)">
-          <Input {...register("logo_url")} placeholder="https://..." />
-        </Field>
-        <Field label="URL Kop Surat" hint="Header letterhead utk PDF (opsional)">
-          <Input {...register("letterhead_url")} placeholder="https://..." />
-        </Field>
+        <AssetField
+          label="Logo Perusahaan"
+          hint="Upload gambar (PNG/JPG) atau paste URL. Tampil di header PDF."
+          kind="logo"
+          companyId={isEdit ? company?.id ?? null : null}
+          urlRegister={register("logo_url")}
+          urlValue={watch("logo_url") ?? ""}
+          onUploaded={(url) => setValue("logo_url", url, { shouldDirty: true })}
+        />
+        <AssetField
+          label="Kop Surat (Letterhead)"
+          hint="Upload gambar full-width banner atau paste URL."
+          kind="letterhead"
+          companyId={isEdit ? company?.id ?? null : null}
+          urlRegister={register("letterhead_url")}
+          urlValue={watch("letterhead_url") ?? ""}
+          onUploaded={(url) => setValue("letterhead_url", url, { shouldDirty: true })}
+        />
       </div>
     </form>
   )
@@ -480,6 +495,110 @@ function Field({
       {children}
       {hint && !error && <p className="text-[11px] text-ink-500">{hint}</p>}
       {error && <p className="text-[11px] text-danger-600">{error}</p>}
+    </div>
+  )
+}
+
+
+/**
+ * Field hybrid utk asset (logo/letterhead): URL text input + tombol
+ * upload file + preview thumbnail. Upload disabled saat create flow
+ * (company belum punya ID). User bisa save dulu, lalu re-open utk
+ * upload.
+ *
+ * Audit 2026-05-23 user lapor: menu upload logo/letterhead dulu ada,
+ * sekarang cuma URL text. Backend endpoint POST /companies/{id}/upload/
+ * {kind} masih jalan, FE-nya yg hilang.
+ */
+function AssetField({
+  label,
+  hint,
+  kind,
+  companyId,
+  urlRegister,
+  urlValue,
+  onUploaded,
+}: {
+  label: string
+  hint: string
+  kind: "logo" | "letterhead"
+  companyId: number | null
+  urlRegister: ReturnType<UseFormRegister<FormValues>>
+  urlValue: string
+  onUploaded: (url: string) => void
+}) {
+  const upload = useUploadCompanyAsset()
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const handlePick = () => inputRef.current?.click()
+
+  const handleFile = async (file: File) => {
+    if (!companyId) {
+      toast.error("Simpan perusahaan dulu", {
+        description: "Upload baru tersedia setelah perusahaan dibuat.",
+      })
+      return
+    }
+    try {
+      const updated = await upload.mutateAsync({ companyId, kind, file })
+      const newUrl = kind === "logo" ? updated.logo_url : updated.letterhead_url
+      if (newUrl) onUploaded(newUrl)
+      toast.success(`${label} diunggah`)
+    } catch (err) {
+      toast.error(`Gagal upload ${label.toLowerCase()}`, {
+        description: apiErrorMessage(err),
+      })
+    } finally {
+      if (inputRef.current) inputRef.current.value = ""
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label className="text-[12px] uppercase tracking-wider">{label}</Label>
+      <div className="flex items-start gap-2">
+        <div className="flex-1 flex flex-col gap-2">
+          <Input {...urlRegister} placeholder="https://..." />
+          {urlValue && (
+            <div className="rounded border bg-ink-50 p-2">
+              <img
+                src={urlValue}
+                alt={label}
+                className="max-h-24 object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = "none"
+                }}
+              />
+            </div>
+          )}
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) handleFile(f)
+          }}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handlePick}
+          disabled={upload.isPending || !companyId}
+          title={!companyId ? "Simpan perusahaan dulu sebelum upload" : "Upload file"}
+          className="shrink-0"
+        >
+          {upload.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            "Upload"
+          )}
+        </Button>
+      </div>
+      <p className="text-[11px] text-ink-500">{hint}</p>
     </div>
   )
 }
