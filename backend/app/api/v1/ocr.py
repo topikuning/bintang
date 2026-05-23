@@ -29,6 +29,7 @@ from app.models.models import (
     InvoiceStatus,
     InvoiceType,
     User,
+    UserRole,
 )
 from app.services.audit import log, snapshot
 from app.services.ocr.adapter import get_ocr_adapter, list_available_engines
@@ -278,6 +279,215 @@ async def extract_upload(
         "needs_review": True,
         "source_url": source_url,
     }
+
+
+# ============================================================
+# Async OCR jobs (audit 2026-05-23 OCR opt #T3.8 + #T3.7 streaming)
+# ============================================================
+@router.post("/jobs", status_code=202)
+async def create_ocr_job(
+    file: UploadFile = File(...),
+    entity: str = Form("invoice"),
+    engine: str | None = Form(None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Enqueue async OCR job. Return job_id immediately (HTTP 202).
+
+    Client poll via GET /ocr/jobs/{id} atau stream via SSE
+    /ocr/jobs/{id}/stream. Cocok utk bulk upload (10+ struk) supaya UI
+    tdk blocking.
+    """
+    # Rate-limit: enqueue tetap counted (cegah spam).
+    allowed, _ = ocr_limiter.check(f"ocr:{user.id}")
+    if not allowed:
+        raise HTTPException(429, "rate_limited: terlalu banyak OCR.")
+    if file.content_type not in ALLOWED_MIME:
+        raise HTTPException(415, f"unsupported_media_type: {file.content_type}")
+
+    saved = await save_upload(file, subdir="ocr")
+    from app.models.models import OCRJob, OCRJobStatus
+    job = OCRJob(
+        user_id=user.id,
+        entity=entity,
+        source_url=saved["url"],
+        file_size_bytes=saved.get("size_bytes", 0),
+        engine_requested=engine,
+        status=OCRJobStatus.PENDING,
+    )
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+
+    # Spawn background task (asyncio.create_task fire-and-forget).
+    # Task pakai DB session sendiri (request session di-close setelah return).
+    import asyncio
+    asyncio.create_task(_process_ocr_job(job.id))
+
+    return {
+        "job_id": job.id,
+        "status": job.status.value,
+        "poll_url": f"/api/v1/ocr/jobs/{job.id}",
+        "stream_url": f"/api/v1/ocr/jobs/{job.id}/stream",
+    }
+
+
+async def _process_ocr_job(job_id: int) -> None:
+    """Background processor utk OCRJob.
+
+    Pakai DB session sendiri (request session sudah closed di POST handler).
+    State transitions: PENDING -> PROCESSING -> DONE/FAILED.
+    """
+    import logging
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from app.core.config import settings
+    from app.db.session import SessionLocal
+    from app.models.models import OCRJob, OCRJobStatus
+    from app.services.ocr.pipeline import run_extraction
+    from app.services.audit import log as _audit_log
+    from app.models.models import AuditAction
+
+    log = logging.getLogger(__name__)
+
+    async with SessionLocal() as bg_db:
+        job = await bg_db.get(OCRJob, job_id)
+        if not job:
+            log.error("ocr.job.not_found id=%s", job_id)
+            return
+        job.status = OCRJobStatus.PROCESSING
+        job.started_at = datetime.now(timezone.utc)
+        await bg_db.commit()
+        try:
+            # Resolve file path
+            rel = job.source_url[len("/files/"):]
+            p = Path(settings.UPLOAD_DIR) / rel
+            content = p.read_bytes()
+            # Mime guessing dari ext (cukup utk pipeline)
+            ext = p.suffix.lower()
+            media_map = {
+                ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".png": "image/png", ".webp": "image/webp",
+                ".pdf": "application/pdf",
+            }
+            media_type = media_map.get(ext, "image/jpeg")
+
+            result = await run_extraction(
+                bg_db, content=content, media_type=media_type,
+                source_url=job.source_url, engine=job.engine_requested,
+            )
+            # Serialize Decimal sebelum simpan JSON
+            serializable = {
+                k: (str(v) if hasattr(v, "is_finite") else v)
+                for k, v in result.items()
+            }
+            job.result = serializable
+            job.status = OCRJobStatus.DONE
+            job.completed_at = datetime.now(timezone.utc)
+            await _audit_log(
+                bg_db, user_id=job.user_id,
+                entity="ocr_job", entity_id=job.id, action=AuditAction.CREATE,
+                note=f"async ocr engine={result.get('raw_response', {}).get('engine', '?')}",
+            )
+        except Exception as e:  # noqa: BLE001
+            log.exception("ocr.job.failed id=%s", job_id)
+            job.status = OCRJobStatus.FAILED
+            job.error = str(e)[:1000]
+            job.completed_at = datetime.now(timezone.utc)
+        await bg_db.commit()
+
+
+def _job_to_dict(job) -> dict:
+    """Serialize OCRJob row -> response dict."""
+    return {
+        "id": job.id,
+        "status": job.status.value if hasattr(job.status, "value") else str(job.status),
+        "entity": job.entity,
+        "source_url": job.source_url,
+        "engine_requested": job.engine_requested,
+        "file_size_bytes": job.file_size_bytes,
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+        "result": job.result,
+        "error": job.error,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+    }
+
+
+@router.get("/jobs/{job_id}")
+async def get_ocr_job(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Poll status OCR job. Return full state (status, result/error)."""
+    from app.models.models import OCRJob
+    job = await db.get(OCRJob, job_id)
+    if not job:
+        raise HTTPException(404, "job_not_found")
+    if job.user_id != user.id and user.role not in (
+        UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN,
+    ):
+        raise HTTPException(403, "not_owner")
+    return _job_to_dict(job)
+
+
+@router.get("/jobs/{job_id}/stream")
+async def stream_ocr_job(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """SSE stream status job sampai DONE/FAILED.
+
+    Audit 2026-05-23 OCR opt #T3.7. Client pakai EventSource:
+        const es = new EventSource('/api/v1/ocr/jobs/123/stream', {
+            headers: {Authorization: 'Bearer ...'}
+        });
+        es.onmessage = (e) => { const data = JSON.parse(e.data); ... };
+        // Server emit event setiap kali status berubah, lalu close
+        // setelah terminal (DONE/FAILED).
+    """
+    from fastapi.responses import StreamingResponse
+    from app.models.models import OCRJob, OCRJobStatus
+
+    job = await db.get(OCRJob, job_id)
+    if not job:
+        raise HTTPException(404, "job_not_found")
+    if job.user_id != user.id and user.role not in (
+        UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN,
+    ):
+        raise HTTPException(403, "not_owner")
+
+    async def _gen():
+        import asyncio
+        import json
+        from app.db.session import SessionLocal
+        last_status: str | None = None
+        # Poll interval 800ms. Total max wait 5 menit (~375 ticks).
+        for _ in range(375):
+            async with SessionLocal() as poll_db:
+                j = await poll_db.get(OCRJob, job_id)
+                if j is None:
+                    yield f"event: error\ndata: {json.dumps({'error': 'gone'})}\n\n"
+                    return
+                status = j.status.value
+                if status != last_status:
+                    payload = json.dumps(_job_to_dict(j), default=str)
+                    yield f"event: status\ndata: {payload}\n\n"
+                    last_status = status
+                if status in ("DONE", "FAILED"):
+                    return
+            await asyncio.sleep(0.8)
+        # Timeout
+        yield f"event: timeout\ndata: {{\"error\":\"poll_timeout\"}}\n\n"
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/drafts")

@@ -299,6 +299,33 @@ class OCRCache(TimestampMixin, Base):
     )
 
 
+class OCRJob(TimestampMixin, Base):
+    """Async OCR job utk fire-and-forget upload bulk.
+
+    Audit 2026-05-23 OCR opt #T3.8. Tujuan: user upload 10 struk
+    sekaligus tdk blocking UI 30+ detik. POST /ocr/jobs return immediately
+    dgn job_id, processing di background (asyncio.create_task).
+
+    State machine: PENDING -> PROCESSING -> DONE/FAILED.
+    Poll via GET /ocr/jobs/{id} atau stream via SSE /ocr/jobs/{id}/stream.
+    """
+    __tablename__ = "ocr_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    entity: Mapped[str] = mapped_column(String(40), default="invoice", nullable=False)
+    source_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    engine_requested: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    status: Mapped[OCRJobStatus] = mapped_column(
+        Enum(OCRJobStatus), default=OCRJobStatus.PENDING, nullable=False, index=True,
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class AppSetting(TimestampMixin, Base):
     """Pengaturan sistem yg di-manage SUPERADMIN via UI (bukan env vars).
 

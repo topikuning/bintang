@@ -157,10 +157,28 @@ async def run_extraction(
     # 3. Preprocess (resize + JPEG q=85 + strip EXIF + auto-rotate)
     processed_content, processed_media = preprocess_for_ocr(content, media_type)
 
-    # 4. Primary adapter call
-    primary_engine = (engine or "").lower() or None
-    adapter = get_ocr_adapter(primary_engine)
-    result = await _call_adapter(adapter, processed_content, processed_media, source_url)
+    # 3b. Tesseract pre-pass (T3.9). Optional, default disabled.
+    # Kalau enabled & receipt printed dgn keyword finansial jelas,
+    # Tesseract result dipakai langsung (gratis, ~100x lebih cepat LLM).
+    # tesseract_result None = tdk eligible / disabled -> lanjut ke LLM.
+    result: dict[str, Any] | None = None
+    from app.services.app_settings import get_cached as _get_setting
+    if _get_setting("OCR_TESSERACT_ENABLED") == "true":
+        try:
+            from app.services.ocr import tesseract_engine
+            tres = tesseract_engine.try_extract(processed_content, processed_media)
+            if tres is not None:
+                tres["source_url"] = source_url
+                result = tres
+                log.info("ocr.pipeline: tesseract pre-pass success -- skip LLM")
+        except Exception as e:  # noqa: BLE001
+            log.warning("ocr.pipeline.tesseract_failed: %s -- skip ke LLM", e)
+
+    # 4. Primary adapter call (kalau tesseract miss/disabled)
+    if result is None:
+        primary_engine = (engine or "").lower() or None
+        adapter = get_ocr_adapter(primary_engine)
+        result = await _call_adapter(adapter, processed_content, processed_media, source_url)
 
     # 5. Engine fallback (T2.6): cheap engine (mistral) low confidence ->
     # retry dgn claude. Tdk lakukan kalau primary sudah claude/stub.

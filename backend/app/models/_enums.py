@@ -160,6 +160,14 @@ class AIExtractionStatus(str, enum.Enum):
     REVIEWED = "REVIEWED"
 
 
+class OCRJobStatus(str, enum.Enum):
+    """Status async OCR job. Audit 2026-05-23 OCR opt #T3.8."""
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    DONE = "DONE"
+    FAILED = "FAILED"
+
+
 class AuditAction(str, enum.Enum):
     CREATE = "CREATE"
     UPDATE = "UPDATE"
