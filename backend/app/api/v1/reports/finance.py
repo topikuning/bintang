@@ -98,7 +98,7 @@ async def cashflow(
     )
     diag_rows = (await db.execute(diag_q)).all()
 
-    # Data utama: hanya VERIFIED
+    # Data utama: hanya VERIFIED, dalam periode (date_from..date_to)
     stmt = (
         select(Transaction)
         .join(Project, Project.id == Transaction.project_id)
@@ -106,6 +106,35 @@ async def cashflow(
         .order_by(Transaction.tx_date.asc())
     )
     txs = (await db.execute(stmt)).scalars().all()
+
+    # Audit 2026-05-23: saldo awal periode (SUM VERIFIED tx SEBELUM
+    # date_from). Tanpa ini, saldo bersih cuma = surplus/defisit periode,
+    # bukan posisi kas aktual. PSAK 2 mengharuskan saldo awal + perubahan
+    # = saldo akhir.
+    saldo_awal_in = Decimal("0")
+    saldo_awal_out = Decimal("0")
+    if date_from:
+        pre_base = [
+            Transaction.deleted_at.is_(None),
+            Transaction.status == TxnStatus.VERIFIED,
+            Transaction.tx_date < date_from,
+            elig_clause,
+        ]
+        if pids is not None:
+            pre_base.append(Transaction.project_id.in_(pids))
+        pre_q = (
+            select(Transaction.type, func.coalesce(func.sum(Transaction.amount), 0))
+            .select_from(Transaction)
+            .join(Project, Project.id == Transaction.project_id)
+            .where(*pre_base)
+            .group_by(Transaction.type)
+        )
+        for tp, amt in (await db.execute(pre_q)).all():
+            if tp == TxnType.IN or getattr(tp, "value", tp) == "IN":
+                saldo_awal_in = Decimal(amt or 0)
+            else:
+                saldo_awal_out = Decimal(amt or 0)
+    saldo_awal = saldo_awal_in - saldo_awal_out
 
     proj_ids = {t.project_id for t in txs}
     if project_id:
@@ -138,12 +167,19 @@ async def cashflow(
             rows.append([_fmt_date(t.tx_date), proj_name,
                          t.party_name or "-", t.description or "-", "", _fmt_idr(t.amount)])
 
-    saldo = sum_in - sum_out
+    saldo_perubahan = sum_in - sum_out
+    saldo_akhir = saldo_awal + saldo_perubahan
     summary = [
-        {"label": "Total Pemasukan", "value": f"Rp {_fmt_idr(sum_in)}", "sub": f"{n_in} transaksi"},
-        {"label": "Total Pengeluaran", "value": f"Rp {_fmt_idr(sum_out)}", "sub": f"{n_out} transaksi"},
-        {"label": "Saldo Bersih", "value": f"Rp {_fmt_idr(saldo)}",
-         "sub": "Surplus" if saldo >= 0 else "Defisit"},
+        {"label": "Saldo Awal Periode", "value": f"Rp {_fmt_idr(saldo_awal)}",
+         "sub": (f"sebelum {_fmt_date(date_from)}" if date_from else "(tdk pakai cut-off)")},
+        {"label": "Total Pemasukan", "value": f"Rp {_fmt_idr(sum_in)}",
+         "sub": f"{n_in} transaksi"},
+        {"label": "Total Pengeluaran", "value": f"Rp {_fmt_idr(sum_out)}",
+         "sub": f"{n_out} transaksi"},
+        {"label": "Perubahan (Surplus/Defisit)", "value": f"Rp {_fmt_idr(saldo_perubahan)}",
+         "sub": "Surplus" if saldo_perubahan >= 0 else "Defisit"},
+        {"label": "Saldo Akhir Periode", "value": f"Rp {_fmt_idr(saldo_akhir)}",
+         "sub": "Saldo Awal + Perubahan"},
         {"label": "Total Transaksi", "value": str(n_in + n_out), "sub": "Tervalidasi"},
     ]
     proj_label = (proj_map.get(project_id).name
@@ -197,26 +233,51 @@ async def report_transactions(
     project_id: int | None = None,
     category_id: int | None = None,
     status: TxnStatus | None = None,
+    include_drafts: bool = Query(
+        False,
+        description="Default False: hanya VERIFIED (transaksi terakui). "
+                    "True utk include DRAFT/SUBMITTED (preview/draft only).",
+    ),
     date_from: date_type | None = None,
     date_to: date_type | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Response:
+    """Laporan transaksi.
+
+    Audit 2026-05-23 perbaikan finance reporting:
+    - Default status=VERIFIED (sebelumnya include semua DRAFT/SUBMITTED
+      yg bukan angka akuntansi final). Toggle `include_drafts=True`
+      kalau memang butuh lihat preview.
+    - type=None (gabungan): tampilkan 2 kolom Masuk + Keluar terpisah,
+      summary pisah IN vs OUT, footer per-arah. SEBELUMNYA: 1 kolom
+      campur dgn total agregat yang menyesatkan (IN+OUT tdk bermakna).
+    """
     ids = await user_project_ids(db, user)
     pids = _accessible_pids(ids, project_id)
     if pids is not None and not pids:
         raise HTTPException(403, "no_project_access")
 
-    stmt = select(Transaction).where(Transaction.deleted_at.is_(None))
+    # NON_PROJECT eligibility (audit 2026-05-23): laporan agregat
+    # transaksi juga hormati NonProjectYearSetting -- sebelumnya hanya
+    # cashflow.
+    elig_clause = await transaction_eligibility_clause(db)
+
+    stmt = (
+        select(Transaction)
+        .join(Project, Project.id == Transaction.project_id)
+        .where(Transaction.deleted_at.is_(None), elig_clause)
+    )
     if type:
         stmt = stmt.where(Transaction.type == type)
     if kind:
-        # TxnKind disimpan sbg VARCHAR di DB -- filter string langsung.
         stmt = stmt.where(Transaction.kind == kind)
     if pids is not None:
         stmt = stmt.where(Transaction.project_id.in_(pids))
-    if status:
+    if status is not None:
         stmt = stmt.where(Transaction.status == status)
+    elif not include_drafts:
+        stmt = stmt.where(Transaction.status == TxnStatus.VERIFIED)
     if category_id:
         stmt = stmt.where(Transaction.category_id == category_id)
     if date_from:
@@ -236,73 +297,120 @@ async def report_transactions(
         cat_map = {c.id: c for c in
                    (await db.execute(select(Category).where(Category.id.in_(cat_ids))))
                    .scalars().all()}
-    headers = ["Tanggal", "Proyek", "Kategori", "Pihak", "Metode", "Status", "Nominal (Rp)"]
-    cols = [
-        {"align": "center", "width": "78px"},
-        {"align": "left",   "width": "17%"},
-        {"align": "left",   "width": "12%"},
-        {"align": "left"},
-        {"align": "center", "width": "72px"},
-        {"align": "center", "width": "82px"},
-        {"align": "num",    "width": "100px"},
-    ]
-    rows: list[list] = []
-    total = Decimal("0")
-    n_verified = 0
-    for t in txs:
-        total += Decimal(t.amount or 0)
-        if t.status == TxnStatus.VERIFIED:
-            n_verified += 1
-        rows.append([
-            _fmt_date(t.tx_date),
-            proj_map.get(t.project_id).name if proj_map.get(t.project_id) else "-",
-            cat_map.get(t.category_id).name if cat_map.get(t.category_id) else "-",
-            t.party_name or "-",
-            t.payment_method.value,
-            t.status.value,
-            _fmt_idr(t.amount),
-        ])
-    avg = (total / len(txs)) if txs else Decimal("0")
-    # Label adaptive ke pilihan `type`. None -> "Transaksi" (gabungan IN+OUT).
-    arah_label = (
-        "Pemasukan" if type == TxnType.IN else
-        "Pengeluaran" if type == TxnType.OUT else
-        "Transaksi"
-    )
-    summary = [
-        {"label": f"Total {arah_label}", "value": f"Rp {_fmt_idr(total)}",
-         "sub": f"{len(txs)} transaksi"},
-        {"label": "Rata-rata / Transaksi", "value": f"Rp {_fmt_idr(avg)}", "sub": ""},
-        {"label": "Status Tervalidasi", "value": str(n_verified),
-         "sub": f"dari {len(txs)} transaksi"},
-        {"label": "Periode", "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "—",
-         "sub": f"sejak {_fmt_date(date_from)}" if date_from else "tanpa batas"},
-    ]
+
+    period_label = f"{_fmt_date(date_from) if date_from else 'awal'} s/d {_fmt_date(date_to) if date_to else 'sekarang'}"
     proj_label = (proj_map.get(project_id).name
                   if project_id and proj_map.get(project_id) else "Semua proyek")
-    period_label = f"{_fmt_date(date_from) if date_from else 'awal'} s/d {_fmt_date(date_to) if date_to else 'sekarang'}"
-    status_label = status.value if status else "semua status"
-    scope_line = f"Periode {period_label} · {proj_label} · {arah_label} · {status_label}"
     _KIND_NICE = {
         "INVOICE_PAYMENT": "Bayar Invoice",
         "CASH_ADVANCE": "Dana Operasional",
         "DIRECT_EXPENSE": "Beban Langsung",
     }
+    status_disp = status.value if status else ("VERIFIED" if not include_drafts else "Semua")
+
+    company = await _resolve_company(db, project_id)
+
+    if type is None:
+        # ----- Dual-column mode (gabungan IN+OUT) -----
+        headers = ["Tanggal", "Proyek", "Kategori", "Pihak", "Metode", "Status",
+                   "Masuk (Rp)", "Keluar (Rp)"]
+        cols = [
+            {"align": "center", "width": "78px"},
+            {"align": "left",   "width": "15%"},
+            {"align": "left",   "width": "12%"},
+            {"align": "left"},
+            {"align": "center", "width": "72px"},
+            {"align": "center", "width": "82px"},
+            {"align": "num",    "width": "100px"},
+            {"align": "num",    "width": "100px"},
+        ]
+        rows: list[list] = []
+        sum_in = Decimal("0")
+        sum_out = Decimal("0")
+        n_in = n_out = 0
+        for t in txs:
+            is_in = (t.type == TxnType.IN) or (getattr(t.type, "value", t.type) == "IN")
+            amt = Decimal(t.amount or 0)
+            common = [
+                _fmt_date(t.tx_date),
+                proj_map.get(t.project_id).name if proj_map.get(t.project_id) else "-",
+                cat_map.get(t.category_id).name if cat_map.get(t.category_id) else "-",
+                t.party_name or "-",
+                t.payment_method.value,
+                t.status.value,
+            ]
+            if is_in:
+                sum_in += amt; n_in += 1
+                rows.append(common + [_fmt_idr(amt), ""])
+            else:
+                sum_out += amt; n_out += 1
+                rows.append(common + ["", _fmt_idr(amt)])
+        saldo = sum_in - sum_out
+        summary = [
+            {"label": "Total Pemasukan", "value": f"Rp {_fmt_idr(sum_in)}",
+             "sub": f"{n_in} transaksi"},
+            {"label": "Total Pengeluaran", "value": f"Rp {_fmt_idr(sum_out)}",
+             "sub": f"{n_out} transaksi"},
+            {"label": "Selisih (IN−OUT)", "value": f"Rp {_fmt_idr(saldo)}",
+             "sub": "Surplus" if saldo >= 0 else "Defisit"},
+            {"label": "Periode", "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "—",
+             "sub": f"sejak {_fmt_date(date_from)}" if date_from else "tanpa batas"},
+        ]
+        footer_row = ["TOTAL", "", "", "", "", "",
+                      _fmt_idr(sum_in), _fmt_idr(sum_out)]
+        title = "Laporan Transaksi (Gabungan)"
+        scope_line = (
+            f"Periode {period_label} · {proj_label} · Gabungan IN+OUT · "
+            f"{status_disp}"
+        )
+    else:
+        # ----- Single-direction mode -----
+        arah_label = "Pemasukan" if type == TxnType.IN else "Pengeluaran"
+        headers = ["Tanggal", "Proyek", "Kategori", "Pihak", "Metode", "Status", "Nominal (Rp)"]
+        cols = [
+            {"align": "center", "width": "78px"},
+            {"align": "left",   "width": "17%"},
+            {"align": "left",   "width": "12%"},
+            {"align": "left"},
+            {"align": "center", "width": "72px"},
+            {"align": "center", "width": "82px"},
+            {"align": "num",    "width": "100px"},
+        ]
+        rows = []
+        total = Decimal("0")
+        for t in txs:
+            total += Decimal(t.amount or 0)
+            rows.append([
+                _fmt_date(t.tx_date),
+                proj_map.get(t.project_id).name if proj_map.get(t.project_id) else "-",
+                cat_map.get(t.category_id).name if cat_map.get(t.category_id) else "-",
+                t.party_name or "-",
+                t.payment_method.value,
+                t.status.value,
+                _fmt_idr(t.amount),
+            ])
+        avg = (total / len(txs)) if txs else Decimal("0")
+        summary = [
+            {"label": f"Total {arah_label}", "value": f"Rp {_fmt_idr(total)}",
+             "sub": f"{len(txs)} transaksi"},
+            {"label": "Rata-rata / Transaksi", "value": f"Rp {_fmt_idr(avg)}", "sub": ""},
+            {"label": "Status", "value": status_disp, "sub": ""},
+            {"label": "Periode", "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "—",
+             "sub": f"sejak {_fmt_date(date_from)}" if date_from else "tanpa batas"},
+        ]
+        footer_row = ["TOTAL", "", "", "", "", "", _fmt_idr(total)]
+        title = f"Laporan Transaksi {arah_label}"
+        scope_line = (
+            f"Periode {period_label} · {proj_label} · {arah_label} · {status_disp}"
+        )
+
     filters = {
-        "Arah Kas": f"{type.value} ({arah_label})" if type else "Semua (IN+OUT)",
+        "Arah Kas": f"{type.value}" if type else "Semua (IN+OUT)",
         "Jenis": _KIND_NICE.get(kind, kind) if kind else "Semua",
         "Periode": period_label,
         "Proyek": proj_label,
-        "Status": status.value if status else "Semua",
+        "Status": status_disp,
     }
-    footer_row = ["TOTAL", "", "", "", "", "", _fmt_idr(total)]
-    company = await _resolve_company(db, project_id)
-    if type == TxnType.IN:
-        title = "Laporan Transaksi Masuk"
-    elif type == TxnType.OUT:
-        title = "Laporan Transaksi Keluar"
-    else:
-        title = "Laporan Transaksi (Semua)"
     doc_suffix = type.value if type else "ALL"
     return await _output(
         format, title=title, headers=headers, rows=rows, cols=cols,
@@ -325,6 +433,10 @@ async def report_direct_expenses(
     format: str = Query("pdf", pattern="^(pdf|xlsx)$"),
     project_id: int | None = None,
     category_id: int | None = None,
+    include_drafts: bool = Query(
+        False,
+        description="Default False: hanya VERIFIED. True utk include DRAFT/SUBMITTED.",
+    ),
     date_from: date_type | None = None,
     date_to: date_type | None = None,
     db: AsyncSession = Depends(get_db),
@@ -333,21 +445,31 @@ async def report_direct_expenses(
     """Laporan Beban Langsung (DIRECT_EXPENSE) -- breakdown per line item.
 
     Kolom: Tanggal | Proyek | Deskripsi Item | Kategori | Nominal Item
-    Summary: total beban, jumlah tx, jumlah item, kategori terbanyak.
+    Summary: total beban, jumlah tx, jumlah item, kategori dgn nilai terbesar.
+
+    Audit 2026-05-23:
+    - Default filter status=VERIFIED (sebelumnya include DRAFT/CANCELLED).
+    - "Kategori Terbesar" pakai SUM rupiah (sebelumnya pakai COUNT).
+    - NON_PROJECT eligibility per-tahun dihormati.
     """
     from decimal import Decimal as _D
     ids = await user_project_ids(db, user)
     pids = _accessible_pids(ids, project_id)
     if pids is not None and not pids:
         raise HTTPException(403, "no_project_access")
+    elig_clause = await transaction_eligibility_clause(db)
     stmt = (
         select(Transaction)
+        .join(Project, Project.id == Transaction.project_id)
         .options(selectinload(Transaction.items))
         .where(
             Transaction.deleted_at.is_(None),
             Transaction.kind == TxnKind.DIRECT_EXPENSE.value,
+            elig_clause,
         )
     )
+    if not include_drafts:
+        stmt = stmt.where(Transaction.status == TxnStatus.VERIFIED)
     if pids is not None:
         stmt = stmt.where(Transaction.project_id.in_(pids))
     if date_from:
@@ -387,7 +509,10 @@ async def report_direct_expenses(
     ]
     rows: list[list] = []
     total = _D("0")
-    cat_count: dict[str, int] = {}
+    # Audit 2026-05-23: tracking per-kategori pakai SUM rupiah (bukan
+    # COUNT) -- "kategori terbesar" yg relevan utk manajemen adalah nilai
+    # rupiah, bukan jumlah baris transaksi.
+    cat_value: dict[str, _D] = {}
     n_items = 0
     for t in txs:
         items = t.items or []
@@ -405,7 +530,7 @@ async def report_direct_expenses(
                     cat_map.get(it.category_id).name if it.category_id
                     and cat_map.get(it.category_id) else "-"
                 )
-                cat_count[cat_name] = cat_count.get(cat_name, 0) + 1
+                cat_value[cat_name] = cat_value.get(cat_name, _D("0")) + amt
                 rows.append([
                     _fmt_date(t.tx_date),
                     proj_map.get(t.project_id).name if proj_map.get(t.project_id) else "-",
@@ -421,7 +546,7 @@ async def report_direct_expenses(
                 cat_map.get(t.category_id).name if t.category_id
                 and cat_map.get(t.category_id) else "-"
             )
-            cat_count[cat_name] = cat_count.get(cat_name, 0) + 1
+            cat_value[cat_name] = cat_value.get(cat_name, _D("0")) + amt
             rows.append([
                 _fmt_date(t.tx_date),
                 proj_map.get(t.project_id).name if proj_map.get(t.project_id) else "-",
@@ -429,14 +554,15 @@ async def report_direct_expenses(
                 cat_name,
                 _fmt_idr(amt),
             ])
-    top_cat = max(cat_count, key=cat_count.get) if cat_count else "—"
+    top_cat = max(cat_value, key=cat_value.get) if cat_value else "—"
+    top_cat_val = cat_value.get(top_cat, _D("0")) if top_cat != "—" else _D("0")
     summary = [
         {"label": "Total Beban Langsung", "value": f"Rp {_fmt_idr(total)}",
-         "sub": f"{len(txs)} tx"},
+         "sub": f"{len(txs)} tx · status VERIFIED" if not include_drafts else f"{len(txs)} tx (include draft)"},
         {"label": "Jumlah Item", "value": str(n_items),
          "sub": "rincian per kategori"},
-        {"label": "Kategori Terbanyak", "value": top_cat,
-         "sub": f"{cat_count.get(top_cat, 0)}× tercatat" if top_cat != "—" else ""},
+        {"label": "Kategori Terbesar", "value": top_cat,
+         "sub": f"Rp {_fmt_idr(top_cat_val)}" if top_cat != "—" else ""},
         {"label": "Periode", "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "—",
          "sub": f"sejak {_fmt_date(date_from)}" if date_from else "tanpa batas"},
     ]

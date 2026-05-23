@@ -62,7 +62,13 @@ async def report_budget(
     user: User = Depends(get_current_user),
 ) -> Response:
     ids = await user_project_ids(db, user)
-    stmt = select(Project).where(Project.deleted_at.is_(None))
+    # Audit 2026-05-23: budget control hanya utk proyek konstruksi
+    # (REGULAR). NON_PROJECT = side ledger tanpa budget kontrak --
+    # tampil sbg "Tanpa Budget" hanya bikin noise.
+    stmt = select(Project).where(
+        Project.deleted_at.is_(None),
+        Project.kind != ProjectKind.NON_PROJECT.value,
+    )
     if ids is not None:
         if not ids:
             raise HTTPException(403, "no_project_access")
@@ -75,27 +81,30 @@ async def report_budget(
                        (await db.execute(select(Company).where(Company.id.in_(co_ids))))
                        .scalars().all()}
 
-    headers = ["Kode", "Proyek", "Perusahaan", "Budget (Rp)", "Pemakaian (Rp)",
-               "Pakai", "Sisa (Rp)", "Status"]
+    headers = ["Kode", "Proyek", "Perusahaan", "Budget (Rp)", "Realisasi (Rp)",
+               "Committed PO (Rp)", "Pakai", "Sisa Real (Rp)", "Status"]
     cols = [
-        {"align": "center", "width": "72px"},
-        {"align": "left",   "width": "20%"},
+        {"align": "center", "width": "62px"},
         {"align": "left",   "width": "18%"},
+        {"align": "left",   "width": "16%"},
+        {"align": "num",    "width": "92px"},
+        {"align": "num",    "width": "92px"},
         {"align": "num",    "width": "95px"},
-        {"align": "num",    "width": "95px"},
-        {"align": "num",    "width": "58px"},
-        {"align": "num",    "width": "95px"},
-        {"align": "center", "width": "85px"},
+        {"align": "num",    "width": "52px"},
+        {"align": "num",    "width": "92px"},
+        {"align": "center", "width": "82px"},
     ]
     rows: list[list] = []
     total_budget = Decimal("0")
     total_spent = Decimal("0")
+    total_committed = Decimal("0")
     n_aman = n_warn = n_over = n_no = 0
     # Bulk-load realisasi (SUM amount) per proyek -- ganti 1 query per project.
     proj_ids_list = [p.id for p in projects]
     spent_map: dict[int, Decimal] = {}
+    committed_map: dict[int, Decimal] = {}
     if proj_ids_list:
-        bulk = (
+        spent_q = (
             select(
                 Transaction.project_id,
                 func.coalesce(func.sum(Transaction.amount), 0),
@@ -110,15 +119,62 @@ async def report_budget(
         )
         spent_map = {
             pid: Decimal(amt or 0)
-            for pid, amt in (await db.execute(bulk)).all()
+            for pid, amt in (await db.execute(spent_q)).all()
         }
+        # Audit 2026-05-23: Committed PO = PO terbit/disetujui tapi blm
+        # ter-realisasi sbg tx OUT. Mencegah overstate sisa anggaran.
+        #   committed_per_po = po.total - SUM(tx.amount WHERE tx.po_id=po, VERIFIED)
+        # SUM committed_per_po per proyek = total committed.
+        # PO yg sudah CANCELLED/FULFILLED tdk dianggap committed lg.
+        po_rows = (await db.execute(
+            select(PurchaseOrder.id, PurchaseOrder.project_id, PurchaseOrder.total)
+            .where(
+                PurchaseOrder.project_id.in_(proj_ids_list),
+                PurchaseOrder.deleted_at.is_(None),
+                PurchaseOrder.status.in_([
+                    POStatus.ISSUED, POStatus.APPROVED, POStatus.PARTIALLY_FULFILLED,
+                ]),
+            )
+        )).all()
+        # paid-per-po: tx VERIFIED yg link ke po
+        po_ids = [pid for pid, _proj, _tot in po_rows]
+        paid_per_po: dict[int, Decimal] = {}
+        if po_ids:
+            paid_q = (
+                select(
+                    Transaction.purchase_order_id,
+                    func.coalesce(func.sum(Transaction.amount), 0),
+                )
+                .where(
+                    Transaction.purchase_order_id.in_(po_ids),
+                    Transaction.status == TxnStatus.VERIFIED,
+                    Transaction.deleted_at.is_(None),
+                )
+                .group_by(Transaction.purchase_order_id)
+            )
+            paid_per_po = {
+                pid: Decimal(amt or 0)
+                for pid, amt in (await db.execute(paid_q)).all()
+            }
+        for po_id, proj_id_p, po_total in po_rows:
+            outstanding_po = max(
+                Decimal("0"),
+                Decimal(po_total or 0) - paid_per_po.get(po_id, Decimal("0")),
+            )
+            committed_map[proj_id_p] = committed_map.get(proj_id_p, Decimal("0")) + outstanding_po
+
     for p in projects:
         spent = spent_map.get(p.id, Decimal("0"))
+        committed = committed_map.get(p.id, Decimal("0"))
         budget = Decimal(p.budget_amount or 0)
-        pct = (spent / budget * 100) if budget > 0 else Decimal("0")
-        remaining = budget - spent
+        # Pemakaian real = spent + committed (krn committed pasti
+        # ter-realisasi kalau PO diselesaikan).
+        usage_real = spent + committed
+        pct = (usage_real / budget * 100) if budget > 0 else Decimal("0")
+        remaining = budget - usage_real
         total_budget += budget
         total_spent += spent
+        total_committed += committed
         if budget <= 0:
             status = "Tanpa Budget"; n_no += 1
         elif pct <= 80:
@@ -130,20 +186,28 @@ async def report_budget(
         rows.append([
             p.code, p.name,
             company_map.get(p.company_id).name if company_map.get(p.company_id) else "-",
-            _fmt_idr(budget), _fmt_idr(spent), f"{pct:.1f}%",
-            _fmt_idr(remaining), status,
+            _fmt_idr(budget), _fmt_idr(spent), _fmt_idr(committed),
+            f"{pct:.1f}%", _fmt_idr(remaining), status,
         ])
-    overall_pct = (total_spent / total_budget * 100) if total_budget > 0 else Decimal("0")
+    overall_usage = total_spent + total_committed
+    overall_pct = (overall_usage / total_budget * 100) if total_budget > 0 else Decimal("0")
     summary = [
         {"label": "Total Anggaran", "value": f"Rp {_fmt_idr(total_budget)}",
          "sub": f"{len(projects)} proyek"},
-        {"label": "Pemakaian", "value": f"Rp {_fmt_idr(total_spent)}",
-         "sub": f"{overall_pct:.1f}% dari anggaran"},
-        {"label": "Sisa Anggaran", "value": f"Rp {_fmt_idr(total_budget - total_spent)}", "sub": ""},
+        {"label": "Realisasi (VERIFIED)", "value": f"Rp {_fmt_idr(total_spent)}",
+         "sub": "tx OUT terverifikasi"},
+        {"label": "Committed (PO Open)",
+         "value": f"Rp {_fmt_idr(total_committed)}",
+         "sub": "PO terbit/disetujui blm tertagih"},
+        {"label": "Sisa Real", "value": f"Rp {_fmt_idr(total_budget - overall_usage)}",
+         "sub": f"{overall_pct:.1f}% terpakai"},
         {"label": "Status Risiko", "value": f"{n_over} overbudget",
          "sub": f"{n_warn} waspada · {n_aman} aman · {n_no} tanpa budget"},
     ]
-    scope_line = f"Snapshot per {_fmt_date(datetime.now().date())} · Realisasi VERIFIED saja · Semua proyek"
+    scope_line = (
+        f"Snapshot per {_fmt_date(datetime.now().date())} · "
+        "Pemakaian = Realisasi (VERIFIED OUT) + Committed (PO Open)"
+    )
     company = await _resolve_company(db, None)
     return await _output(
         format, title="Laporan Budget Control", headers=headers, rows=rows, cols=cols,
@@ -152,9 +216,9 @@ async def report_budget(
         detail_label="Detail per Proyek",
         footer_row=[
             "TOTAL", "", "",
-            _fmt_idr(total_budget), _fmt_idr(total_spent),
+            _fmt_idr(total_budget), _fmt_idr(total_spent), _fmt_idr(total_committed),
             f"{overall_pct:.1f}%",
-            _fmt_idr(total_budget - total_spent), "",
+            _fmt_idr(total_budget - overall_usage), "",
         ],
         doc_no=f"BGT-{datetime.now().strftime('%Y%m%d%H%M')}",
     )
@@ -186,8 +250,11 @@ async def report_cash_advances(
     pids = _accessible_pids(ids, project_id)
     if pids is not None and not pids:
         raise HTTPException(403, "no_project_access")
+    # Audit 2026-05-23: hormati NonProjectYearSetting.
+    elig_clause = await transaction_eligibility_clause(db)
     stmt = (
         select(Transaction)
+        .join(Project, Project.id == Transaction.project_id)
         .options(
             selectinload(Transaction.settlement).selectinload(
                 CashAdvanceSettlement.items
@@ -196,6 +263,7 @@ async def report_cash_advances(
         .where(
             Transaction.deleted_at.is_(None),
             Transaction.kind == TxnKind.CASH_ADVANCE.value,
+            elig_clause,
         )
     )
     if pids is not None:
@@ -243,8 +311,20 @@ async def report_cash_advances(
     total_settled = _D("0")
     total_outstanding = _D("0")
     n_settled = 0
-    age_days_sum = 0
     today = datetime.now().date()
+    # Audit 2026-05-23: tambah aging bucket utk outstanding cash advance
+    # (industry-standard 0-30, 31-60, 61-90, >90).
+    AGING_BUCKETS = ["0-30 hari", "31-60 hari", "61-90 hari", ">90 hari"]
+    aging_out: dict[str, _D] = {b: _D("0") for b in AGING_BUCKETS}
+    aging_count: dict[str, int] = {b: 0 for b in AGING_BUCKETS}
+    age_days_sum = 0
+
+    def _bucket_for(days: int) -> str:
+        if days <= 30: return "0-30 hari"
+        if days <= 60: return "31-60 hari"
+        if days <= 90: return "61-90 hari"
+        return ">90 hari"
+
     for t in txs:
         amt = _D(t.amount or 0)
         total_disbursed += amt
@@ -260,13 +340,22 @@ async def report_cash_advances(
                 (_D(i.amount) for i in (sett.items or [])), start=_D("0")
             )
             total_settled += settled_amt
-            outstanding = amt - settled_amt
+            # Audit 2026-05-23: outstanding tdk boleh negatif. Kalau
+            # settled > disbursed (top-up scenario yg sudah create tx
+            # tambahan), outstanding = 0 -- artinya advance ini sudah
+            # tertutup sepenuhnya. Sebelumnya bisa minus = misleading.
+            outstanding = max(_D("0"), amt - settled_amt)
             status_str = "SETTLED"
         else:
             settled_amt = _D("0")
             outstanding = amt
             status_str = "OUTSTANDING"
-            age_days_sum += (today - t.tx_date).days if t.tx_date else 0
+            if t.tx_date:
+                d = max(0, (today - t.tx_date).days)
+                age_days_sum += d
+                bucket = _bucket_for(d)
+                aging_out[bucket] += outstanding
+                aging_count[bucket] += 1
         total_outstanding += outstanding
         rows.append([
             _fmt_date(t.tx_date),
@@ -279,6 +368,12 @@ async def report_cash_advances(
         ])
     n_outstanding = len(txs) - n_settled
     avg_age = (age_days_sum / n_outstanding) if n_outstanding else 0
+    # Aging summary string utk card -- skip bucket kosong.
+    aging_parts = []
+    for b in AGING_BUCKETS:
+        if aging_count[b] > 0:
+            aging_parts.append(f"{b}: Rp {_fmt_idr(aging_out[b])} ({aging_count[b]})")
+    aging_disp = " · ".join(aging_parts) if aging_parts else "—"
     summary = [
         {"label": "Total Disbursed", "value": f"Rp {_fmt_idr(total_disbursed)}",
          "sub": f"{len(txs)} tx"},
@@ -288,6 +383,8 @@ async def report_cash_advances(
          "sub": f"{n_outstanding} blm lapor"},
         {"label": "Avg Age Outstanding", "value": f"{avg_age:.0f} hari",
          "sub": "rata-rata umur"},
+        {"label": "Aging Outstanding", "value": "lihat detail",
+         "sub": aging_disp},
     ]
     proj_label = (proj_map.get(project_id).name
                   if project_id and proj_map.get(project_id) else "Semua proyek")
