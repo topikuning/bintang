@@ -102,7 +102,7 @@ export function LoginPage() {
           <CardHeader className="text-center">
             <CardTitle className="text-xl">Masuk ke akun Anda</CardTitle>
             <CardDescription>
-              Aplikasi keuangan & manajemen proyek
+              Catatan Arus Cash dan Anggaran Kerja
             </CardDescription>
           </CardHeader>
           <CardContent>
