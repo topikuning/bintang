@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -256,7 +257,14 @@ async def create_invoice(
     inv.subtotal = sub
     inv.total = tot
     db.add(inv)
-    await db.flush()
+    # Audit 2026-05-23: race-safe -- 2 concurrent POST same number bisa
+    # bypass pre-check & dua-duanya flush. UNIQUE constraint global akan
+    # reject yg ke-2 dgn IntegrityError -- konversi ke 409 (friendly).
+    try:
+        await db.flush()
+    except IntegrityError as e:
+        await db.rollback()
+        raise HTTPException(409, "invoice_number_already_used") from e
     await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
               action=AuditAction.CREATE, after=snapshot(inv))
     await db.commit()

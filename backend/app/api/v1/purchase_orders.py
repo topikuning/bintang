@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -45,15 +46,45 @@ def _compute_totals(items: list[POItem], tax: Decimal, discount: Decimal) -> tup
 
 
 async def _next_po_number(db: AsyncSession, company_id: int, project_code: str, when: date_type) -> str:
+    """Generate nomor PO berikutnya untuk (company, project, year/month).
+
+    Audit 2026-05-23 BUG FIX:
+    - Sebelumnya pakai COUNT(*) WHERE company_id=X -- BUG: UNIQUE constraint
+      pada PurchaseOrder.number bersifat GLOBAL (lintas company). Kalau 2
+      company punya project_code sama (mis. 'GEO1'), keduanya generate
+      'PO/.../GEO1/0001' -> UniqueViolationError.
+    - Sekarang scan SEMUA PO dgn prefix sama (lintas company) + parse
+      sequence number, return max + 1.
+    - company_id param tetap di-keep utk future kalau UNIQUE diubah ke
+      composite (company_id, number) -- saat ini tdk dipakai filter.
+
+    Tdk fully race-safe -- gunakan retry di caller (create_po) utk handle
+    concurrent submission. Untuk hard race-safe, butuh advisory lock atau
+    SEQUENCE per (company, project, month). Saat ini single-instance
+    Railway dgn concurrency rendah, MAX+1 + retry sudah cukup.
+    """
     prefix = f"PO/{when.year}/{when.month:02d}/{project_code.upper()}/"
-    res = await db.execute(
-        select(func.count()).select_from(PurchaseOrder).where(
-            PurchaseOrder.company_id == company_id,
+    rows = (await db.execute(
+        select(PurchaseOrder.number).where(
             PurchaseOrder.number.like(f"{prefix}%"),
         )
-    )
-    count = res.scalar_one() or 0
-    return f"{prefix}{count + 1:04d}"
+    )).scalars().all()
+    max_seq = 0
+    for n in rows:
+        suffix = n[len(prefix):]
+        # Parse leading digit segment (toleran kalau ada slash/suffix)
+        digit_str = ""
+        for ch in suffix:
+            if ch.isdigit():
+                digit_str += ch
+            else:
+                break
+        if digit_str:
+            try:
+                max_seq = max(max_seq, int(digit_str))
+            except ValueError:
+                continue
+    return f"{prefix}{max_seq + 1:04d}"
 
 
 def _to_out(po: PurchaseOrder) -> POOut:
@@ -119,36 +150,57 @@ async def create_po(
     if not company:
         raise HTTPException(404, "company_not_found")
 
-    number = await _next_po_number(db, company.id, project.code, payload.po_date)
-    po = PurchaseOrder(
-        number=number,
-        project_id=payload.project_id,
-        company_id=payload.company_id,
-        vendor_client_id=payload.vendor_client_id,
-        vendor_name=payload.vendor_name,
-        po_date=payload.po_date,
-        needed_date=payload.needed_date,
-        tax=payload.tax,
-        discount=payload.discount,
-        payment_terms=payload.payment_terms,
-        notes=payload.notes,
-        status=POStatus.DRAFT,
-        created_by_id=user.id,
-    )
-    for it in payload.items:
-        po.items.append(POItem(
-            description=it.description,
-            quantity=it.quantity,
-            unit=it.unit,
-            unit_price=it.unit_price,
-            subtotal=Decimal(it.unit_price) * Decimal(it.quantity),
-        ))
-    subtotal, total = _compute_totals(po.items, po.tax, po.discount)
-    po.subtotal = subtotal
-    po.total = total
+    # Audit 2026-05-23: retry on UniqueViolation. Race protection +
+    # safety net kalau cross-company collision sliced lewat.
+    MAX_ATTEMPTS = 5
+    po: PurchaseOrder | None = None
+    last_err: Exception | None = None
+    for attempt in range(MAX_ATTEMPTS):
+        number = await _next_po_number(db, company.id, project.code, payload.po_date)
+        po = PurchaseOrder(
+            number=number,
+            project_id=payload.project_id,
+            company_id=payload.company_id,
+            vendor_client_id=payload.vendor_client_id,
+            vendor_name=payload.vendor_name,
+            po_date=payload.po_date,
+            needed_date=payload.needed_date,
+            tax=payload.tax,
+            discount=payload.discount,
+            payment_terms=payload.payment_terms,
+            notes=payload.notes,
+            status=POStatus.DRAFT,
+            created_by_id=user.id,
+        )
+        for it in payload.items:
+            po.items.append(POItem(
+                description=it.description,
+                quantity=it.quantity,
+                unit=it.unit,
+                unit_price=it.unit_price,
+                subtotal=Decimal(it.unit_price) * Decimal(it.quantity),
+            ))
+        subtotal, total = _compute_totals(po.items, po.tax, po.discount)
+        po.subtotal = subtotal
+        po.total = total
 
-    db.add(po)
-    await db.flush()
+        db.add(po)
+        try:
+            await db.flush()
+            break  # success
+        except IntegrityError as e:
+            last_err = e
+            await db.rollback()
+            # Re-fetch project+company krn rollback clear session state.
+            project = await db.get(Project, payload.project_id)
+            company = await db.get(Company, payload.company_id)
+            if attempt == MAX_ATTEMPTS - 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"po_number_collision: gagal generate nomor unik setelah {MAX_ATTEMPTS} percobaan",
+                ) from e
+            # else: loop continues, _next_po_number re-scan & try again
+    assert po is not None  # appease type checker
     await log(db, user_id=user.id, entity="purchase_order", entity_id=po.id,
               action=AuditAction.CREATE, after=snapshot(po))
     await db.commit()
