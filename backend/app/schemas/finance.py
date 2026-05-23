@@ -416,6 +416,10 @@ class POOut(POBase):
     cancel_reason: str | None = None
     created_at: datetime
     items: list[POItemOut] = []
+    # Resolved vendor name dari master VendorClient kalau vendor_client_id
+    # ada. FE pakai vendor_client_name > vendor_name fallback. Audit
+    # 2026-05-23 user request #2.
+    vendor_client_name: str | None = None
 
     class Config:
         from_attributes = True

@@ -64,8 +64,22 @@ export function buildPOColumns({ projectMap, hideProject }: BuildOpts): ColumnDe
     {
       id: "vendor",
       header: "Vendor",
-      accessorKey: "vendor_name",
-      cell: ({ getValue }) => <span className="text-sm">{getValue<string>() || "—"}</span>,
+      // Prioritas: nama dari master vendor (vendor_client_name) >
+      // free-text vendor_name. Audit 2026-05-23 user request #2.
+      accessorFn: (row) => row.vendor_client_name || row.vendor_name || "",
+      cell: ({ row }) => {
+        const masterName = row.original.vendor_client_name
+        const freeText = row.original.vendor_name
+        const display = masterName || freeText || "—"
+        return (
+          <span className="text-sm">
+            {display}
+            {masterName && (
+              <span className="ml-1 text-[10px] text-info-600" title="Dari master vendor">★</span>
+            )}
+          </span>
+        )
+      },
       meta: { align: "left" },
     },
     {

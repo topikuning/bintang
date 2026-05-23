@@ -114,8 +114,13 @@ async def _call_adapter(
         return await adapter.extract_invoice(source_url)
 
 
-# Threshold: kalau confidence engine pertama di bawah ini, fallback ke
-# Claude (lebih akurat). Audit 2026-05-23 OCR opt #T2.6.
+# Audit 2026-05-23 user request #3: engine fallback DI-NONAKTIFKAN
+# secara default. Kalau user pilih Mistral, hormati pilihan -- jangan
+# auto-retry ke Claude apapun confidence-nya. User minta deterministic
+# behavior: "selalu gunakan engine yg di-set, jangan ambil dr AI lain".
+#
+# Untuk re-enable opt-in (mis. saat user mau cost-vs-akurasi balance),
+# set app_setting OCR_FALLBACK_ENABLED=true.
 _FALLBACK_CONFIDENCE_THRESHOLD = 0.65
 
 
@@ -180,35 +185,39 @@ async def run_extraction(
         adapter = get_ocr_adapter(primary_engine)
         result = await _call_adapter(adapter, processed_content, processed_media, source_url)
 
-    # 5. Engine fallback (T2.6): cheap engine (mistral) low confidence ->
-    # retry dgn claude. Tdk lakukan kalau primary sudah claude/stub.
+    # 5. Engine fallback -- OPT-IN sekarang (user request #3).
+    # Default OFF: hormati engine user. Aktifkan dgn app_setting
+    # OCR_FALLBACK_ENABLED=true kalau mau cost-vs-akurasi balance.
+    from app.services.app_settings import get_cached as _setting
+    fallback_enabled = (_setting("OCR_FALLBACK_ENABLED") == "true")
     raw_eng = (result.get("raw_response", {}).get("engine") or "").lower()
     confidence = float(result.get("confidence_score") or 0)
-    if raw_eng.startswith("mistral:") and confidence < _FALLBACK_CONFIDENCE_THRESHOLD:
-        from app.services.app_settings import get_cached
-        if get_cached("ANTHROPIC_API_KEY"):
-            log.info(
-                "ocr.pipeline.fallback mistral -> claude (confidence=%.2f<%.2f)",
-                confidence, _FALLBACK_CONFIDENCE_THRESHOLD,
+    if (
+        fallback_enabled
+        and raw_eng.startswith("mistral:")
+        and confidence < _FALLBACK_CONFIDENCE_THRESHOLD
+        and _setting("ANTHROPIC_API_KEY")
+    ):
+        log.info(
+            "ocr.pipeline.fallback mistral -> claude (confidence=%.2f<%.2f)",
+            confidence, _FALLBACK_CONFIDENCE_THRESHOLD,
+        )
+        try:
+            claude_adapter = get_ocr_adapter("claude")
+            claude_result = await _call_adapter(
+                claude_adapter, processed_content, processed_media, source_url,
             )
-            try:
-                claude_adapter = get_ocr_adapter("claude")
-                claude_result = await _call_adapter(
-                    claude_adapter, processed_content, processed_media, source_url,
-                )
-                # Adopt claude result, but tag bahwa ini fallback
-                claude_raw = dict(claude_result.get("raw_response") or {})
-                claude_raw["fallback_from"] = raw_eng
-                claude_raw["primary_confidence"] = confidence
-                claude_result["raw_response"] = claude_raw
-                result = claude_result
-            except Exception as e:  # noqa: BLE001
-                log.warning("ocr.pipeline.fallback_failed: %s -- pakai primary", e)
-                # Tag bahwa primary kept setelah fallback gagal
-                raw = dict(result.get("raw_response") or {})
-                raw["fallback_attempted"] = True
-                raw["fallback_error"] = str(e)
-                result["raw_response"] = raw
+            claude_raw = dict(claude_result.get("raw_response") or {})
+            claude_raw["fallback_from"] = raw_eng
+            claude_raw["primary_confidence"] = confidence
+            claude_result["raw_response"] = claude_raw
+            result = claude_result
+        except Exception as e:  # noqa: BLE001
+            log.warning("ocr.pipeline.fallback_failed: %s -- pakai primary", e)
+            raw = dict(result.get("raw_response") or {})
+            raw["fallback_attempted"] = True
+            raw["fallback_error"] = str(e)
+            result["raw_response"] = raw
 
     # 6. Store ke cache (best-effort). Sertakan engine final yg dipakai.
     final_engine = (result.get("raw_response", {}).get("engine") or "unknown")

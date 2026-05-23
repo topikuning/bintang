@@ -9,6 +9,7 @@ import {
   useUpdatePO,
   type POCreateInput,
 } from "@/hooks/usePOMutations"
+import { useProject } from "@/hooks/useProjects"
 import type { PurchaseOrder } from "@/types/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -97,10 +98,27 @@ export function POForm({ open, onClose, po, lockProjectId, onSaved }: POFormProp
     setValue,
     getValues,
     watch,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, dirtyFields },
   } = useForm<FormValues>({ defaultValues })
 
   const itemsField = useFieldArray({ control, name: "items" })
+
+  // Audit 2026-05-23 user request #1: kalau project dipilih, auto-set
+  // company ke project.company_id. User tetap bisa override manual --
+  // setelah override, project change berikutnya TIDAK auto-overwrite
+  // (dirtyFields.company_id true).
+  const watchedProjectId = watch("project_id")
+  const { data: projectDetail } = useProject(
+    watchedProjectId && watchedProjectId > 0 ? watchedProjectId : null,
+  )
+  useEffect(() => {
+    if (!projectDetail) return
+    const currentCompany = getValues("company_id")
+    if (!dirtyFields.company_id || currentCompany === 0 || currentCompany == null) {
+      setValue("company_id", projectDetail.company_id, { shouldDirty: false })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectDetail?.id])
 
   // Audit 2026-05-23 UX integration A: scan button populate form values
   // dari OCR (struk/PO foto). Field invoice_number diabaikan utk PO

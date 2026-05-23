@@ -87,8 +87,20 @@ async def _next_po_number(db: AsyncSession, company_id: int, project_code: str, 
     return f"{prefix}{max_seq + 1:04d}"
 
 
-def _to_out(po: PurchaseOrder) -> POOut:
-    return POOut.model_validate(po)
+def _to_out(po: PurchaseOrder, vendor_client_name: str | None = None) -> POOut:
+    out = POOut.model_validate(po)
+    out.vendor_client_name = vendor_client_name
+    return out
+
+
+async def _to_out_async(db: AsyncSession, po: PurchaseOrder) -> POOut:
+    """Single-PO helper: lookup vendor_client.name dr master kalau ada."""
+    name: str | None = None
+    if po.vendor_client_id:
+        vc = await db.get(VendorClient, po.vendor_client_id)
+        if vc:
+            name = vc.name
+    return _to_out(po, name)
 
 
 @router.get("", response_model=Page[POOut])
@@ -133,7 +145,20 @@ async def list_pos(
         .limit(size)
     )
     items = (await db.execute(stmt)).scalars().all()
-    return Page(items=[_to_out(p) for p in items], total=total, page=page, size=size)
+    # Bulk-load vendor_client.name utk yg link ke master. Audit #2.
+    vc_ids = {p.vendor_client_id for p in items if p.vendor_client_id}
+    vc_map: dict[int, str] = {}
+    if vc_ids:
+        vc_map = {
+            vid: name for vid, name in (await db.execute(
+                select(VendorClient.id, VendorClient.name)
+                .where(VendorClient.id.in_(vc_ids))
+            )).all()
+        }
+    return Page(
+        items=[_to_out(p, vc_map.get(p.vendor_client_id)) for p in items],
+        total=total, page=page, size=size,
+    )
 
 
 @router.post("", response_model=POOut, status_code=201)
@@ -207,7 +232,7 @@ async def create_po(
     res = await db.execute(
         select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == po.id)
     )
-    return _to_out(res.scalar_one())
+    return await _to_out_async(db, res.scalar_one())
 
 
 @router.get("/{pid}", response_model=POOut)
@@ -223,7 +248,7 @@ async def get_po(
     if not po or po.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, po.project_id)
-    return _to_out(po)
+    return await _to_out_async(db, po)
 
 
 @router.get("/{pid}/linked-transactions")
@@ -345,7 +370,7 @@ async def update_po(
     res = await db.execute(
         select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == po.id)
     )
-    return _to_out(res.scalar_one())
+    return await _to_out_async(db, res.scalar_one())
 
 
 @router.post("/{pid}/issue", response_model=POOut)
@@ -367,7 +392,7 @@ async def issue_po(
     res = await db.execute(
         select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == po.id)
     )
-    return _to_out(res.scalar_one())
+    return await _to_out_async(db, res.scalar_one())
 
 
 @router.post("/{pid}/approve", response_model=POOut)
@@ -390,7 +415,7 @@ async def approve_po(
     res = await db.execute(
         select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == po.id)
     )
-    return _to_out(res.scalar_one())
+    return await _to_out_async(db, res.scalar_one())
 
 
 @router.post("/{pid}/cancel", response_model=POOut)
@@ -411,7 +436,7 @@ async def cancel_po(
     res = await db.execute(
         select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == po.id)
     )
-    return _to_out(res.scalar_one())
+    return await _to_out_async(db, res.scalar_one())
 
 
 @router.delete("/{pid}", status_code=204)

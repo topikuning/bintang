@@ -188,9 +188,17 @@ async def test_pipeline_fallback_to_claude_when_mistral_low_conf(db, monkeypatch
     monkeypatch.setattr(pipe, "get_ocr_adapter", _fake_get)
     monkeypatch.setattr(pipe, "_call_adapter", _fake_call)
     # Force ANTHROPIC_API_KEY available
+    # Fallback default OFF (audit 2026-05-23 user req #3). Test ini
+    # explicit enable utk verify mekanisme masih bekerja saat opt-in.
     from app.services import app_settings as _ap
-    monkeypatch.setattr(_ap, "get_cached",
-                        lambda k: "sk-ant-test" if k == "ANTHROPIC_API_KEY" else None)
+    monkeypatch.setattr(
+        _ap, "get_cached",
+        lambda k: (
+            "sk-ant-test" if k == "ANTHROPIC_API_KEY"
+            else "true" if k == "OCR_FALLBACK_ENABLED"
+            else None
+        ),
+    )
 
     result = await pipe.run_extraction(
         db, content=content, media_type="image/jpeg",
@@ -261,6 +269,34 @@ async def test_pipeline_attaches_vendor_match(db, monkeypatch):
     )
     assert result["vendor_match"] is not None
     assert result["vendor_match"]["name"] == "CV Sumber Rejeki"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_no_fallback_by_default_even_low_conf(db, monkeypatch):
+    """Audit 2026-05-23 user req #3: default OCR_FALLBACK_ENABLED=false.
+    Mistral low confidence TIDAK fallback ke Claude -- hormati pilihan user."""
+    content = _make_image_bytes(400, 400)
+    call_count = 0
+
+    async def _fake_call(adapter, c, mt, src):
+        nonlocal call_count
+        call_count += 1
+        return {"total": "0", "confidence_score": "0.2",  # sengaja rendah
+                "raw_response": {"engine": "mistral:test"}}
+
+    monkeypatch.setattr(pipe, "_call_adapter", _fake_call)
+    # OCR_FALLBACK_ENABLED tdk di-set (default None) -- fallback OFF.
+    from app.services import app_settings as _ap
+    monkeypatch.setattr(_ap, "get_cached",
+                        lambda k: "sk-ant" if k == "ANTHROPIC_API_KEY" else None)
+
+    result = await pipe.run_extraction(
+        db, content=content, media_type="image/jpeg",
+        source_url=None, engine="mistral",
+    )
+    assert call_count == 1  # cuma 1 call (mistral), NO fallback ke claude
+    assert result["raw_response"]["engine"] == "mistral:test"
+    assert "fallback_from" not in result["raw_response"]
 
 
 @pytest.mark.asyncio

@@ -348,6 +348,10 @@ export interface PurchaseOrder {
   company_id: number
   vendor_client_id: number | null
   vendor_name: string | null
+  /** Resolved nama vendor dari master VendorClient (kalau
+   *  vendor_client_id di-set). Backend prefill -- FE pakai dgn
+   *  fallback ke vendor_name. */
+  vendor_client_name?: string | null
   po_date: string
   needed_date?: string | null
   payment_terms?: string | null
