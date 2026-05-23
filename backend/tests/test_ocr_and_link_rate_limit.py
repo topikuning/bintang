@@ -32,12 +32,23 @@ async def test_ocr_rate_limiter_blocks(db, monkeypatch):
 
     # Patch adapter supaya tdk benar2 panggil LLM
     from app.api.v1 import ocr as ocr_mod
+    from app.services.ocr import pipeline as pipe_mod
 
-    class _FakeAdapter:
-        async def extract_invoice(self, url):
-            return {"raw_response": {"engine": "fake"}, "confidence_score": 1.0, "fields": {}}
+    async def _fake_fetch(url):
+        return b"fake-content-bytes-x", "image/jpeg"
 
-    monkeypatch.setattr(ocr_mod, "get_ocr_adapter", lambda eng: _FakeAdapter())
+    async def _fake_run(db, *, content, media_type, source_url, engine):
+        return {
+            "invoice_number": "I", "invoice_date": None, "vendor_name": "V",
+            "due_date": None, "subtotal": None, "tax": None, "total": "0",
+            "currency": "IDR", "items": [], "is_handwritten": False,
+            "notes": None, "confidence_score": "1.0",
+            "raw_response": {"engine": "fake:test", "cached": False},
+            "source_url": source_url,
+        }
+
+    monkeypatch.setattr(pipe_mod, "fetch_to_bytes", _fake_fetch)
+    monkeypatch.setattr(pipe_mod, "run_extraction", _fake_run)
 
     payload = ocr_mod.ExtractIn(file_url="http://x")
     # 20 sukses
@@ -59,12 +70,23 @@ async def test_ocr_rate_limit_per_user_isolated(db, monkeypatch):
     ocr_limiter.reset(f"ocr:{b.id}")
 
     from app.api.v1 import ocr as ocr_mod
+    from app.services.ocr import pipeline as pipe_mod
 
-    class _FakeAdapter:
-        async def extract_invoice(self, url):
-            return {"raw_response": {"engine": "fake"}, "confidence_score": 1.0, "fields": {}}
+    async def _fake_fetch(url):
+        return b"fake-content-bytes-x", "image/jpeg"
 
-    monkeypatch.setattr(ocr_mod, "get_ocr_adapter", lambda eng: _FakeAdapter())
+    async def _fake_run(db, *, content, media_type, source_url, engine):
+        return {
+            "invoice_number": "I", "invoice_date": None, "vendor_name": "V",
+            "due_date": None, "subtotal": None, "tax": None, "total": "0",
+            "currency": "IDR", "items": [], "is_handwritten": False,
+            "notes": None, "confidence_score": "1.0",
+            "raw_response": {"engine": "fake:test", "cached": False},
+            "source_url": source_url,
+        }
+
+    monkeypatch.setattr(pipe_mod, "fetch_to_bytes", _fake_fetch)
+    monkeypatch.setattr(pipe_mod, "run_extraction", _fake_run)
 
     payload = ocr_mod.ExtractIn(file_url="http://x")
     # Drain user A

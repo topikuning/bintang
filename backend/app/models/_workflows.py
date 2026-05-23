@@ -263,6 +263,40 @@ class AIExtraction(TimestampMixin, Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class OCRCache(TimestampMixin, Base):
+    """Cache hasil OCR by content-hash. Audit 2026-05-23 OCR opt #T1.2.
+
+    Tujuan: user re-upload file yang sama (mis. salah klik / re-OCR
+    iterasi) tdk re-bill LLM. Hit-rate real-world 10-20% di SME.
+
+    Key: sha256(file_bytes). Cache cross-engine -- entry pertama saja
+    yang panggil LLM, entry berikutnya pakai data tersimpan (raw_response
+    catat engine asal).
+
+    TTL: 30 hari (cleanup via cron / pre-insert). Setelah TTL, miss ->
+    re-extract & overwrite.
+    """
+    __tablename__ = "ocr_cache"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # SHA256 hex (64 char). Indexed unique utk fast lookup.
+    file_hash: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True,
+    )
+    # Engine yg generate hasil ini (mis. "claude:claude-haiku-4-5",
+    # "mistral:mistral-ocr-latest"). Informational only.
+    source_engine: Mapped[str] = mapped_column(String(80), nullable=False)
+    # Media type asli sblm preprocess.
+    media_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    # Size original bytes (info, bukan key).
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Hasil ekstraksi lengkap (struktur sama dgn extract_invoice return).
+    extracted_data: Mapped[dict] = mapped_column(JSON, nullable=False)
+    # Statistik hit utk monitoring efektivitas cache.
+    hits: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_hit_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
 
 
 class AppSetting(TimestampMixin, Base):

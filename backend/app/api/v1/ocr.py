@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -163,9 +164,20 @@ async def extract(
     allowed, _ = ocr_limiter.check(f"ocr:{user.id}")
     if not allowed:
         raise HTTPException(429, "rate_limited: terlalu banyak OCR. Tunggu sebentar.")
-    adapter = get_ocr_adapter(payload.engine)
+    # Pipeline: fetch URL -> hash cache -> preprocess -> adapter (+ fallback).
+    # Audit 2026-05-23 OCR opt #T1.1/#T1.2/#T2.6.
+    from app.services.ocr.pipeline import fetch_to_bytes, run_extraction
     try:
-        result = await adapter.extract_invoice(payload.file_url)
+        content, media_type = await fetch_to_bytes(payload.file_url)
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(400, f"fetch_failed: {e}") from e
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"fetch_http_error: {e}") from e
+    try:
+        result = await run_extraction(
+            db, content=content, media_type=media_type,
+            source_url=payload.file_url, engine=payload.engine,
+        )
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f"ocr_failed: {e}") from e
     rec = _persist_extraction(
@@ -232,15 +244,13 @@ async def extract_upload(
     content = p.read_bytes()
     media_type = saved["mime_type"]
 
-    adapter = get_ocr_adapter(engine)
+    # Pipeline shared (hash cache + preprocess + engine fallback).
+    from app.services.ocr.pipeline import run_extraction
     try:
-        try:
-            result = await adapter.extract_from_bytes(
-                content, media_type, source_url=source_url
-            )
-        except NotImplementedError:
-            # Adapter lama -- fallback ke URL path
-            result = await adapter.extract_invoice(source_url)
+        result = await run_extraction(
+            db, content=content, media_type=media_type,
+            source_url=source_url, engine=engine,
+        )
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f"ocr_failed: {e}") from e
 

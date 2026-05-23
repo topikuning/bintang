@@ -80,7 +80,20 @@ INVOICE_SCHEMA: dict[str, Any] = {
         },
         "confidence_score": {
             "type": "number",
-            "description": "Skor 0-1. >=0.85 cetak jelas; 0.5-0.7 tulisan tangan rapi; <0.4 sulit dibaca.",
+            "description": "Skor 0-1 overall. >=0.85 cetak jelas; 0.5-0.7 tulisan tangan rapi; <0.4 sulit dibaca.",
+        },
+        "field_confidences": {
+            "type": "object",
+            "description": "Confidence per field (0-1). Berguna utk UI highlight field ragu. Audit 2026-05-23 OCR opt #T2.4.",
+            "properties": {
+                "invoice_number": {"type": "number"},
+                "invoice_date": {"type": "number"},
+                "vendor_name": {"type": "number"},
+                "due_date": {"type": "number"},
+                "subtotal": {"type": "number"},
+                "tax": {"type": "number"},
+                "total": {"type": "number"},
+            },
         },
         "notes": {
             "type": "string",
@@ -100,4 +113,5 @@ Aturan:
 4. Items: WAJIB ekstrak SETIAP baris item yang terlihat -- jangan skip walau pricing tidak tertulis. Description selalu wajib.
 5. is_handwritten=true kalau ada SATU pun bagian tulisan tangan.
 6. confidence_score tinggi (>=0.85) hanya kalau hasil bisa langsung dipakai tanpa review. Tulisan tangan paling tinggi 0.7.
-7. Bagian tidak terbaca/blur/terpotong -> isi field 'notes' dengan deskripsi singkat."""
+7. Bagian tidak terbaca/blur/terpotong -> isi field 'notes' dengan deskripsi singkat.
+8. field_confidences: berikan skor 0-1 PER FIELD utama (invoice_number, invoice_date, vendor_name, due_date, subtotal, tax, total). Field tdk ada di dokumen = 0. Field jelas terbaca = 0.95+. Field ragu antara dua interpretasi = 0.5-0.7. Ini dipakai UI utk highlight field yg butuh user verify."""

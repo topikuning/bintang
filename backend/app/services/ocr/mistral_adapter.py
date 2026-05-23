@@ -318,6 +318,7 @@ class MistralOCRAdapter(OCRAdapter):
             "notes": ann.get("notes") or None,
             "confidence_score": _to_decimal(ann.get("confidence_score"))
             or Decimal("0"),
+            "field_confidences": ann.get("field_confidences") or {},
             "raw_response": {
                 "engine": f"mistral:{self._model}",
                 "model": data.get("model"),

@@ -323,6 +323,7 @@ class ClaudeVisionOCRAdapter(OCRAdapter):
             "notes": data.get("notes") or None,
             "confidence_score": _to_decimal(data.get("confidence_score"))
             or Decimal("0"),
+            "field_confidences": data.get("field_confidences") or {},
             "raw_response": {
                 "engine": f"claude:{self._model}",
                 "model": response.model,
