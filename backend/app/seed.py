@@ -54,7 +54,7 @@ async def init() -> None:
 
     async with SessionLocal() as db:
         existing = (
-            await db.execute(select(User).where(User.email == "admin@bintang.me"))
+            await db.execute(select(User).where(User.email == "admin@cacak.app"))
         ).scalar_one_or_none()
         if existing:
             print("Seed already applied. Skipping.")
@@ -62,21 +62,21 @@ async def init() -> None:
 
         # ---------- Users ----------
         admin = User(
-            email="admin@bintang.me",
+            email="admin@cacak.app",
             password_hash=hash_password("admin123"),
             name="Super Admin",
             role=UserRole.SUPERADMIN,
             phone="0811-1000-001",
         )
         central = User(
-            email="pusat@bintang.me",
+            email="pusat@cacak.app",
             password_hash=hash_password("pusat123"),
             name="Admin Pusat",
             role=UserRole.CENTRAL_ADMIN,
             phone="0811-2000-009",
         )
         exec_all = User(
-            email="direksi@bintang.me",
+            email="direksi@cacak.app",
             password_hash=hash_password("exec123"),
             name="Direksi (Eksekutif)",
             role=UserRole.EXECUTIVE,
@@ -84,21 +84,21 @@ async def init() -> None:
             scope_all_projects=True,
         )
         pm1 = User(
-            email="budi@bintang.me",
+            email="budi@cacak.app",
             password_hash=hash_password("pm123"),
             name="Budi Santoso",
             role=UserRole.PROJECT_ADMIN,
             phone="0812-2000-002",
         )
         pm2 = User(
-            email="sari@bintang.me",
+            email="sari@cacak.app",
             password_hash=hash_password("pm123"),
             name="Sari Dewi",
             role=UserRole.PROJECT_ADMIN,
             phone="0813-3000-003",
         )
         pm3 = User(
-            email="agus@bintang.me",
+            email="agus@cacak.app",
             password_hash=hash_password("pm123"),
             name="Agus Pratama",
             role=UserRole.PROJECT_ADMIN,
@@ -605,12 +605,12 @@ async def init() -> None:
         print("Seed sukses!")
         print("=" * 60)
         print("Login:")
-        print("  Superadmin (god) : admin@bintang.me / admin123")
-        print("  Admin Pusat      : pusat@bintang.me / pusat123")
-        print("  Eksekutif (RO)   : direksi@bintang.me / exec123  (semua proyek)")
-        print("  PM Budi (PRJ1,2) : budi@bintang.me / pm123")
-        print("  PM Sari (PRJ3,4) : sari@bintang.me / pm123")
-        print("  PM Agus (PRJ5)   : agus@bintang.me / pm123")
+        print("  Superadmin (god) : admin@cacak.app / admin123")
+        print("  Admin Pusat      : pusat@cacak.app / pusat123")
+        print("  Eksekutif (RO)   : direksi@cacak.app / exec123  (semua proyek)")
+        print("  PM Budi (PRJ1,2) : budi@cacak.app / pm123")
+        print("  PM Sari (PRJ3,4) : sari@cacak.app / pm123")
+        print("  PM Agus (PRJ5)   : agus@cacak.app / pm123")
         print()
         print("Demo data: 3 perusahaan, 5 proyek, 12 kategori, 7 vendor/client,")
         print(f"           {len(all_txs)} transaksi, 6 invoice, 3 PO")

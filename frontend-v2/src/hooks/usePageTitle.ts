@@ -8,7 +8,7 @@ export function usePageTitle(title: string | undefined | null) {
   useEffect(() => {
     if (!title) return
     const prev = document.title
-    document.title = `${title} · Bintang Finance`
+    document.title = `${title} · CACAK`
     return () => {
       document.title = prev
     }

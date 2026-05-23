@@ -40,9 +40,9 @@ export function Topbar({
         aria-label="Beranda"
       >
         <span className="flex h-7 w-7 items-center justify-center rounded bg-brand-500 text-white font-bold text-[13px]">
-          B
+          C
         </span>
-        <span className="text-sm font-bold text-ink-900">Bintang</span>
+        <span className="text-sm font-bold text-ink-900">CACAK</span>
       </Link>
 
       {leftSlot}

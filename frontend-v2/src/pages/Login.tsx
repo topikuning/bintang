@@ -87,12 +87,12 @@ export function LoginPage() {
       {/* Brand strip */}
       <div className="flex items-center gap-2 p-4 sm:p-6">
         <div className="flex h-9 w-9 items-center justify-center rounded bg-brand-500 text-white font-bold">
-          B
+          C
         </div>
         <div className="flex flex-col leading-tight">
-          <span className="text-base font-bold">Bintang</span>
+          <span className="text-base font-bold">CACAK</span>
           <span className="text-[11px] uppercase tracking-wider text-ink-500">
-            Finance & Project
+            Catatan Arus Cash &amp; Anggaran Kerja
           </span>
         </div>
       </div>
@@ -160,7 +160,7 @@ export function LoginPage() {
       </main>
 
       <footer className="p-4 text-center text-[11px] text-ink-500">
-        Bintang Finance v2.0 · {new Date().getFullYear()}
+        CACAK v2.0 · {new Date().getFullYear()}
       </footer>
     </div>
   )

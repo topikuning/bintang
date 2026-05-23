@@ -269,7 +269,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title=f"{settings.APP_NAME} API",
-    description="Bintang - Biaya, Investasi dan Tata Anggaran Gerak",
+    description="CACAK - Catatan Arus Cash dan Anggaran Kerja",
     version="0.1.0",
     lifespan=lifespan,
 )

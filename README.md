@@ -1,6 +1,6 @@
-# Bintang
+# CACAK
 
-**Bintang — Biaya, Investasi dan Tata Anggaran Gerak.**
+**CACAK — Catatan Arus Cash dan Anggaran Kerja.**
 Aplikasi web pencatatan & monitoring keuangan multi-proyek (mobile-first PWA).
 
 ## Fitur utama
@@ -70,10 +70,10 @@ pnpm dev
 
 | Role             | Email                 | Password   | Akses               |
 | ---------------- | --------------------- | ---------- | ------------------- |
-| Superadmin       | admin@bintang.me      | admin123   | Semua proyek        |
-| PM Budi          | budi@bintang.me       | pm123      | PRJ-001, PRJ-002    |
-| PM Sari          | sari@bintang.me       | pm123      | PRJ-003, PRJ-004    |
-| PM Agus          | agus@bintang.me       | pm123      | PRJ-005             |
+| Superadmin       | admin@cacak.app      | admin123   | Semua proyek        |
+| PM Budi          | budi@cacak.app       | pm123      | PRJ-001, PRJ-002    |
+| PM Sari          | sari@cacak.app       | pm123      | PRJ-003, PRJ-004    |
+| PM Agus          | agus@cacak.app       | pm123      | PRJ-005             |
 
 Demo data: 3 perusahaan, 5 proyek (status sehat / waspada / overbudget / minus),
 12 kategori, 7 vendor/client, 30+ transaksi, 6 invoice (paid / partial / overdue / draft), 3 PO.
