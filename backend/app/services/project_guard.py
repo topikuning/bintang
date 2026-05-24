@@ -15,6 +15,7 @@ Caller pattern:
 from __future__ import annotations
 
 from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import Project, ProjectStatus, User, UserRole
@@ -29,6 +30,45 @@ _CLOSED_STATUSES: tuple[ProjectStatus, ...] = (
     ProjectStatus.DIBATALKAN,
     ProjectStatus.MENUNGGU_PERSETUJUAN,
 )
+
+# Status yg di-exclude dari OPERATIONAL surfaces (dashboard counter,
+# notifikasi, bot command). Beda dgn _CLOSED_STATUSES di atas yg utk
+# block mutasi:
+# - SELESAI: tagihan dianggap clear (audit 2026-05-24 user spec).
+# - DIBATALKAN: total hide spt soft-deleted (audit 2026-05-24:
+#   "kalau dibatalkan ya selesai, jangan dibahas").
+# MENUNGGU_PERSETUJUAN: muncul di approval queue (urusan terpisah,
+# tdk relevan utk notif operasional).
+OPERATIONAL_HIDE_STATUSES: tuple[ProjectStatus, ...] = (
+    ProjectStatus.SELESAI,
+    ProjectStatus.DIBATALKAN,
+)
+
+
+async def operational_project_ids(
+    db: AsyncSession,
+    scope: list[int] | None,
+) -> list[int] | None:
+    """Subset project_ids yg layak muncul di dashboard / notifikasi / bot.
+
+    `scope`: None = global access (semua proyek), [...] = scoped ke pids.
+    Return: list[int] (mungkin kosong) atau None kalau semua aktif boleh
+    (caller harus interpret None sbg "no filter, semua proyek operational").
+
+    Caller cara pakai: hasil ini dipakai sbg WHERE id IN (...). Kalau
+    None, caller TIDAK perlu filter project_id (asumsi sudah filter
+    dgn JOIN ke Project + status check). Tapi simpler: caller selalu
+    pakai list (resolve None ke seluruh ids).
+    """
+    stmt = select(Project.id).where(
+        Project.deleted_at.is_(None),
+        Project.status.notin_(OPERATIONAL_HIDE_STATUSES),
+    )
+    if scope is not None:
+        if not scope:
+            return []
+        stmt = stmt.where(Project.id.in_(scope))
+    return list((await db.execute(stmt)).scalars().all())
 
 
 async def assert_project_open(

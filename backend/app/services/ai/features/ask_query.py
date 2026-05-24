@@ -145,17 +145,29 @@ async def _q_outstanding_debts(
     db: AsyncSession, *, pids: list[int] | None,
     project_id: int | None = None, **_,
 ) -> dict:
-    """Total sisa hutang & piutang."""
+    """Total sisa hutang & piutang. Audit 2026-05-24: KONSISTEN dgn
+    dashboard/notif -- exclude proyek SELESAI (tagihan dianggap clear)
+    + DIBATALKAN (soft-deleted)."""
+    from app.services.project_guard import operational_project_ids
+    op_pids = await operational_project_ids(db, pids)
+    if not op_pids:
+        return {
+            "columns": ["Tipe", "Sisa Open (Rp)"],
+            "data": [
+                ["Hutang (Invoice Masuk)", 0.0],
+                ["Piutang (Invoice Keluar)", 0.0],
+                ["Net Position", 0.0],
+            ],
+        }
     stmt = (
         select(Invoice.type, func.coalesce(func.sum(Invoice.total), 0))
         .where(
             Invoice.deleted_at.is_(None),
             Invoice.status.in_([InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE]),
+            Invoice.project_id.in_(op_pids),
         )
         .group_by(Invoice.type)
     )
-    if pids is not None:
-        stmt = stmt.where(Invoice.project_id.in_(pids))
     if project_id:
         stmt = stmt.where(Invoice.project_id == project_id)
     rows = (await db.execute(stmt)).all()

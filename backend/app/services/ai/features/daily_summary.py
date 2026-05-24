@@ -95,15 +95,22 @@ async def run(
         )
     )).scalar_one() or 0
 
-    # Invoice overdue per d (jatuh tempo sebelum d, status open)
+    # Invoice overdue per d (jatuh tempo sebelum d, status open).
+    # Audit 2026-05-24: KONSISTEN dgn dashboard/notif -- exclude
+    # proyek SELESAI/DIBATALKAN dari counter overdue.
+    from app.models.models import Project, ProjectStatus
     n_inv_overdue = (await db.execute(
         select(func.count(Invoice.id))
+        .join(Project, Project.id == Invoice.project_id)
         .where(
             Invoice.deleted_at.is_(None),
             Invoice.due_date < d,
             Invoice.status.in_([
                 InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID,
                 InvoiceStatus.OVERDUE,
+            ]),
+            Project.status.notin_([
+                ProjectStatus.SELESAI, ProjectStatus.DIBATALKAN,
             ]),
         )
     )).scalar_one() or 0

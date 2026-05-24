@@ -187,7 +187,13 @@ async def cmd_saldo(db, user, chat_id, args, msg) -> str:
             f"Budget: Rp {_fmt_idr(bs['spent'])} / Rp {_fmt_idr(bs['budget_amount'])} "
             f"({float(bs['usage_pct']):.1f}% — {bs['status']})"
         )
-    projects = await _accessible_projects(db, user)
+    # Audit 2026-05-24: KONSISTEN dgn dashboard -- exclude DIBATALKAN.
+    # SELESAI tetap ikut (real money).
+    from app.models.models import ProjectStatus as _PS
+    projects = [
+        p for p in await _accessible_projects(db, user)
+        if p.status != _PS.DIBATALKAN
+    ]
     if not projects:
         return "Tidak ada proyek yang bisa diakses."
     total_in = total_out = Decimal("0")
@@ -211,20 +217,22 @@ async def cmd_pending(db, user, chat_id, args, msg) -> str:
     if not _is_admin(user):
         return "Hanya admin yang bisa lihat list pending verifikasi."
     pids = await user_project_ids(db, user)
+    # Audit 2026-05-24: KONSISTEN -- exclude SELESAI/DIBATALKAN.
+    from app.services.project_guard import operational_project_ids
+    op_pids = await operational_project_ids(db, pids)
+    if not op_pids:
+        return "Tidak ada transaksi pending."
     q = (
         select(Transaction, Project.code)
         .join(Project, Project.id == Transaction.project_id)
         .where(
             Transaction.status == TxnStatus.SUBMITTED,
             Transaction.deleted_at.is_(None),
+            Transaction.project_id.in_(op_pids),
         )
         .order_by(Transaction.tx_date.desc())
         .limit(20)
     )
-    if pids is not None:
-        if not pids:
-            return "Tidak ada akses."
-        q = q.where(Transaction.project_id.in_(pids))
     rows = (await db.execute(q)).all()
     if not rows:
         return "Tidak ada transaksi pending."
@@ -240,6 +248,12 @@ async def cmd_invoice(db, user, chat_id, args, msg) -> str:
     if not user:
         return "Akun belum ter-link."
     pids = await user_project_ids(db, user)
+    # Audit 2026-05-24: KONSISTEN -- exclude SELESAI (tagihan clear) +
+    # DIBATALKAN (soft-deleted).
+    from app.services.project_guard import operational_project_ids
+    op_pids = await operational_project_ids(db, pids)
+    if not op_pids:
+        return "Tidak ada invoice belum lunas."
     paid_sub = (
         select(
             InvoiceAllocation.invoice_id.label("inv_id"),
@@ -256,14 +270,11 @@ async def cmd_invoice(db, user, chat_id, args, msg) -> str:
         .where(
             Invoice.status.in_([InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE]),
             Invoice.deleted_at.is_(None),
+            Invoice.project_id.in_(op_pids),
         )
         .order_by(Invoice.due_date.asc().nulls_last(), Invoice.id.desc())
         .limit(20)
     )
-    if pids is not None:
-        if not pids:
-            return "Tidak ada akses."
-        q = q.where(Invoice.project_id.in_(pids))
     rows = (await db.execute(q)).all()
     if not rows:
         return "Tidak ada invoice belum lunas."

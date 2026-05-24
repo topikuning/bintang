@@ -78,13 +78,17 @@ async def notifications_summary(
     is_admin = user.role in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN)
     has_global = has_global_access(user)
 
+    # Audit 2026-05-24: KONSISTEN dgn dashboard -- exclude SELESAI +
+    # DIBATALKAN dari semua counter notifikasi (semantik: tagihan
+    # dianggap clear, dibatalkan = soft-deleted).
+    from app.services.project_guard import operational_project_ids
+    op_pids = await operational_project_ids(db, pids)
+
     def _scope_filter(stmt, project_col):
-        """Scope filter by user's project_ids kalau non-global."""
-        if pids is None:
-            return stmt
-        if not pids:
+        """Scope filter ke operational pids (auto-exclude SELESAI/DIBATALKAN)."""
+        if not op_pids:
             return stmt.where(project_col.in_([]))  # forces empty
-        return stmt.where(project_col.in_(pids))
+        return stmt.where(project_col.in_(op_pids))
 
     # 1. Tx pending verifikasi (admin only)
     if is_admin:
@@ -103,12 +107,14 @@ async def notifications_summary(
                 tone="warning",
             ))
 
-    # 2. Tx draft milik sendiri (utk reminder submit)
+    # 2. Tx draft milik sendiri (utk reminder submit). Auto-exclude
+    # proyek SELESAI/DIBATALKAN (KONSISTEN dgn dashboard).
     q = select(func.count(Transaction.id)).where(
         Transaction.created_by_id == user.id,
         Transaction.status == TxnStatus.DRAFT,
         Transaction.deleted_at.is_(None),
     )
+    q = _scope_filter(q, Transaction.project_id)
     n = int((await db.execute(q)).scalar_one() or 0)
     if n > 0:
         items.append(NotificationItem(
