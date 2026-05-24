@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { CheckCheck, Loader2, ShoppingCart, Receipt, Send, BadgeCheck } from "lucide-react"
+import { BadgeCheck, CheckCheck, Loader2, Receipt, Send, ShoppingCart, Trash2 } from "lucide-react"
 
 import { useAuthStore } from "@/store/auth"
 import { api, apiErrorMessage } from "@/lib/api"
@@ -130,6 +130,53 @@ function FilterBar({
   )
 }
 
+// Segmented mode control utk switching action (verify/approve/issue
+// vs delete). Audit 2026-05-24 user req: mass delete satu fitur.
+interface ModeOption<M extends string> {
+  key: M
+  label: string
+  icon: typeof CheckCheck
+  /** Variant warna: 'default' (brand) atau 'danger' (red utk delete). */
+  danger?: boolean
+}
+
+function ModeToggle<M extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: M
+  onChange: (m: M) => void
+  options: ModeOption<M>[]
+}) {
+  return (
+    <div className="inline-flex self-start rounded-md border bg-surface p-0.5 mt-2 flex-wrap">
+      {options.map((opt) => {
+        const Icon = opt.icon
+        const active = value === opt.key
+        return (
+          <button
+            key={opt.key}
+            type="button"
+            onClick={() => onChange(opt.key)}
+            className={cn(
+              "flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium transition-colors",
+              active
+                ? opt.danger
+                  ? "bg-danger-100 text-danger-700"
+                  : "bg-brand-100 text-brand-700"
+                : "text-ink-600 hover:text-ink-900",
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {opt.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function TabButton({
   active,
   onClick,
@@ -162,36 +209,49 @@ function TabButton({
 // ============================================================
 // TX panel
 // ============================================================
+type TxMode = "verify" | "delete"
+
 function BulkTxPanel({ filters }: { filters: BulkFilters }) {
   const qc = useQueryClient()
+  const [mode, setMode] = useState<TxMode>("verify")
   const [selected, setSelected] = useState<Set<number>>(new Set())
 
   const listQ = useQuery({
-    queryKey: ["bulk-approval", "tx", "pending", filters],
+    queryKey: ["bulk-approval", "tx", mode, filters],
     queryFn: async () => {
-      // Backend bulk_verify accept DRAFT + SUBMITTED. Fetch keduanya
-      // (list endpoint cuma terima 1 status, jadi 2 query lalu merge).
       const baseParams: Record<string, unknown> = { size: 200 }
       if (filters.project_id) baseParams.project_id = filters.project_id
       if (filters.company_id) baseParams.company_id = filters.company_id
-      const [draftRes, submittedRes] = await Promise.all([
-        api.get("/transactions", { params: { ...baseParams, status: "DRAFT" } }),
-        api.get("/transactions", { params: { ...baseParams, status: "SUBMITTED" } }),
-      ])
-      const merged = [
-        ...(submittedRes.data?.items ?? []),  // submitted dulu (lebih prioritas)
-        ...(draftRes.data?.items ?? []),
-      ]
-      return {
-        items: merged as TxItem[],
-        total: (submittedRes.data?.total ?? 0) + (draftRes.data?.total ?? 0),
+      if (mode === "verify") {
+        // Backend bulk_verify accept DRAFT + SUBMITTED. Fetch keduanya
+        // (list endpoint cuma terima 1 status, jadi 2 query lalu merge).
+        const [draftRes, submittedRes] = await Promise.all([
+          api.get("/transactions", { params: { ...baseParams, status: "DRAFT" } }),
+          api.get("/transactions", { params: { ...baseParams, status: "SUBMITTED" } }),
+        ])
+        const merged = [
+          ...(submittedRes.data?.items ?? []),
+          ...(draftRes.data?.items ?? []),
+        ]
+        return {
+          items: merged as TxItem[],
+          total: (submittedRes.data?.total ?? 0) + (draftRes.data?.total ?? 0),
+        }
       }
+      // delete mode: semua non-deleted (backend skip per-item kalau
+      // VERIFIED -> harus cancel dulu).
+      const { data } = await api.get("/transactions", { params: baseParams })
+      return data as { items: TxItem[]; total: number }
     },
   })
 
-  const verifyMut = useMutation({
+  const actionMut = useMutation({
     mutationFn: async (ids: number[]): Promise<BulkResult> => {
-      const { data } = await api.post<BulkResult>("/transactions/bulk/verify", { ids })
+      const url =
+        mode === "verify"
+          ? "/transactions/bulk/verify"
+          : "/transactions/bulk/delete"
+      const { data } = await api.post<BulkResult>(url, { ids })
       return data
     },
     onSuccess: (res) => {
@@ -200,79 +260,121 @@ function BulkTxPanel({ filters }: { filters: BulkFilters }) {
       qc.invalidateQueries({ queryKey: ["bulk-approval", "tx"] })
       qc.invalidateQueries({ queryKey: ["transactions"] })
     },
-    onError: (err) => toast.error("Bulk verify gagal", { description: apiErrorMessage(err) }),
+    onError: (err) =>
+      toast.error(
+        mode === "verify" ? "Bulk verify gagal" : "Bulk delete gagal",
+        { description: apiErrorMessage(err) },
+      ),
   })
 
   return (
-    <BulkPanel
-      title="Transaksi SUBMITTED"
-      hint="VERIFIED akan masuk laporan finansial. Pastikan sudah review masing-masing tx."
-      items={listQ.data?.items ?? []}
-      isLoading={listQ.isLoading}
-      error={listQ.error}
-      selected={selected}
-      setSelected={setSelected}
-      onBulkAction={(ids) => verifyMut.mutate(ids)}
-      bulkPending={verifyMut.isPending}
-      bulkLabel="Verify Selected"
-      renderRow={(item) => (
-        <>
-          <td className="px-3 py-2 text-sm">
-            <span className={cn(
-              "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
-              item.status === "DRAFT"
-                ? "bg-ink-100 text-ink-700"
-                : "bg-warning-100 text-warning-800",
-            )}>
-              {item.status}
-            </span>
-          </td>
-          <td className="px-3 py-2 text-sm">{fmtDate(item.tx_date)}</td>
-          <td className="px-3 py-2 text-sm">{item.type}</td>
-          <td className="px-3 py-2 text-sm font-mono">{fmtIDR(Number(item.amount))}</td>
-          <td className="px-3 py-2 text-sm">{item.party_name || "—"}</td>
-          <td className="px-3 py-2 text-sm text-ink-600 truncate max-w-[300px]">
-            {item.description || "—"}
-          </td>
-        </>
-      )}
-      headers={["Status", "Tanggal", "Tipe", "Nominal", "Pihak", "Deskripsi"]}
-    />
+    <div className="flex flex-col gap-2">
+      <ModeToggle<TxMode>
+        value={mode}
+        onChange={(m) => {
+          setMode(m)
+          setSelected(new Set())
+        }}
+        options={[
+          { key: "verify", label: "Verify (DRAFT+SUBMITTED)", icon: CheckCheck },
+          { key: "delete", label: "Delete (semua status)", icon: Trash2, danger: true },
+        ]}
+      />
+      <BulkPanel
+        title={mode === "verify" ? "Transaksi SUBMITTED" : "Transaksi"}
+        hint={
+          mode === "verify"
+            ? "VERIFIED akan masuk laporan finansial. Pastikan sudah review masing-masing tx."
+            : "Soft-delete tx (bisa di-restore admin). VERIFIED akan di-skip -- cancel dulu kalau perlu hapus."
+        }
+        items={listQ.data?.items ?? []}
+        isLoading={listQ.isLoading}
+        error={listQ.error}
+        selected={selected}
+        setSelected={setSelected}
+        onBulkAction={(ids) => actionMut.mutate(ids)}
+        bulkPending={actionMut.isPending}
+        bulkLabel={mode === "verify" ? "Verify Selected" : "Delete Selected"}
+        bulkVariant={mode === "verify" ? "default" : "danger"}
+        renderRow={(item) => (
+          <>
+            <td className="px-3 py-2 text-sm">
+              <span className={cn(
+                "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+                txStatusClass(item.status),
+              )}>
+                {item.status}
+              </span>
+            </td>
+            <td className="px-3 py-2 text-sm">{fmtDate(item.tx_date)}</td>
+            <td className="px-3 py-2 text-sm">{item.type}</td>
+            <td className="px-3 py-2 text-sm font-mono">{fmtIDR(Number(item.amount))}</td>
+            <td className="px-3 py-2 text-sm">{item.party_name || "—"}</td>
+            <td className="px-3 py-2 text-sm text-ink-600 truncate max-w-[300px]">
+              {item.description || "—"}
+            </td>
+          </>
+        )}
+        headers={["Status", "Tanggal", "Tipe", "Nominal", "Pihak", "Deskripsi"]}
+      />
+    </div>
   )
+}
+
+function txStatusClass(status: string): string {
+  switch (status) {
+    case "DRAFT":     return "bg-ink-100 text-ink-700"
+    case "SUBMITTED": return "bg-warning-100 text-warning-800"
+    case "VERIFIED":  return "bg-success-100 text-success-800"
+    case "REJECTED":  return "bg-danger-100 text-danger-800"
+    case "CANCELLED": return "bg-ink-200 text-ink-600"
+    default:          return "bg-ink-100 text-ink-700"
+  }
 }
 
 // ============================================================
 // PO panel
 // ============================================================
+type PoMode = "approve" | "delete"
+
 function BulkPoPanel({ filters }: { filters: BulkFilters }) {
   const qc = useQueryClient()
+  const [mode, setMode] = useState<PoMode>("approve")
   const [selected, setSelected] = useState<Set<number>>(new Set())
 
   const listQ = useQuery({
-    queryKey: ["bulk-approval", "po", "pending", filters],
+    queryKey: ["bulk-approval", "po", mode, filters],
     queryFn: async () => {
-      // Backend bulk_approve accept DRAFT + ISSUED. Fetch keduanya.
       const baseParams: Record<string, unknown> = { size: 200 }
       if (filters.project_id) baseParams.project_id = filters.project_id
       if (filters.company_id) baseParams.company_id = filters.company_id
-      const [draftRes, issuedRes] = await Promise.all([
-        api.get("/purchase-orders", { params: { ...baseParams, status: "DRAFT" } }),
-        api.get("/purchase-orders", { params: { ...baseParams, status: "ISSUED" } }),
-      ])
-      const merged = [
-        ...(issuedRes.data?.items ?? []),
-        ...(draftRes.data?.items ?? []),
-      ]
-      return {
-        items: merged as PoItem[],
-        total: (issuedRes.data?.total ?? 0) + (draftRes.data?.total ?? 0),
+      if (mode === "approve") {
+        // Backend bulk_approve accept DRAFT + ISSUED. Fetch keduanya.
+        const [draftRes, issuedRes] = await Promise.all([
+          api.get("/purchase-orders", { params: { ...baseParams, status: "DRAFT" } }),
+          api.get("/purchase-orders", { params: { ...baseParams, status: "ISSUED" } }),
+        ])
+        const merged = [
+          ...(issuedRes.data?.items ?? []),
+          ...(draftRes.data?.items ?? []),
+        ]
+        return {
+          items: merged as PoItem[],
+          total: (issuedRes.data?.total ?? 0) + (draftRes.data?.total ?? 0),
+        }
       }
+      const { data } = await api.get("/purchase-orders", { params: baseParams })
+      return data as { items: PoItem[]; total: number }
     },
   })
 
-  const approveMut = useMutation({
+  const actionMut = useMutation({
     mutationFn: async (ids: number[]): Promise<BulkResult> => {
-      const { data } = await api.post<BulkResult>("/purchase-orders/bulk/approve", { ids })
+      const url =
+        mode === "approve"
+          ? "/purchase-orders/bulk/approve"
+          : "/purchase-orders/bulk/delete"
+      const { data } = await api.post<BulkResult>(url, { ids })
       return data
     },
     onSuccess: (res) => {
@@ -281,51 +383,81 @@ function BulkPoPanel({ filters }: { filters: BulkFilters }) {
       qc.invalidateQueries({ queryKey: ["bulk-approval", "po"] })
       qc.invalidateQueries({ queryKey: ["pos"] })
     },
-    onError: (err) => toast.error("Bulk approve gagal", { description: apiErrorMessage(err) }),
+    onError: (err) =>
+      toast.error(
+        mode === "approve" ? "Bulk approve gagal" : "Bulk delete gagal",
+        { description: apiErrorMessage(err) },
+      ),
   })
 
   return (
-    <BulkPanel
-      title="PO DRAFT / ISSUED"
-      hint="APPROVED = PO siap dikirim ke vendor & dialokasi ke pembayaran. DRAFT akan skip step ISSUED."
-      items={listQ.data?.items ?? []}
-      isLoading={listQ.isLoading}
-      error={listQ.error}
-      selected={selected}
-      setSelected={setSelected}
-      onBulkAction={(ids) => approveMut.mutate(ids)}
-      bulkPending={approveMut.isPending}
-      bulkLabel="Approve Selected"
-      renderRow={(item) => (
-        <>
-          <td className="px-3 py-2 text-sm">
-            <span className={cn(
-              "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
-              item.status === "DRAFT"
-                ? "bg-ink-100 text-ink-700"
-                : "bg-warning-100 text-warning-800",
-            )}>
-              {item.status}
-            </span>
-          </td>
-          <td className="px-3 py-2 text-sm font-mono">{item.number}</td>
-          <td className="px-3 py-2 text-sm">{fmtDate(item.po_date)}</td>
-          <td className="px-3 py-2 text-sm">{item.vendor_client_name || item.vendor_name || "—"}</td>
-          <td className="px-3 py-2 text-sm font-mono">{fmtIDR(Number(item.total))}</td>
-        </>
-      )}
-      headers={["Status", "Nomor", "Tanggal", "Vendor", "Total"]}
-    />
+    <div className="flex flex-col gap-2">
+      <ModeToggle<PoMode>
+        value={mode}
+        onChange={(m) => {
+          setMode(m)
+          setSelected(new Set())
+        }}
+        options={[
+          { key: "approve", label: "Approve (DRAFT+ISSUED)", icon: CheckCheck },
+          { key: "delete", label: "Delete (semua status)", icon: Trash2, danger: true },
+        ]}
+      />
+      <BulkPanel
+        title={mode === "approve" ? "PO DRAFT / ISSUED" : "PO"}
+        hint={
+          mode === "approve"
+            ? "APPROVED = PO siap dikirim ke vendor & dialokasi ke pembayaran. DRAFT akan skip step ISSUED."
+            : "Soft-delete PO. Hanya DRAFT / CANCELLED yg bisa dihapus -- ISSUED/APPROVED harus cancel dulu (di-skip otomatis)."
+        }
+        items={listQ.data?.items ?? []}
+        isLoading={listQ.isLoading}
+        error={listQ.error}
+        selected={selected}
+        setSelected={setSelected}
+        onBulkAction={(ids) => actionMut.mutate(ids)}
+        bulkPending={actionMut.isPending}
+        bulkLabel={mode === "approve" ? "Approve Selected" : "Delete Selected"}
+        bulkVariant={mode === "approve" ? "default" : "danger"}
+        renderRow={(item) => (
+          <>
+            <td className="px-3 py-2 text-sm">
+              <span className={cn(
+                "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+                poStatusClass(item.status),
+              )}>
+                {item.status}
+              </span>
+            </td>
+            <td className="px-3 py-2 text-sm font-mono">{item.number}</td>
+            <td className="px-3 py-2 text-sm">{fmtDate(item.po_date)}</td>
+            <td className="px-3 py-2 text-sm">{item.vendor_client_name || item.vendor_name || "—"}</td>
+            <td className="px-3 py-2 text-sm font-mono">{fmtIDR(Number(item.total))}</td>
+          </>
+        )}
+        headers={["Status", "Nomor", "Tanggal", "Vendor", "Total"]}
+      />
+    </div>
   )
+}
+
+function poStatusClass(status: string): string {
+  switch (status) {
+    case "DRAFT":     return "bg-ink-100 text-ink-700"
+    case "ISSUED":    return "bg-warning-100 text-warning-800"
+    case "APPROVED":  return "bg-success-100 text-success-800"
+    case "CANCELLED": return "bg-ink-200 text-ink-600"
+    default:          return "bg-ink-100 text-ink-700"
+  }
 }
 
 // ============================================================
 // Invoice panel
 // ============================================================
 // Audit 2026-05-24 user req: invoice bulk action tdk cuma Issue.
-// Tambah Mark-Paid utk invoice ISSUED/PARTIALLY_PAID/OVERDUE. Mode
-// segmented supaya satu tab cukup, action button context-aware.
-type InvoiceMode = "issue" | "mark-paid"
+// Tambah Mark-Paid utk invoice ISSUED/PARTIALLY_PAID/OVERDUE + Delete
+// mass. Mode segmented supaya satu tab cukup, action context-aware.
+type InvoiceMode = "issue" | "mark-paid" | "delete"
 
 function BulkInvoicePanel({ filters }: { filters: BulkFilters }) {
   const qc = useQueryClient()
@@ -344,25 +476,30 @@ function BulkInvoicePanel({ filters }: { filters: BulkFilters }) {
         })
         return data as { items: InvoiceItem[]; total: number }
       }
-      // mark-paid: ISSUED + PARTIALLY_PAID + OVERDUE (list endpoint
-      // hanya terima 1 status -> 3 query lalu merge).
-      const [issued, partial, overdue] = await Promise.all([
-        api.get("/invoices", { params: { ...baseParams, status: "ISSUED" } }),
-        api.get("/invoices", { params: { ...baseParams, status: "PARTIALLY_PAID" } }),
-        api.get("/invoices", { params: { ...baseParams, status: "OVERDUE" } }),
-      ])
-      const merged = [
-        ...(issued.data?.items ?? []),
-        ...(partial.data?.items ?? []),
-        ...(overdue.data?.items ?? []),
-      ]
-      return {
-        items: merged as InvoiceItem[],
-        total:
-          (issued.data?.total ?? 0) +
-          (partial.data?.total ?? 0) +
-          (overdue.data?.total ?? 0),
+      if (mode === "mark-paid") {
+        // mark-paid: ISSUED + PARTIALLY_PAID + OVERDUE (list endpoint
+        // hanya terima 1 status -> 3 query lalu merge).
+        const [issued, partial, overdue] = await Promise.all([
+          api.get("/invoices", { params: { ...baseParams, status: "ISSUED" } }),
+          api.get("/invoices", { params: { ...baseParams, status: "PARTIALLY_PAID" } }),
+          api.get("/invoices", { params: { ...baseParams, status: "OVERDUE" } }),
+        ])
+        const merged = [
+          ...(issued.data?.items ?? []),
+          ...(partial.data?.items ?? []),
+          ...(overdue.data?.items ?? []),
+        ]
+        return {
+          items: merged as InvoiceItem[],
+          total:
+            (issued.data?.total ?? 0) +
+            (partial.data?.total ?? 0) +
+            (overdue.data?.total ?? 0),
+        }
       }
+      // delete mode: semua non-deleted
+      const { data } = await api.get("/invoices", { params: baseParams })
+      return data as { items: InvoiceItem[]; total: number }
     },
   })
 
@@ -371,7 +508,9 @@ function BulkInvoicePanel({ filters }: { filters: BulkFilters }) {
       const url =
         mode === "issue"
           ? "/invoices/bulk/issue"
-          : "/invoices/bulk/mark-paid"
+          : mode === "mark-paid"
+          ? "/invoices/bulk/mark-paid"
+          : "/invoices/bulk/delete"
       const { data } = await api.post<BulkResult>(url, { ids })
       return data
     },
@@ -382,62 +521,51 @@ function BulkInvoicePanel({ filters }: { filters: BulkFilters }) {
       qc.invalidateQueries({ queryKey: ["invoices"] })
       qc.invalidateQueries({ queryKey: ["transactions"] })
     },
-    onError: (err) =>
-      toast.error(
-        mode === "issue" ? "Bulk issue gagal" : "Bulk mark paid gagal",
-        { description: apiErrorMessage(err) },
-      ),
+    onError: (err) => {
+      const label =
+        mode === "issue"
+          ? "Bulk issue gagal"
+          : mode === "mark-paid"
+          ? "Bulk mark paid gagal"
+          : "Bulk delete gagal"
+      toast.error(label, { description: apiErrorMessage(err) })
+    },
   })
 
-  const headers =
-    mode === "issue"
-      ? ["Nomor", "Tanggal", "Tipe", "Pihak", "Total"]
-      : ["Status", "Nomor", "Tanggal", "Tipe", "Pihak", "Total"]
+  const showStatusCol = mode !== "issue"
+  const headers = showStatusCol
+    ? ["Status", "Nomor", "Tanggal", "Tipe", "Pihak", "Total"]
+    : ["Nomor", "Tanggal", "Tipe", "Pihak", "Total"]
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Segmented control: Issue vs Mark Paid */}
-      <div className="inline-flex self-start rounded-md border bg-surface p-0.5 mt-2">
-        <button
-          type="button"
-          onClick={() => {
-            setMode("issue")
-            setSelected(new Set())
-          }}
-          className={cn(
-            "flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium transition-colors",
-            mode === "issue"
-              ? "bg-brand-100 text-brand-700"
-              : "text-ink-600 hover:text-ink-900",
-          )}
-        >
-          <Send className="h-3.5 w-3.5" />
-          Issue (DRAFT)
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setMode("mark-paid")
-            setSelected(new Set())
-          }}
-          className={cn(
-            "flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium transition-colors",
-            mode === "mark-paid"
-              ? "bg-brand-100 text-brand-700"
-              : "text-ink-600 hover:text-ink-900",
-          )}
-        >
-          <BadgeCheck className="h-3.5 w-3.5" />
-          Tandai Lunas (ISSUED+)
-        </button>
-      </div>
+      <ModeToggle<InvoiceMode>
+        value={mode}
+        onChange={(m) => {
+          setMode(m)
+          setSelected(new Set())
+        }}
+        options={[
+          { key: "issue", label: "Issue (DRAFT)", icon: Send },
+          { key: "mark-paid", label: "Tandai Lunas (ISSUED+)", icon: BadgeCheck },
+          { key: "delete", label: "Delete (semua status)", icon: Trash2, danger: true },
+        ]}
+      />
 
       <BulkPanel
-        title={mode === "issue" ? "Invoice DRAFT" : "Invoice Outstanding"}
+        title={
+          mode === "issue"
+            ? "Invoice DRAFT"
+            : mode === "mark-paid"
+            ? "Invoice Outstanding"
+            : "Invoice"
+        }
         hint={
           mode === "issue"
             ? "ISSUED = invoice resmi masuk piutang/hutang & laporan."
-            : "Tandai lunas: auto-create TX pelunasan (VERIFIED) sebesar outstanding tiap invoice."
+            : mode === "mark-paid"
+            ? "Tandai lunas: auto-create TX pelunasan (VERIFIED) sebesar outstanding tiap invoice."
+            : "Soft-delete invoice (bisa di-restore admin). Allocation row TIDAK ikut diubah (mirror single delete)."
         }
         items={listQ.data?.items ?? []}
         isLoading={listQ.isLoading}
@@ -446,42 +574,49 @@ function BulkInvoicePanel({ filters }: { filters: BulkFilters }) {
         setSelected={setSelected}
         onBulkAction={(ids) => actionMut.mutate(ids)}
         bulkPending={actionMut.isPending}
-        bulkLabel={mode === "issue" ? "Issue Selected" : "Mark Paid Selected"}
-        renderRow={(item) =>
-          mode === "issue" ? (
-            <>
-              <td className="px-3 py-2 text-sm font-mono">{item.number}</td>
-              <td className="px-3 py-2 text-sm">{fmtDate(item.invoice_date)}</td>
-              <td className="px-3 py-2 text-sm">{item.type === "IN" ? "Hutang" : "Piutang"}</td>
-              <td className="px-3 py-2 text-sm">{item.party_name || "—"}</td>
-              <td className="px-3 py-2 text-sm font-mono">{fmtIDR(Number(item.total))}</td>
-            </>
-          ) : (
-            <>
+        bulkLabel={
+          mode === "issue"
+            ? "Issue Selected"
+            : mode === "mark-paid"
+            ? "Mark Paid Selected"
+            : "Delete Selected"
+        }
+        bulkVariant={mode === "delete" ? "danger" : "default"}
+        renderRow={(item) => (
+          <>
+            {showStatusCol && (
               <td className="px-3 py-2 text-sm">
                 <span className={cn(
                   "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
-                  item.status === "OVERDUE"
-                    ? "bg-danger-100 text-danger-800"
-                    : item.status === "PARTIALLY_PAID"
-                    ? "bg-warning-100 text-warning-800"
-                    : "bg-info-100 text-info-800",
+                  invoiceStatusClass(item.status),
                 )}>
                   {item.status}
                 </span>
               </td>
-              <td className="px-3 py-2 text-sm font-mono">{item.number}</td>
-              <td className="px-3 py-2 text-sm">{fmtDate(item.invoice_date)}</td>
-              <td className="px-3 py-2 text-sm">{item.type === "IN" ? "Hutang" : "Piutang"}</td>
-              <td className="px-3 py-2 text-sm">{item.party_name || "—"}</td>
-              <td className="px-3 py-2 text-sm font-mono">{fmtIDR(Number(item.total))}</td>
-            </>
-          )
-        }
+            )}
+            <td className="px-3 py-2 text-sm font-mono">{item.number}</td>
+            <td className="px-3 py-2 text-sm">{fmtDate(item.invoice_date)}</td>
+            <td className="px-3 py-2 text-sm">{item.type === "IN" ? "Hutang" : "Piutang"}</td>
+            <td className="px-3 py-2 text-sm">{item.party_name || "—"}</td>
+            <td className="px-3 py-2 text-sm font-mono">{fmtIDR(Number(item.total))}</td>
+          </>
+        )}
         headers={headers}
       />
     </div>
   )
+}
+
+function invoiceStatusClass(status: string): string {
+  switch (status) {
+    case "DRAFT":          return "bg-ink-100 text-ink-700"
+    case "ISSUED":         return "bg-info-100 text-info-800"
+    case "PARTIALLY_PAID": return "bg-warning-100 text-warning-800"
+    case "OVERDUE":        return "bg-danger-100 text-danger-800"
+    case "PAID":           return "bg-success-100 text-success-800"
+    case "CANCELLED":      return "bg-ink-200 text-ink-600"
+    default:               return "bg-ink-100 text-ink-700"
+  }
 }
 
 
@@ -499,6 +634,8 @@ interface BulkPanelProps<T extends { id: number }> {
   onBulkAction: (ids: number[]) => void
   bulkPending: boolean
   bulkLabel: string
+  /** Tampilan action button: 'default' (brand) atau 'danger' (red). */
+  bulkVariant?: "default" | "danger"
   renderRow: (item: T) => React.ReactNode
   headers: string[]
 }
@@ -514,6 +651,7 @@ function BulkPanel<T extends { id: number }>({
   onBulkAction,
   bulkPending,
   bulkLabel,
+  bulkVariant = "default",
   renderRow,
   headers,
 }: BulkPanelProps<T>) {
@@ -540,7 +678,13 @@ function BulkPanel<T extends { id: number }>({
       toast.error("Pilih minimal 1 item")
       return
     }
-    if (!confirm(`Konfirmasi: ${bulkLabel.toLowerCase()} ${ids.length} item?`)) return
+    // Konfirmasi extra-eksplisit utk delete (destructive). Soft-delete
+    // tetap reversible tp lebih baik double-check supaya tdk salah klik.
+    const msg =
+      bulkVariant === "danger"
+        ? `HAPUS ${ids.length} item? Soft-delete bisa di-restore admin, tp pastikan dulu.`
+        : `Konfirmasi: ${bulkLabel.toLowerCase()} ${ids.length} item?`
+    if (!confirm(msg)) return
     onBulkAction(ids)
   }
 
@@ -557,10 +701,13 @@ function BulkPanel<T extends { id: number }>({
           type="button"
           onClick={handleBulk}
           disabled={selected.size === 0 || bulkPending}
+          variant={bulkVariant === "danger" ? "danger" : "primary"}
           className="gap-1.5"
         >
           {bulkPending ? (
             <Loader2 className="h-4 w-4 animate-spin" />
+          ) : bulkVariant === "danger" ? (
+            <Trash2 className="h-4 w-4" />
           ) : (
             <Send className="h-4 w-4" />
           )}

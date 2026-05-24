@@ -562,6 +562,59 @@ async def bulk_approve_pos(
     }
 
 
+@router.post("/bulk/delete")
+async def bulk_delete_pos(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Bulk soft-delete PO. Audit 2026-05-24 user req mass action.
+
+    Payload: {ids: list[int]}.
+    Return: {total_requested, success_count, success, skipped}.
+
+    Per-item: hanya DRAFT / CANCELLED yg boleh dihapus (mirror single
+    delete -- ISSUED/APPROVED harus cancel dulu).
+    """
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids_required")
+    if len(ids) > 500:
+        raise HTTPException(400, "max_500_per_batch")
+
+    res = await db.execute(
+        select(PurchaseOrder).where(PurchaseOrder.id.in_(ids))
+    )
+    pos = {p.id: p for p in res.scalars().all()}
+
+    success_ids: list[int] = []
+    skipped: list[dict] = []
+    now = datetime.utcnow()
+
+    for pid in ids:
+        p = pos.get(pid)
+        if p is None or p.deleted_at is not None:
+            skipped.append({"id": pid, "reason": "not_found"})
+            continue
+        if p.status not in (POStatus.DRAFT, POStatus.CANCELLED):
+            skipped.append({"id": pid, "reason": f"invalid_state_{p.status.value}_must_cancel_first"})
+            continue
+        p.deleted_at = now
+        await log(
+            db, user_id=admin.id, entity="purchase_order", entity_id=p.id,
+            action=AuditAction.DELETE, note="bulk delete",
+        )
+        success_ids.append(pid)
+
+    await db.commit()
+    return {
+        "total_requested": len(ids),
+        "success_count": len(success_ids),
+        "success": success_ids,
+        "skipped": skipped,
+    }
+
+
 @router.post("/{pid}/issue", response_model=POOut)
 async def issue_po(
     pid: int,

@@ -631,6 +631,60 @@ async def bulk_verify_transactions(
     }
 
 
+@router.post("/bulk/delete")
+async def bulk_delete_transactions(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Bulk soft-delete TX. Audit 2026-05-24 user req mass action.
+
+    Payload: {ids: list[int]}.
+    Return: {total_requested, success_count, success, skipped}.
+
+    Per-item: VERIFIED ditolak (harus cancel dulu, mirror single delete
+    di line 763). DRAFT/SUBMITTED/REJECTED/CANCELLED OK soft-delete.
+    """
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids_required")
+    if len(ids) > 500:
+        raise HTTPException(400, "max_500_per_batch")
+
+    res = await db.execute(
+        select(Transaction).where(Transaction.id.in_(ids))
+    )
+    txs = {t.id: t for t in res.scalars().all()}
+
+    success_ids: list[int] = []
+    skipped: list[dict] = []
+    now = datetime.utcnow()
+
+    for tid in ids:
+        t = txs.get(tid)
+        if t is None or t.deleted_at is not None:
+            skipped.append({"id": tid, "reason": "not_found"})
+            continue
+        if t.status == TxnStatus.VERIFIED:
+            skipped.append({"id": tid, "reason": "verified_must_be_cancelled"})
+            continue
+        before = snapshot(t)
+        t.deleted_at = now
+        await log(
+            db, user_id=admin.id, entity="transaction", entity_id=t.id,
+            action=AuditAction.DELETE, before=before, note="bulk delete",
+        )
+        success_ids.append(tid)
+
+    await db.commit()
+    return {
+        "total_requested": len(ids),
+        "success_count": len(success_ids),
+        "success": success_ids,
+        "skipped": skipped,
+    }
+
+
 @router.post("/{tid}/submit", response_model=TransactionOut)
 async def submit_transaction(
     tid: int,

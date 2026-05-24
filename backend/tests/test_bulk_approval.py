@@ -248,6 +248,102 @@ async def test_bulk_mark_paid_invoices(db):
     assert inv1.status == InvoiceStatus.PAID
 
 
+# ---------- Bulk soft-delete (TX / PO / Invoice) ----------
+# Audit 2026-05-24 user req: mass delete utk cleanup.
+
+@pytest.mark.asyncio
+async def test_bulk_delete_tx_skip_verified(db):
+    from app.api.v1.transactions import bulk_delete_transactions
+
+    co, p, admin = await _seed(db)
+    t_draft = Transaction(
+        project_id=p.id, tx_date=date(2026, 5, 24), type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("100"),
+        payment_method=PaymentMethod.CASH, status=TxnStatus.DRAFT,
+        created_by_id=admin.id,
+    )
+    t_verified = Transaction(
+        project_id=p.id, tx_date=date(2026, 5, 24), type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("200"),
+        payment_method=PaymentMethod.CASH, status=TxnStatus.VERIFIED,
+        created_by_id=admin.id,
+    )
+    db.add_all([t_draft, t_verified]); await db.commit()
+
+    result = await bulk_delete_transactions(
+        payload={"ids": [t_draft.id, t_verified.id]},
+        db=db, admin=admin,
+    )
+    assert result["success_count"] == 1
+    assert result["success"] == [t_draft.id]
+    reasons = {s["id"]: s["reason"] for s in result["skipped"]}
+    assert reasons[t_verified.id] == "verified_must_be_cancelled"
+
+    await db.refresh(t_draft); await db.refresh(t_verified)
+    assert t_draft.deleted_at is not None
+    assert t_verified.deleted_at is None
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_po_skip_issued(db):
+    from app.api.v1.purchase_orders import bulk_delete_pos
+
+    co, p, admin = await _seed(db)
+    po_draft = PurchaseOrder(
+        number="PO/D1", project_id=p.id, company_id=co.id,
+        po_date=date(2026, 5, 24), total=Decimal("100"),
+        status=POStatus.DRAFT, created_by_id=admin.id,
+    )
+    po_issued = PurchaseOrder(
+        number="PO/I1", project_id=p.id, company_id=co.id,
+        po_date=date(2026, 5, 24), total=Decimal("200"),
+        status=POStatus.ISSUED, created_by_id=admin.id,
+    )
+    db.add_all([po_draft, po_issued]); await db.commit()
+
+    result = await bulk_delete_pos(
+        payload={"ids": [po_draft.id, po_issued.id]},
+        db=db, admin=admin,
+    )
+    assert result["success_count"] == 1
+    assert result["success"] == [po_draft.id]
+    reasons = {s["id"]: s["reason"] for s in result["skipped"]}
+    assert "invalid_state" in reasons[po_issued.id]
+
+    await db.refresh(po_draft); await db.refresh(po_issued)
+    assert po_draft.deleted_at is not None
+    assert po_issued.deleted_at is None
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_invoice_any_status(db):
+    from app.api.v1.invoices import bulk_delete_invoices
+
+    co, p, admin = await _seed(db)
+    inv1 = Invoice(
+        number="INV/D1", project_id=p.id, type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 24), total=Decimal("100"),
+        status=InvoiceStatus.DRAFT, created_by_id=admin.id,
+    )
+    inv2 = Invoice(
+        number="INV/D2", project_id=p.id, type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 24), total=Decimal("200"),
+        status=InvoiceStatus.PAID, created_by_id=admin.id,
+    )
+    db.add_all([inv1, inv2]); await db.commit()
+
+    result = await bulk_delete_invoices(
+        payload={"ids": [inv1.id, inv2.id]},
+        db=db, admin=admin,
+    )
+    # Mirror single soft-delete: tdk ada precondition status.
+    assert result["success_count"] == 2
+
+    await db.refresh(inv1); await db.refresh(inv2)
+    assert inv1.deleted_at is not None
+    assert inv2.deleted_at is not None
+
+
 # ---------- HTTP integration: regression guard route ordering ----------
 # Audit 2026-05-24: `/bulk/verify` HARUS register sblm `/{tid}/verify`
 # di transactions.py. Kalau urutan ke-swap, FastAPI parse "bulk" sbg

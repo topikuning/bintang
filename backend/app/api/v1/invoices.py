@@ -575,6 +575,58 @@ async def bulk_mark_paid_invoices(
     }
 
 
+@router.post("/bulk/delete")
+async def bulk_delete_invoices(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Bulk soft-delete invoice. Audit 2026-05-24 user req mass action.
+
+    Payload: {ids: list[int]}.
+    Return: {total_requested, success_count, success, skipped}.
+
+    Per-item: mirror single soft-delete (line 702) -- tidak ada
+    precondition status, semua non-deleted bisa di-soft-delete.
+    Allocation row TIDAK ikut diubah (mirror behavior single delete).
+    Utk hapus permanen + cabut alokasi, pakai endpoint /hard per item.
+    """
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids_required")
+    if len(ids) > 500:
+        raise HTTPException(400, "max_500_per_batch")
+
+    res = await db.execute(
+        select(Invoice).where(Invoice.id.in_(ids))
+    )
+    invs = {i.id: i for i in res.scalars().all()}
+
+    success_ids: list[int] = []
+    skipped: list[dict] = []
+    now = datetime.utcnow()
+
+    for iid in ids:
+        inv = invs.get(iid)
+        if inv is None or inv.deleted_at is not None:
+            skipped.append({"id": iid, "reason": "not_found"})
+            continue
+        inv.deleted_at = now
+        await log(
+            db, user_id=admin.id, entity="invoice", entity_id=inv.id,
+            action=AuditAction.DELETE, note="bulk delete",
+        )
+        success_ids.append(iid)
+
+    await db.commit()
+    return {
+        "total_requested": len(ids),
+        "success_count": len(success_ids),
+        "success": success_ids,
+        "skipped": skipped,
+    }
+
+
 @router.post("/{iid}/issue", response_model=InvoiceOut)
 async def issue_invoice(
     iid: int,
