@@ -340,10 +340,17 @@ def _get_item_field(i, key):
 @router.post("", response_model=TransactionOut, status_code=201)
 async def create_transaction(
     payload: TransactionCreate,
+    force: bool = Query(False, description="SUPERADMIN-only: bypass project_closed guard"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_can_write),
 ) -> TransactionOut:
     await ensure_project_access(db, user, payload.project_id)
+    # Audit 2026-05-24 Phase 1: block create di proyek SELESAI / DIBATALKAN.
+    # SUPERADMIN bypass dgn ?force=true (audit log tagging).
+    from app.services.project_guard import assert_project_open
+    _, forced = await assert_project_open(
+        db, payload.project_id, user=user, force=force,
+    )
     _validate_kind_invariants(
         payload, tx_type=payload.type, kind=payload.kind,
         amount=payload.amount, items=payload.items,
@@ -373,7 +380,8 @@ async def create_transaction(
         t, attribute_names=[c.name for c in Transaction.__table__.columns]
     )
     await log(db, user_id=user.id, entity="transaction", entity_id=t.id,
-              action=AuditAction.CREATE, after=snapshot(t))
+              action=AuditAction.CREATE, after=snapshot(t),
+              note="FORCE bypass closed project" if forced else None)
     await db.commit()
     return await _serialize_with_allocs(db, t)
 

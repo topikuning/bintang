@@ -22,6 +22,8 @@ import { AmountInput } from "@/components/forms/AmountInput"
 import { AttachmentUploader } from "@/components/forms/AttachmentUploader"
 import { DateInput } from "@/components/forms/DateInput"
 import { ProjectPicker } from "@/components/forms/ProjectPicker"
+import { useProject } from "@/hooks/useProjects"
+import { ProjectStatusBanner } from "@/components/domain/project/ProjectStatusBanner"
 import { ScanButton, type ExtractedFields } from "@/components/forms/ScanButton"
 import { VendorPicker } from "@/components/forms/VendorPicker"
 import { useBreakpoint } from "@/lib/breakpoint"
@@ -218,6 +220,11 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
   }
 
   const currentType = watch("type") as InvoiceType
+  // Audit 2026-05-24 Phase 1: banner inline kalau proyek terpilih closed.
+  const watchedProjectId = watch("project_id")
+  const { data: selectedProject } = useProject(
+    watchedProjectId && watchedProjectId > 0 ? watchedProjectId : null,
+  )
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && (justCreatedInv ? finishAndClose() : onClose())}>
@@ -269,6 +276,13 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
           className="flex flex-col flex-1 overflow-hidden"
         >
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 sm:px-5">
+            {/* Banner status proyek non-AKTIF -- audit 2026-05-24 Phase 1. */}
+            {selectedProject && (
+              <ProjectStatusBanner
+                status={selectedProject.status}
+                sinceIso={selectedProject.updated_at}
+              />
+            )}
             {/* IN/OUT toggle */}
             <Controller
               control={control}

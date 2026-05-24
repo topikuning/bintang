@@ -28,6 +28,7 @@ import { DateInput } from "@/components/forms/DateInput"
 import { AttachmentUploader } from "@/components/forms/AttachmentUploader"
 import { ProjectPicker } from "@/components/forms/ProjectPicker"
 import { useProject } from "@/hooks/useProjects"
+import { ProjectStatusBanner } from "@/components/domain/project/ProjectStatusBanner"
 import { useSuggestCategory } from "@/hooks/useAI"
 import { CategoryPicker } from "@/components/forms/CategoryPicker"
 import { VendorPicker } from "@/components/forms/VendorPicker"
@@ -283,6 +284,12 @@ export function TransactionForm({
 
   const currentType = watch("type") as TxnType
   const currentKind = watch("kind") as TxnKind
+  // Watch project_id -> tarik info status proyek utk banner inline kalau
+  // closed (SELESAI/DIBATALKAN). Audit 2026-05-24 Phase 1.
+  const watchedProjectId = watch("project_id")
+  const { data: selectedProject } = useProject(
+    watchedProjectId && watchedProjectId > 0 ? watchedProjectId : null,
+  )
   // Untuk IN, paksa INVOICE_PAYMENT supaya conditional logic konsisten.
   const effectiveKind: TxnKind = currentType === "IN" ? "INVOICE_PAYMENT" : currentKind
   const isAdvance = effectiveKind === "CASH_ADVANCE"
@@ -351,6 +358,15 @@ export function TransactionForm({
         >
           {/* Body scroll */}
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+            {/* Banner status proyek non-AKTIF -- audit 2026-05-24 Phase 1.
+                SELESAI/DIBATALKAN -> backend reject 409 saat submit.
+                DITAHAN -> warn only (submit lolos). */}
+            {selectedProject && (
+              <ProjectStatusBanner
+                status={selectedProject.status}
+                sinceIso={selectedProject.updated_at}
+              />
+            )}
             {/* IN / OUT toggle */}
             <Controller
               control={control}

@@ -236,10 +236,16 @@ async def list_invoices(
 @router.post("", response_model=InvoiceOut, status_code=201)
 async def create_invoice(
     payload: InvoiceCreate,
+    force: bool = Query(False, description="SUPERADMIN-only: bypass project_closed guard"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_can_write),
 ) -> InvoiceOut:
     await ensure_project_access(db, user, payload.project_id)
+    # Audit 2026-05-24 Phase 1: project-status guard.
+    from app.services.project_guard import assert_project_open
+    _, forced = await assert_project_open(
+        db, payload.project_id, user=user, force=force,
+    )
     # Cek dup nomor invoice -- harus unik global (legal: Faktur Pajak).
     # Cek SOFT-DELETE included supaya nomor yg pernah dipakai tdk recycled
     # (audit trail tetap stabil di laporan historis).
@@ -271,7 +277,8 @@ async def create_invoice(
         await db.rollback()
         raise HTTPException(409, "invoice_number_already_used") from e
     await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
-              action=AuditAction.CREATE, after=snapshot(inv))
+              action=AuditAction.CREATE, after=snapshot(inv),
+              note="FORCE bypass closed project" if forced else None)
     await db.commit()
     res = await db.execute(
         select(Invoice).options(*_full_options()).where(Invoice.id == inv.id)

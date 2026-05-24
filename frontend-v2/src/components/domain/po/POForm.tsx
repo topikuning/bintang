@@ -20,6 +20,7 @@ import { toast } from "@/components/ui/sonner"
 import { AmountInput } from "@/components/forms/AmountInput"
 import { DateInput } from "@/components/forms/DateInput"
 import { ProjectPicker } from "@/components/forms/ProjectPicker"
+import { ProjectStatusBanner } from "@/components/domain/project/ProjectStatusBanner"
 import { CompanyPicker } from "@/components/forms/CompanyPicker"
 import { ScanButton, type ExtractedFields } from "@/components/forms/ScanButton"
 import { VendorPicker } from "@/components/forms/VendorPicker"
@@ -259,6 +260,13 @@ export function POForm({ open, onClose, po, lockProjectId, onSaved }: POFormProp
           className="flex flex-col flex-1 overflow-hidden"
         >
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 sm:px-5">
+            {/* Banner status proyek non-AKTIF -- audit 2026-05-24 Phase 1. */}
+            {projectDetail && (
+              <ProjectStatusBanner
+                status={projectDetail.status}
+                sinceIso={projectDetail.updated_at}
+              />
+            )}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Tanggal PO" required error={errors.po_date?.message}>
                 <Controller

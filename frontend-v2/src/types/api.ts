@@ -57,6 +57,9 @@ export interface Project {
   start_date: string | null
   end_date: string | null
   status: ProjectStatus
+  /** Timestamp perubahan field apapun -- FE pakai sbg proxy "sejak kapan
+   *  status ini" di banner ProjectStatusBanner. Audit 2026-05-24. */
+  updated_at?: string
   /** Klasifikasi proyek (REGULAR / NON_PROJECT). System project
    *  Catatan Non-Proyek = NON_PROJECT (1 per company). */
   kind: ProjectKind

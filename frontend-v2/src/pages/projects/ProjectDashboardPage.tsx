@@ -53,6 +53,7 @@ import { TransactionForm } from "@/components/domain/transaction/TransactionForm
 import { InvoiceForm } from "@/components/domain/invoice/InvoiceForm"
 import { POForm } from "@/components/domain/po/POForm"
 import { ProjectForm } from "@/components/domain/project/ProjectForm"
+import { ProjectStatusBanner } from "@/components/domain/project/ProjectStatusBanner"
 import { ConfirmDeleteDialog } from "@/components/data/ConfirmDeleteDialog"
 import { useDeleteProject } from "@/hooks/useProjectMutations"
 import { usePageTitle } from "@/hooks/usePageTitle"
@@ -139,6 +140,11 @@ export function ProjectDashboardPage() {
   return (
     <>
       <div className="flex flex-col gap-3 p-3 sm:p-5 lg:p-6 max-w-4xl">
+        {/* Banner status proyek non-AKTIF -- audit 2026-05-24 Phase 1. */}
+        <ProjectStatusBanner
+          status={project.status}
+          sinceIso={project.updated_at}
+        />
         {/* HEADER */}
         <div>
           <Link

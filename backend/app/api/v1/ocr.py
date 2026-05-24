@@ -607,6 +607,10 @@ async def create_invoice_from_draft(
         )
     # User harus punya akses ke project tujuan
     await ensure_project_access(db, user, body.project_id)
+    # Audit 2026-05-24 Phase 1: guard project closed. OCR import =
+    # mutasi baru -- konsisten dgn create invoice biasa.
+    from app.services.project_guard import assert_project_open
+    await assert_project_open(db, body.project_id, user=user, force=False)
 
     data = rec.extracted_data or {}
     # Nomor invoice: pakai override > extracted > fallback "OCR-{draft_id}"

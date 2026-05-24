@@ -117,6 +117,9 @@ class ProjectOut(ProjectBase):
     # response JSON dump.
     approved_at: datetime | None = None
     rejection_reason: str | None = None
+    # Audit 2026-05-24: expose updated_at supaya FE banner status proyek
+    # bisa tampilkan "SELESAI sejak [tgl]" (proxy timestamp perubahan status).
+    updated_at: datetime | None = None
     # Pendana = User(role=EXECUTIVE) ter-link lewat project_users.
     # Field name tetap `funder_*` utk backward-compat FE & semantik domain.
     funder_ids: list[int] = []

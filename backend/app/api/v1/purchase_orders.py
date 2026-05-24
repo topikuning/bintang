@@ -164,13 +164,17 @@ async def list_pos(
 @router.post("", response_model=POOut, status_code=201)
 async def create_po(
     payload: POCreate,
+    force: bool = Query(False, description="SUPERADMIN-only: bypass project_closed guard"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_can_write),
 ) -> POOut:
     await ensure_project_access(db, user, payload.project_id)
-    project = await db.get(Project, payload.project_id)
-    if not project:
-        raise HTTPException(404, "project_not_found")
+    # Audit 2026-05-24 Phase 1: project-status guard. Helper return
+    # project juga -- skip db.get duplikat.
+    from app.services.project_guard import assert_project_open
+    project, forced = await assert_project_open(
+        db, payload.project_id, user=user, force=force,
+    )
     company = await db.get(Company, payload.company_id)
     if not company:
         raise HTTPException(404, "company_not_found")
@@ -227,7 +231,8 @@ async def create_po(
             # else: loop continues, _next_po_number re-scan & try again
     assert po is not None  # appease type checker
     await log(db, user_id=user.id, entity="purchase_order", entity_id=po.id,
-              action=AuditAction.CREATE, after=snapshot(po))
+              action=AuditAction.CREATE, after=snapshot(po),
+              note="FORCE bypass closed project" if forced else None)
     await db.commit()
     res = await db.execute(
         select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == po.id)
