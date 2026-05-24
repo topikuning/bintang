@@ -470,6 +470,111 @@ async def bulk_issue_invoices(
     }
 
 
+@router.post("/bulk/mark-paid")
+async def bulk_mark_paid_invoices(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Bulk mark-paid invoice. Audit 2026-05-24 user req mass action.
+
+    Payload: {ids: list[int]}.
+    Return: {total_requested, success_count, success, skipped}.
+
+    Per-item: replikasi logic mark_invoice_paid (auto-create tx VERIFIED
+    sebesar outstanding lalu alokasi). Item invalid (CANCELLED / DRAFT /
+    total_zero) di-skip dgn reason, tdk halt seluruh batch.
+    """
+    from app.services.allocation import apply_allocations_to_invoice
+
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids_required")
+    if len(ids) > 500:
+        raise HTTPException(400, "max_500_per_batch")
+
+    res = await db.execute(
+        select(Invoice).options(*_full_options()).where(Invoice.id.in_(ids))
+    )
+    invs = {i.id: i for i in res.scalars().all()}
+
+    # Allocatable invoice states utk mark-paid (selain CANCELLED, PAID, DRAFT)
+    allocatable_states = (
+        InvoiceStatus.ISSUED,
+        InvoiceStatus.PARTIALLY_PAID,
+        InvoiceStatus.OVERDUE,
+    )
+
+    success_ids: list[int] = []
+    skipped: list[dict] = []
+    now = datetime.now(timezone.utc)
+
+    for iid in ids:
+        inv = invs.get(iid)
+        if inv is None or inv.deleted_at is not None:
+            skipped.append({"id": iid, "reason": "not_found"})
+            continue
+        if inv.status == InvoiceStatus.PAID:
+            skipped.append({"id": iid, "reason": "already_paid"})
+            continue
+        if inv.status not in allocatable_states:
+            skipped.append({"id": iid, "reason": f"invalid_state_{inv.status.value}"})
+            continue
+        total = Decimal(inv.total or 0)
+        if total <= 0:
+            skipped.append({"id": iid, "reason": "total_zero"})
+            continue
+        paid = await paid_amount(db, inv.id)
+        outstanding = total - paid
+        if outstanding <= 0:
+            inv.status = InvoiceStatus.PAID
+            success_ids.append(iid)
+            continue
+
+        tx_type = TxnType.OUT if inv.type == InvoiceType.IN else TxnType.IN
+        new_tx = Transaction(
+            project_id=inv.project_id,
+            tx_date=date.today(),
+            type=tx_type,
+            amount=outstanding,
+            party_name=inv.party_name,
+            vendor_client_id=inv.vendor_client_id,
+            payment_method=PaymentMethod.TRANSFER,
+            description=f"Pelunasan invoice {inv.number}",
+            status=TxnStatus.VERIFIED,
+            verified_by_id=admin.id,
+            verified_at=now,
+            created_by_id=admin.id,
+        )
+        db.add(new_tx)
+        await db.flush()
+        await log(
+            db, user_id=admin.id, entity="transaction", entity_id=new_tx.id,
+            action=AuditAction.CREATE, after=snapshot(new_tx),
+            note=f"Bulk mark_paid invoice {inv.number}",
+        )
+        await apply_allocations_to_invoice(
+            db,
+            invoice_id=inv.id,
+            items=[(new_tx.id, outstanding)],
+            note="bulk mark-paid",
+            user_id=admin.id,
+        )
+        await log(
+            db, user_id=admin.id, entity="invoice", entity_id=inv.id,
+            action=AuditAction.UPDATE, note="bulk mark-paid",
+        )
+        success_ids.append(iid)
+
+    await db.commit()
+    return {
+        "total_requested": len(ids),
+        "success_count": len(success_ids),
+        "success": success_ids,
+        "skipped": skipped,
+    }
+
+
 @router.post("/{iid}/issue", response_model=InvoiceOut)
 async def issue_invoice(
     iid: int,

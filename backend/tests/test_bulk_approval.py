@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1.invoices import bulk_issue_invoices
+from app.api.v1.invoices import bulk_issue_invoices, bulk_mark_paid_invoices
 from app.api.v1.purchase_orders import (
     bulk_approve_pos,
     bulk_issue_pos,
@@ -209,6 +209,43 @@ async def test_mark_paid_after_bulk_issue(db):
     # Mark paid -- auto-create tx VERIFIED + allocate
     result = await mark_invoice_paid(iid=inv.id, db=db, admin=admin)
     assert result.status == InvoiceStatus.PAID
+
+
+# Audit 2026-05-24 user req: mass action mark-paid invoice
+@pytest.mark.asyncio
+async def test_bulk_mark_paid_invoices(db):
+    co, p, admin = await _seed(db)
+    # 3 invoice: 1 ISSUED (eligible), 1 PAID (skip), 1 DRAFT (skip)
+    inv1 = Invoice(
+        number="INV/B1", project_id=p.id, type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 24), total=Decimal("100"),
+        status=InvoiceStatus.ISSUED, created_by_id=admin.id,
+    )
+    inv2 = Invoice(
+        number="INV/B2", project_id=p.id, type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 24), total=Decimal("200"),
+        status=InvoiceStatus.PAID, created_by_id=admin.id,
+    )
+    inv3 = Invoice(
+        number="INV/B3", project_id=p.id, type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 24), total=Decimal("300"),
+        status=InvoiceStatus.DRAFT, created_by_id=admin.id,
+    )
+    db.add_all([inv1, inv2, inv3]); await db.commit()
+
+    result = await bulk_mark_paid_invoices(
+        payload={"ids": [inv1.id, inv2.id, inv3.id]},
+        db=db, admin=admin,
+    )
+    assert result["total_requested"] == 3
+    assert result["success_count"] == 1
+    assert result["success"] == [inv1.id]
+    reasons = {s["id"]: s["reason"] for s in result["skipped"]}
+    assert reasons[inv2.id] == "already_paid"
+    assert "invalid_state" in reasons[inv3.id]
+
+    await db.refresh(inv1)
+    assert inv1.status == InvoiceStatus.PAID
 
 
 # ---------- HTTP integration: regression guard route ordering ----------

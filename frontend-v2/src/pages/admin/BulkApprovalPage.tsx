@@ -1,19 +1,18 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { CheckCheck, Loader2, ShoppingCart, Receipt, Send } from "lucide-react"
+import { CheckCheck, Loader2, ShoppingCart, Receipt, Send, BadgeCheck } from "lucide-react"
 
 import { useAuthStore } from "@/store/auth"
 import { api, apiErrorMessage } from "@/lib/api"
 import { fmtIDR, fmtDate } from "@/lib/format"
 import { usePageTitle } from "@/hooks/usePageTitle"
-import { useCompanies } from "@/hooks/useCompanies"
-import { useProjects } from "@/hooks/useProjects"
 import { Button } from "@/components/ui/button"
-import { Select } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/data/EmptyState"
 import { ErrorState } from "@/components/data/ErrorState"
 import { toast } from "@/components/ui/sonner"
+import { CompanyPicker } from "@/components/forms/CompanyPicker"
+import { ProjectPicker } from "@/components/forms/ProjectPicker"
 import { cn } from "@/lib/utils"
 
 interface BulkFilters {
@@ -97,49 +96,35 @@ function FilterBar({
   value: BulkFilters
   onChange: (v: BulkFilters) => void
 }) {
-  const companies = useCompanies()
-  // Filter project list by company kalau ada.
-  const projects = useProjects(
-    value.company_id ? { company_id: value.company_id } : {},
-  )
+  // Audit 2026-05-24: pakai filterable Combobox (CompanyPicker /
+  // ProjectPicker) -- standar app utk dropdown searchable. Native
+  // <select> tdk konsisten dgn UI lain & repot kalau list panjang.
   return (
     <div className="rounded-md border bg-surface p-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
       <div className="flex flex-col gap-1">
         <label className="text-[11px] uppercase tracking-wider text-ink-500">
           Filter Perusahaan
         </label>
-        <Select
-          value={value.company_id ?? ""}
-          onChange={(e) => {
-            const v = e.target.value ? Number(e.target.value) : null
+        <CompanyPicker
+          value={value.company_id}
+          onChange={(id) => {
             // Saat company berubah, reset project_id (avoid stale).
-            onChange({ company_id: v, project_id: null })
+            onChange({ company_id: id, project_id: null })
           }}
-        >
-          <option value="">— Semua Perusahaan —</option>
-          {(companies.data?.items ?? []).map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </Select>
+          placeholder="— Semua Perusahaan —"
+        />
       </div>
       <div className="flex flex-col gap-1">
         <label className="text-[11px] uppercase tracking-wider text-ink-500">
           Filter Proyek
         </label>
-        <Select
-          value={value.project_id ?? ""}
-          onChange={(e) => {
-            const v = e.target.value ? Number(e.target.value) : null
-            onChange({ ...value, project_id: v })
-          }}
-        >
-          <option value="">— Semua Proyek —</option>
-          {(projects.data?.items ?? []).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.code} · {p.name}
-            </option>
-          ))}
-        </Select>
+        <ProjectPicker
+          value={value.project_id}
+          onChange={(id) => onChange({ ...value, project_id: id })}
+          placeholder="— Semua Proyek —"
+          activeOnly={false}
+          companyId={value.company_id}
+        />
       </div>
     </div>
   )
@@ -337,24 +322,57 @@ function BulkPoPanel({ filters }: { filters: BulkFilters }) {
 // ============================================================
 // Invoice panel
 // ============================================================
+// Audit 2026-05-24 user req: invoice bulk action tdk cuma Issue.
+// Tambah Mark-Paid utk invoice ISSUED/PARTIALLY_PAID/OVERDUE. Mode
+// segmented supaya satu tab cukup, action button context-aware.
+type InvoiceMode = "issue" | "mark-paid"
+
 function BulkInvoicePanel({ filters }: { filters: BulkFilters }) {
   const qc = useQueryClient()
+  const [mode, setMode] = useState<InvoiceMode>("issue")
   const [selected, setSelected] = useState<Set<number>>(new Set())
 
   const listQ = useQuery({
-    queryKey: ["bulk-approval", "invoice", "draft", filters],
+    queryKey: ["bulk-approval", "invoice", mode, filters],
     queryFn: async () => {
-      const params: Record<string, unknown> = { status: "DRAFT", size: 200 }
-      if (filters.project_id) params.project_id = filters.project_id
-      if (filters.company_id) params.company_id = filters.company_id
-      const { data } = await api.get("/invoices", { params })
-      return data as { items: InvoiceItem[]; total: number }
+      const baseParams: Record<string, unknown> = { size: 200 }
+      if (filters.project_id) baseParams.project_id = filters.project_id
+      if (filters.company_id) baseParams.company_id = filters.company_id
+      if (mode === "issue") {
+        const { data } = await api.get("/invoices", {
+          params: { ...baseParams, status: "DRAFT" },
+        })
+        return data as { items: InvoiceItem[]; total: number }
+      }
+      // mark-paid: ISSUED + PARTIALLY_PAID + OVERDUE (list endpoint
+      // hanya terima 1 status -> 3 query lalu merge).
+      const [issued, partial, overdue] = await Promise.all([
+        api.get("/invoices", { params: { ...baseParams, status: "ISSUED" } }),
+        api.get("/invoices", { params: { ...baseParams, status: "PARTIALLY_PAID" } }),
+        api.get("/invoices", { params: { ...baseParams, status: "OVERDUE" } }),
+      ])
+      const merged = [
+        ...(issued.data?.items ?? []),
+        ...(partial.data?.items ?? []),
+        ...(overdue.data?.items ?? []),
+      ]
+      return {
+        items: merged as InvoiceItem[],
+        total:
+          (issued.data?.total ?? 0) +
+          (partial.data?.total ?? 0) +
+          (overdue.data?.total ?? 0),
+      }
     },
   })
 
-  const issueMut = useMutation({
+  const actionMut = useMutation({
     mutationFn: async (ids: number[]): Promise<BulkResult> => {
-      const { data } = await api.post<BulkResult>("/invoices/bulk/issue", { ids })
+      const url =
+        mode === "issue"
+          ? "/invoices/bulk/issue"
+          : "/invoices/bulk/mark-paid"
+      const { data } = await api.post<BulkResult>(url, { ids })
       return data
     },
     onSuccess: (res) => {
@@ -362,33 +380,107 @@ function BulkInvoicePanel({ filters }: { filters: BulkFilters }) {
       setSelected(new Set())
       qc.invalidateQueries({ queryKey: ["bulk-approval", "invoice"] })
       qc.invalidateQueries({ queryKey: ["invoices"] })
+      qc.invalidateQueries({ queryKey: ["transactions"] })
     },
-    onError: (err) => toast.error("Bulk issue gagal", { description: apiErrorMessage(err) }),
+    onError: (err) =>
+      toast.error(
+        mode === "issue" ? "Bulk issue gagal" : "Bulk mark paid gagal",
+        { description: apiErrorMessage(err) },
+      ),
   })
 
+  const headers =
+    mode === "issue"
+      ? ["Nomor", "Tanggal", "Tipe", "Pihak", "Total"]
+      : ["Status", "Nomor", "Tanggal", "Tipe", "Pihak", "Total"]
+
   return (
-    <BulkPanel
-      title="Invoice DRAFT"
-      hint="ISSUED = invoice resmi masuk piutang/hutang & laporan."
-      items={listQ.data?.items ?? []}
-      isLoading={listQ.isLoading}
-      error={listQ.error}
-      selected={selected}
-      setSelected={setSelected}
-      onBulkAction={(ids) => issueMut.mutate(ids)}
-      bulkPending={issueMut.isPending}
-      bulkLabel="Issue Selected"
-      renderRow={(item) => (
-        <>
-          <td className="px-3 py-2 text-sm font-mono">{item.number}</td>
-          <td className="px-3 py-2 text-sm">{fmtDate(item.invoice_date)}</td>
-          <td className="px-3 py-2 text-sm">{item.type === "IN" ? "Hutang" : "Piutang"}</td>
-          <td className="px-3 py-2 text-sm">{item.party_name || "—"}</td>
-          <td className="px-3 py-2 text-sm font-mono">{fmtIDR(Number(item.total))}</td>
-        </>
-      )}
-      headers={["Nomor", "Tanggal", "Tipe", "Pihak", "Total"]}
-    />
+    <div className="flex flex-col gap-2">
+      {/* Segmented control: Issue vs Mark Paid */}
+      <div className="inline-flex self-start rounded-md border bg-surface p-0.5 mt-2">
+        <button
+          type="button"
+          onClick={() => {
+            setMode("issue")
+            setSelected(new Set())
+          }}
+          className={cn(
+            "flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium transition-colors",
+            mode === "issue"
+              ? "bg-brand-100 text-brand-700"
+              : "text-ink-600 hover:text-ink-900",
+          )}
+        >
+          <Send className="h-3.5 w-3.5" />
+          Issue (DRAFT)
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setMode("mark-paid")
+            setSelected(new Set())
+          }}
+          className={cn(
+            "flex items-center gap-1.5 rounded px-3 py-1.5 text-sm font-medium transition-colors",
+            mode === "mark-paid"
+              ? "bg-brand-100 text-brand-700"
+              : "text-ink-600 hover:text-ink-900",
+          )}
+        >
+          <BadgeCheck className="h-3.5 w-3.5" />
+          Tandai Lunas (ISSUED+)
+        </button>
+      </div>
+
+      <BulkPanel
+        title={mode === "issue" ? "Invoice DRAFT" : "Invoice Outstanding"}
+        hint={
+          mode === "issue"
+            ? "ISSUED = invoice resmi masuk piutang/hutang & laporan."
+            : "Tandai lunas: auto-create TX pelunasan (VERIFIED) sebesar outstanding tiap invoice."
+        }
+        items={listQ.data?.items ?? []}
+        isLoading={listQ.isLoading}
+        error={listQ.error}
+        selected={selected}
+        setSelected={setSelected}
+        onBulkAction={(ids) => actionMut.mutate(ids)}
+        bulkPending={actionMut.isPending}
+        bulkLabel={mode === "issue" ? "Issue Selected" : "Mark Paid Selected"}
+        renderRow={(item) =>
+          mode === "issue" ? (
+            <>
+              <td className="px-3 py-2 text-sm font-mono">{item.number}</td>
+              <td className="px-3 py-2 text-sm">{fmtDate(item.invoice_date)}</td>
+              <td className="px-3 py-2 text-sm">{item.type === "IN" ? "Hutang" : "Piutang"}</td>
+              <td className="px-3 py-2 text-sm">{item.party_name || "—"}</td>
+              <td className="px-3 py-2 text-sm font-mono">{fmtIDR(Number(item.total))}</td>
+            </>
+          ) : (
+            <>
+              <td className="px-3 py-2 text-sm">
+                <span className={cn(
+                  "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+                  item.status === "OVERDUE"
+                    ? "bg-danger-100 text-danger-800"
+                    : item.status === "PARTIALLY_PAID"
+                    ? "bg-warning-100 text-warning-800"
+                    : "bg-info-100 text-info-800",
+                )}>
+                  {item.status}
+                </span>
+              </td>
+              <td className="px-3 py-2 text-sm font-mono">{item.number}</td>
+              <td className="px-3 py-2 text-sm">{fmtDate(item.invoice_date)}</td>
+              <td className="px-3 py-2 text-sm">{item.type === "IN" ? "Hutang" : "Piutang"}</td>
+              <td className="px-3 py-2 text-sm">{item.party_name || "—"}</td>
+              <td className="px-3 py-2 text-sm font-mono">{fmtIDR(Number(item.total))}</td>
+            </>
+          )
+        }
+        headers={headers}
+      />
+    </div>
   )
 }
 
@@ -588,6 +680,7 @@ interface InvoiceItem {
   number: string
   invoice_date: string
   type: string
+  status: string
   party_name: string | null
   total: string | number
 }
