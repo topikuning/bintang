@@ -16,15 +16,28 @@ from __future__ import annotations
 from decimal import Decimal
 
 # Format: model_name -> (input_per_mtok_usd, output_per_mtok_usd)
+# Source per 2026-05 (verified web search):
+# - Anthropic: https://www.anthropic.com/pricing
+# - Mistral:   https://mistral.ai/pricing
 PRICES: dict[str, tuple[Decimal, Decimal]] = {
-    # Anthropic Claude 4.x (per 2026-05)
+    # Anthropic Claude 4.x
     "claude-haiku-4-5":  (Decimal("1.00"), Decimal("5.00")),
     "claude-sonnet-4-6": (Decimal("3.00"), Decimal("15.00")),
     "claude-opus-4-7":   (Decimal("15.00"), Decimal("75.00")),
-    # Mistral
+    # Mistral (May 2026 rates -- Large 3 turun signifikan)
     "mistral-ocr-latest":   (Decimal("0.10"), Decimal("0.30")),
-    "mistral-large-latest": (Decimal("2.00"), Decimal("6.00")),
-    "mistral-small-latest": (Decimal("0.20"), Decimal("0.60")),
+    # Aliases yg di-resolve API server-side ke versi terbaru
+    "mistral-large-latest": (Decimal("0.50"), Decimal("1.50")),  # alias -> Large 3
+    "mistral-small-latest": (Decimal("0.15"), Decimal("0.60")),  # alias -> Small 4
+    "mistral-medium-latest": (Decimal("1.50"), Decimal("7.50")),
+    # Versi konkret (utk fine-grained tracking)
+    "mistral-large-2512": (Decimal("0.50"), Decimal("1.50")),    # Mistral Large 3
+    "mistral-small-2603": (Decimal("0.15"), Decimal("0.60")),    # Mistral Small 4
+    "mistral-large-2411": (Decimal("2.00"), Decimal("6.00")),    # Large 2.1 (older)
+    "pixtral-large-latest": (Decimal("2.00"), Decimal("6.00")),  # Vision (older)
+    # Ministral (super murah)
+    "ministral-8b-latest": (Decimal("0.10"), Decimal("0.10")),
+    "ministral-3b-latest": (Decimal("0.04"), Decimal("0.04")),
 }
 
 _FALLBACK = (Decimal("5"), Decimal("25"))

@@ -646,7 +646,12 @@ export function TransactionForm({
                       />
                     </div>
                     <AISuggestCategoryButton
-                      getDescription={() => watch("description") || ""}
+                      getContext={() => ({
+                        description: watch("description") || null,
+                        party_name: watch("party_name") || null,
+                        amount: watch("amount") || null,
+                        kind: watch("kind") || null,
+                      })}
                       direction={currentType === "IN" ? "IN" : "OUT"}
                       onSuggested={(id) => setValue("category_id", id, { shouldDirty: true })}
                     />
@@ -806,28 +811,49 @@ function Field({ label, required, hint, error, children }: FieldProps) {
 
 
 /**
- * Tombol AI saran kategori. Baca description dari form, panggil
- * /ai/suggest-category, set category_id kalau confidence >= 0.5.
- * Audit 2026-05-23 UX integration AI-1.
+ * Tombol AI saran kategori. Baca konteks form (description, party_name,
+ * amount, kind) -> /ai/suggest-category -> setValue category_id.
+ *
+ * Audit 2026-05-23 UX integration AI-1 + perbaikan konteks:
+ * sebelumnya cuma description (sering kosong saat user masih input
+ * amount). Sekarang AI dapat sinyal dari party_name + amount + kind
+ * juga -- bisa suggest walau description belum diisi (mis. cuma vendor
+ * 'PT Beton Jaya' + amount 5jt = strong signal "Material Beton").
  */
 function AISuggestCategoryButton({
-  getDescription,
+  getContext,
   direction,
   onSuggested,
 }: {
-  getDescription: () => string
+  getContext: () => {
+    description: string | null
+    party_name: string | null
+    amount: number | string | null
+    kind: string | null
+  }
   direction: "IN" | "OUT"
   onSuggested: (id: number | null) => void
 }) {
   const suggest = useSuggestCategory()
   const handleClick = async () => {
-    const desc = getDescription().trim()
-    if (desc.length < 3) {
-      toast.error("Isi deskripsi dulu (min 3 karakter)")
+    const ctx = getContext()
+    // Minimum: salah satu dari description atau party_name harus ada.
+    const hasDesc = (ctx.description || "").trim().length >= 3
+    const hasParty = (ctx.party_name || "").trim().length >= 2
+    if (!hasDesc && !hasParty) {
+      toast.error("Isi deskripsi atau vendor/klien dulu", {
+        description: "AI butuh konteks (min 3 huruf deskripsi atau 2 huruf nama vendor).",
+      })
       return
     }
     try {
-      const result = await suggest.mutateAsync({ description: desc, direction })
+      const result = await suggest.mutateAsync({
+        description: ctx.description,
+        party_name: ctx.party_name,
+        amount: ctx.amount,
+        kind: ctx.kind,
+        direction,
+      })
       if (result.category_id == null) {
         toast.message("Tdk ada kategori cocok", { description: result.reason })
         return

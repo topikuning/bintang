@@ -59,9 +59,11 @@ class LLMResponse:
 
 # Model hint -> resolution rule.
 # "fast" = cheapest available. "smart" = best quality.
+# Urutan candidates di-tweak runtime berdasar AI_DEFAULT_PROVIDER setting.
+# Default 'mistral' (lebih murah) per user req 2026-05-23.
 _MODEL_HINTS = {
-    "fast":  ["claude-haiku-4-5", "mistral-small-latest"],
-    "smart": ["claude-sonnet-4-6", "mistral-large-latest"],
+    "fast":  ["mistral-small-latest", "claude-haiku-4-5"],
+    "smart": ["mistral-large-latest", "claude-sonnet-4-6"],
 }
 
 
@@ -71,7 +73,9 @@ def _resolve_model(hint: str | None) -> tuple[str, str]:
     Resolution:
     - Explicit "claude-*" -> claude.
     - Explicit "mistral-*" -> mistral.
-    - "fast"/"smart" -> first available dari list (cek API key).
+    - "fast"/"smart" -> first available, urutan ditentukan oleh
+      AI_DEFAULT_PROVIDER setting. Kalau provider default = mistral,
+      coba mistral dulu; kalau key tdk ada, fallback ke claude.
     - None -> default fast.
     """
     if hint and hint.startswith("claude-"):
@@ -79,6 +83,15 @@ def _resolve_model(hint: str | None) -> tuple[str, str]:
     if hint and hint.startswith("mistral-"):
         return hint, "mistral"
     candidates = _MODEL_HINTS.get(hint or "fast", _MODEL_HINTS["fast"])
+    # Reorder berdasar AI_DEFAULT_PROVIDER. Default 'mistral' (murah).
+    default_provider = (get_setting("AI_DEFAULT_PROVIDER") or "mistral").lower()
+    if default_provider not in ("mistral", "claude"):
+        default_provider = "mistral"
+    # Stable-sort: default_provider candidates dulu, lalu yg lain.
+    candidates = sorted(
+        candidates,
+        key=lambda m: 0 if m.startswith(f"{default_provider}-") else 1,
+    )
     for model in candidates:
         provider = "claude" if model.startswith("claude-") else "mistral"
         key_setting = (
@@ -144,7 +157,13 @@ async def _call_mistral(
     max_tokens: int,
     timeout: float,
 ) -> tuple[str, dict | None, int, int]:
-    """Return (text, structured, input_tokens, output_tokens)."""
+    """Return (text, structured, input_tokens, output_tokens).
+
+    Audit 2026-05-23: upgrade ke `response_format.type=json_schema`
+    (Mistral Custom Structured Outputs, GA 2025). Sebelumnya pakai
+    'json_object' + instruksi schema di system prompt -- kurang strict.
+    Reference: https://docs.mistral.ai/capabilities/structured_output/custom
+    """
     import httpx
     import json as _json
     api_key = get_setting("MISTRAL_API_KEY")
@@ -154,20 +173,21 @@ async def _call_mistral(
     msgs.append({"role": "user", "content": prompt})
     payload: dict[str, Any] = {
         "model": model, "messages": msgs, "max_tokens": max_tokens,
+        "temperature": 0,  # deterministic utk structured output
     }
     if json_schema:
-        # Mistral structured output via response_format=json_object +
-        # instruksi schema di system prompt (Mistral tdk punya tool_use
-        # se-strict Claude).
-        payload["response_format"] = {"type": "json_object"}
-        schema_hint = (
-            "WAJIB respond dgn JSON object yg match schema:\n"
-            + _json.dumps(json_schema)
-        )
-        if system:
-            msgs[0]["content"] = msgs[0]["content"] + "\n\n" + schema_hint
-        else:
-            msgs.insert(0, {"role": "system", "content": schema_hint})
+        # Mistral Custom Structured Outputs. Schema di-pass via
+        # response_format.json_schema (bukan tool_use spt Claude).
+        # `strict: true` memaksa Mistral konform schema. Lebih reliable
+        # drpd 'json_object' mode lama.
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "extraction",
+                "schema": {**json_schema, "additionalProperties": False},
+                "strict": True,
+            },
+        }
     async with httpx.AsyncClient(timeout=timeout) as hx:
         r = await hx.post(
             "https://api.mistral.ai/v1/chat/completions",

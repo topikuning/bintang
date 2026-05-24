@@ -39,15 +39,19 @@ async def run(
     db: AsyncSession,
     *,
     user_id: int,
-    description: str,
+    description: str | None = None,
     direction: str | None = None,  # "IN" / "OUT" filter kategori
+    # Audit 2026-05-23: konteks tambahan supaya AI tdk cuma rely di
+    # description (sering kosong saat user masih mengetik). party_name +
+    # amount + kind = sinyal kuat utk kategorisasi.
+    party_name: str | None = None,
+    amount: str | float | int | None = None,
+    kind: str | None = None,  # INVOICE_PAYMENT / DIRECT_EXPENSE / CASH_ADVANCE
 ) -> dict:
-    """Sarankan kategori utk `description`.
+    """Sarankan kategori dr konteks transaksi.
 
-    direction: kalau diset, filter list kategori yg cocok arah kas.
-
-    Return: {category_id, category_name, confidence, reason}.
-    category_name di-resolve setelah LLM return -- ID validation.
+    Minimal salah satu dari description / party_name harus terisi.
+    Kalau dua-duanya kosong, return null tanpa panggil AI (hemat).
     """
     # Load kategori. Filter by type kalau direction diset.
     stmt = select(Category.id, Category.name, Category.type).where(
@@ -64,11 +68,31 @@ async def run(
             "confidence": 0, "reason": "Tdk ada kategori di database.",
         }
 
+    # Minimum signal: harus ada description atau party_name
+    desc_clean = (description or "").strip()
+    party_clean = (party_name or "").strip()
+    if not desc_clean and not party_clean:
+        return {
+            "category_id": None, "category_name": None,
+            "confidence": 0,
+            "reason": "Isi deskripsi atau nama vendor/klien dulu supaya AI punya konteks.",
+        }
+
     cats_str = "\n".join(
         f"- ID {cid}: {name} ({ctype.value})" for cid, name, ctype in cats
     )
+    # Build context lines (skip yg kosong)
+    ctx_lines = []
+    if desc_clean:
+        ctx_lines.append(f"Deskripsi: {desc_clean}")
+    if party_clean:
+        ctx_lines.append(f"Vendor/Pihak: {party_clean}")
+    if amount:
+        ctx_lines.append(f"Nominal: Rp {amount}")
+    if kind:
+        ctx_lines.append(f"Jenis tx: {kind}")
     prompt = (
-        f"Deskripsi transaksi:\n{description}\n\n"
+        f"Konteks transaksi:\n" + "\n".join(ctx_lines) + "\n\n"
         f"Pilihan kategori:\n{cats_str}\n\n"
         "Pilih SATU kategori paling cocok."
     )

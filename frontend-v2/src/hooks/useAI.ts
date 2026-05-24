@@ -26,7 +26,11 @@ export interface CategorySuggestResult {
 export function useSuggestCategory() {
   return useMutation({
     mutationFn: async (input: {
-      description: string
+      // Minimum salah satu dr description / party_name harus terisi.
+      description?: string | null
+      party_name?: string | null
+      amount?: string | number | null
+      kind?: string | null
       direction?: "IN" | "OUT"
     }): Promise<CategorySuggestResult> => {
       const { data } = await api.post<CategorySuggestResult>(

@@ -67,6 +67,27 @@ SETTING_REGISTRY: dict[str, dict[str, Any]] = {
         "label": "Model Mistral (opsional override)",
         "hint": "Default mistral-ocr-latest. Kosongkan utk pakai default.",
     },
+    "OCR_FALLBACK_ENABLED": {
+        "group": "ocr", "secret": False,
+        "label": "OCR Fallback Mistral→Claude",
+        "hint": "true/false. Default false (hormati pilihan engine). Set true "
+                "kalau mau auto-retry ke Claude saat Mistral confidence rendah.",
+    },
+    "OCR_TESSERACT_ENABLED": {
+        "group": "ocr", "secret": False,
+        "label": "Tesseract Pre-pass",
+        "hint": "true/false. Default false. Set true utk gratis cek receipt printed "
+                "via Tesseract dulu (butuh tesseract-ocr binary di OS).",
+    },
+    # AI broader (selain OCR) -- audit 2026-05-23
+    "AI_DEFAULT_PROVIDER": {
+        "group": "ai", "secret": False,
+        "label": "Provider AI Default",
+        "hint": "mistral / claude. Default 'mistral' (lebih murah). Dipakai utk "
+                "semua fitur AI selain OCR (saran kategori, justifier, PO cover, "
+                "ringkasan, dll). Kalau API key provider yg dipilih tdk tersedia, "
+                "auto-fallback ke yg lain.",
+    },
     # Telegram
     "TELEGRAM_BOT_TOKEN": {
         "group": "telegram", "secret": True,
