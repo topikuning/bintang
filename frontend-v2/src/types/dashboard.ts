@@ -176,6 +176,11 @@ export interface GlobalDashboardResponse {
   }
   active_projects: number
   total_projects: number
+  /** Audit 2026-05-24: jumlah proyek SELESAI/DIBATALKAN yg di-exclude
+   *  dari warning counters. FE pakai utk hint + toggle. */
+  closed_count?: number
+  /** Echo dari backend: filter currently active? */
+  include_closed?: boolean
   minus_projects: number
   pending_count: number
   pending_total: number

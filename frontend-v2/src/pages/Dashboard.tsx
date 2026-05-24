@@ -65,14 +65,18 @@ function GlobalDashboard() {
   const [locations, setLocations] = useState<string[]>([])
   const [clientNames, setClientNames] = useState<string[]>([])
   const [funderIds, setFunderIds] = useState<number[]>([])
+  // Audit 2026-05-24: toggle "Tampilkan proyek selesai" -- default
+  // operational view (exclude SELESAI/DIBATALKAN dari warning counters).
+  const [includeClosed, setIncludeClosed] = useState(false)
 
   const params = useMemo(
     () => ({
       location: locations.length ? locations : undefined,
       client_name: clientNames.length ? clientNames : undefined,
       funder_id: funderIds.length ? funderIds : undefined,
+      include_closed: includeClosed || undefined,
     }),
-    [locations, clientNames, funderIds],
+    [locations, clientNames, funderIds, includeClosed],
   )
 
   const q = useGlobalDashboard(params)
@@ -168,6 +172,26 @@ function GlobalDashboard() {
           emptyMessage="Belum ada pendana di-link ke proyek"
         />
       </div>
+
+      {/* Toggle proyek selesai + hint. Audit 2026-05-24: warning counters
+          exclude SELESAI/DIBATALKAN by default ("tagihan dianggap clear
+          saat proyek selesai"). User bisa toggle utk audit retrospective. */}
+      {(d.closed_count ?? 0) > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-md border bg-surface px-3 py-2 text-[12px]">
+          <span className="text-ink-600">
+            {d.include_closed
+              ? `Termasuk ${d.closed_count} proyek selesai/dibatalkan di warning counter.`
+              : `${d.closed_count} proyek selesai/dibatalkan tidak ditampilkan di warning.`}
+          </span>
+          <button
+            type="button"
+            onClick={() => setIncludeClosed((v) => !v)}
+            className="rounded border border-brand-300 px-2 py-0.5 text-brand-700 hover:bg-brand-50"
+          >
+            {d.include_closed ? "Sembunyikan" : "Tampilkan semua"}
+          </button>
+        </div>
+      )}
 
       {d.warnings.length > 0 && <WarningBanner warnings={d.warnings} />}
 
