@@ -170,6 +170,7 @@ def _full_options():
 @router.get("", response_model=Page[InvoiceOut])
 async def list_invoices(
     project_id: list[int] | None = Query(None),
+    company_id: int | None = None,
     type: str | None = None,
     status: InvoiceStatus | None = None,
     vendor_client_id: int | None = None,
@@ -191,6 +192,10 @@ async def list_invoices(
         for pid in project_id:
             await ensure_project_access(db, user, pid)
         stmt = stmt.where(Invoice.project_id.in_(project_id))
+    if company_id:
+        from app.models.models import Project as _P
+        co_pids_subq = select(_P.id).where(_P.company_id == company_id).scalar_subquery()
+        stmt = stmt.where(Invoice.project_id.in_(co_pids_subq))
     if type:
         stmt = stmt.where(Invoice.type == type)
     if status:

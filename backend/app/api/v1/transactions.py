@@ -181,6 +181,7 @@ async def _serialize_with_allocs(db: AsyncSession, t: Transaction) -> Transactio
 @router.get("", response_model=Page[TransactionOut])
 async def list_transactions(
     project_id: list[int] | None = Query(None),
+    company_id: int | None = None,
     type: TxnType | None = None,
     status: TxnStatus | None = None,
     category_id: int | None = None,
@@ -224,6 +225,11 @@ async def list_transactions(
         for pid in project_id:
             await ensure_project_access(db, user, pid)
         stmt = stmt.where(Transaction.project_id.in_(project_id))
+    if company_id:
+        # Filter via Project.company_id. Subquery: project IDs di company tsb.
+        from app.models.models import Project as _P
+        co_pids_subq = select(_P.id).where(_P.company_id == company_id).scalar_subquery()
+        stmt = stmt.where(Transaction.project_id.in_(co_pids_subq))
     if type:
         stmt = stmt.where(Transaction.type == type)
     if status:

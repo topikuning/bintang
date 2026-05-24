@@ -6,12 +6,20 @@ import { useAuthStore } from "@/store/auth"
 import { api, apiErrorMessage } from "@/lib/api"
 import { fmtIDR, fmtDate } from "@/lib/format"
 import { usePageTitle } from "@/hooks/usePageTitle"
+import { useCompanies } from "@/hooks/useCompanies"
+import { useProjects } from "@/hooks/useProjects"
 import { Button } from "@/components/ui/button"
+import { Select } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/data/EmptyState"
 import { ErrorState } from "@/components/data/ErrorState"
 import { toast } from "@/components/ui/sonner"
 import { cn } from "@/lib/utils"
+
+interface BulkFilters {
+  company_id: number | null
+  project_id: number | null
+}
 
 /**
  * Halaman bulk approval utk admin. 3 tab:
@@ -36,6 +44,10 @@ export function BulkApprovalPage() {
   const role = useAuthStore((s) => s.user?.role)
   const isAdmin = role === "SUPERADMIN" || role === "CENTRAL_ADMIN"
   const [tab, setTab] = useState<TabKey>("tx")
+  // Audit 2026-05-23 user req: filter per perusahaan / proyek.
+  const [filters, setFilters] = useState<BulkFilters>({
+    company_id: null, project_id: null,
+  })
 
   if (!isAdmin) {
     return (
@@ -57,7 +69,9 @@ export function BulkApprovalPage() {
         </p>
       </div>
 
-      <div className="flex gap-1 border-b border-ink-200 mt-3">
+      <FilterBar value={filters} onChange={setFilters} />
+
+      <div className="flex gap-1 border-b border-ink-200 mt-1">
         <TabButton active={tab === "tx"} onClick={() => setTab("tx")} icon={CheckCheck}>
           Transaksi
         </TabButton>
@@ -69,9 +83,64 @@ export function BulkApprovalPage() {
         </TabButton>
       </div>
 
-      {tab === "tx" && <BulkTxPanel />}
-      {tab === "po" && <BulkPoPanel />}
-      {tab === "invoice" && <BulkInvoicePanel />}
+      {tab === "tx" && <BulkTxPanel filters={filters} />}
+      {tab === "po" && <BulkPoPanel filters={filters} />}
+      {tab === "invoice" && <BulkInvoicePanel filters={filters} />}
+    </div>
+  )
+}
+
+function FilterBar({
+  value,
+  onChange,
+}: {
+  value: BulkFilters
+  onChange: (v: BulkFilters) => void
+}) {
+  const companies = useCompanies()
+  // Filter project list by company kalau ada.
+  const projects = useProjects(
+    value.company_id ? { company_id: value.company_id } : {},
+  )
+  return (
+    <div className="rounded-md border bg-surface p-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+      <div className="flex flex-col gap-1">
+        <label className="text-[11px] uppercase tracking-wider text-ink-500">
+          Filter Perusahaan
+        </label>
+        <Select
+          value={value.company_id ?? ""}
+          onChange={(e) => {
+            const v = e.target.value ? Number(e.target.value) : null
+            // Saat company berubah, reset project_id (avoid stale).
+            onChange({ company_id: v, project_id: null })
+          }}
+        >
+          <option value="">— Semua Perusahaan —</option>
+          {(companies.data?.items ?? []).map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </Select>
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-[11px] uppercase tracking-wider text-ink-500">
+          Filter Proyek
+        </label>
+        <Select
+          value={value.project_id ?? ""}
+          onChange={(e) => {
+            const v = e.target.value ? Number(e.target.value) : null
+            onChange({ ...value, project_id: v })
+          }}
+        >
+          <option value="">— Semua Proyek —</option>
+          {(projects.data?.items ?? []).map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.code} · {p.name}
+            </option>
+          ))}
+        </Select>
+      </div>
     </div>
   )
 }
@@ -108,18 +177,21 @@ function TabButton({
 // ============================================================
 // TX panel
 // ============================================================
-function BulkTxPanel() {
+function BulkTxPanel({ filters }: { filters: BulkFilters }) {
   const qc = useQueryClient()
   const [selected, setSelected] = useState<Set<number>>(new Set())
 
   const listQ = useQuery({
-    queryKey: ["bulk-approval", "tx", "pending"],
+    queryKey: ["bulk-approval", "tx", "pending", filters],
     queryFn: async () => {
       // Backend bulk_verify accept DRAFT + SUBMITTED. Fetch keduanya
       // (list endpoint cuma terima 1 status, jadi 2 query lalu merge).
+      const baseParams: Record<string, unknown> = { size: 200 }
+      if (filters.project_id) baseParams.project_id = filters.project_id
+      if (filters.company_id) baseParams.company_id = filters.company_id
       const [draftRes, submittedRes] = await Promise.all([
-        api.get("/transactions", { params: { status: "DRAFT", size: 200 } }),
-        api.get("/transactions", { params: { status: "SUBMITTED", size: 200 } }),
+        api.get("/transactions", { params: { ...baseParams, status: "DRAFT" } }),
+        api.get("/transactions", { params: { ...baseParams, status: "SUBMITTED" } }),
       ])
       const merged = [
         ...(submittedRes.data?.items ?? []),  // submitted dulu (lebih prioritas)
@@ -187,17 +259,20 @@ function BulkTxPanel() {
 // ============================================================
 // PO panel
 // ============================================================
-function BulkPoPanel() {
+function BulkPoPanel({ filters }: { filters: BulkFilters }) {
   const qc = useQueryClient()
   const [selected, setSelected] = useState<Set<number>>(new Set())
 
   const listQ = useQuery({
-    queryKey: ["bulk-approval", "po", "pending"],
+    queryKey: ["bulk-approval", "po", "pending", filters],
     queryFn: async () => {
       // Backend bulk_approve accept DRAFT + ISSUED. Fetch keduanya.
+      const baseParams: Record<string, unknown> = { size: 200 }
+      if (filters.project_id) baseParams.project_id = filters.project_id
+      if (filters.company_id) baseParams.company_id = filters.company_id
       const [draftRes, issuedRes] = await Promise.all([
-        api.get("/purchase-orders", { params: { status: "DRAFT", size: 200 } }),
-        api.get("/purchase-orders", { params: { status: "ISSUED", size: 200 } }),
+        api.get("/purchase-orders", { params: { ...baseParams, status: "DRAFT" } }),
+        api.get("/purchase-orders", { params: { ...baseParams, status: "ISSUED" } }),
       ])
       const merged = [
         ...(issuedRes.data?.items ?? []),
@@ -262,16 +337,17 @@ function BulkPoPanel() {
 // ============================================================
 // Invoice panel
 // ============================================================
-function BulkInvoicePanel() {
+function BulkInvoicePanel({ filters }: { filters: BulkFilters }) {
   const qc = useQueryClient()
   const [selected, setSelected] = useState<Set<number>>(new Set())
 
   const listQ = useQuery({
-    queryKey: ["bulk-approval", "invoice", "draft"],
+    queryKey: ["bulk-approval", "invoice", "draft", filters],
     queryFn: async () => {
-      const { data } = await api.get("/invoices", {
-        params: { status: "DRAFT", size: 200 },
-      })
+      const params: Record<string, unknown> = { status: "DRAFT", size: 200 }
+      if (filters.project_id) params.project_id = filters.project_id
+      if (filters.company_id) params.company_id = filters.company_id
+      const { data } = await api.get("/invoices", { params })
       return data as { items: InvoiceItem[]; total: number }
     },
   })
