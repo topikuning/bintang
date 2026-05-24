@@ -62,6 +62,7 @@ def _project_finance_breakdown(
     biaya_aktual: Decimal,
     biaya_proyeksi: Decimal,
     marketing_aktual: Decimal = Decimal("0"),
+    profit_share_actual: Decimal = Decimal("0"),
 ) -> dict:
     """Hitung DPP, PPn, PPh, Nilai Cair, Marketing, dan profit.
 
@@ -72,19 +73,21 @@ def _project_finance_breakdown(
         Nilai Cair = Nilai Kontrak - (PPn + PPh)
         Marketing Budget = Nilai Cair * Marketing%
 
-    Audit 2026-05-23 fix double-count marketing:
-        Marketing Aktual = SUM TX OUT VERIFIED dgn category.is_marketing=True
-        Biaya Aktual Non-Marketing = Biaya Aktual TOTAL - Marketing Aktual
+    Audit 2026-05-23 fix:
+        * Marketing aktual sudah include di Biaya Aktual (no double count).
+        * Bagi hasil (profit_share) = DISTRIBUSI profit, BUKAN expense.
+          Profit operating display = SEBELUM dikurangi bagi hasil
+          (user req: 'TX bagi hasil cuma sync, tdk kurangi profit').
 
     Profit:
-        Profit Saat Ini   = Nilai Cair - Biaya Aktual TOTAL
-            (= Nilai Cair - Marketing Aktual - Biaya Non-Marketing.
-             Marketing TIDAK di-subtract terpisah karena sudah include
-             di Biaya Aktual TOTAL -- ini fix double count user lapor.)
-        Profit Proyeksi   = Nilai Cair - max(Marketing Budget, Marketing Aktual) -
-                            (Biaya Proyeksi - Marketing Aktual yg sudah ke-recognize)
-            Disederhanakan: kalau marketing_aktual >= budget, pakai aktual.
-            Kalau aktual < budget, asumsi sisa = reserve yg akan terpakai.
+        biaya_excl_share = biaya_aktual - profit_share_actual
+            (expense yg kurangi profit operasi: marketing + denda + operating).
+        profit_now (OPERATING)   = Nilai Cair - biaya_excl_share
+            -- profit sebelum distribusi ke mitra.
+        profit_net (AFTER SHARE) = Nilai Cair - biaya_aktual
+            -- laba akhir setelah bagi hasil dibayar.
+        profit_proj (TARGET)     = Nilai Cair - max(marketing_budget,
+                                    marketing_actual) - biaya_proyeksi.
     """
     one = Decimal("1")
     hundred = Decimal("100")
@@ -97,14 +100,13 @@ def _project_finance_breakdown(
     cair = nilai_kontrak - (ppn + pph)
     marketing_budget = cair * mkt_rate
     marketing_used = max(marketing_aktual, Decimal("0"))
+    profit_share_used = max(profit_share_actual, Decimal("0"))
     biaya_aktual_non_marketing = max(biaya_aktual - marketing_used, Decimal("0"))
+    # Bagi hasil JANGAN kurangi profit operating (audit user req).
+    biaya_excl_share = max(biaya_aktual - profit_share_used, Decimal("0"))
 
-    # Profit Saat Ini: pakai aktual TOTAL (sudah include marketing).
-    profit_now = cair - biaya_aktual
-    # Profit Proyeksi: marketing reserve = max(budget, aktual).
-    # Biaya proyeksi diasumsikan EXCLUDE marketing (konvensi lama --
-    # user input budget operasional, marketing reserve formula).
-    # Kalau marketing_aktual > budget, pakai aktual sbg reservasi.
+    profit_now = cair - biaya_excl_share          # operating, sebelum bagi hasil
+    profit_net = cair - biaya_aktual              # net, setelah bagi hasil
     marketing_reserve = max(marketing_budget, marketing_used)
     profit_proj = cair - marketing_reserve - biaya_proyeksi
 
@@ -117,16 +119,18 @@ def _project_finance_breakdown(
         "ppn": float(ppn),
         "pph": float(pph),
         "nilai_cair": float(cair),
-        # Backward-compat: 'marketing' tetap = formula budget.
+        # Backward-compat alias.
         "marketing": float(marketing_budget),
-        # New fields (audit 2026-05-23):
         "marketing_budget": float(marketing_budget),
         "marketing_aktual": float(marketing_used),
         "marketing_variance": float(marketing_used - marketing_budget),
         "biaya_aktual": float(biaya_aktual),
         "biaya_aktual_non_marketing": float(biaya_aktual_non_marketing),
         "biaya_proyeksi": float(biaya_proyeksi),
-        "profit_now": float(profit_now),
+        # Profit fields:
+        "profit_now": float(profit_now),                # operating
+        "profit_net": float(profit_net),                # after profit_share
+        "profit_share_paid": float(profit_share_used),  # info distribusi
         "profit_proj": float(profit_proj),
     }
 
@@ -720,6 +724,7 @@ async def project_dashboard(
         biaya_aktual=Decimal(totals["total_out"] or 0),
         biaya_proyeksi=Decimal(p.budget_amount or 0),
         marketing_aktual=expense_breakdown["marketing"],
+        profit_share_actual=expense_breakdown["profit_share"],
     )
     # Tambah breakdown komposisi biaya utk transparansi distribusi
     # (denda + bagi hasil + operating + marketing).

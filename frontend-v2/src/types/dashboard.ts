@@ -44,6 +44,10 @@ export interface ProjectFinance {
   biaya_aktual: number
   biaya_proyeksi: number
   profit_now: number
+  /** Audit 2026-05-23: profit setelah bagi hasil dibayar. */
+  profit_net?: number
+  /** Bagi hasil yg sudah ditransaksikan (info, tdk kurangi profit_now). */
+  profit_share_paid?: number
   profit_proj: number
   // Audit 2026-05-23: marketing dipecah utk cegah double-count.
   marketing_budget: number

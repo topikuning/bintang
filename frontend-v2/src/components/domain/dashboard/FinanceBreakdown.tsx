@@ -102,13 +102,17 @@ export function FinanceBreakdown({ finance, className }: FinanceBreakdownProps) 
       <ProfitComparison
         profitNow={finance.profit_now}
         profitProj={finance.profit_proj}
+        profitNet={finance.profit_net}
+        profitSharePaid={finance.profit_share_paid}
       />
 
       <p className="mt-3 text-[11px] leading-relaxed text-ink-500">
         DPP = Nilai Kontrak ÷ (1 + PPn%). Profit Saat Ini = Nilai Cair −
-        Biaya Aktual (sudah include denda + bagi hasil + marketing aktual).
-        Sisa budget marketing yg tdk dialokasi otomatis tercermin di profit.
-        Tag peran akuntansi di master Kategori.
+        Biaya operasi (marketing aktual + denda + operasional). Bagi
+        hasil TIDAK kurangi Profit Saat Ini -- itu distribusi, bukan
+        biaya. Bagi hasil yg sudah dibayar ditampilkan terpisah +
+        Profit Net (setelah distribusi). Tag peran akuntansi di
+        master Kategori.
       </p>
     </div>
   )
@@ -187,13 +191,20 @@ function ExpenseCompositionCard({
 /**
  * Profit Saat Ini + Proyeksi side-by-side, proporsional.
  * Color-coded berdasar performance vs target. Handle minus dgn warning.
+ *
+ * Profit Saat Ini = profit OPERATING (sebelum bagi hasil dibayar).
+ * Bagi hasil ditampilkan sbg distribusi terpisah + Profit Net (after).
  */
 function ProfitComparison({
   profitNow,
   profitProj,
+  profitNet,
+  profitSharePaid,
 }: {
   profitNow: number
   profitProj: number
+  profitNet?: number
+  profitSharePaid?: number
 }) {
   const minus = profitNow < 0
   const ahead = profitProj > 0 && profitNow >= profitProj
@@ -215,6 +226,9 @@ function ProfitComparison({
     return `Di bawah target (${diffPct.toFixed(0)}%)`
   })()
 
+  const hasShare = (profitSharePaid ?? 0) > 0
+  const netVal = profitNet ?? profitNow
+
   return (
     <div className="mt-4 space-y-2">
       {minus && (
@@ -223,9 +237,9 @@ function ProfitComparison({
             <span className="text-base">⚠</span>
             <div className="flex-1 text-[12px] text-danger-800">
               <strong className="font-semibold">Proyek minus.</strong>{" "}
-              Tinjau realisasi vs target. Kalau ada denda / bagi hasil
-              yg sudah dibayar, review akunting -- distribusi profit
-              seharusnya nol ketika profit minus.
+              Tinjau realisasi vs target. Kalau ada bagi hasil yg sudah
+              dibayar, review akunting — distribusi profit seharusnya
+              nol ketika operasi minus.
             </div>
           </div>
         </div>
@@ -233,7 +247,7 @@ function ProfitComparison({
 
       {/* Side-by-side proporsional */}
       <div className="grid grid-cols-2 gap-3">
-        {/* Profit Saat Ini -- color-coded */}
+        {/* Profit Saat Ini (operating, sebelum bagi hasil) */}
         <div className={cn("rounded-md border-2 p-3", styles.bg, styles.border)}>
           <div className="flex items-center justify-between gap-2 mb-1">
             <span className={cn("text-[11px] font-semibold uppercase tracking-wider", styles.text)}>
@@ -253,6 +267,11 @@ function ProfitComparison({
           >
             {minus ? `− ${fmtIDR(Math.abs(profitNow))}` : fmtIDR(profitNow)}
           </div>
+          {hasShare && (
+            <div className={cn("mt-1 text-[10px]", styles.text)}>
+              Profit operasional (sebelum distribusi bagi hasil)
+            </div>
+          )}
         </div>
 
         {/* Profit Proyeksi -- reference */}
@@ -273,6 +292,42 @@ function ProfitComparison({
           </div>
         </div>
       </div>
+
+      {/* Bagi hasil distribusi + Profit Net (kalau ada bagi hasil) */}
+      {hasShare && (
+        <div className="mt-2 rounded-md border bg-ink-50/40 p-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-700 mb-1.5">
+            Distribusi Profit
+          </div>
+          <ul className="text-sm divide-y divide-ink-200/60">
+            <li className="flex items-center justify-between gap-3 py-1">
+              <span className="text-[12px] text-ink-600">
+                Bagi Hasil Dibayar
+              </span>
+              <span
+                data-num
+                className="font-mono text-[13px] font-semibold text-brand-700 [font-variant-numeric:tabular-nums]"
+              >
+                − {fmtIDR(profitSharePaid ?? 0)}
+              </span>
+            </li>
+            <li className="flex items-center justify-between gap-3 py-1.5">
+              <span className="text-[12px] font-semibold text-ink-800">
+                Profit Net (setelah distribusi)
+              </span>
+              <span
+                data-num
+                className={cn(
+                  "font-mono text-[14px] font-bold [font-variant-numeric:tabular-nums]",
+                  netVal < 0 ? "text-danger-700" : "text-ink-900",
+                )}
+              >
+                {netVal < 0 ? `− ${fmtIDR(Math.abs(netVal))}` : fmtIDR(netVal)}
+              </span>
+            </li>
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
