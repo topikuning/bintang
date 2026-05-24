@@ -183,6 +183,34 @@ async def test_bulk_issue_invoice(db):
     assert inv1.status == InvoiceStatus.ISSUED
 
 
+# Audit 2026-05-24 regression: mark-paid flow
+# Sebelumnya bug: mark_invoice_paid create tx DRAFT -> alokasi gagal
+# krn allocation policy strict (hanya VERIFIED). User report:
+# "tandai lunas invoice gagal, harus verified dulu" stlh bulk-issue.
+# Fix: tx auto-create sbg VERIFIED + endpoint dibatasi admin.
+@pytest.mark.asyncio
+async def test_mark_paid_after_bulk_issue(db):
+    from app.api.v1.invoices import mark_invoice_paid
+
+    co, p, admin = await _seed(db)
+    inv = Invoice(
+        number="INV/MP", project_id=p.id, type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 24), total=Decimal("500"),
+        status=InvoiceStatus.DRAFT, created_by_id=admin.id,
+    )
+    db.add(inv); await db.commit()
+    # Simulate import -> bulk-issue
+    await bulk_issue_invoices(
+        payload={"ids": [inv.id]}, db=db, user=admin,
+    )
+    await db.refresh(inv)
+    assert inv.status == InvoiceStatus.ISSUED
+
+    # Mark paid -- auto-create tx VERIFIED + allocate
+    result = await mark_invoice_paid(iid=inv.id, db=db, admin=admin)
+    assert result.status == InvoiceStatus.PAID
+
+
 # ---------- HTTP integration: regression guard route ordering ----------
 # Audit 2026-05-24: `/bulk/verify` HARUS register sblm `/{tid}/verify`
 # di transactions.py. Kalau urutan ke-swap, FastAPI parse "bulk" sbg

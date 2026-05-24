@@ -1,4 +1,4 @@
-from datetime import date, date as date_type, datetime
+from datetime import date, date as date_type, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
@@ -497,21 +497,27 @@ async def issue_invoice(
 async def mark_invoice_paid(
     iid: int,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_can_write),
+    admin: User = Depends(require_admin),
 ) -> InvoiceOut:
     """Tandai invoice LUNAS.
 
     Skema baru (M:N allocations):
       1. Hitung outstanding = total - SUM(allocations aktif).
-      2. Kalau outstanding > 0, buat transaksi DRAFT untuk selisih +
+      2. Kalau outstanding > 0, buat transaksi VERIFIED untuk selisih +
          allocation row sebesar outstanding (auto-link via tabel
          `invoice_allocations`, BUKAN lewat `transactions.invoice_id`).
       3. Allocation service akan menaikkan status invoice ke PAID.
+
+    Audit 2026-05-24: tx auto-create HARUS VERIFIED (bukan DRAFT) krn
+    allocation service enforce strict policy (audit #H3 2026-05-22) --
+    hanya VERIFIED yg boleh di-allocate. Endpoint dibatasi admin
+    (SUPERADMIN/CENTRAL_ADMIN) krn assertif "invoice lunas" = setara
+    verify tx pembayaran -- bypass workflow DRAFT->SUBMITTED->VERIFIED.
     """
     inv = await db.get(Invoice, iid)
     if not inv or inv.deleted_at is not None:
         raise HTTPException(404, "not_found")
-    await ensure_project_access(db, user, inv.project_id)
+    await ensure_project_access(db, admin, inv.project_id)
     if inv.status == InvoiceStatus.CANCELLED:
         raise HTTPException(409, "invoice_cancelled")
 
@@ -525,6 +531,7 @@ async def mark_invoice_paid(
     note_msg = None
     if outstanding > 0:
         tx_type = TxnType.OUT if inv.type == InvoiceType.IN else TxnType.IN
+        now = datetime.now(timezone.utc)
         new_tx = Transaction(
             project_id=inv.project_id,
             tx_date=date.today(),
@@ -534,12 +541,14 @@ async def mark_invoice_paid(
             vendor_client_id=inv.vendor_client_id,
             payment_method=PaymentMethod.TRANSFER,
             description=f"Pelunasan invoice {inv.number}",
-            status=TxnStatus.DRAFT,
-            created_by_id=user.id,
+            status=TxnStatus.VERIFIED,
+            verified_by_id=admin.id,
+            verified_at=now,
+            created_by_id=admin.id,
         )
         db.add(new_tx)
         await db.flush()
-        await log(db, user_id=user.id, entity="transaction", entity_id=new_tx.id,
+        await log(db, user_id=admin.id, entity="transaction", entity_id=new_tx.id,
                   action=AuditAction.CREATE, after=snapshot(new_tx),
                   note=f"Auto-create dari mark_paid invoice {inv.number}")
         # Buat allocation row sebesar outstanding (lewat service supaya
@@ -550,14 +559,14 @@ async def mark_invoice_paid(
             invoice_id=inv.id,
             items=[(new_tx.id, outstanding)],
             note=f"auto mark-paid",
-            user_id=user.id,
+            user_id=admin.id,
         )
         note_msg = f"auto-create transaksi {tx_type.value} Rp{outstanding} untuk pelunasan"
     else:
         # sudah lunas via alokasi sebelumnya; pastikan status PAID
         inv.status = InvoiceStatus.PAID
 
-    await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
+    await log(db, user_id=admin.id, entity="invoice", entity_id=inv.id,
               action=AuditAction.UPDATE, note=note_msg or "marked paid")
     await db.commit()
     res = await db.execute(
