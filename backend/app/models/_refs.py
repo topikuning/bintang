@@ -186,6 +186,13 @@ class Category(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     type: Mapped[CategoryType] = mapped_column(Enum(CategoryType), nullable=False)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Audit 2026-05-23: flag kategori marketing. TX OUT dgn category
+    # is_marketing=True akan dipisahkan dari biaya non-marketing di
+    # rincian keuangan proyek -- cegah double count dgn line item
+    # "Marketing 15%" yg formula-based.
+    is_marketing: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="0",
+    )
 
 
 class VendorClient(TimestampMixin, Base):

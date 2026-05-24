@@ -8,6 +8,9 @@ export interface Category {
   name: string
   type: CategoryType
   description: string | null
+  /** Audit 2026-05-23: flag kategori marketing. TX OUT dgn category
+   *  ini di-pisah dr biaya non-marketing di rincian proyek. */
+  is_marketing?: boolean
 }
 
 export function useCategories(params: { type?: CategoryType; q?: string } = {}) {

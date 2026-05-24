@@ -153,6 +153,9 @@ class CategoryBase(BaseModel):
     name: str
     type: CategoryType
     description: str | None = None
+    # Audit 2026-05-23: flag kategori marketing. TX dgn category ini
+    # akan dipisahkan dari biaya non-marketing di rincian proyek.
+    is_marketing: bool = False
 
 
 class CategoryCreate(CategoryBase):
@@ -163,6 +166,7 @@ class CategoryUpdate(BaseModel):
     name: str | None = None
     type: CategoryType | None = None
     description: str | None = None
+    is_marketing: bool | None = None
 
 
 class CategoryOut(CategoryBase):

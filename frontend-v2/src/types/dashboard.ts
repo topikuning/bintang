@@ -33,11 +33,19 @@ export interface ProjectFinance {
   ppn: number
   pph: number
   nilai_cair: number
+  /** Backward-compat alias = marketing_budget (formula). */
   marketing: number
   biaya_aktual: number
   biaya_proyeksi: number
   profit_now: number
   profit_proj: number
+  // Audit 2026-05-23: marketing dipecah utk cegah double-count.
+  marketing_budget: number
+  marketing_aktual: number
+  /** marketing_aktual - marketing_budget. Positif = overspend. */
+  marketing_variance: number
+  /** biaya_aktual - marketing_aktual. */
+  biaya_aktual_non_marketing: number
 }
 
 export interface MonthlyCashflowPoint {

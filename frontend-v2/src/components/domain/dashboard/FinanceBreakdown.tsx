@@ -31,10 +31,14 @@ export function FinanceBreakdown({ finance, className }: FinanceBreakdownProps) 
         <Row label={`PPn (${finance.ppn_pct}%)`} value={-finance.ppn} negative />
         <Row label={`PPh (${finance.pph_pct}%)`} value={-finance.pph} negative />
         <Row label="Nilai Cair" value={finance.nilai_cair} highlight="success" bold />
-        <Row label={`Marketing (${finance.marketing_pct}%)`} value={-finance.marketing} negative />
         <Row label="Biaya Aktual (realisasi)" value={-finance.biaya_aktual} negative />
         <Row label="Biaya Proyeksi (target)" value={-finance.biaya_proyeksi} negative muted />
       </ul>
+
+      {/* Marketing variance -- audit 2026-05-23 cegah double-count.
+          Marketing TIDAK lagi di-subtract terpisah di Profit Saat Ini
+          (biaya_aktual sudah include marketing aktual). */}
+      <MarketingVarianceCard finance={finance} />
 
       <div className="mt-2 grid gap-1.5">
         <ProfitRow
@@ -50,10 +54,70 @@ export function FinanceBreakdown({ finance, className }: FinanceBreakdownProps) 
       </div>
 
       <p className="mt-3 text-[11px] leading-relaxed text-ink-500">
-        DPP = Nilai Kontrak ÷ (1 + PPn%). Profit Saat Ini pakai realisasi
-        pengeluaran; Profit Proyeksi pakai target pengeluaran (budget).
-        Persentase pajak & marketing bisa diubah lewat menu Edit proyek.
+        DPP = Nilai Kontrak ÷ (1 + PPn%). Profit Saat Ini = Nilai Cair −
+        Biaya Aktual (sudah include marketing aktual, tdk double-count).
+        Profit Proyeksi pakai marketing reserve max(budget, aktual) +
+        target pengeluaran. Tag kategori 'marketing' di master Kategori
+        agar TX OUT terkait ter-recognize benar.
       </p>
+    </div>
+  )
+}
+
+function MarketingVarianceCard({ finance }: { finance: ProjectFinance }) {
+  const budget = finance.marketing_budget ?? finance.marketing
+  const aktual = finance.marketing_aktual ?? 0
+  const variance = finance.marketing_variance ?? aktual - budget
+  const usedPct = budget > 0 ? (aktual / budget) * 100 : 0
+  const overspend = variance > 0
+  return (
+    <div className="mt-3 rounded-md border bg-ink-50 p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[12px] font-semibold text-ink-700">
+          Marketing ({finance.marketing_pct}%)
+        </span>
+        {budget > 0 && (
+          <span
+            className={cn(
+              "text-[10px] font-semibold uppercase",
+              overspend ? "text-danger-700" : "text-ink-500",
+            )}
+          >
+            {usedPct.toFixed(0)}% terpakai
+          </span>
+        )}
+      </div>
+      <div className="mt-1.5 grid grid-cols-2 gap-2 text-[12px]">
+        <div className="flex flex-col">
+          <span className="text-ink-500">Budget reserve</span>
+          <span className="font-mono font-semibold text-ink-800 [font-variant-numeric:tabular-nums]">
+            {fmtIDR(budget)}
+          </span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-ink-500">Aktual (tx terkait)</span>
+          <span
+            className={cn(
+              "font-mono font-semibold [font-variant-numeric:tabular-nums]",
+              overspend ? "text-danger-700" : "text-ink-800",
+            )}
+          >
+            {fmtIDR(aktual)}
+          </span>
+        </div>
+      </div>
+      {Math.abs(variance) > 1 && (
+        <div
+          className={cn(
+            "mt-1.5 text-[11px]",
+            overspend ? "text-danger-700" : "text-success-700",
+          )}
+        >
+          {overspend
+            ? `Overspend Rp ${fmtIDR(variance)} dari budget`
+            : `Sisa budget Rp ${fmtIDR(-variance)}`}
+        </div>
+      )}
     </div>
   )
 }

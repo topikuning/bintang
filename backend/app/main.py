@@ -67,6 +67,9 @@ async def _sync_pg_columns(conn) -> None:
         "ALTER TABLE companies ALTER COLUMN bank_account TYPE VARCHAR(500)",
         "ALTER TABLE vendors_clients ALTER COLUMN bank_account TYPE VARCHAR(500)",
         "ALTER TABLE transactions ALTER COLUMN party_account TYPE VARCHAR(500)",
+        # Category marketing flag (audit 2026-05-23) -- cegah double count
+        # marketing di rincian proyek. Migrasi h9e4b2d6f3a8.
+        "ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_marketing BOOLEAN NOT NULL DEFAULT FALSE",
         # Invoice number wajib unik. Drop index lama (non-unique) lalu
         # buat unique index. Tdk pakai DROP IF EXISTS sebelum CREATE
         # supaya idempoten -- kalau sudah unique, CREATE UNIQUE INDEX IF

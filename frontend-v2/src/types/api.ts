@@ -402,6 +402,7 @@ export interface CategoryInput {
   name: string
   type: CategoryType
   description?: string | null
+  is_marketing?: boolean
 }
 
 export type VendorClientType = "VENDOR" | "CLIENT" | "BOTH"

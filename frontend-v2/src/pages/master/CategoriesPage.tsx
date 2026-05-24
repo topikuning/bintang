@@ -35,6 +35,7 @@ const schema = z.object({
   name: z.string().min(1, "Nama wajib"),
   type: z.enum(["IN", "OUT", "BOTH"]),
   description: z.string().nullable().optional(),
+  is_marketing: z.boolean().optional(),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -55,6 +56,7 @@ function buildDefaults(c: Category | null): FormValues {
     name: c?.name ?? "",
     type: (c?.type as CategoryType) ?? "OUT",
     description: c?.description ?? "",
+    is_marketing: c?.is_marketing ?? false,
   }
 }
 
@@ -267,6 +269,7 @@ function CategoryForm({
         name: parsed.data.name,
         type: parsed.data.type,
         description: parsed.data.description?.trim() || null,
+        is_marketing: parsed.data.is_marketing ?? false,
       }
       if (isEdit) {
         await update.mutateAsync(payload)
@@ -306,6 +309,19 @@ function CategoryForm({
       </Field>
       <Field label="Deskripsi" hint="Penjelasan singkat (opsional)">
         <Textarea {...register("description")} rows={2} placeholder="Mis. Pembelian semen, batu, pasir" />
+      </Field>
+      <Field
+        label="Tipe Khusus"
+        hint="Tag 'Marketing' kalau kategori ini dipakai utk TX komisi/fee/bonus marketing. TX terkait akan dipisah dari biaya non-marketing di rincian proyek (cegah double-count dgn reservasi Marketing 15%)."
+      >
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            {...register("is_marketing")}
+            className="h-4 w-4 accent-brand-600"
+          />
+          <span className="text-sm">Kategori Marketing</span>
+        </label>
       </Field>
     </form>
   )

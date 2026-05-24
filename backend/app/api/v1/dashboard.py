@@ -55,17 +55,30 @@ def _project_finance_breakdown(
     marketing_pct: Decimal,
     biaya_aktual: Decimal,
     biaya_proyeksi: Decimal,
+    marketing_aktual: Decimal = Decimal("0"),
 ) -> dict:
-    """Hitung DPP, PPn, PPh, Nilai Cair, Marketing, dan profit (saat ini & proyeksi).
+    """Hitung DPP, PPn, PPh, Nilai Cair, Marketing, dan profit.
 
-    Rumus mengikuti konvensi Indonesia:
+    Rumus (Indonesia):
         DPP = Nilai Kontrak / (1 + PPn%)
         PPn = DPP * PPn%
         PPh = DPP * PPh%
         Nilai Cair = Nilai Kontrak - (PPn + PPh)
-        Marketing = Nilai Cair * Marketing%
-        Profit Saat Ini   = Nilai Cair - (Marketing + Biaya Aktual)
-        Profit Proyeksi   = Nilai Cair - (Marketing + Biaya Proyeksi)
+        Marketing Budget = Nilai Cair * Marketing%
+
+    Audit 2026-05-23 fix double-count marketing:
+        Marketing Aktual = SUM TX OUT VERIFIED dgn category.is_marketing=True
+        Biaya Aktual Non-Marketing = Biaya Aktual TOTAL - Marketing Aktual
+
+    Profit:
+        Profit Saat Ini   = Nilai Cair - Biaya Aktual TOTAL
+            (= Nilai Cair - Marketing Aktual - Biaya Non-Marketing.
+             Marketing TIDAK di-subtract terpisah karena sudah include
+             di Biaya Aktual TOTAL -- ini fix double count user lapor.)
+        Profit Proyeksi   = Nilai Cair - max(Marketing Budget, Marketing Aktual) -
+                            (Biaya Proyeksi - Marketing Aktual yg sudah ke-recognize)
+            Disederhanakan: kalau marketing_aktual >= budget, pakai aktual.
+            Kalau aktual < budget, asumsi sisa = reserve yg akan terpakai.
     """
     one = Decimal("1")
     hundred = Decimal("100")
@@ -76,9 +89,19 @@ def _project_finance_breakdown(
     ppn = dpp * ppn_rate
     pph = dpp * pph_rate
     cair = nilai_kontrak - (ppn + pph)
-    marketing = cair * mkt_rate
-    profit_now = cair - (marketing + biaya_aktual)
-    profit_proj = cair - (marketing + biaya_proyeksi)
+    marketing_budget = cair * mkt_rate
+    marketing_used = max(marketing_aktual, Decimal("0"))
+    biaya_aktual_non_marketing = max(biaya_aktual - marketing_used, Decimal("0"))
+
+    # Profit Saat Ini: pakai aktual TOTAL (sudah include marketing).
+    profit_now = cair - biaya_aktual
+    # Profit Proyeksi: marketing reserve = max(budget, aktual).
+    # Biaya proyeksi diasumsikan EXCLUDE marketing (konvensi lama --
+    # user input budget operasional, marketing reserve formula).
+    # Kalau marketing_aktual > budget, pakai aktual sbg reservasi.
+    marketing_reserve = max(marketing_budget, marketing_used)
+    profit_proj = cair - marketing_reserve - biaya_proyeksi
+
     return {
         "nilai_kontrak": float(nilai_kontrak),
         "ppn_pct": float(ppn_pct),
@@ -88,8 +111,14 @@ def _project_finance_breakdown(
         "ppn": float(ppn),
         "pph": float(pph),
         "nilai_cair": float(cair),
-        "marketing": float(marketing),
+        # Backward-compat: 'marketing' tetap = formula budget.
+        "marketing": float(marketing_budget),
+        # New fields (audit 2026-05-23):
+        "marketing_budget": float(marketing_budget),
+        "marketing_aktual": float(marketing_used),
+        "marketing_variance": float(marketing_used - marketing_budget),
         "biaya_aktual": float(biaya_aktual),
+        "biaya_aktual_non_marketing": float(biaya_aktual_non_marketing),
         "biaya_proyeksi": float(biaya_proyeksi),
         "profit_now": float(profit_now),
         "profit_proj": float(profit_proj),
@@ -665,6 +694,20 @@ async def project_dashboard(
     if unlinked_out_count:
         warnings.append(f"{unlinked_out_count} pengeluaran masih punya sisa belum dialokasi (Rp{unlinked_out_total:,.0f})".replace(",", "."))
 
+    # Marketing aktual: SUM TX OUT VERIFIED di proyek ini dgn
+    # category.is_marketing=True. Audit 2026-05-23 cegah double count.
+    from app.models.models import Category as _Cat
+    mkt_actual_row = (await db.execute(
+        select(func.coalesce(func.sum(Transaction.amount), 0))
+        .join(_Cat, _Cat.id == Transaction.category_id)
+        .where(
+            Transaction.project_id == pid,
+            Transaction.deleted_at.is_(None),
+            Transaction.status == TxnStatus.VERIFIED,
+            Transaction.type == TxnType.OUT,
+            _Cat.is_marketing.is_(True),
+        )
+    )).scalar_one()
     finance = _project_finance_breakdown(
         nilai_kontrak=Decimal(p.project_value or 0),
         ppn_pct=Decimal(p.tax_ppn_pct or 0),
@@ -672,6 +715,7 @@ async def project_dashboard(
         marketing_pct=Decimal(p.marketing_pct or 0),
         biaya_aktual=Decimal(totals["total_out"] or 0),
         biaya_proyeksi=Decimal(p.budget_amount or 0),
+        marketing_aktual=Decimal(mkt_actual_row or 0),
     )
 
     return {
