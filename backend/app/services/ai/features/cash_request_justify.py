@@ -15,19 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.models import CashRequest, Project
 from app.services.ai import chat
-
-SYSTEM_PROMPT = """Kamu PIC operasional perusahaan konstruksi Indonesia.
-
-Tugas: tulis justifikasi pengajuan dana profesional dlm Bahasa Indonesia formal yg memuaskan approver (Central Admin/Superadmin).
-
-Aturan:
-1. 1 paragraf saja (3-5 kalimat).
-2. Hubungkan item-item ke konteks proyek (tahap pekerjaan yg sedang berlangsung).
-3. Sebutkan urgency/timing kalau relevan (mis. "dibutuhkan minggu ini").
-4. Hindari hyperbole. Jangan over-promise hasil.
-5. Tdk perlu salam pembuka/penutup -- ini field notes, bukan surat.
-6. Format paragraf normal, tdk pakai markdown.
-7. Total nilai jangan dibahas (sudah ada di field amount terpisah)."""
+from app.services.ai.prompt_registry import get_prompt
 
 
 async def run(
@@ -72,18 +60,19 @@ async def run(
         f"- {it.get('description', '?')} (Rp {it.get('amount', '?')})"
         for it in items[:15]
     )
-    prompt = (
-        f"Judul pengajuan: {title}\n"
-        f"Proyek: {project.name if project else '-'} "
-        f"({project.code if project else '-'})\n"
-        f"Lokasi: {project.location if project and project.location else '-'}\n\n"
-        f"Item belanja:\n{items_str}\n\n"
-        "Tulis justifikasi profesional 1 paragraf."
+    # Audit 2026-05-24: pakai prompt registry (admin override-able).
+    p = await get_prompt(db, "cash_justify")
+    prompt = p.user_template.format(
+        title=title,
+        project=project.name if project else "-",
+        code=project.code if project else "-",
+        location=project.location if project and project.location else "-",
+        items=items_str,
     )
 
     resp = await chat(
         db, user_id=user_id, feature="ai:cash_justify",
-        system=SYSTEM_PROMPT, prompt=prompt,
+        system=p.system, prompt=prompt,
         model_hint="fast",  # short paragraph, fast model OK
         cache_ttl_days=3,
         rate_limit_max=30, rate_limit_period=60.0,

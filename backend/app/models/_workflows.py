@@ -23,6 +23,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -434,3 +435,27 @@ class RoleMenuPolicy(TimestampMixin, Base):
     menu_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     hidden: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class AIPromptOverride(Base):
+    """SUPERADMIN custom prompt per feature AI. Audit 2026-05-24.
+
+    Default selalu di code (services/ai/prompt_registry.py). Row ini
+    cuma ada kalau admin override. PK = (feature_key, field).
+
+    field: 'system' atau 'user_template'.
+    """
+    __tablename__ = "ai_prompt_overrides"
+
+    feature_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    field: Mapped[str] = mapped_column(String(32), primary_key=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

@@ -21,18 +21,7 @@ from app.models.models import (
 )
 from app.services.ai import chat
 
-SYSTEM_PROMPT = """Kamu CFO assistant perusahaan konstruksi Indonesia.
-
-Tugas: tulis summary harian aktivitas keuangan dalam 1 paragraf executive (3-5 kalimat) Bahasa Indonesia formal-santai. Owner butuh insight cepat tanpa baca detail.
-
-Aturan:
-1. Mulai dgn highlight terbesar (mis. "Hari ini fokus belanja material besar Rp X").
-2. Sebut angka penting: total in, total out, # transaksi.
-3. Kalau ada anomaly/perhatian (overdue invoice, vendor baru besar, dll), highlight dgn 1 kalimat.
-4. Tutup dgn 1 kalimat outlook/saran kalau ada.
-5. JANGAN list semua angka -- pilih yg paling relevan.
-6. JANGAN markdown, plain paragraph saja.
-7. Kalau hari tdk ada aktivitas significan, OK cuma 1-2 kalimat."""
+# Prompt didefine di app/services/ai/prompt_registry.py (admin overridable).
 
 
 async def run(
@@ -146,10 +135,13 @@ async def run(
             "_meta": {"model": "skip-llm", "cached": True, "cost_usd": "0"},
         }
 
+    # Audit 2026-05-24: pakai prompt registry (admin override-able).
+    from app.services.ai.prompt_registry import get_prompt
+    p = await get_prompt(db, "daily_summary")
     resp = await chat(
         db, user_id=user_id, feature="ai:daily_summary",
-        system=SYSTEM_PROMPT,
-        prompt=f"Data hari ini:\n{facts}\n\nTulis summary executive 3-5 kalimat.",
+        system=p.system,
+        prompt=p.user_template.format(facts=facts),
         model_hint="fast",
         cache_ttl_days=1,  # 1 hari cache (idempoten utk same date)
         rate_limit_max=20, rate_limit_period=60.0,

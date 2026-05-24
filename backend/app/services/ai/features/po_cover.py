@@ -13,19 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.models import Company, POItem, Project, PurchaseOrder
 from app.services.ai import chat
-
-SYSTEM_PROMPT = """Kamu sekretaris perusahaan konstruksi Indonesia yang menulis surat pengantar Purchase Order ke vendor.
-
-Tugas: tulis surat pengantar singkat, sopan, profesional dlm Bahasa Indonesia formal.
-
-Aturan:
-1. 2-3 paragraf max. Jangan bertele-tele.
-2. Pembuka: salam + konteks (PO no untuk proyek apa).
-3. Inti: list singkat item utama (3-5 item teratas) + total nilai. Sebut tanggal pengiriman/penyelesaian kalau ada.
-4. Penutup: instruksi follow-up (konfirmasi, kontak PIC, dll) + salam.
-5. JANGAN sebut "AI generated" atau tanda kutip lain yg tdk profesional.
-6. Output: HANYA isi surat, tanpa header/kop (perusahaan punya kop sendiri). Tanpa tanda tangan.
-7. Format paragraf normal, tdk pakai markdown."""
+from app.services.ai.prompt_registry import get_prompt
 
 
 async def run(
@@ -54,21 +42,25 @@ async def run(
     if extra_items > 0:
         items_str += f"\n- (dan {extra_items} item lainnya)"
 
-    prompt = (
-        f"PO Number: {po.number}\n"
-        f"Tanggal PO: {po.po_date}\n"
-        f"Vendor: {po.vendor_name or '-'}\n"
-        f"Proyek: {project.name if project else '-'} ({project.code if project else '-'})\n"
-        f"Perusahaan Pembeli: {company.name if company else '-'}\n"
-        f"Total Nilai: Rp {po.total or 0}\n"
-        f"Tone yang diinginkan: {tone}\n\n"
-        f"Item-item:\n{items_str}\n\n"
-        "Tulis surat pengantar profesional."
+    proj_label = (
+        f"{project.name} ({project.code})" if project else "-"
+    )
+    # Audit 2026-05-24: pakai prompt registry (admin override-able).
+    p = await get_prompt(db, "po_cover")
+    prompt = p.user_template.format(
+        po_number=po.number,
+        po_date=po.po_date,
+        vendor=po.vendor_name or "-",
+        project=proj_label,
+        company=company.name if company else "-",
+        total=po.total or 0,
+        tone=tone,
+        items=items_str,
     )
 
     resp = await chat(
         db, user_id=user_id, feature="ai:po_cover",
-        system=SYSTEM_PROMPT, prompt=prompt,
+        system=p.system, prompt=prompt,
         model_hint="smart",  # writing quality matters
         cache_ttl_days=3,    # less aggressive cache (kreatif output)
         rate_limit_max=20, rate_limit_period=60.0,

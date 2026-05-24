@@ -23,18 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import Project, Transaction, TxnStatus, TxnType
 from app.services.ai import chat
-
-SYSTEM_PROMPT = """Kamu auditor internal perusahaan konstruksi Indonesia. Tugas: review list transaksi yang sudah di-prefilter sbg KANDIDAT anomali, lalu kasih verdict per item.
-
-Untuk setiap kandidat, klasifikasikan:
-- severity: "high" (urgent investigasi) / "medium" (worth review) / "low" (false positive likely).
-- anomaly_type: "vendor_baru_besar" / "amount_outlier" / "kategori_tdk_biasa" / "duplikat_suspicious" / "waktu_aneh" / "lainnya".
-- reason: 1-2 kalimat penjelasan dlm Bahasa Indonesia kenapa flag.
-
-Aturan:
-1. Jangan flag false positive jelas (mis. vendor baru tapi proyek baru juga = wajar).
-2. Severity tinggi cuma utk: nominal sangat besar (>10% total periode) + (vendor unknown ATAU pola tdk konsisten).
-3. Output HANYA list flagged. Skip yg verdict 'low' dgn confidence tinggi (tdk perlu di-output)."""
+from app.services.ai.prompt_registry import get_prompt
 
 
 SCHEMA = {
@@ -201,21 +190,23 @@ async def run(
         f"[pre-filter: {c['reason_prefilter']}]"
         for c in candidates
     )
-    prompt = (
-        f"Periode: {date_from} s/d {date_to}\n"
-        f"Proyek: {proj_label}\n"
-        f"Total tx VERIFIED: {total_tx}\n"
-        f"Total nominal: Rp {total_amount}\n"
-        f"Avg per tx: Rp {avg_amount}\n"
-        f"Vendor historical (90 hari sebelum): {len(historical_vendors)}\n\n"
-        f"KANDIDAT ANOMALI ({len(candidates)}):\n{candidates_str}\n\n"
-        "Review tiap kandidat. Output `flagged` array hanya utk yg severity "
-        "high/medium (skip low yg jelas false positive). Plus summary 1-2 kalimat."
+    # Audit 2026-05-24: pakai prompt registry (admin override-able).
+    p = await get_prompt(db, "anomaly")
+    prompt = p.user_template.format(
+        date_from=date_from,
+        date_to=date_to,
+        proj_label=proj_label,
+        total_tx=total_tx,
+        total_amount=total_amount,
+        avg_amount=avg_amount,
+        n_historical=len(historical_vendors),
+        n_candidates=len(candidates),
+        candidates=candidates_str,
     )
 
     resp = await chat(
         db, user_id=user_id, feature="ai:anomaly",
-        system=SYSTEM_PROMPT, prompt=prompt, json_schema=SCHEMA,
+        system=p.system, prompt=prompt, json_schema=SCHEMA,
         model_hint="smart",  # analysis butuh reasoning bagus
         cache_ttl_days=0,    # tdk cache (data berubah cepat)
         rate_limit_max=10, rate_limit_period=60.0,

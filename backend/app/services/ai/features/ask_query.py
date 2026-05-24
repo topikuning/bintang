@@ -274,19 +274,8 @@ TEMPLATE_DESCRIPTIONS = """\
 """
 
 
-SYSTEM_PROMPT = f"""Kamu finance assistant perusahaan konstruksi Indonesia. User tanya tentang laporan keuangan dlm Bahasa Indonesia natural. Tugasmu: PILIH 1 template dari list + extract parameter dari pertanyaan.
-
-JANGAN generate SQL. JANGAN jawab pertanyaan secara langsung. Cukup pilih template + isi param.
-
-Template tersedia:
-{TEMPLATE_DESCRIPTIONS}
-
-Aturan:
-1. Pilih 1 template paling cocok. Kalau pertanyaan tdk match template apapun, set template="none" dan jelaskan di reason.
-2. Tanggal: convert "bulan lalu" / "minggu ini" / "Q1 2026" ke YYYY-MM-DD format. Hari ini = {{TODAY}}. Kalau ambigu, kosongkan (semua periode).
-3. project_id: kalau user sebut nama proyek, set null -- backend akan ignore (UI akan tampil all). User pakai filter project_id terpisah.
-4. reason: 1 kalimat jelaskan kenapa pilih template itu (+ param).
-5. follow_up: kalau pertanyaan tdk jelas, suggest 1 follow-up question Bahasa Indonesia."""
+# Prompt didefine di app/services/ai/prompt_registry.py (admin overridable).
+# Placeholder {TEMPLATES} -> TEMPLATE_DESCRIPTIONS, {TODAY} -> tgl runtime.
 
 
 SCHEMA = {
@@ -326,11 +315,19 @@ async def run(
             "data": None, "follow_up": "",
         }
     today_str = date.today().isoformat()
+    # Audit 2026-05-24: pakai prompt registry (admin override-able).
+    from app.services.ai.prompt_registry import get_prompt
+    p = await get_prompt(db, "ask_query")
+    system_resolved = (
+        p.system
+        .replace("{TEMPLATES}", TEMPLATE_DESCRIPTIONS.rstrip())
+        .replace("{TODAY}", today_str)
+    )
 
     resp = await chat(
         db, user_id=user.id, feature="ai:ask_query",
-        system=SYSTEM_PROMPT.replace("{TODAY}", today_str),
-        prompt=f"Pertanyaan user: {question}",
+        system=system_resolved,
+        prompt=p.user_template.format(question=question),
         json_schema=SCHEMA,
         model_hint="fast",
         cache_ttl_days=1,

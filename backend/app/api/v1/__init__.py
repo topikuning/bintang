@@ -4,6 +4,7 @@ from app.api.v1 import (
     admin_orphans,
     admin_role_menus,
     admin_settings,
+    ai_prompts,
     allocations,
     attachments,
     audit_logs,
@@ -56,6 +57,7 @@ api_router.include_router(admin_orphans.router, prefix="/admin/orphan-files", ta
 api_router.include_router(imports.router, prefix="/imports", tags=["imports"])
 api_router.include_router(ocr.router, prefix="/ocr", tags=["ocr"])
 api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
+api_router.include_router(ai_prompts.router, prefix="/ai-prompts", tags=["ai-prompts"])
 api_router.include_router(telegram.router, prefix="/telegram", tags=["telegram"])
 api_router.include_router(whatsapp.router, prefix="/whatsapp", tags=["whatsapp"])
 api_router.include_router(messaging.router, prefix="/messaging", tags=["messaging"])

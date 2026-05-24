@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   SlidersHorizontal,
+  Sparkles,
   Tag,
   Users,
   Wallet,
@@ -97,6 +98,7 @@ export const DESKTOP_NAV: NavGroup[] = [
       { id: "settings-role-menus", label: "Akses Menu per Role", to: "/settings/role-menus", icon: ShieldCheck },
       { id: "settings-orphan-files", label: "File Orphan", to: "/settings/orphan-files", icon: HardDrive },
       { id: "settings-non-project", label: "Inklusi Catatan Non-Proyek", to: "/settings/non-project", icon: SlidersHorizontal },
+      { id: "settings-ai-prompts", label: "Prompt AI", to: "/settings/ai-prompts", icon: Sparkles },
     ],
   },
 ]
@@ -152,6 +154,7 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
       { id: "settings-role-menus", label: "Akses Menu per Role", to: "/settings/role-menus", icon: ShieldCheck },
       { id: "settings-orphan-files", label: "File Orphan", to: "/settings/orphan-files", icon: HardDrive },
       { id: "settings-non-project", label: "Inklusi Catatan Non-Proyek", to: "/settings/non-project", icon: SlidersHorizontal },
+      { id: "settings-ai-prompts", label: "Prompt AI", to: "/settings/ai-prompts", icon: Sparkles },
     ],
   },
 ]

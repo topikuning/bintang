@@ -10,15 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import Category, CategoryType
 from app.services.ai import chat
-
-SYSTEM_PROMPT = """Kamu asisten finansial perusahaan konstruksi Indonesia. Tugasmu: pilih SATU kategori paling cocok dari list utk transaksi yang user deskripsikan.
-
-Aturan:
-1. Pilih kategori dgn nama/scope paling relevan ke deskripsi.
-2. Kalau ragu antara 2 kategori, pilih yg lebih spesifik (mis. "Beton" lebih spesifik dari "Material Bangunan").
-3. Kalau TIDAK ADA kategori yg cocok sama sekali, set category_id=null dan jelaskan di reason.
-4. confidence: 0-1. 0.9+ kalau yakin, 0.5-0.8 kalau plausible, <0.5 kalau ragu.
-5. reason: 1 kalimat singkat dlm Bahasa Indonesia, kenapa pilih kategori itu."""
+from app.services.ai.prompt_registry import get_prompt
 
 
 SCHEMA = {
@@ -91,15 +83,14 @@ async def run(
         ctx_lines.append(f"Nominal: Rp {amount}")
     if kind:
         ctx_lines.append(f"Jenis tx: {kind}")
-    prompt = (
-        f"Konteks transaksi:\n" + "\n".join(ctx_lines) + "\n\n"
-        f"Pilihan kategori:\n{cats_str}\n\n"
-        "Pilih SATU kategori paling cocok."
-    )
+    ctx_str = "\n".join(ctx_lines)
+    # Audit 2026-05-24: pakai prompt registry (admin override-able).
+    p = await get_prompt(db, "category")
+    prompt = p.user_template.format(ctx=ctx_str, cats=cats_str)
 
     resp = await chat(
         db, user_id=user_id, feature="ai:category",
-        system=SYSTEM_PROMPT, prompt=prompt, json_schema=SCHEMA,
+        system=p.system, prompt=prompt, json_schema=SCHEMA,
         model_hint="fast", cache_ttl_days=7,
         rate_limit_max=60, rate_limit_period=60.0,
     )
