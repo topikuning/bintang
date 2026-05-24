@@ -50,6 +50,16 @@ async def _seed(db):
     return co, p, admin
 
 
+async def _seed_central_admin(db):
+    """Seed central_admin (non-superadmin) utk test path strict (non god)."""
+    u = User(
+        email="c@x", name="C", password_hash=hash_password("x"),
+        role=UserRole.CENTRAL_ADMIN, scope_all_projects=True,
+    )
+    db.add(u); await db.flush()
+    return u
+
+
 # ---------- TX bulk verify ----------
 
 @pytest.mark.asyncio
@@ -250,12 +260,15 @@ async def test_bulk_mark_paid_invoices(db):
 
 # ---------- Bulk soft-delete (TX / PO / Invoice) ----------
 # Audit 2026-05-24 user req: mass delete utk cleanup.
+# CENTRAL_ADMIN strict (status guard); SUPERADMIN god-mode (bypass +
+# cascade cleanup) -- mirror single-delete vs single /hard endpoint.
 
 @pytest.mark.asyncio
-async def test_bulk_delete_tx_skip_verified(db):
+async def test_bulk_delete_tx_central_admin_skip_verified(db):
     from app.api.v1.transactions import bulk_delete_transactions
 
     co, p, admin = await _seed(db)
+    central = await _seed_central_admin(db)
     t_draft = Transaction(
         project_id=p.id, tx_date=date(2026, 5, 24), type=TxnType.OUT,
         kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("100"),
@@ -272,7 +285,7 @@ async def test_bulk_delete_tx_skip_verified(db):
 
     result = await bulk_delete_transactions(
         payload={"ids": [t_draft.id, t_verified.id]},
-        db=db, admin=admin,
+        db=db, admin=central,
     )
     assert result["success_count"] == 1
     assert result["success"] == [t_draft.id]
@@ -285,10 +298,50 @@ async def test_bulk_delete_tx_skip_verified(db):
 
 
 @pytest.mark.asyncio
-async def test_bulk_delete_po_skip_issued(db):
+async def test_bulk_delete_tx_god_mode_bypass_verified(db):
+    """SUPERADMIN god-mode bypass status + cascade cleanup allocations."""
+    from app.api.v1.transactions import bulk_delete_transactions
+    from app.models.models import InvoiceAllocation
+
+    co, p, admin = await _seed(db)
+    inv = Invoice(
+        number="INV/G1", project_id=p.id, type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 24), total=Decimal("500"),
+        status=InvoiceStatus.PAID, created_by_id=admin.id,
+    )
+    t_verified = Transaction(
+        project_id=p.id, tx_date=date(2026, 5, 24), type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("500"),
+        payment_method=PaymentMethod.CASH, status=TxnStatus.VERIFIED,
+        created_by_id=admin.id,
+    )
+    db.add_all([inv, t_verified]); await db.flush()
+    alloc = InvoiceAllocation(
+        transaction_id=t_verified.id, invoice_id=inv.id,
+        allocated_amount=Decimal("500"), created_by_id=admin.id,
+    )
+    db.add(alloc); await db.commit()
+
+    result = await bulk_delete_transactions(
+        payload={"ids": [t_verified.id]},
+        db=db, admin=admin,  # SUPERADMIN
+    )
+    assert result["success_count"] == 1
+
+    await db.refresh(t_verified)
+    assert t_verified.deleted_at is not None
+    await db.refresh(alloc)
+    assert alloc.deleted_at is not None  # cascade
+    await db.refresh(inv)
+    assert inv.status == InvoiceStatus.ISSUED  # recomputed (paid=0)
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_po_central_admin_skip_issued(db):
     from app.api.v1.purchase_orders import bulk_delete_pos
 
     co, p, admin = await _seed(db)
+    central = await _seed_central_admin(db)
     po_draft = PurchaseOrder(
         number="PO/D1", project_id=p.id, company_id=co.id,
         po_date=date(2026, 5, 24), total=Decimal("100"),
@@ -303,16 +356,42 @@ async def test_bulk_delete_po_skip_issued(db):
 
     result = await bulk_delete_pos(
         payload={"ids": [po_draft.id, po_issued.id]},
-        db=db, admin=admin,
+        db=db, admin=central,
     )
     assert result["success_count"] == 1
     assert result["success"] == [po_draft.id]
     reasons = {s["id"]: s["reason"] for s in result["skipped"]}
     assert "invalid_state" in reasons[po_issued.id]
 
-    await db.refresh(po_draft); await db.refresh(po_issued)
-    assert po_draft.deleted_at is not None
-    assert po_issued.deleted_at is None
+
+@pytest.mark.asyncio
+async def test_bulk_delete_po_god_mode_unlink_tx(db):
+    """SUPERADMIN god-mode: bypass status + unlink TX yg pakai PO ini."""
+    from app.api.v1.purchase_orders import bulk_delete_pos
+
+    co, p, admin = await _seed(db)
+    po = PurchaseOrder(
+        number="PO/GOD1", project_id=p.id, company_id=co.id,
+        po_date=date(2026, 5, 24), total=Decimal("500"),
+        status=POStatus.APPROVED, created_by_id=admin.id,
+    )
+    db.add(po); await db.flush()
+    t = Transaction(
+        project_id=p.id, tx_date=date(2026, 5, 24), type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("500"),
+        payment_method=PaymentMethod.CASH, status=TxnStatus.DRAFT,
+        created_by_id=admin.id, purchase_order_id=po.id,
+    )
+    db.add(t); await db.commit()
+
+    result = await bulk_delete_pos(
+        payload={"ids": [po.id]}, db=db, admin=admin,
+    )
+    assert result["success_count"] == 1
+
+    await db.refresh(po); await db.refresh(t)
+    assert po.deleted_at is not None
+    assert t.purchase_order_id is None  # unlinked
 
 
 @pytest.mark.asyncio
@@ -336,12 +415,46 @@ async def test_bulk_delete_invoice_any_status(db):
         payload={"ids": [inv1.id, inv2.id]},
         db=db, admin=admin,
     )
-    # Mirror single soft-delete: tdk ada precondition status.
+    # Soft-delete OK semua status (mirror single delete).
     assert result["success_count"] == 2
 
     await db.refresh(inv1); await db.refresh(inv2)
     assert inv1.deleted_at is not None
     assert inv2.deleted_at is not None
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_invoice_god_mode_cascade_alloc(db):
+    """SUPERADMIN: alokasi terkait juga di-soft-delete."""
+    from app.api.v1.invoices import bulk_delete_invoices
+    from app.models.models import InvoiceAllocation
+
+    co, p, admin = await _seed(db)
+    inv = Invoice(
+        number="INV/G2", project_id=p.id, type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 24), total=Decimal("100"),
+        status=InvoiceStatus.PAID, created_by_id=admin.id,
+    )
+    t = Transaction(
+        project_id=p.id, tx_date=date(2026, 5, 24), type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("100"),
+        payment_method=PaymentMethod.CASH, status=TxnStatus.VERIFIED,
+        created_by_id=admin.id,
+    )
+    db.add_all([inv, t]); await db.flush()
+    alloc = InvoiceAllocation(
+        transaction_id=t.id, invoice_id=inv.id,
+        allocated_amount=Decimal("100"), created_by_id=admin.id,
+    )
+    db.add(alloc); await db.commit()
+
+    result = await bulk_delete_invoices(
+        payload={"ids": [inv.id]}, db=db, admin=admin,
+    )
+    assert result["success_count"] == 1
+
+    await db.refresh(alloc)
+    assert alloc.deleted_at is not None
 
 
 # ---------- HTTP integration: regression guard route ordering ----------

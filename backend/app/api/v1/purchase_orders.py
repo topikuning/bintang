@@ -573,14 +573,21 @@ async def bulk_delete_pos(
     Payload: {ids: list[int]}.
     Return: {total_requested, success_count, success, skipped}.
 
-    Per-item: hanya DRAFT / CANCELLED yg boleh dihapus (mirror single
-    delete -- ISSUED/APPROVED harus cancel dulu).
+    Per-item:
+    - CENTRAL_ADMIN: hanya DRAFT/CANCELLED (mirror single delete).
+    - SUPERADMIN (god-mode 2026-05-24): bypass status, unlink
+      transactions yg menunjuk PO ini (purchase_order_id = NULL)
+      sebelum soft-delete. Konsisten dgn single /hard endpoint.
     """
+    from app.models.models import Transaction as TxnModel
+
     ids = payload.get("ids") or []
     if not isinstance(ids, list) or not ids:
         raise HTTPException(400, "ids_required")
     if len(ids) > 500:
         raise HTTPException(400, "max_500_per_batch")
+
+    god = admin.role == UserRole.SUPERADMIN
 
     res = await db.execute(
         select(PurchaseOrder).where(PurchaseOrder.id.in_(ids))
@@ -596,13 +603,28 @@ async def bulk_delete_pos(
         if p is None or p.deleted_at is not None:
             skipped.append({"id": pid, "reason": "not_found"})
             continue
-        if p.status not in (POStatus.DRAFT, POStatus.CANCELLED):
+        if not god and p.status not in (POStatus.DRAFT, POStatus.CANCELLED):
             skipped.append({"id": pid, "reason": f"invalid_state_{p.status.value}_must_cancel_first"})
             continue
+
+        # God-mode: unlink TX yg punya purchase_order_id = pid.
+        unlinked = 0
+        if god:
+            res_t = await db.execute(
+                select(TxnModel).where(TxnModel.purchase_order_id == p.id)
+            )
+            for t in res_t.scalars().all():
+                t.purchase_order_id = None
+                unlinked += 1
+
         p.deleted_at = now
         await log(
             db, user_id=admin.id, entity="purchase_order", entity_id=p.id,
-            action=AuditAction.DELETE, note="bulk delete",
+            action=AuditAction.DELETE,
+            note=(
+                f"bulk delete (god-mode, {unlinked} tx unlinked)"
+                if god else "bulk delete"
+            ),
         )
         success_ids.append(pid)
 

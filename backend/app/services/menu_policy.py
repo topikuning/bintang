@@ -53,7 +53,7 @@ MENU_REGISTRY: list[dict[str, Any]] = [
     {"id": "settings-orphan-files", "label": "File Orphan", "group": "sistem"},
     {"id": "settings-non-project", "label": "Inklusi Catatan Non-Proyek", "group": "sistem"},
     # Admin -- audit 2026-05-23
-    {"id": "admin-bulk-approval", "label": "Approval Massal", "group": "admin"},
+    {"id": "admin-bulk-approval", "label": "Mass Action", "group": "admin"},
 ]
 MENU_IDS = {m["id"] for m in MENU_REGISTRY}
 

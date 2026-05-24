@@ -642,14 +642,19 @@ async def bulk_delete_transactions(
     Payload: {ids: list[int]}.
     Return: {total_requested, success_count, success, skipped}.
 
-    Per-item: VERIFIED ditolak (harus cancel dulu, mirror single delete
-    di line 763). DRAFT/SUBMITTED/REJECTED/CANCELLED OK soft-delete.
+    Per-item:
+    - CENTRAL_ADMIN: VERIFIED ditolak (mirror single delete strict).
+    - SUPERADMIN (god-mode 2026-05-24): bypass status check, cascade
+      soft-delete allocations + recompute invoice status terdampak.
+      Konsisten dgn single /hard endpoint (god-mode).
     """
     ids = payload.get("ids") or []
     if not isinstance(ids, list) or not ids:
         raise HTTPException(400, "ids_required")
     if len(ids) > 500:
         raise HTTPException(400, "max_500_per_batch")
+
+    god = admin.role == UserRole.SUPERADMIN
 
     res = await db.execute(
         select(Transaction).where(Transaction.id.in_(ids))
@@ -659,22 +664,46 @@ async def bulk_delete_transactions(
     success_ids: list[int] = []
     skipped: list[dict] = []
     now = datetime.utcnow()
+    affected_inv_ids: set[int] = set()
 
     for tid in ids:
         t = txs.get(tid)
         if t is None or t.deleted_at is not None:
             skipped.append({"id": tid, "reason": "not_found"})
             continue
-        if t.status == TxnStatus.VERIFIED:
+        if not god and t.status == TxnStatus.VERIFIED:
             skipped.append({"id": tid, "reason": "verified_must_be_cancelled"})
             continue
         before = snapshot(t)
+
+        # God-mode: cascade soft-delete allocations + collect invoices
+        # utk recompute setelah loop selesai.
+        if god:
+            alloc_res = await db.execute(
+                select(InvoiceAllocation).where(
+                    InvoiceAllocation.transaction_id == t.id,
+                    InvoiceAllocation.deleted_at.is_(None),
+                )
+            )
+            for a in alloc_res.scalars().all():
+                a.deleted_at = now
+                affected_inv_ids.add(a.invoice_id)
+            if t.invoice_id:
+                affected_inv_ids.add(t.invoice_id)
+
         t.deleted_at = now
         await log(
             db, user_id=admin.id, entity="transaction", entity_id=t.id,
-            action=AuditAction.DELETE, before=before, note="bulk delete",
+            action=AuditAction.DELETE, before=before,
+            note="bulk delete (god-mode)" if god else "bulk delete",
         )
         success_ids.append(tid)
+
+    # Recompute invoice status terdampak (sekali per invoice, di luar loop)
+    for iid in affected_inv_ids:
+        inv = await db.get(Invoice, iid)
+        if inv and inv.deleted_at is None:
+            await recompute_invoice_status(db, inv)
 
     await db.commit()
     return {

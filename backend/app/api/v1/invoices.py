@@ -586,16 +586,20 @@ async def bulk_delete_invoices(
     Payload: {ids: list[int]}.
     Return: {total_requested, success_count, success, skipped}.
 
-    Per-item: mirror single soft-delete (line 702) -- tidak ada
-    precondition status, semua non-deleted bisa di-soft-delete.
-    Allocation row TIDAK ikut diubah (mirror behavior single delete).
-    Utk hapus permanen + cabut alokasi, pakai endpoint /hard per item.
+    Per-item:
+    - CENTRAL_ADMIN: mirror single soft-delete (line 702) -- semua
+      status OK, allocation row TIDAK diubah.
+    - SUPERADMIN (god-mode 2026-05-24): juga soft-delete allocation
+      row terkait supaya invoice yg dihapus tdk meninggalkan jejak
+      "paid" di TX. Konsisten dgn single /hard endpoint.
     """
     ids = payload.get("ids") or []
     if not isinstance(ids, list) or not ids:
         raise HTTPException(400, "ids_required")
     if len(ids) > 500:
         raise HTTPException(400, "max_500_per_batch")
+
+    god = admin.role == UserRole.SUPERADMIN
 
     res = await db.execute(
         select(Invoice).where(Invoice.id.in_(ids))
@@ -611,10 +615,27 @@ async def bulk_delete_invoices(
         if inv is None or inv.deleted_at is not None:
             skipped.append({"id": iid, "reason": "not_found"})
             continue
+
+        alloc_count = 0
+        if god:
+            alloc_res = await db.execute(
+                select(InvoiceAllocation).where(
+                    InvoiceAllocation.invoice_id == inv.id,
+                    InvoiceAllocation.deleted_at.is_(None),
+                )
+            )
+            for a in alloc_res.scalars().all():
+                a.deleted_at = now
+                alloc_count += 1
+
         inv.deleted_at = now
         await log(
             db, user_id=admin.id, entity="invoice", entity_id=inv.id,
-            action=AuditAction.DELETE, note="bulk delete",
+            action=AuditAction.DELETE,
+            note=(
+                f"bulk delete (god-mode, {alloc_count} alloc dilepas)"
+                if god else "bulk delete"
+            ),
         )
         success_ids.append(iid)
 

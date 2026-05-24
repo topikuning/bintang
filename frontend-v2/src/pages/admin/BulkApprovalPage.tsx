@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { BadgeCheck, CheckCheck, Loader2, Receipt, Send, ShoppingCart, Trash2 } from "lucide-react"
+import { BadgeCheck, CheckCheck, Loader2, Receipt, Search, Send, ShoppingCart, Trash2, X } from "lucide-react"
 
 import { useAuthStore } from "@/store/auth"
 import { api, apiErrorMessage } from "@/lib/api"
@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/data/EmptyState"
 import { ErrorState } from "@/components/data/ErrorState"
 import { toast } from "@/components/ui/sonner"
+import { Input } from "@/components/ui/input"
 import { CompanyPicker } from "@/components/forms/CompanyPicker"
 import { ProjectPicker } from "@/components/forms/ProjectPicker"
 import { cn } from "@/lib/utils"
@@ -18,6 +19,7 @@ import { cn } from "@/lib/utils"
 interface BulkFilters {
   company_id: number | null
   project_id: number | null
+  q: string
 }
 
 /**
@@ -39,13 +41,15 @@ interface BulkResult {
 }
 
 export function BulkApprovalPage() {
-  usePageTitle("Approval Massal")
+  usePageTitle("Mass Action")
   const role = useAuthStore((s) => s.user?.role)
   const isAdmin = role === "SUPERADMIN" || role === "CENTRAL_ADMIN"
   const [tab, setTab] = useState<TabKey>("tx")
   // Audit 2026-05-23 user req: filter per perusahaan / proyek.
+  // Audit 2026-05-24 user req: tambah search bebas (deskripsi / pihak /
+  // nomor) -- diteruskan ke backend lewat param `q`.
   const [filters, setFilters] = useState<BulkFilters>({
-    company_id: null, project_id: null,
+    company_id: null, project_id: null, q: "",
   })
 
   if (!isAdmin) {
@@ -62,9 +66,14 @@ export function BulkApprovalPage() {
   return (
     <div className="flex flex-col gap-3 p-3 sm:p-5 lg:p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-bold text-ink-900 sm:text-2xl">Approval Massal</h1>
+        <h1 className="text-xl font-bold text-ink-900 sm:text-2xl">Mass Action</h1>
         <p className="text-[13px] text-ink-500">
-          Validasi sekaligus banyak transaksi, PO, atau invoice yang masih pending.
+          Verifikasi, terbitkan, tandai lunas, atau hapus banyak item sekaligus.
+          {role === "SUPERADMIN" && (
+            <span className="ml-1 inline-block rounded bg-warning-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning-800">
+              god-mode aktif
+            </span>
+          )}
         </p>
       </div>
 
@@ -99,8 +108,10 @@ function FilterBar({
   // Audit 2026-05-24: pakai filterable Combobox (CompanyPicker /
   // ProjectPicker) -- standar app utk dropdown searchable. Native
   // <select> tdk konsisten dgn UI lain & repot kalau list panjang.
+  // Search bebas (q) di-debounce via React Query (queryKey berubah
+  // setiap onChange -> auto-refetch).
   return (
-    <div className="rounded-md border bg-surface p-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+    <div className="rounded-md border bg-surface p-2.5 grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
       <div className="flex flex-col gap-1">
         <label className="text-[11px] uppercase tracking-wider text-ink-500">
           Filter Perusahaan
@@ -109,7 +120,7 @@ function FilterBar({
           value={value.company_id}
           onChange={(id) => {
             // Saat company berubah, reset project_id (avoid stale).
-            onChange({ company_id: id, project_id: null })
+            onChange({ ...value, company_id: id, project_id: null })
           }}
           placeholder="— Semua Perusahaan —"
         />
@@ -125,6 +136,30 @@ function FilterBar({
           activeOnly={false}
           companyId={value.company_id}
         />
+      </div>
+      <div className="flex flex-col gap-1">
+        <label className="text-[11px] uppercase tracking-wider text-ink-500">
+          Cari (Deskripsi / Pihak / Nomor)
+        </label>
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
+          <Input
+            value={value.q}
+            onChange={(e) => onChange({ ...value, q: e.target.value })}
+            placeholder="cth: tagihan listrik, PT Maju"
+            className="pl-8 pr-8"
+          />
+          {value.q && (
+            <button
+              type="button"
+              onClick={() => onChange({ ...value, q: "" })}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -222,6 +257,7 @@ function BulkTxPanel({ filters }: { filters: BulkFilters }) {
       const baseParams: Record<string, unknown> = { size: 200 }
       if (filters.project_id) baseParams.project_id = filters.project_id
       if (filters.company_id) baseParams.company_id = filters.company_id
+      if (filters.q.trim()) baseParams.q = filters.q.trim()
       if (mode === "verify") {
         // Backend bulk_verify accept DRAFT + SUBMITTED. Fetch keduanya
         // (list endpoint cuma terima 1 status, jadi 2 query lalu merge).
@@ -348,6 +384,7 @@ function BulkPoPanel({ filters }: { filters: BulkFilters }) {
       const baseParams: Record<string, unknown> = { size: 200 }
       if (filters.project_id) baseParams.project_id = filters.project_id
       if (filters.company_id) baseParams.company_id = filters.company_id
+      if (filters.q.trim()) baseParams.q = filters.q.trim()
       if (mode === "approve") {
         // Backend bulk_approve accept DRAFT + ISSUED. Fetch keduanya.
         const [draftRes, issuedRes] = await Promise.all([
@@ -470,6 +507,7 @@ function BulkInvoicePanel({ filters }: { filters: BulkFilters }) {
       const baseParams: Record<string, unknown> = { size: 200 }
       if (filters.project_id) baseParams.project_id = filters.project_id
       if (filters.company_id) baseParams.company_id = filters.company_id
+      if (filters.q.trim()) baseParams.q = filters.q.trim()
       if (mode === "issue") {
         const { data } = await api.get("/invoices", {
           params: { ...baseParams, status: "DRAFT" },
