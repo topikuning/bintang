@@ -162,6 +162,120 @@ async def _fetch_vendor_patterns(
     return out
 
 
+async def _ai_categorize_chunk(
+    *,
+    db: AsyncSession,
+    admin: User,
+    chunk: list[tuple[Invoice, InvoiceItem]],
+    cats_rows: list,
+    proj_label: str,
+    vendor_patterns: dict[str, list[tuple[str, str]]],
+    unique_vendors: set[str],
+) -> dict[int, dict]:
+    """Build prompt + panggil AI utk 1 chunk. Return dict {item_id: entry}."""
+    # Group chunk by invoice utk prompt readability
+    grouped: dict[int, list[InvoiceItem]] = defaultdict(list)
+    inv_by_id: dict[int, Invoice] = {}
+    for inv, it in chunk:
+        grouped[inv.id].append(it)
+        inv_by_id[inv.id] = inv
+
+    # Section 1: invoices + items
+    lines_invoices: list[str] = []
+    for inv_id, items in grouped.items():
+        inv = inv_by_id[inv_id]
+        inv_kind = (
+            "HUTANG (vendor->kita = pengeluaran)" if inv.type == InvoiceType.IN
+            else "PIUTANG (kita->klien = pemasukan)"
+        )
+        lines_invoices.append(
+            f"\n[Invoice {inv.number}] · Vendor: {inv.party_name or '-'} · "
+            f"Tipe: {inv_kind}"
+        )
+        for it in items:
+            qty = f" qty={it.quantity}" if it.quantity else ""
+            unit = f" {it.unit}" if it.unit else ""
+            price = f" @Rp{it.unit_price}" if it.unit_price else ""
+            lines_invoices.append(
+                f"  item_id={it.id}: {it.description}{qty}{unit}{price}"
+            )
+
+    # Section 2: vendor history (filter ke vendor yg ada di chunk ini)
+    chunk_vendors = {
+        (inv.party_name or "").strip().lower()
+        for inv, _ in chunk if inv.party_name
+    }
+    lines_history: list[str] = []
+    relevant_patterns = {
+        k: v for k, v in vendor_patterns.items() if k in chunk_vendors
+    }
+    if relevant_patterns:
+        lines_history.append(
+            "\nHISTORY VENDOR (referensi pattern -- 15 tx terakhir per vendor):"
+        )
+        for vname_lower, rows in relevant_patterns.items():
+            display_name = next(
+                (v for v in unique_vendors if v.lower() == vname_lower),
+                vname_lower,
+            )
+            lines_history.append(f"\nVendor '{display_name}':")
+            for desc, cat in rows:
+                lines_history.append(f"  - {desc} -> {cat}")
+
+    # Section 3: kategori
+    lines_cats: list[str] = ["\nKATEGORI VALID:"]
+    for cid, name, ctype in cats_rows:
+        tag = "PEMASUKAN" if ctype == CategoryType.IN else "PENGELUARAN"
+        lines_cats.append(f"  ID {cid}: {name} [{tag}]")
+
+    prompt_body = (
+        f"Proyek: {proj_label}\n"
+        f"Total invoice di chunk: {len(grouped)}\n"
+        f"Total item perlu dikategori: {len(chunk)}\n"
+        + "\n".join(lines_invoices)
+        + "\n"
+        + "\n".join(lines_history)
+        + "\n"
+        + "\n".join(lines_cats)
+        + "\n\nKategorikan SEMUA item di atas. Wajib return entry per item_id."
+    )
+
+    # Prompt registry override-aware
+    try:
+        p = await get_prompt(db, "categorize_items")
+        sys_prompt = p.system + (
+            "\n\nMODE BATCH: input punya MULTIPLE invoice + item_id "
+            "sbg identifier. Output WAJIB pakai item_id (bukan index)."
+        )
+    except Exception:  # noqa: BLE001
+        sys_prompt = _BATCH_SYSTEM_PROMPT
+
+    # Audit 2026-05-24: timeout naik ke 180s utk batch besar (Mistral
+    # output 150 item JSON bisa 30-60 detik). Default 30s tdk cukup.
+    try:
+        resp = await chat(
+            db, user_id=admin.id, feature="ai:categorize_items_batch",
+            system=sys_prompt, prompt=prompt_body, json_schema=_AI_SCHEMA,
+            feature_key="categorize_items",
+            max_tokens=8192,  # 150 item ~ 5K token output, buffer aman
+            timeout=180.0,
+        )
+    except RuntimeError as e:
+        if "ai_rate_limited" in str(e):
+            raise HTTPException(429, "ai_rate_limited") from e
+        if "BudgetExceeded" in type(e).__name__:
+            raise HTTPException(402, "ai_budget_exceeded") from e
+        raise HTTPException(502, f"ai_failed: {e}") from e
+
+    structured = resp.structured or {"items": []}
+    out: dict[int, dict] = {}
+    for entry in structured.get("items", []):
+        iid = entry.get("item_id")
+        if isinstance(iid, int):
+            out[iid] = entry
+    return out
+
+
 @router.post("/categorize-project", response_model=BatchScanResp)
 async def batch_categorize_project_invoices(
     payload: BatchProjectScanIn,
@@ -234,101 +348,39 @@ async def batch_categorize_project_invoices(
             ai_calls=0,
         )
 
-    # Fetch vendor patterns sekali (deduplicated per vendor)
+    # Audit 2026-05-24: chunk items kalau > CHUNK_SIZE -- AI output tdk
+    # cukup di 16K token utk 500 item ramai field. Per chunk 150 item
+    # supaya respond < 60s.
+    CHUNK_SIZE = 150
+    pair_chunks: list[list[tuple[Invoice, InvoiceItem]]] = [
+        target_pairs[i : i + CHUNK_SIZE]
+        for i in range(0, len(target_pairs), CHUNK_SIZE)
+    ]
+
+    # Fetch vendor patterns sekali utk SEMUA vendor di batch
     unique_vendors = {(inv.party_name or "").strip()
                       for inv, _ in target_pairs if inv.party_name}
     vendor_patterns = await _fetch_vendor_patterns(db, unique_vendors)
 
-    # Build MEGA PROMPT
-    # Section 1: invoices + items (per-invoice grouping)
+    # Aggregate result across chunks
+    ai_by_item_id: dict[int, dict] = {}
+    ai_calls = 0
+    for chunk in pair_chunks:
+        chunk_response = await _ai_categorize_chunk(
+            db=db, admin=admin, chunk=chunk,
+            cats_rows=cats_rows, proj_label=proj_label,
+            vendor_patterns=vendor_patterns,
+            unique_vendors=unique_vendors,
+        )
+        ai_calls += 1
+        ai_by_item_id.update(chunk_response)
+
+    # Group by invoice utk response shape
     grouped_by_inv: dict[int, list[InvoiceItem]] = defaultdict(list)
     inv_by_id: dict[int, Invoice] = {}
     for inv, it in target_pairs:
         grouped_by_inv[inv.id].append(it)
         inv_by_id[inv.id] = inv
-
-    lines_invoices: list[str] = []
-    for inv_id, items in grouped_by_inv.items():
-        inv = inv_by_id[inv_id]
-        inv_kind = "HUTANG (vendor->kita = pengeluaran)" if inv.type == InvoiceType.IN else "PIUTANG (kita->klien = pemasukan)"
-        lines_invoices.append(
-            f"\n[Invoice {inv.number}] · Vendor: {inv.party_name or '-'} · Tipe: {inv_kind}"
-        )
-        for it in items:
-            qty = f" qty={it.quantity}" if it.quantity else ""
-            unit = f" {it.unit}" if it.unit else ""
-            price = f" @Rp{it.unit_price}" if it.unit_price else ""
-            lines_invoices.append(
-                f"  item_id={it.id}: {it.description}{qty}{unit}{price}"
-            )
-
-    # Section 2: vendor history
-    lines_history: list[str] = []
-    if vendor_patterns:
-        lines_history.append(
-            "\nHISTORY VENDOR (referensi pattern -- 15 tx terakhir per vendor):"
-        )
-        for vname_lower, rows in vendor_patterns.items():
-            # Cari original casing dari unique_vendors
-            display_name = next(
-                (v for v in unique_vendors if v.lower() == vname_lower),
-                vname_lower,
-            )
-            lines_history.append(f"\nVendor '{display_name}':")
-            for desc, cat in rows:
-                lines_history.append(f"  - {desc} -> {cat}")
-
-    # Section 3: kategori list (semua, biar AI pilih sesuai konteks
-    # invoice type). Tag tipe kategori jelas.
-    lines_cats: list[str] = ["\nKATEGORI VALID:"]
-    for cid, name, ctype in cats_rows:
-        tag = "PEMASUKAN" if ctype == CategoryType.IN else "PENGELUARAN"
-        lines_cats.append(f"  ID {cid}: {name} [{tag}]")
-
-    prompt_body = (
-        f"Proyek: {proj_label}\n"
-        f"Total invoice di batch: {len(grouped_by_inv)}\n"
-        f"Total item perlu dikategori: {len(target_pairs)}\n"
-        + "\n".join(lines_invoices)
-        + "\n"
-        + "\n".join(lines_history)
-        + "\n"
-        + "\n".join(lines_cats)
-        + "\n\nKategorikan SEMUA item di atas. Wajib return entry per item_id."
-    )
-
-    # Pakai prompt registry kalau admin override; else system prompt default.
-    try:
-        p = await get_prompt(db, "categorize_items")
-        sys_prompt = p.system + (
-            "\n\nMODE BATCH: input punya MULTIPLE invoice + item_id "
-            "sbg identifier. Output WAJIB pakai item_id (bukan index)."
-        )
-    except Exception:  # noqa: BLE001
-        sys_prompt = _BATCH_SYSTEM_PROMPT
-
-    # SATU AI call
-    try:
-        resp = await chat(
-            db, user_id=admin.id, feature="ai:categorize_items_batch",
-            system=sys_prompt, prompt=prompt_body, json_schema=_AI_SCHEMA,
-            feature_key="categorize_items",
-            # Override max_tokens supaya cukup utk 500 item output (~30K tokens).
-            max_tokens=16384,
-        )
-    except RuntimeError as e:
-        if "ai_rate_limited" in str(e):
-            raise HTTPException(429, "ai_rate_limited") from e
-        if "BudgetExceeded" in type(e).__name__:
-            raise HTTPException(402, "ai_budget_exceeded") from e
-        raise HTTPException(502, f"ai_failed: {e}") from e
-
-    structured = resp.structured or {"items": []}
-    ai_by_item_id = {}
-    for entry in structured.get("items", []):
-        iid = entry.get("item_id")
-        if isinstance(iid, int):
-            ai_by_item_id[iid] = entry
 
     # Build response: group by invoice, items dgn enriched suggestion
     result_invoices: list[InvoiceSuggestion] = []
@@ -374,9 +426,9 @@ async def batch_categorize_project_invoices(
     total_high = sum(r.high_confidence_count for r in result_invoices)
     summary = (
         f"{len(result_invoices)} invoice ({items_scanned} item) di-proses "
-        f"dlm 1 panggilan AI. {total_high} item dgn confidence >=70% "
-        f"siap auto-apply. {invoices_skipped} invoice di-skip (semua item "
-        f"sudah ber-kategori)."
+        f"dlm {ai_calls} panggilan AI (chunk size 150 item/call). "
+        f"{total_high} item dgn confidence >=70% siap auto-apply. "
+        f"{invoices_skipped} invoice di-skip (semua item sudah ber-kategori)."
     )
     return BatchScanResp(
         project_id=payload.project_id,
@@ -385,7 +437,7 @@ async def batch_categorize_project_invoices(
         invoices_skipped=invoices_skipped,
         items_scanned=items_scanned,
         summary=summary,
-        ai_calls=1,
+        ai_calls=ai_calls,
     )
 
 
