@@ -459,3 +459,32 @@ class AIPromptOverride(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class AIFeatureSettings(Base):
+    """Per-feature AI runtime settings. Audit 2026-05-24.
+
+    Override default code per fitur: provider, model, max_tokens,
+    web_search, budget bulanan, dst. Field NULL = pakai default.
+    """
+    __tablename__ = "ai_feature_settings"
+
+    feature_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    max_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cache_ttl_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rate_limit_per_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    web_search_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    monthly_budget_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 4), nullable=True,
+    )
+    updated_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

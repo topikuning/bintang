@@ -329,10 +329,7 @@ async def run(
         system=system_resolved,
         prompt=p.user_template.format(question=question),
         json_schema=SCHEMA,
-        model_hint="fast",
-        cache_ttl_days=1,
-        rate_limit_max=30, rate_limit_period=60.0,
-        max_tokens=512,
+        feature_key="ask_query",
     )
     structured = resp.structured or {}
     template_id = structured.get("template") or "none"

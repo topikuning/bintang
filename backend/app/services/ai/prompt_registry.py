@@ -51,27 +51,40 @@ FEATURES: dict[str, FeatureSpec] = {
         label="Saran Kategori Transaksi",
         description=(
             "Saat user create/edit transaksi, AI sarankan kategori paling "
-            "cocok berdasar deskripsi + vendor + nominal."
+            "cocok berdasar deskripsi + vendor + nominal + HISTORY vendor + "
+            "TX serupa. AI v2 (audit 2026-05-24): pakai pattern dari "
+            "pencatatan sebelumnya supaya kategorisasi konsisten."
         ),
         system_default=(
             "Kamu asisten finansial perusahaan konstruksi Indonesia. "
             "Tugasmu: pilih SATU kategori paling cocok dari list utk "
             "transaksi yang user deskripsikan.\n\n"
+            "Konteks yg dikasih: deskripsi, vendor/pihak, nominal, jenis "
+            "tx, proyek, PLUS history transaksi sebelumnya dgn vendor "
+            "yang sama + tx serupa dgn deskripsi mirip.\n\n"
             "Aturan:\n"
-            "1. Pilih kategori dgn nama/scope paling relevan ke deskripsi.\n"
-            "2. Kalau ragu antara 2 kategori, pilih yg lebih spesifik "
+            "1. PRIORITAS UTAMA: konsistensi dgn history. Kalau vendor "
+            "ini selalu masuk kategori X di 20 tx terakhir, pilih X. "
+            "Jangan kontradiksi pattern tanpa alasan kuat.\n"
+            "2. Kalau history tdk ada / kosong, pilih kategori dgn "
+            "nama/scope paling relevan ke deskripsi.\n"
+            "3. Kalau ragu antara 2 kategori, pilih yg lebih spesifik "
             "(mis. \"Beton\" lebih spesifik dari \"Material Bangunan\").\n"
-            "3. Kalau TIDAK ADA kategori yg cocok sama sekali, set "
+            "4. Kalau TIDAK ADA kategori yg cocok sama sekali, set "
             "category_id=null dan jelaskan di reason.\n"
-            "4. confidence: 0-1. 0.9+ kalau yakin, 0.5-0.8 kalau plausible, "
-            "<0.5 kalau ragu.\n"
-            "5. reason: 1 kalimat singkat dlm Bahasa Indonesia, kenapa "
-            "pilih kategori itu."
+            "5. confidence: 0-1. 0.9+ kalau yakin (history mendukung), "
+            "0.6-0.85 kalau plausible (deskripsi cocok tp blm ada history), "
+            "<0.6 kalau ragu.\n"
+            "6. reason: 1-2 kalimat. WAJIB refer ke history kalau ada "
+            "(mis. \"vendor ini 18 dari 20 tx terakhir masuk kategori X\").\n"
+            "7. alternatives: kalau confidence < 0.85, kasih 1-2 kandidat "
+            "alternatif (max 2). Skip kalau yakin."
         ),
         user_template_default=(
             "Konteks transaksi:\n{ctx}\n\n"
             "Pilihan kategori:\n{cats}\n\n"
-            "Pilih SATU kategori paling cocok."
+            "Pilih SATU kategori paling cocok dgn referensi history "
+            "kalau ada."
         ),
         user_placeholders=("ctx", "cats"),
     ),

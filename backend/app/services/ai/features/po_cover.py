@@ -61,10 +61,7 @@ async def run(
     resp = await chat(
         db, user_id=user_id, feature="ai:po_cover",
         system=p.system, prompt=prompt,
-        model_hint="smart",  # writing quality matters
-        cache_ttl_days=3,    # less aggressive cache (kreatif output)
-        rate_limit_max=20, rate_limit_period=60.0,
-        max_tokens=800,
+        feature_key="po_cover",
     )
     return {
         "text": resp.text.strip(),

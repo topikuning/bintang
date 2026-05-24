@@ -73,10 +73,7 @@ async def run(
     resp = await chat(
         db, user_id=user_id, feature="ai:cash_justify",
         system=p.system, prompt=prompt,
-        model_hint="fast",  # short paragraph, fast model OK
-        cache_ttl_days=3,
-        rate_limit_max=30, rate_limit_period=60.0,
-        max_tokens=400,
+        feature_key="cash_justify",
     )
     return {
         "text": resp.text.strip(),

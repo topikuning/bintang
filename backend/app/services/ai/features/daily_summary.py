@@ -142,10 +142,7 @@ async def run(
         db, user_id=user_id, feature="ai:daily_summary",
         system=p.system,
         prompt=p.user_template.format(facts=facts),
-        model_hint="fast",
-        cache_ttl_days=1,  # 1 hari cache (idempoten utk same date)
-        rate_limit_max=20, rate_limit_period=60.0,
-        max_tokens=400,
+        feature_key="daily_summary",
     )
     return {
         "text": resp.text.strip(),

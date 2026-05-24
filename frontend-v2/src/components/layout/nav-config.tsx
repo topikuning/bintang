@@ -99,6 +99,7 @@ export const DESKTOP_NAV: NavGroup[] = [
       { id: "settings-orphan-files", label: "File Orphan", to: "/settings/orphan-files", icon: HardDrive },
       { id: "settings-non-project", label: "Inklusi Catatan Non-Proyek", to: "/settings/non-project", icon: SlidersHorizontal },
       { id: "settings-ai-prompts", label: "Prompt AI", to: "/settings/ai-prompts", icon: Sparkles },
+      { id: "settings-ai-features", label: "Setting AI per Fitur", to: "/settings/ai-features", icon: SlidersHorizontal },
     ],
   },
 ]
@@ -155,6 +156,7 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
       { id: "settings-orphan-files", label: "File Orphan", to: "/settings/orphan-files", icon: HardDrive },
       { id: "settings-non-project", label: "Inklusi Catatan Non-Proyek", to: "/settings/non-project", icon: SlidersHorizontal },
       { id: "settings-ai-prompts", label: "Prompt AI", to: "/settings/ai-prompts", icon: Sparkles },
+      { id: "settings-ai-features", label: "Setting AI per Fitur", to: "/settings/ai-features", icon: SlidersHorizontal },
     ],
   },
 ]

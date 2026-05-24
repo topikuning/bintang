@@ -13,13 +13,17 @@ router = APIRouter()
 
 class SuggestCategoryIn(BaseModel):
     """Minimum salah satu dr description / party_name harus terisi.
-    Konteks tambahan (amount, kind) opsional tapi tingkatkan akurasi."""
+    Konteks tambahan tingkatkan akurasi.
+
+    Audit 2026-05-24: tambah project_id supaya AI tau konteks proyek
+    + bisa scope history vendor per-proyek kalau diset."""
     description: str | None = Field(None, max_length=500)
     party_name: str | None = Field(None, max_length=200)
     amount: str | float | int | None = None
     kind: str | None = Field(None, max_length=40)
     direction: str | None = Field(None, pattern="^(IN|OUT)$",
                                   description="Filter kategori berdasar arah kas.")
+    project_id: int | None = None
 
 
 @router.post("/suggest-category")
@@ -45,6 +49,7 @@ async def suggest_category(
             amount=payload.amount,
             kind=payload.kind,
             direction=payload.direction,
+            project_id=payload.project_id,
         )
     except RuntimeError as e:
         if "ai_rate_limited" in str(e):

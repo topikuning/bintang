@@ -227,8 +227,31 @@ async def chat(
     rate_limit_period: float | None = None,
     max_tokens: int = 1024,
     timeout: float = 30.0,
+    # Audit 2026-05-24: per-feature settings overlay. Kalau di-set,
+    # lookup ai_feature_settings + budget check. Caller args masih
+    # menang (kalau caller explicit, override config).
+    feature_key: str | None = None,
 ) -> LLMResponse:
     """Generic AI chat. Lihat docstring module."""
+    # Per-feature config overlay (audit 2026-05-24).
+    if feature_key:
+        from app.services.ai.feature_settings import (
+            assert_within_budget, get_effective,
+        )
+        _cfg = await get_effective(db, feature_key)
+        await assert_within_budget(db, feature_key, _cfg)
+        # Explicit caller args TIDAK di-override -- config cuma fill defaults.
+        if model_hint == "fast" or model_hint == "smart":
+            # Caller pakai hint generic -> bisa di-override config.
+            model_hint = _cfg.model or _cfg.model_hint
+        elif model_hint is None:
+            model_hint = _cfg.model or _cfg.model_hint
+        if max_tokens == 1024:  # default arg
+            max_tokens = _cfg.max_tokens
+        if cache_ttl_days == 7:
+            cache_ttl_days = _cfg.cache_ttl_days
+        if rate_limit_max is None:
+            rate_limit_max = _cfg.rate_limit_per_min
     # Rate-limit per feature per user.
     limiter = get_limiter(
         feature,

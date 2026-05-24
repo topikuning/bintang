@@ -53,6 +53,7 @@ MENU_REGISTRY: list[dict[str, Any]] = [
     {"id": "settings-orphan-files", "label": "File Orphan", "group": "sistem"},
     {"id": "settings-non-project", "label": "Inklusi Catatan Non-Proyek", "group": "sistem"},
     {"id": "settings-ai-prompts", "label": "Prompt AI", "group": "sistem"},
+    {"id": "settings-ai-features", "label": "Setting AI per Fitur", "group": "sistem"},
     # Admin -- audit 2026-05-23
     {"id": "admin-bulk-approval", "label": "Mass Action", "group": "admin"},
 ]
@@ -65,9 +66,9 @@ MENU_IDS = {m["id"] for m in MENU_REGISTRY}
 SUPERADMIN_ONLY_MENU_IDS = {
     "non-project",
     "settings-non-project",
-    # Audit 2026-05-24: prompt AI hanya boleh diutak-atik SUPERADMIN.
-    # CENTRAL_ADMIN sekalipun tdk perlu lihat -- bukan bagian operasional.
+    # Audit 2026-05-24: konfigurasi AI hanya SUPERADMIN.
     "settings-ai-prompts",
+    "settings-ai-features",
 }
 
 # Menu admin-only (SUPERADMIN + CENTRAL_ADMIN). PROJECT_ADMIN + EXECUTIVE

@@ -1,0 +1,208 @@
+"""Per-feature AI runtime settings.
+
+Audit 2026-05-24 user req: tdk hardcode, admin atur per feature.
+
+Layered config:
+1. DEFAULTS dict di code (kalau row override tdk ada)
+2. Override row di tabel `ai_feature_settings` (kalau ada)
+3. Caller bisa argumentpass yg over-rule keduanya (mis. paksa max_tokens
+   utk eksperimen) — saat ini tdk dipakai.
+
+Caller pattern:
+    cfg = await get_effective(db, "category")
+    chat(..., model_hint=cfg.model_hint, max_tokens=cfg.max_tokens,
+         cache_ttl_days=cfg.cache_ttl_days, ...)
+
+Budget enforcement: sebelum panggil chat, cek `monthly_spend_usd`
+vs `monthly_budget_usd`. Kalau lewat → raise BudgetExceededError.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from decimal import Decimal
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.models import AICallLog, AIFeatureSettings
+
+
+class BudgetExceededError(RuntimeError):
+    """Monthly budget utk feature ini sudah habis."""
+
+
+# Default per-feature. Sumber kebenaran kalau row override tdk ada.
+# Map feature_key (matches ai_prompt_registry) ke default config.
+# `provider` = None artinya pakai AI_DEFAULT_PROVIDER global setting.
+# `model` = None artinya pakai model_hint resolve.
+DEFAULTS: dict[str, dict] = {
+    "category": {
+        # Audit 2026-05-24: AI v2 dgn history context -- butuh reasoning
+        # lebih kuat. Default model_hint=smart (Mistral Large / Claude
+        # Sonnet). Admin bisa downgrade ke "fast" lewat AI Settings.
+        "provider": None, "model": None, "model_hint": "smart",
+        "max_tokens": 1024, "cache_ttl_days": 7,
+        "rate_limit_per_min": 60, "web_search_enabled": False,
+        "monthly_budget_usd": None,
+    },
+    "anomaly": {
+        "provider": None, "model": None, "model_hint": "smart",
+        "max_tokens": 2048, "cache_ttl_days": 0,
+        "rate_limit_per_min": 10, "web_search_enabled": False,
+        "monthly_budget_usd": None,
+    },
+    "po_cover": {
+        "provider": None, "model": None, "model_hint": "smart",
+        "max_tokens": 800, "cache_ttl_days": 3,
+        "rate_limit_per_min": 20, "web_search_enabled": False,
+        "monthly_budget_usd": None,
+    },
+    "cash_justify": {
+        "provider": None, "model": None, "model_hint": "fast",
+        "max_tokens": 400, "cache_ttl_days": 3,
+        "rate_limit_per_min": 30, "web_search_enabled": False,
+        "monthly_budget_usd": None,
+    },
+    "contract_extract": {
+        "provider": None, "model": None, "model_hint": "smart",
+        "max_tokens": 6144, "cache_ttl_days": 30,
+        "rate_limit_per_min": 10, "web_search_enabled": False,
+        "monthly_budget_usd": None,
+    },
+    "ask_query": {
+        "provider": None, "model": None, "model_hint": "fast",
+        "max_tokens": 512, "cache_ttl_days": 1,
+        "rate_limit_per_min": 30, "web_search_enabled": False,
+        "monthly_budget_usd": None,
+    },
+    "daily_summary": {
+        "provider": None, "model": None, "model_hint": "fast",
+        "max_tokens": 400, "cache_ttl_days": 1,
+        "rate_limit_per_min": 20, "web_search_enabled": False,
+        "monthly_budget_usd": None,
+    },
+}
+
+
+@dataclass(frozen=True)
+class EffectiveConfig:
+    feature_key: str
+    provider: str | None        # 'claude' | 'mistral' | None
+    model: str | None           # full model name, None = use model_hint
+    model_hint: str             # "fast" | "smart" (used if model is None)
+    max_tokens: int
+    cache_ttl_days: int
+    rate_limit_per_min: int
+    web_search_enabled: bool
+    monthly_budget_usd: Decimal | None
+    # Indicator field-mana yg override (utk UI badge "custom")
+    overridden_fields: tuple[str, ...]
+
+
+def _merge(default: dict, row: AIFeatureSettings | None) -> tuple[dict, tuple[str, ...]]:
+    out = dict(default)
+    overridden: list[str] = []
+    if row is None:
+        return out, ()
+    fields = [
+        "provider", "model", "max_tokens", "cache_ttl_days",
+        "rate_limit_per_min", "web_search_enabled", "monthly_budget_usd",
+    ]
+    for f in fields:
+        val = getattr(row, f)
+        if val is not None:
+            out[f] = val
+            overridden.append(f)
+    return out, tuple(overridden)
+
+
+async def get_effective(
+    db: AsyncSession, feature_key: str,
+) -> EffectiveConfig:
+    if feature_key not in DEFAULTS:
+        raise KeyError(f"Unknown feature: {feature_key}")
+    default = DEFAULTS[feature_key]
+    row = (await db.execute(
+        select(AIFeatureSettings).where(
+            AIFeatureSettings.feature_key == feature_key,
+        )
+    )).scalar_one_or_none()
+    merged, overridden = _merge(default, row)
+    # Resolve model_hint: kalau explicit model di-set, hint diabaikan
+    # (tetap dibawa utk audit).
+    return EffectiveConfig(
+        feature_key=feature_key,
+        provider=merged.get("provider"),
+        model=merged.get("model"),
+        model_hint=merged.get("model_hint", "fast"),
+        max_tokens=merged["max_tokens"],
+        cache_ttl_days=merged["cache_ttl_days"],
+        rate_limit_per_min=merged["rate_limit_per_min"],
+        web_search_enabled=bool(merged["web_search_enabled"]),
+        monthly_budget_usd=(
+            Decimal(merged["monthly_budget_usd"])
+            if merged["monthly_budget_usd"] is not None else None
+        ),
+        overridden_fields=overridden,
+    )
+
+
+async def monthly_spend_usd(
+    db: AsyncSession, feature_key: str,
+) -> Decimal:
+    """Sum cost_usd utk feature ini di bulan berjalan (UTC).
+
+    Note: cost_usd disimpan sbg String di AICallLog (sengaja, supaya
+    presisi token-level tdk lost di float). Sum di Python supaya
+    decimal-aware. Volume low (~ratusan call/bulan), no perf issue.
+    """
+    now = datetime.now(timezone.utc)
+    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    feature_namespace = f"ai:{feature_key}"
+    rows = (await db.execute(
+        select(AICallLog.cost_usd).where(
+            AICallLog.feature == feature_namespace,
+            AICallLog.created_at >= start,
+            AICallLog.success.is_(True),
+        )
+    )).scalars().all()
+    total = Decimal("0")
+    for v in rows:
+        try:
+            total += Decimal(str(v or 0))
+        except Exception:  # noqa: BLE001
+            pass
+    return total
+
+
+async def assert_within_budget(
+    db: AsyncSession, feature_key: str, cfg: EffectiveConfig,
+) -> None:
+    """Raise BudgetExceededError kalau monthly spend >= budget cap."""
+    if cfg.monthly_budget_usd is None:
+        return
+    spent = await monthly_spend_usd(db, feature_key)
+    if spent >= cfg.monthly_budget_usd:
+        raise BudgetExceededError(
+            f"feature={feature_key} monthly spend ${spent:.4f} >= "
+            f"budget ${cfg.monthly_budget_usd:.4f}"
+        )
+
+
+# Daftar model yg di-support utk dropdown FE (sync dgn pricing.py +
+# _MODEL_HINTS di llm.py).
+SUPPORTED_MODELS = [
+    # Mistral
+    {"id": "mistral-small-latest", "provider": "mistral",
+     "label": "Mistral Small (cepat & murah)"},
+    {"id": "mistral-large-latest", "provider": "mistral",
+     "label": "Mistral Large (smart, reasoning)"},
+    # Claude
+    {"id": "claude-haiku-4-5", "provider": "claude",
+     "label": "Claude Haiku 4.5 (cepat)"},
+    {"id": "claude-sonnet-4-6", "provider": "claude",
+     "label": "Claude Sonnet 4.6 (balanced + web search)"},
+    {"id": "claude-opus-4-7", "provider": "claude",
+     "label": "Claude Opus 4.7 (top quality, mahal)"},
+]

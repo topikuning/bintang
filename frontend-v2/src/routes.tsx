@@ -100,6 +100,11 @@ const RoleMenusPage = lazy(() =>
 const AIPromptsPage = lazy(() =>
   import("@/pages/AIPromptsPage").then((m) => ({ default: m.AIPromptsPage })),
 )
+const AIFeatureSettingsPage = lazy(() =>
+  import("@/pages/AIFeatureSettingsPage").then((m) => ({
+    default: m.AIFeatureSettingsPage,
+  })),
+)
 const OrphanFilesPage = lazy(() =>
   import("@/pages/OrphanFilesPage").then((m) => ({ default: m.OrphanFilesPage })),
 )
@@ -224,6 +229,7 @@ export const router = createBrowserRouter([
           { path: "settings/system", element: <L><SystemSettingsPage /></L> },
           { path: "settings/role-menus", element: <L><RoleMenusPage /></L> },
           { path: "settings/ai-prompts", element: <L><AIPromptsPage /></L> },
+          { path: "settings/ai-features", element: <L><AIFeatureSettingsPage /></L> },
           { path: "settings/orphan-files", element: <L><OrphanFilesPage /></L> },
           { path: "more", element: <L><MorePage /></L> },
         ],
