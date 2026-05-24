@@ -56,6 +56,7 @@ MENU_REGISTRY: list[dict[str, Any]] = [
     {"id": "settings-ai-features", "label": "Setting AI per Fitur", "group": "sistem"},
     # Admin -- audit 2026-05-23
     {"id": "admin-bulk-approval", "label": "Mass Action", "group": "admin"},
+    {"id": "admin-category-audit", "label": "Audit Kategorisasi", "group": "admin"},
 ]
 MENU_IDS = {m["id"] for m in MENU_REGISTRY}
 
@@ -73,7 +74,7 @@ SUPERADMIN_ONLY_MENU_IDS = {
 
 # Menu admin-only (SUPERADMIN + CENTRAL_ADMIN). PROJECT_ADMIN + EXECUTIVE
 # tdk boleh lihat. Audit 2026-05-23 #bulk approval.
-ADMIN_ONLY_MENU_IDS = {"admin-bulk-approval"}
+ADMIN_ONLY_MENU_IDS = {"admin-bulk-approval", "admin-category-audit"}
 
 # Cache: role -> set of hidden menu_ids, dgn TTL
 _CACHE_TTL = 60.0

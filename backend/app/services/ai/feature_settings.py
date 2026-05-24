@@ -82,6 +82,14 @@ DEFAULTS: dict[str, dict] = {
         "rate_limit_per_min": 20, "web_search_enabled": False,
         "monthly_budget_usd": None,
     },
+    "category_audit": {
+        # Audit 2026-05-24: scan + flag tx mis-categorized. Reasoning
+        # task -- pakai smart model.
+        "provider": None, "model": None, "model_hint": "smart",
+        "max_tokens": 2048, "cache_ttl_days": 0,
+        "rate_limit_per_min": 5, "web_search_enabled": False,
+        "monthly_budget_usd": None,
+    },
 }
 
 

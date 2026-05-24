@@ -68,6 +68,11 @@ const BulkApprovalPage = lazy(() =>
     default: m.BulkApprovalPage,
   })),
 )
+const CategoryAuditPage = lazy(() =>
+  import("@/pages/admin/CategoryAuditPage").then((m) => ({
+    default: m.CategoryAuditPage,
+  })),
+)
 const ImportsPage = lazy(() =>
   import("@/pages/Imports").then((m) => ({ default: m.ImportsPage })),
 )
@@ -204,6 +209,10 @@ export const router = createBrowserRouter([
           {
             path: "admin/bulk-approval",
             element: <L><BulkApprovalPage /></L>,
+          },
+          {
+            path: "admin/category-audit",
+            element: <L><CategoryAuditPage /></L>,
           },
           { path: "projects/:id", element: <L><ProjectDashboardPage /></L> },
           { path: "master/projects", element: <L><ProjectsPage /></L> },

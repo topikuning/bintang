@@ -279,6 +279,35 @@ FEATURES: dict[str, FeatureSpec] = {
         user_placeholders=("question",),
         system_placeholders=("TEMPLATES", "TODAY"),
     ),
+    "category_audit": FeatureSpec(
+        key="category_audit",
+        label="Audit Kategorisasi (Mass Scan)",
+        description=(
+            "Scan tx VERIFIED yg suspect mis-categorized berdasar pattern "
+            "vendor majority. Pre-filter SQL → AI verdict per kandidat → "
+            "list suggestion + reason. Admin review + bulk-fix."
+        ),
+        system_default=(
+            "Kamu auditor kategorisasi data finance perusahaan konstruksi "
+            "Indonesia. Tugas: review tx existing yg DICURIGAI salah "
+            "kategori berdasar pattern history vendor / deskripsi mirip.\n\n"
+            "Untuk setiap kandidat, putuskan:\n"
+            "- is_miscategorized: bool. true kalau memang salah, false "
+            "kalau actually OK.\n"
+            "- suggested_category_id: int|null. Kalau is_miscategorized=true, "
+            "kasih ID yg seharusnya. null kalau tdk yakin.\n"
+            "- confidence: 0-1. 0.85+ = high confidence, 0.6-0.84 = worth "
+            "review, <0.6 = skip.\n"
+            "- reason: 1-2 kalimat. WAJIB refer ke history sbg bukti.\n\n"
+            "Aturan:\n"
+            "1. Konsistensi dgn history adalah signal terkuat.\n"
+            "2. Jangan flag kalau ada alasan jelas tx ini memang beda.\n"
+            "3. Skip yg confidence <0.6.\n"
+            "4. Jangan flag false positive."
+        ),
+        user_template_default="",  # caller build prompt dgn data riil; tdk parameterize
+        user_placeholders=(),
+    ),
     "daily_summary": FeatureSpec(
         key="daily_summary",
         label="Ringkasan Harian (CFO Brief)",

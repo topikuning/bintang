@@ -74,6 +74,7 @@ export const DESKTOP_NAV: NavGroup[] = [
       { id: "reports-invoice-items", label: "Detail Invoice", to: "/reports/invoice-items", icon: Receipt },
       { id: "audit-log", label: "Audit Log", to: "/audit-log", icon: History },
       { id: "admin-bulk-approval", label: "Mass Action", to: "/admin/bulk-approval", icon: CheckCheck },
+      { id: "admin-category-audit", label: "Audit Kategorisasi", to: "/admin/category-audit", icon: Tag },
     ],
   },
   {
@@ -131,6 +132,7 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
       { id: "reports-invoice-items", label: "Detail Invoice", to: "/reports/invoice-items", icon: Receipt },
       { id: "audit-log", label: "Audit Log", to: "/audit-log", icon: History },
       { id: "admin-bulk-approval", label: "Mass Action", to: "/admin/bulk-approval", icon: CheckCheck },
+      { id: "admin-category-audit", label: "Audit Kategorisasi", to: "/admin/category-audit", icon: Tag },
     ],
   },
   {
