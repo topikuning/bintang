@@ -213,6 +213,8 @@ class InvoiceItemIn(BaseModel):
     quantity: Decimal = Decimal("1")
     unit: str | None = None
     unit_price: Decimal = Decimal("0")
+    # Audit 2026-05-24: per-item kategori.
+    category_id: int | None = None
 
 
 class InvoiceItemOut(InvoiceItemIn):

@@ -268,6 +268,11 @@ class InvoiceItem(TimestampMixin, Base):
     unit: Mapped[str | None] = mapped_column(String(40), nullable=True)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
     subtotal: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
+    # Audit 2026-05-24: per-item kategori (sebelumnya hanya di invoice
+    # level -- terlalu coarse, item-item campur aduk).
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id"), nullable=True, index=True,
+    )
 
     invoice: Mapped[Invoice] = relationship(back_populates="items")
 

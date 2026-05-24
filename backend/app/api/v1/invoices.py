@@ -263,6 +263,7 @@ async def create_invoice(
             unit=it.unit,
             unit_price=it.unit_price,
             subtotal=Decimal(it.unit_price) * Decimal(it.quantity),
+            category_id=it.category_id,  # audit 2026-05-24
         ))
     sub, tot = _compute_totals(inv.items, inv.tax)
     inv.subtotal = sub
@@ -396,6 +397,7 @@ async def update_invoice(
                 unit=it.get("unit"),
                 unit_price=Decimal(str(it.get("unit_price", 0))),
                 subtotal=Decimal(str(it.get("unit_price", 0))) * Decimal(str(it.get("quantity", 1))),
+                category_id=it.get("category_id"),  # audit 2026-05-24
             ))
     if inv.items:
         # ada items -- subtotal selalu mengikuti item

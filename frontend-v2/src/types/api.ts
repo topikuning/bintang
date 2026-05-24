@@ -221,6 +221,8 @@ export interface InvoiceItem {
   unit: string | null
   unit_price: string
   subtotal: string
+  /** Audit 2026-05-24: per-item kategori. */
+  category_id: number | null
 }
 
 export interface InvoiceItemInput {
@@ -228,6 +230,7 @@ export interface InvoiceItemInput {
   quantity: number | string
   unit?: string | null
   unit_price: number | string
+  category_id?: number | null
 }
 
 export interface InvoicePayment {

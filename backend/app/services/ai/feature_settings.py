@@ -82,6 +82,14 @@ DEFAULTS: dict[str, dict] = {
         "rate_limit_per_min": 20, "web_search_enabled": False,
         "monthly_budget_usd": None,
     },
+    "categorize_items": {
+        # Audit 2026-05-24: bulk per-item categorization. Items bisa
+        # banyak (sampai 100), reasoning per item -- pakai smart model.
+        "provider": None, "model": None, "model_hint": "smart",
+        "max_tokens": 4096, "cache_ttl_days": 0,
+        "rate_limit_per_min": 20, "web_search_enabled": False,
+        "monthly_budget_usd": None,
+    },
     "category_audit": {
         # Audit 2026-05-24: scan + flag tx mis-categorized. Reasoning
         # task -- pakai smart model.

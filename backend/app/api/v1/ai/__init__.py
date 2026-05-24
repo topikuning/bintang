@@ -8,6 +8,7 @@ from . import (
     anomaly,
     ask_query,
     cash_request_justify,
+    categorize_items,
     category,
     category_audit,
     contract_extract,
@@ -17,6 +18,7 @@ from . import (
 
 router = APIRouter()
 router.include_router(category.router)
+router.include_router(categorize_items.router)
 router.include_router(category_audit.router, prefix="/category-audit")
 router.include_router(po_cover.router)
 router.include_router(cash_request_justify.router)

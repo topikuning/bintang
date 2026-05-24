@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Controller, useForm, useFieldArray } from "react-hook-form"
-import { Loader2, Plus, Trash2 } from "lucide-react"
+import { Loader2, Plus, Sparkles, Trash2 } from "lucide-react"
 import { z } from "zod"
 import { toApiDate, fmtIDR } from "@/lib/format"
 import { apiErrorMessage } from "@/lib/api"
@@ -22,8 +22,13 @@ import { AmountInput } from "@/components/forms/AmountInput"
 import { AttachmentUploader } from "@/components/forms/AttachmentUploader"
 import { DateInput } from "@/components/forms/DateInput"
 import { ProjectPicker } from "@/components/forms/ProjectPicker"
+import { CategoryPicker } from "@/components/forms/CategoryPicker"
 import { useProject } from "@/hooks/useProjects"
 import { ProjectStatusBanner } from "@/components/domain/project/ProjectStatusBanner"
+import {
+  useAICategorizeItems,
+  type CategorizeItemSuggestion,
+} from "@/hooks/useAICategorizeItems"
 import { ScanButton, type ExtractedFields } from "@/components/forms/ScanButton"
 import { VendorPicker } from "@/components/forms/VendorPicker"
 import { useBreakpoint } from "@/lib/breakpoint"
@@ -33,6 +38,8 @@ const itemSchema = z.object({
   quantity: z.number({ invalid_type_error: "Qty wajib angka" }).positive("Qty > 0"),
   unit: z.string().nullable().optional(),
   unit_price: z.number({ invalid_type_error: "Harga wajib angka" }).nonnegative(),
+  // Audit 2026-05-24: per-item kategori.
+  category_id: z.number().nullable().optional(),
 })
 
 const schema = z.object({
@@ -84,8 +91,12 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
               quantity: Number(it.quantity),
               unit: it.unit,
               unit_price: Number(it.unit_price),
+              category_id: it.category_id ?? null,
             }))
-          : [{ description: "", quantity: 1, unit: null, unit_price: 0 }],
+          : [{
+              description: "", quantity: 1, unit: null,
+              unit_price: 0, category_id: null,
+            }],
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [invoice?.id, todayIso, initialProjectId],
@@ -103,6 +114,60 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
   } = useForm<FormValues>({ defaultValues })
 
   const itemsField = useFieldArray({ control, name: "items" })
+
+  // Audit 2026-05-24: AI bulk categorize per item.
+  const aiCategorizeMut = useAICategorizeItems()
+  const [aiSuggestions, setAiSuggestions] = useState<Record<number, CategorizeItemSuggestion>>({})
+
+  const handleAICategorize = async () => {
+    const data = getValues()
+    const items = (data.items ?? []).filter((it) => it.description?.trim())
+    if (items.length === 0) {
+      toast.error("Isi deskripsi item dulu")
+      return
+    }
+    const partyName = data.party_name ?? null
+    try {
+      const result = await aiCategorizeMut.mutateAsync({
+        items: items.map((it) => ({
+          description: it.description,
+          quantity: it.quantity,
+          unit: it.unit ?? null,
+          unit_price: it.unit_price,
+        })),
+        direction: (data.type as "IN" | "OUT") || null,
+        party_name: partyName,
+        project_id: data.project_id,
+        context_label: data.number ? `Invoice ${data.number}` : null,
+      })
+      // Map suggestion ke state + auto-fill kategori kalau confidence >= 0.7
+      const byIdx: Record<number, CategorizeItemSuggestion> = {}
+      let filled = 0
+      let total = 0
+      result.items.forEach((s) => {
+        byIdx[s.index] = s
+        total += 1
+        if (s.category_id != null && s.confidence >= 0.7) {
+          // Auto-fill kalau cell saat ini kosong; user yg sudah pilih
+          // manual tdk di-overwrite.
+          const cur = getValues(`items.${s.index}.category_id`)
+          if (cur == null) {
+            setValue(`items.${s.index}.category_id`, s.category_id, {
+              shouldDirty: true,
+            })
+            filled += 1
+          }
+        }
+      })
+      setAiSuggestions(byIdx)
+      toast.success(
+        `AI selesai · ${filled}/${total} item auto-fill`,
+        { description: "Item dgn confidence ≥ 70% diisi otomatis. Sisanya cek suggestion di bawah picker." },
+      )
+    } catch (e) {
+      toast.error("AI kategori gagal", { description: apiErrorMessage(e) })
+    }
+  }
 
   // Audit 2026-05-23 UX integration A: scan button populate form values
   // dari OCR. Vendor match (kalau ada) di-suggest via toast, user bisa
@@ -382,14 +447,36 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
 
             {/* Items */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <Label>Item / Rincian</Label>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleAICategorize}
+                    disabled={aiCategorizeMut.isPending || itemsField.fields.length === 0}
+                    title="AI saran kategori utk semua item"
+                  >
+                    {aiCategorizeMut.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5" />
+                    )}
+                    Saran kategori AI
+                  </Button>
+                </div>
+              </div>
+              <div className="flex items-center justify-end">
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   onClick={() =>
-                    itemsField.append({ description: "", quantity: 1, unit: null, unit_price: 0 })
+                    itemsField.append({
+                      description: "", quantity: 1, unit: null,
+                      unit_price: 0, category_id: null,
+                    })
                   }
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -459,6 +546,41 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
                                 )}
                               />
                             </div>
+                          </div>
+                          {/* Audit 2026-05-24: per-item kategori. */}
+                          <div>
+                            <Label className="text-[10px]">Kategori</Label>
+                            <Controller
+                              control={control}
+                              name={`items.${idx}.category_id` as const}
+                              render={({ field }) => {
+                                const sug = aiSuggestions[idx]
+                                return (
+                                  <div>
+                                    <CategoryPicker
+                                      value={field.value ?? null}
+                                      onChange={(id) => field.onChange(id)}
+                                      type={currentType as "IN" | "OUT"}
+                                    />
+                                    {sug && sug.category_id && (
+                                      <div className="mt-1 text-[10px] text-ink-500 truncate">
+                                        AI: <span className={
+                                          sug.confidence >= 0.85
+                                            ? "text-success-700"
+                                            : sug.confidence >= 0.6
+                                            ? "text-warning-700"
+                                            : "text-ink-500"
+                                        }>
+                                          {sug.category_name}
+                                          {" "}({Math.round(sug.confidence * 100)}%)
+                                        </span>
+                                        {" — "}{sug.reason}
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              }}
+                            />
                           </div>
                           <div className="text-[12px] text-ink-500 flex justify-between">
                             <span>Subtotal item:</span>

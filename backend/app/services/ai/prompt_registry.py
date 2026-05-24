@@ -279,6 +279,45 @@ FEATURES: dict[str, FeatureSpec] = {
         user_placeholders=("question",),
         system_placeholders=("TEMPLATES", "TODAY"),
     ),
+    "categorize_items": FeatureSpec(
+        key="categorize_items",
+        label="Kategorisasi Item Massal (Invoice / Rincian)",
+        description=(
+            "Untuk satu invoice atau rincian dana operasional dgn banyak "
+            "item (bensin, ATK, semen, dst), AI categorize semua item "
+            "sekaligus berdasar deskripsi + vendor + pattern history. "
+            "Hemat token vs panggil 1-per-1."
+        ),
+        system_default=(
+            "Kamu asisten finansial perusahaan konstruksi Indonesia. "
+            "Tugasmu: kategorikan SETIAP item dlm 1 invoice / rincian "
+            "secara terpisah. Item-item bisa beragam jenis (mis. bensin, "
+            "ATK, material, makan) walaupun datang dari 1 vendor / 1 "
+            "rincian -- jangan paksa semua jadi 1 kategori.\n\n"
+            "Aturan:\n"
+            "1. PRIORITAS: konsistensi dgn pattern history vendor "
+            "(kalau ada). Tapi BACA deskripsi item -- kalau item ini "
+            "jelas item beda jenis, kategorikan sesuai item-nya, BUKAN "
+            "pukul rata pakai pattern vendor.\n"
+            "2. Kalau ragu antara 2 kategori, pilih yg lebih spesifik.\n"
+            "3. Kalau item tdk match kategori apapun, set "
+            "category_id=null + reason singkat.\n"
+            "4. Output WAJIB return entry utk SEMUA item input (1 per "
+            "index 0..n-1). Jangan skip.\n"
+            "5. confidence: 0-1. 0.85+ kalau yakin (history mendukung "
+            "atau deskripsi sangat spesifik), 0.6-0.84 plausible, <0.6 ragu.\n"
+            "6. reason: 1 kalimat singkat per item. Refer ke history "
+            "atau keyword di deskripsi."
+        ),
+        user_template_default=(
+            "Konteks:\n{ctx}\n\n"
+            "Daftar kategori valid:\n{cats}\n\n"
+            "Items utk dikategori:\n{items}\n\n"
+            "Kategorikan SETIAP item dgn entry [index, category_id, "
+            "confidence, reason]."
+        ),
+        user_placeholders=("ctx", "cats", "items"),
+    ),
     "category_audit": FeatureSpec(
         key="category_audit",
         label="Audit Kategorisasi (Mass Scan)",
