@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react"
 import type { ColumnDef } from "@tanstack/react-table"
-import { ArrowDownLeft, ArrowUpRight, Loader2, Pencil, Trash2 } from "lucide-react"
+import { ArrowDownLeft, ArrowUpRight, Loader2, Pencil, Sparkles, Trash2 } from "lucide-react"
+import { useMutation, useQuery } from "@tanstack/react-query"
+import { api, apiErrorMessage } from "@/lib/api"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
 import { useCategories, type Category } from "@/hooks/useCategories"
@@ -27,7 +29,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { DraggableSheet } from "@/components/ui/draggable-sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/sonner"
-import { apiErrorMessage } from "@/lib/api"
 import { useBreakpoint } from "@/lib/breakpoint"
 import type { CategoryInput, CategoryType } from "@/types/api"
 
@@ -81,6 +82,7 @@ export function CategoriesPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [target, setTarget] = useState<Category | null>(null)
   const [confirmDel, setConfirmDel] = useState<Category | null>(null)
+  const [cleanupOpen, setCleanupOpen] = useState(false)
   const del = useDeleteCategory()
 
   const items = q.data?.items ?? []
@@ -210,8 +212,28 @@ export function CategoriesPage() {
           setTarget(null)
           setFormOpen(true)
         }}
+        headerExtra={
+          <Button
+            variant="secondary"
+            onClick={() => setCleanupOpen(true)}
+            title="Hapus kategori yg belum pernah dipakai"
+          >
+            <Sparkles className="h-4 w-4" />
+            Bersihkan tidak terpakai
+          </Button>
+        }
         emptyMessage="Belum ada kategori. Tambahkan supaya transaksi bisa dikategorisasi."
       />
+
+      {cleanupOpen && (
+        <CleanupDialog
+          onClose={() => setCleanupOpen(false)}
+          onDone={() => {
+            setCleanupOpen(false)
+            q.refetch()
+          }}
+        />
+      )}
 
       <CategoryForm
         open={formOpen}
@@ -411,5 +433,178 @@ function Field({
       {hint && !error && <p className="text-[11px] text-ink-500">{hint}</p>}
       {error && <p className="text-[11px] text-danger-600">{error}</p>}
     </div>
+  )
+}
+
+
+// ============================================================
+// Cleanup dialog -- hapus massal kategori yg belum pernah dipakai.
+// Audit 2026-05-24 user req: salah import, 127 kategori byk yg tdk
+// pernah dipakai. SAFETY: backend tolak ID dgn usage>0.
+// ============================================================
+interface UsageItem {
+  id: number
+  name: string
+  type: string
+  usage_count: number
+}
+interface UsageResp {
+  items: UsageItem[]
+  total: number
+  unused_count: number
+}
+
+function CleanupDialog({
+  onClose,
+  onDone,
+}: {
+  onClose: () => void
+  onDone: () => void
+}) {
+  const usageQ = useQuery({
+    queryKey: ["categories", "usage", "unused"],
+    queryFn: async (): Promise<UsageResp> => {
+      const { data } = await api.get<UsageResp>(
+        "/categories/usage?only_unused=true",
+      )
+      return data
+    },
+  })
+  const items = usageQ.data?.items ?? []
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+
+  // Auto-select semua saat data load
+  const allIds = items.map((i) => i.id)
+  const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id))
+  const toggleAll = () => {
+    if (allSelected) setSelected(new Set())
+    else setSelected(new Set(allIds))
+  }
+  const toggleOne = (id: number) => {
+    const next = new Set(selected)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setSelected(next)
+  }
+
+  const delMut = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const { data } = await api.post("/categories/bulk-delete", { ids })
+      return data
+    },
+    onSuccess: (res) => {
+      toast.success(
+        `Hapus ${res.success_count}/${res.total_requested} kategori`,
+        {
+          description:
+            res.skipped.length > 0
+              ? `Skipped: ${res.skipped.length} (sudah dipakai / not found)`
+              : undefined,
+        },
+      )
+      onDone()
+    },
+    onError: (e) =>
+      toast.error("Gagal hapus", { description: apiErrorMessage(e) }),
+  })
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Bersihkan Kategori Tidak Terpakai</DialogTitle>
+        </DialogHeader>
+        {usageQ.isLoading && (
+          <div className="py-6 text-center text-ink-500">
+            <Loader2 className="h-5 w-5 animate-spin inline" /> Loading...
+          </div>
+        )}
+        {usageQ.error && (
+          <p className="text-danger-700 text-sm py-3">
+            {apiErrorMessage(usageQ.error)}
+          </p>
+        )}
+        {usageQ.data && (
+          <>
+            {items.length === 0 ? (
+              <div className="py-6 text-center text-ink-500">
+                Semua {usageQ.data.total} kategori sudah pernah dipakai. Tdk
+                ada yg perlu dibersihkan.
+              </div>
+            ) : (
+              <>
+                <p className="text-[13px] text-ink-600">
+                  Ada <strong>{items.length}</strong> kategori belum pernah
+                  dipakai (dari total {usageQ.data.total}). Pilih yg mau
+                  dihapus -- yg sudah dipakai TIDAK muncul di sini.
+                </p>
+                <div className="flex items-center gap-2 border-b pb-2">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    className="h-4 w-4 accent-brand-600"
+                    id="select-all-cat"
+                  />
+                  <label htmlFor="select-all-cat" className="text-[12px] cursor-pointer">
+                    Pilih semua ({selected.size}/{items.length})
+                  </label>
+                </div>
+                <div className="max-h-96 overflow-y-auto rounded border">
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {items.map((c) => (
+                        <tr
+                          key={c.id}
+                          className="border-t hover:bg-ink-50/50 cursor-pointer"
+                          onClick={() => toggleOne(c.id)}
+                        >
+                          <td className="px-3 py-2 w-8">
+                            <input
+                              type="checkbox"
+                              checked={selected.has(c.id)}
+                              onChange={() => toggleOne(c.id)}
+                              className="h-4 w-4 accent-brand-600"
+                            />
+                          </td>
+                          <td className="px-3 py-2">{c.name}</td>
+                          <td className="px-3 py-2 text-[11px] text-ink-500">
+                            {c.type}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </>
+        )}
+        <div className="flex items-center justify-end gap-2 pt-2 border-t">
+          <Button variant="secondary" onClick={onClose}>Tutup</Button>
+          {items.length > 0 && (
+            <Button
+              variant="danger"
+              onClick={() => {
+                if (selected.size === 0) {
+                  toast.error("Pilih minimal 1 kategori")
+                  return
+                }
+                if (!confirm(`Hapus ${selected.size} kategori?`)) return
+                delMut.mutate([...selected])
+              }}
+              disabled={selected.size === 0 || delMut.isPending}
+            >
+              {delMut.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              Hapus ({selected.size})
+            </Button>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

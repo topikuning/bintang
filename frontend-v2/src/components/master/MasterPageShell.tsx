@@ -23,6 +23,8 @@ interface MasterPageShellProps<T> {
   onItemClick?: (item: T) => void
   /** Handler tombol Tambah. */
   onAdd?: () => void
+  /** Extra action(s) di header (di samping tombol Tambah). */
+  headerExtra?: React.ReactNode
   emptyMessage?: string
 }
 
@@ -42,6 +44,7 @@ export function MasterPageShell<T>({
   renderCard,
   onItemClick,
   onAdd,
+  headerExtra,
   emptyMessage = "Belum ada data.",
 }: MasterPageShellProps<T>) {
   const bp = useBreakpoint()
@@ -62,16 +65,19 @@ export function MasterPageShell<T>({
             <h1 className="text-xl font-bold text-ink-900 sm:text-2xl">{title}</h1>
             <p className="text-[13px] text-ink-500 mt-0.5">{description}</p>
           </div>
-          {onAdd && (
-            <Button
-              size={bp === "mobile" ? "md" : "lg"}
-              className="hidden sm:inline-flex"
-              onClick={onAdd}
-            >
-              <Plus className="h-4 w-4" />
-              Tambah
-            </Button>
-          )}
+          <div className="flex items-center gap-2 flex-wrap">
+            {headerExtra}
+            {onAdd && (
+              <Button
+                size={bp === "mobile" ? "md" : "lg"}
+                className="hidden sm:inline-flex"
+                onClick={onAdd}
+              >
+                <Plus className="h-4 w-4" />
+                Tambah
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="rounded-md bg-surface md:bg-transparent">
