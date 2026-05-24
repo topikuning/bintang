@@ -193,6 +193,7 @@ async def _q_project_budget_status(
     pids_list = [p.id for p in projs]
     spent_map: dict[int, Decimal] = {}
     mkt_map: dict[int, Decimal] = {}
+    ps_map: dict[int, Decimal] = {}
     if pids_list:
         spent = (await db.execute(
             select(Transaction.project_id, func.coalesce(func.sum(Transaction.amount), 0))
@@ -205,25 +206,35 @@ async def _q_project_budget_status(
             .group_by(Transaction.project_id)
         )).all()
         spent_map = {pid: Decimal(a or 0) for pid, a in spent}
-        # Marketing aktual per project (exclude dr budget calc)
-        mkt = (await db.execute(
-            select(Transaction.project_id, func.coalesce(func.sum(Transaction.amount), 0))
-            .join(Category, Category.id == Transaction.category_id)
-            .where(
-                Transaction.project_id.in_(pids_list),
-                Transaction.type == TxnType.OUT,
-                Transaction.status == TxnStatus.VERIFIED,
-                Transaction.deleted_at.is_(None),
-                Category.is_marketing.is_(True),
+
+        def _flag_sum(flag_col):
+            return (
+                select(Transaction.project_id, func.coalesce(func.sum(Transaction.amount), 0))
+                .join(Category, Category.id == Transaction.category_id)
+                .where(
+                    Transaction.project_id.in_(pids_list),
+                    Transaction.type == TxnType.OUT,
+                    Transaction.status == TxnStatus.VERIFIED,
+                    Transaction.deleted_at.is_(None),
+                    flag_col.is_(True),
+                )
+                .group_by(Transaction.project_id)
             )
-            .group_by(Transaction.project_id)
-        )).all()
-        mkt_map = {pid: Decimal(a or 0) for pid, a in mkt}
+        mkt_map = {
+            pid: Decimal(a or 0)
+            for pid, a in (await db.execute(_flag_sum(Category.is_marketing))).all()
+        }
+        ps_map = {
+            pid: Decimal(a or 0)
+            for pid, a in (await db.execute(_flag_sum(Category.is_profit_share))).all()
+        }
     data = []
     for p in projs:
         s_total = spent_map.get(p.id, Decimal("0"))
         s_mkt = mkt_map.get(p.id, Decimal("0"))
-        s = max(Decimal("0"), s_total - s_mkt)  # spent non-marketing
+        s_ps = ps_map.get(p.id, Decimal("0"))
+        # Spent dibandingkan budget = operasional + denda (exclude mkt + bagi hasil).
+        s = max(Decimal("0"), s_total - s_mkt - s_ps)
         b = Decimal(p.budget_amount or 0)
         pct = (s / b * 100) if b > 0 else Decimal("0")
         data.append([p.code, p.name, float(b), float(s), f"{pct:.1f}%"])

@@ -313,9 +313,14 @@ async def global_dashboard(
 
     for p in projects:
         totals = await project_totals(db, p.id)
-        # Audit 2026-05-23: budget pengeluaran exclude marketing aktual.
-        mkt_act = await project_marketing_actual(db, p.id)
-        bs = budget_status(p, totals["total_out"], marketing_actual=mkt_act)
+        # Audit 2026-05-23: budget pengeluaran exclude marketing +
+        # bagi hasil (keduanya bukan biaya operasi).
+        exp_brk = await project_expense_breakdown(db, p.id)
+        bs = budget_status(
+            p, totals["total_out"],
+            marketing_actual=exp_brk["marketing"],
+            profit_share_actual=exp_brk["profit_share"],
+        )
         # any overdue invoice for this project?
         ovq = select(func.count()).select_from(Invoice).where(
             Invoice.project_id == p.id,
@@ -486,7 +491,9 @@ async def project_dashboard(
     expense_breakdown = await project_expense_breakdown(db, pid)
     mkt_actual_for_budget = expense_breakdown["marketing"]
     bs = budget_status(
-        p, totals["total_out"], marketing_actual=mkt_actual_for_budget,
+        p, totals["total_out"],
+        marketing_actual=mkt_actual_for_budget,
+        profit_share_actual=expense_breakdown["profit_share"],
     )
 
     # Pending dan unlinked di proyek ini

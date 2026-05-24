@@ -171,10 +171,14 @@ async def cmd_saldo(db, user, chat_id, args, msg) -> str:
         if proj.id not in {p.id for p in accessible}:
             return "Kamu tidak punya akses ke proyek ini."
         totals = await project_totals(db, proj.id)
-        # Audit 2026-05-23: exclude marketing dr budget bar.
-        from app.services.budget import project_marketing_actual
-        mkt_act = await project_marketing_actual(db, proj.id)
-        bs = budget_status(proj, totals["total_out"], marketing_actual=mkt_act)
+        # Audit 2026-05-23: exclude marketing + bagi hasil dr budget bar.
+        from app.services.budget import project_expense_breakdown
+        exp_brk = await project_expense_breakdown(db, proj.id)
+        bs = budget_status(
+            proj, totals["total_out"],
+            marketing_actual=exp_brk["marketing"],
+            profit_share_actual=exp_brk["profit_share"],
+        )
         return (
             f"*{proj.name}* ({proj.code})\n"
             f"Masuk: Rp {_fmt_idr(totals['total_in'])}\n"

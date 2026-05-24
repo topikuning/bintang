@@ -129,32 +129,40 @@ def budget_status(
     total_out: Decimal,
     *,
     marketing_actual: Decimal = Decimal("0"),
+    profit_share_actual: Decimal = Decimal("0"),
 ) -> dict:
-    """Status budget pengeluaran proyek (NON-MARKETING).
+    """Status budget pengeluaran proyek (OPERASIONAL + DENDA).
 
-    Audit 2026-05-23 user req: exclude marketing dr perhitungan budget.
-    Project.budget_amount adalah target pengeluaran OPERASIONAL (tanpa
-    marketing -- marketing punya reservasi formula sendiri). Spending
-    yg dibandingkan = total_out - marketing_actual.
+    Audit 2026-05-23 user req: exclude marketing + bagi hasil dr
+    perhitungan budget. Project.budget_amount = target pengeluaran
+    OPERASIONAL (tanpa marketing & bagi hasil -- keduanya bukan biaya
+    operasi):
+      - Marketing punya reservasi formula sendiri (% dari Nilai Cair).
+      - Bagi hasil = distribusi profit ke mitra, BUKAN biaya operasi
+        (standar akuntansi: below-the-line).
+    Denda TETAP masuk (biaya operasi non-finansial).
 
-    Backward-compat: marketing_actual default 0 -> behaviour lama
-    (semua callers yg blm di-update tetap jalan tapi mungkin overstate).
+    Spending yg dibandingkan budget = total_out - marketing - profit_share.
+
+    Backward-compat: kedua param default 0 -> behaviour lama.
     """
     budget = Decimal(project.budget_amount or 0)
     mkt = max(Decimal("0"), marketing_actual)
-    spent_non_marketing = max(Decimal("0"), total_out - mkt)
+    ps = max(Decimal("0"), profit_share_actual)
+    spent_for_budget = max(Decimal("0"), total_out - mkt - ps)
     if budget <= 0:
         return {
             "budget_amount": budget,
-            "spent": spent_non_marketing,
+            "spent": spent_for_budget,
             "spent_total": total_out,
             "marketing_actual": mkt,
+            "profit_share_actual": ps,
             "remaining": Decimal("0"),
             "usage_pct": Decimal("0"),
             "status": "no_budget",
         }
-    pct = (spent_non_marketing / budget) * Decimal("100")
-    remaining = budget - spent_non_marketing
+    pct = (spent_for_budget / budget) * Decimal("100")
+    remaining = budget - spent_for_budget
     if pct <= Decimal("80"):
         status = "aman"
     elif pct <= Decimal("100"):
@@ -163,11 +171,12 @@ def budget_status(
         status = "overbudget"
     return {
         "budget_amount": budget,
-        # 'spent' = non-marketing (utk perbandingan budget). Backward
-        # callers yg pakai field 'spent' otomatis ke-update.
-        "spent": spent_non_marketing,
+        # 'spent' = utk perbandingan budget (operasional + denda).
+        # Marketing + profit_share di-exclude.
+        "spent": spent_for_budget,
         "spent_total": total_out,
         "marketing_actual": mkt,
+        "profit_share_actual": ps,
         "remaining": remaining,
         "usage_pct": pct.quantize(Decimal("0.01")),
         "status": status,
