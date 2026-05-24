@@ -31,11 +31,22 @@ import { apiErrorMessage } from "@/lib/api"
 import { useBreakpoint } from "@/lib/breakpoint"
 import type { CategoryInput, CategoryType } from "@/types/api"
 
+// Peran akuntansi -- mutually exclusive (max 1 boleh dipilih). UI
+// pakai radio supaya jelas exclusive. 'operating' = default (none).
+const ROLE_OPTIONS = ["operating", "marketing", "penalty", "profit_share"] as const
+type AccountingRole = typeof ROLE_OPTIONS[number]
+const ROLE_LABEL: Record<AccountingRole, string> = {
+  operating: "Operasional (default)",
+  marketing: "Marketing (di-exclude dr budget bar)",
+  penalty: "Denda (info di Rincian Keuangan)",
+  profit_share: "Bagi Hasil (info di Rincian Keuangan)",
+}
+
 const schema = z.object({
   name: z.string().min(1, "Nama wajib"),
   type: z.enum(["IN", "OUT", "BOTH"]),
   description: z.string().nullable().optional(),
-  is_marketing: z.boolean().optional(),
+  accounting_role: z.enum(ROLE_OPTIONS).optional(),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -56,7 +67,12 @@ function buildDefaults(c: Category | null): FormValues {
     name: c?.name ?? "",
     type: (c?.type as CategoryType) ?? "OUT",
     description: c?.description ?? "",
-    is_marketing: c?.is_marketing ?? false,
+    accounting_role: (
+      c?.is_marketing ? "marketing" :
+      c?.is_penalty ? "penalty" :
+      c?.is_profit_share ? "profit_share" :
+      "operating"
+    ) as AccountingRole,
   }
 }
 
@@ -265,11 +281,14 @@ function CategoryForm({
       return
     }
     try {
+      const role = parsed.data.accounting_role ?? "operating"
       const payload: CategoryInput = {
         name: parsed.data.name,
         type: parsed.data.type,
         description: parsed.data.description?.trim() || null,
-        is_marketing: parsed.data.is_marketing ?? false,
+        is_marketing: role === "marketing",
+        is_penalty: role === "penalty",
+        is_profit_share: role === "profit_share",
       }
       if (isEdit) {
         await update.mutateAsync(payload)
@@ -311,17 +330,22 @@ function CategoryForm({
         <Textarea {...register("description")} rows={2} placeholder="Mis. Pembelian semen, batu, pasir" />
       </Field>
       <Field
-        label="Tipe Khusus"
-        hint="Tag 'Marketing' kalau kategori ini dipakai utk TX komisi/fee/bonus marketing. TX terkait dipisah dari biaya non-marketing di rincian proyek (cegah double-count dgn reservasi Marketing % yg di-set per proyek)."
+        label="Peran Akuntansi"
+        hint="Mutually exclusive: pilih SATU. Mempengaruhi treatment di Rincian Keuangan + Budget Pengeluaran."
       >
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            {...register("is_marketing")}
-            className="h-4 w-4 accent-brand-600"
-          />
-          <span className="text-sm">Kategori Marketing</span>
-        </label>
+        <div className="flex flex-col gap-1.5">
+          {ROLE_OPTIONS.map((role) => (
+            <label key={role} className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="radio"
+                value={role}
+                {...register("accounting_role")}
+                className="mt-1 h-4 w-4 accent-brand-600"
+              />
+              <span className="text-sm leading-tight">{ROLE_LABEL[role]}</span>
+            </label>
+          ))}
+        </div>
       </Field>
     </form>
   )

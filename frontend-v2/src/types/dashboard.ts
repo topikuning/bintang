@@ -52,6 +52,15 @@ export interface ProjectFinance {
   marketing_variance: number
   /** biaya_aktual - marketing_aktual. */
   biaya_aktual_non_marketing: number
+  /** Audit 2026-05-23: breakdown komposisi biaya aktual per peran
+   *  akuntansi (marketing / penalty / profit_share / operating). */
+  expense_breakdown?: {
+    marketing: number
+    penalty: number
+    profit_share: number
+    operating: number
+    total: number
+  }
 }
 
 export interface MonthlyCashflowPoint {

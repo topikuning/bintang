@@ -67,6 +67,63 @@ async def project_marketing_actual(
     return Decimal(res.scalar_one() or 0)
 
 
+async def project_expense_breakdown(
+    db: AsyncSession, project_id: int,
+    *, statuses: tuple = ACTIVE_STATUSES,
+) -> dict[str, Decimal]:
+    """Komposisi biaya OUT proyek per peran akuntansi.
+
+    Audit 2026-05-23 user req: transparansi Rincian Keuangan. Pecah
+    Biaya Aktual ke 4 bucket berdasar Category flag:
+    - marketing (is_marketing=True)
+    - penalty (is_penalty=True)
+    - profit_share (is_profit_share=True)
+    - operating (none of above, OR tx tanpa category)
+
+    Catatan: marketing di-EXCLUDE dari budget bar (formula terpisah).
+    Penalty + profit_share + operating SEMUA masuk budget bar.
+
+    Return: {marketing, penalty, profit_share, operating, total}.
+    Sum 4 buckets = total (kecuali bug data).
+    """
+    from sqlalchemy import case
+    # Single GROUP BY w/ CASE: efisien 1 query.
+    flag_expr = case(
+        (Category.is_marketing.is_(True), "marketing"),
+        (Category.is_penalty.is_(True), "penalty"),
+        (Category.is_profit_share.is_(True), "profit_share"),
+        else_="operating",
+    )
+    rows = (await db.execute(
+        select(
+            flag_expr.label("bucket"),
+            func.coalesce(func.sum(Transaction.amount), 0).label("amt"),
+        )
+        .outerjoin(Category, Category.id == Transaction.category_id)
+        .where(
+            Transaction.project_id == project_id,
+            Transaction.type == TxnType.OUT,
+            Transaction.status.in_(statuses),
+            Transaction.deleted_at.is_(None),
+        )
+        .group_by("bucket")
+    )).all()
+    out = {
+        "marketing": Decimal("0"),
+        "penalty": Decimal("0"),
+        "profit_share": Decimal("0"),
+        "operating": Decimal("0"),
+    }
+    for bucket, amt in rows:
+        if bucket in out:
+            out[bucket] = Decimal(amt or 0)
+        else:
+            # 'operating' bucket bisa muncul sbg None kalau tx tanpa category
+            out["operating"] += Decimal(amt or 0)
+    out["total"] = sum(out.values(), Decimal("0"))
+    return out
+
+
 def budget_status(
     project: Project,
     total_out: Decimal,

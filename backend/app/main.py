@@ -70,6 +70,10 @@ async def _sync_pg_columns(conn) -> None:
         # Category marketing flag (audit 2026-05-23) -- cegah double count
         # marketing di rincian proyek. Migrasi h9e4b2d6f3a8.
         "ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_marketing BOOLEAN NOT NULL DEFAULT FALSE",
+        # Category penalty + profit_share flags (audit 2026-05-23) -- transparansi
+        # distribusi profit di Rincian Keuangan. Migrasi i3a8b5c7e9d2.
+        "ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_penalty BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_profit_share BOOLEAN NOT NULL DEFAULT FALSE",
         # Invoice number wajib unik. Drop index lama (non-unique) lalu
         # buat unique index. Tdk pakai DROP IF EXISTS sebelum CREATE
         # supaya idempoten -- kalau sudah unique, CREATE UNIQUE INDEX IF

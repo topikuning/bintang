@@ -10,19 +10,13 @@ interface FinanceBreakdownProps {
 /**
  * Rincian Keuangan kontrak proyek.
  *
- * Struktur:
- *   1. Header: Nilai Kontrak -> tax -> Nilai Cair (highlighted).
- *   2. Marketing breakdown (budget / realisasi / sisa atau overspend).
- *      Sisa budget = uncommitted → masuk profit (transparency).
+ * Struktur (audit 2026-05-23):
+ *   1. Kontrak -> tax -> Nilai Cair.
+ *   2. Marketing breakdown (budget vs realisasi).
  *   3. Biaya Aktual + Biaya Proyeksi.
- *   4. Profit Saat Ini -- HERO (big, color-coded vs target).
- *   5. Profit Proyeksi -- secondary, as target reference.
- *
- * Audit 2026-05-23 user req:
- * - Profit Saat Ini di-highlight prominent (bukan profit proyeksi).
- * - Warna berdasar performance vs target.
- * - Sisa budget marketing ditampilkan eksplisit di rincian (bukan cuma
- *   di card terpisah) -- 'masuk profit' supaya jelas dimana savings-nya.
+ *   4. Komposisi Biaya (breakdown per peran akuntansi).
+ *   5. Profit Saat Ini + Proyeksi (proporsional side-by-side).
+ *   6. Handle profit minus dgn warning.
  */
 export function FinanceBreakdown({ finance, className }: FinanceBreakdownProps) {
   if (finance.nilai_kontrak <= 0) return null
@@ -32,6 +26,7 @@ export function FinanceBreakdown({ finance, className }: FinanceBreakdownProps) 
   const mktSisa = Math.max(0, budget - aktual)
   const mktOverspend = Math.max(0, aktual - budget)
   const usedPct = budget > 0 ? (aktual / budget) * 100 : 0
+  const exp = finance.expense_breakdown
 
   return (
     <div className={cn("rounded-md border bg-surface p-4", className)}>
@@ -42,7 +37,7 @@ export function FinanceBreakdown({ finance, className }: FinanceBreakdownProps) 
         </span>
       </div>
 
-      {/* Section 1: Kontrak -> tax -> Nilai Cair */}
+      {/* Section 1: Kontrak → Nilai Cair */}
       <ul className="text-sm divide-y divide-ink-100">
         <Row label="Nilai Kontrak" value={finance.nilai_kontrak} bold />
         <Row label="DPP" value={finance.dpp} muted />
@@ -51,7 +46,7 @@ export function FinanceBreakdown({ finance, className }: FinanceBreakdownProps) 
         <Row label="Nilai Cair" value={finance.nilai_cair} highlight="success" bold />
       </ul>
 
-      {/* Section 2: Marketing breakdown */}
+      {/* Section 2: Marketing */}
       {(budget > 0 || aktual > 0) && (
         <div className="mt-3 rounded-md border bg-ink-50/60 p-3">
           <div className="flex items-center justify-between gap-2 mb-2">
@@ -98,18 +93,22 @@ export function FinanceBreakdown({ finance, className }: FinanceBreakdownProps) 
         <Row label="Biaya Proyeksi (target)" value={-finance.biaya_proyeksi} negative muted />
       </ul>
 
-      {/* Section 4: PROFIT SAAT INI -- hero, color-coded vs target */}
-      <ProfitHero
+      {/* Section 4: Komposisi Biaya (distribusi spending per peran). */}
+      {exp && exp.total > 0 && (
+        <ExpenseCompositionCard exp={exp} />
+      )}
+
+      {/* Section 5: Profit Saat Ini + Proyeksi (proporsional). */}
+      <ProfitComparison
         profitNow={finance.profit_now}
         profitProj={finance.profit_proj}
       />
 
       <p className="mt-3 text-[11px] leading-relaxed text-ink-500">
         DPP = Nilai Kontrak ÷ (1 + PPn%). Profit Saat Ini = Nilai Cair −
-        Biaya Aktual (sudah include marketing aktual, tdk double-count).
-        Sisa budget marketing yg tdk dialokasi otomatis tercermin di
-        Profit Saat Ini. Tag kategori &apos;marketing&apos; di master
-        Kategori agar TX OUT terkait ter-recognize.
+        Biaya Aktual (sudah include denda + bagi hasil + marketing aktual).
+        Sisa budget marketing yg tdk dialokasi otomatis tercermin di profit.
+        Tag peran akuntansi di master Kategori.
       </p>
     </div>
   )
@@ -117,58 +116,100 @@ export function FinanceBreakdown({ finance, className }: FinanceBreakdownProps) 
 
 
 /**
- * Hero profit display: Profit Saat Ini big & color-coded berdasar
- * performance vs target (Profit Proyeksi). Profit Proyeksi muncul
- * di footer kecil sbg referensi target.
+ * Komposisi Biaya Aktual: breakdown per peran akuntansi (marketing /
+ * denda / bagi hasil / operating). Pure transparency -- math sudah
+ * inside Biaya Aktual di atas. Audit 2026-05-23 user req.
  */
-function ProfitHero({
+function ExpenseCompositionCard({
+  exp,
+}: {
+  exp: NonNullable<ProjectFinance["expense_breakdown"]>
+}) {
+  const items = [
+    { key: "operating",     label: "Operasional",        value: exp.operating,    color: "text-ink-700" },
+    { key: "marketing",     label: "Marketing",          value: exp.marketing,    color: "text-info-700" },
+    { key: "penalty",       label: "Denda",              value: exp.penalty,      color: "text-warning-700" },
+    { key: "profit_share",  label: "Bagi Hasil",         value: exp.profit_share, color: "text-brand-700" },
+  ]
+  return (
+    <div className="mt-3 rounded-md border bg-ink-50/60 p-3">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="text-[12px] font-semibold uppercase tracking-wide text-ink-700">
+          Komposisi Biaya Aktual
+        </span>
+        <span className="text-[10px] text-ink-500">
+          Pure breakdown — tdk re-hitung profit
+        </span>
+      </div>
+      <ul className="text-sm divide-y divide-ink-200/60">
+        {items.map((it) => {
+          if (it.value <= 0) return null
+          const pct = exp.total > 0 ? (it.value / exp.total) * 100 : 0
+          return (
+            <li
+              key={it.key}
+              className="flex items-center justify-between gap-3 py-1.5"
+            >
+              <div className="flex items-center gap-2">
+                <span className={cn("text-[12px] font-medium", it.color)}>
+                  {it.label}
+                </span>
+                <span className="text-[10px] text-ink-500">
+                  {pct.toFixed(1)}%
+                </span>
+              </div>
+              <span
+                data-num
+                className="font-mono font-semibold text-ink-900 [font-variant-numeric:tabular-nums]"
+              >
+                {fmtIDR(it.value)}
+              </span>
+            </li>
+          )
+        })}
+        <li className="flex items-center justify-between gap-3 py-1.5 border-t-2 border-ink-300">
+          <span className="text-[12px] font-bold uppercase text-ink-800">
+            Total
+          </span>
+          <span
+            data-num
+            className="font-mono font-bold text-ink-900 [font-variant-numeric:tabular-nums]"
+          >
+            {fmtIDR(exp.total)}
+          </span>
+        </li>
+      </ul>
+    </div>
+  )
+}
+
+
+/**
+ * Profit Saat Ini + Proyeksi side-by-side, proporsional.
+ * Color-coded berdasar performance vs target. Handle minus dgn warning.
+ */
+function ProfitComparison({
   profitNow,
   profitProj,
 }: {
   profitNow: number
   profitProj: number
 }) {
-  // Variant logic:
-  // - profit_now < 0 → DANGER
-  // - profit_now >= profit_proj → SUCCESS (mengalahkan / sama dgn target)
-  // - 0 <= profit_now < profit_proj → WARNING (positif tapi di bawah target)
+  const minus = profitNow < 0
+  const ahead = profitProj > 0 && profitNow >= profitProj
   const variant: "danger" | "warning" | "success" =
-    profitNow < 0
-      ? "danger"
-      : profitProj > 0 && profitNow < profitProj
-      ? "warning"
-      : "success"
+    minus ? "danger" : ahead ? "success" : "warning"
 
   const styles = {
-    danger: {
-      bg: "bg-danger-50",
-      border: "border-danger-300",
-      text: "text-danger-800",
-      badge: "bg-danger-100 text-danger-800",
-      icon: "✕",
-    },
-    warning: {
-      bg: "bg-warning-50",
-      border: "border-warning-300",
-      text: "text-warning-900",
-      badge: "bg-warning-100 text-warning-800",
-      icon: "!",
-    },
-    success: {
-      bg: "bg-success-50",
-      border: "border-success-300",
-      text: "text-success-800",
-      badge: "bg-success-100 text-success-800",
-      icon: "✓",
-    },
+    danger:  { bg: "bg-danger-50",  border: "border-danger-300",  text: "text-danger-800",  badge: "bg-danger-100 text-danger-800",   icon: "✕" },
+    warning: { bg: "bg-warning-50", border: "border-warning-300", text: "text-warning-900", badge: "bg-warning-100 text-warning-800", icon: "!" },
+    success: { bg: "bg-success-50", border: "border-success-300", text: "text-success-800", badge: "bg-success-100 text-success-800", icon: "✓" },
   }[variant]
 
-  // Selisih vs target
   const diff = profitNow - profitProj
   const diffPct = profitProj !== 0 ? (diff / Math.abs(profitProj)) * 100 : 0
-  const ahead = diff >= 0
   const statusText = (() => {
-    if (profitNow < 0) return "Proyek rugi"
+    if (minus) return "Proyek merugi"
     if (profitProj <= 0) return "Target belum di-set"
     if (ahead) return `Di atas target (+${diffPct.toFixed(0)}%)`
     return `Di bawah target (${diffPct.toFixed(0)}%)`
@@ -176,48 +217,61 @@ function ProfitHero({
 
   return (
     <div className="mt-4 space-y-2">
-      {/* Hero card */}
-      <div
-        className={cn(
-          "rounded-lg border-2 p-4",
-          styles.bg,
-          styles.border,
-        )}
-      >
-        <div className="flex items-center justify-between gap-2 mb-1">
-          <span className={cn("text-[12px] font-semibold uppercase tracking-wider", styles.text)}>
-            Profit Saat Ini
-          </span>
-          <span className={cn(
-            "rounded px-2 py-0.5 text-[10px] font-bold uppercase",
-            styles.badge,
-          )}>
-            <span className="mr-1">{styles.icon}</span>
-            {statusText}
-          </span>
+      {minus && (
+        <div className="rounded-md border border-danger-300 bg-danger-50 p-3">
+          <div className="flex items-start gap-2">
+            <span className="text-base">⚠</span>
+            <div className="flex-1 text-[12px] text-danger-800">
+              <strong className="font-semibold">Proyek minus.</strong>{" "}
+              Tinjau realisasi vs target. Kalau ada denda / bagi hasil
+              yg sudah dibayar, review akunting -- distribusi profit
+              seharusnya nol ketika profit minus.
+            </div>
+          </div>
         </div>
-        <div
-          data-num
-          className={cn(
-            "font-mono text-2xl font-bold [font-variant-numeric:tabular-nums] sm:text-3xl",
-            styles.text,
-          )}
-        >
-          {profitNow < 0 ? `− ${fmtIDR(Math.abs(profitNow))}` : fmtIDR(profitNow)}
-        </div>
-      </div>
+      )}
 
-      {/* Target reference (compact) */}
-      <div className="flex items-center justify-between gap-3 px-1">
-        <span className="text-[11px] text-ink-500">
-          Target (Profit Proyeksi)
-        </span>
-        <span
-          data-num
-          className="font-mono text-[12px] text-ink-600 [font-variant-numeric:tabular-nums]"
-        >
-          {profitProj < 0 ? `− ${fmtIDR(Math.abs(profitProj))}` : fmtIDR(profitProj)}
-        </span>
+      {/* Side-by-side proporsional */}
+      <div className="grid grid-cols-2 gap-3">
+        {/* Profit Saat Ini -- color-coded */}
+        <div className={cn("rounded-md border-2 p-3", styles.bg, styles.border)}>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className={cn("text-[11px] font-semibold uppercase tracking-wider", styles.text)}>
+              Profit Saat Ini
+            </span>
+            <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-bold uppercase", styles.badge)}>
+              <span className="mr-0.5">{styles.icon}</span>
+              {statusText}
+            </span>
+          </div>
+          <div
+            data-num
+            className={cn(
+              "font-mono text-lg font-bold [font-variant-numeric:tabular-nums] sm:text-xl",
+              styles.text,
+            )}
+          >
+            {minus ? `− ${fmtIDR(Math.abs(profitNow))}` : fmtIDR(profitNow)}
+          </div>
+        </div>
+
+        {/* Profit Proyeksi -- reference */}
+        <div className="rounded-md border bg-ink-50/60 p-3">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-600">
+              Profit Proyeksi
+            </span>
+            <span className="text-[9px] uppercase text-ink-400">
+              Target
+            </span>
+          </div>
+          <div
+            data-num
+            className="font-mono text-lg font-bold text-ink-700 [font-variant-numeric:tabular-nums] sm:text-xl"
+          >
+            {profitProj < 0 ? `− ${fmtIDR(Math.abs(profitProj))}` : fmtIDR(profitProj)}
+          </div>
+        </div>
       </div>
     </div>
   )

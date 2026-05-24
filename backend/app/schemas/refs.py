@@ -153,9 +153,12 @@ class CategoryBase(BaseModel):
     name: str
     type: CategoryType
     description: str | None = None
-    # Audit 2026-05-23: flag kategori marketing. TX dgn category ini
-    # akan dipisahkan dari biaya non-marketing di rincian proyek.
+    # Audit 2026-05-23: flag peran akuntansi. App layer validate max 1
+    # boleh true (mutually exclusive). Dipakai di Rincian Keuangan
+    # utk breakdown distribusi profit.
     is_marketing: bool = False
+    is_penalty: bool = False
+    is_profit_share: bool = False
 
 
 class CategoryCreate(CategoryBase):
@@ -167,6 +170,8 @@ class CategoryUpdate(BaseModel):
     type: CategoryType | None = None
     description: str | None = None
     is_marketing: bool | None = None
+    is_penalty: bool | None = None
+    is_profit_share: bool | None = None
 
 
 class CategoryOut(CategoryBase):

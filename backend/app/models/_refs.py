@@ -186,11 +186,22 @@ class Category(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     type: Mapped[CategoryType] = mapped_column(Enum(CategoryType), nullable=False)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # Audit 2026-05-23: flag kategori marketing. TX OUT dgn category
-    # is_marketing=True akan dipisahkan dari biaya non-marketing di
-    # rincian keuangan proyek -- cegah double count dgn line item
-    # reservasi Marketing (% di-set per proyek di Project.marketing_pct).
+    # Audit 2026-05-23: flag kategori utk klasifikasi akunting khusus.
+    # 3 flag mutually-exclusive di app layer (max 1 boleh true) -- dipakai
+    # utk transparansi di Rincian Keuangan + treatment beda di budget bar:
+    #   - is_marketing: TX dipisah dr biaya non-marketing utk budget bar
+    #     (marketing punya reservasi formula terpisah).
+    #   - is_penalty: TX denda. Tetap masuk budget bar, tapi DISPLAY
+    #     terpisah di breakdown komposisi biaya (audit user req).
+    #   - is_profit_share: TX bagi hasil. Sama dgn penalty -- masuk budget
+    #     bar tapi display terpisah.
     is_marketing: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="0",
+    )
+    is_penalty: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="0",
+    )
+    is_profit_share: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default="0",
     )
 

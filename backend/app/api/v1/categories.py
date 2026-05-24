@@ -34,6 +34,20 @@ async def list_categories(
     return Page(items=[CategoryOut.model_validate(c) for c in items], total=total, page=page, size=size)
 
 
+def _validate_accounting_flags(c: Category) -> None:
+    """Audit 2026-05-23: max 1 dr is_marketing/is_penalty/is_profit_share
+    boleh true (mutually exclusive). Raise 400 kalau lebih dr 1."""
+    flags = [
+        bool(c.is_marketing), bool(c.is_penalty), bool(c.is_profit_share),
+    ]
+    if sum(flags) > 1:
+        raise HTTPException(
+            400,
+            "accounting_flags_conflict: max 1 dari is_marketing / is_penalty / "
+            "is_profit_share boleh true. Pilih satu peran akuntansi.",
+        )
+
+
 @router.post("", response_model=CategoryOut, status_code=201)
 async def create_category(
     payload: CategoryCreate,
@@ -41,6 +55,7 @@ async def create_category(
     admin: User = Depends(require_admin),
 ) -> CategoryOut:
     c = Category(**payload.model_dump())
+    _validate_accounting_flags(c)
     db.add(c)
     await db.flush()
     await log(db, user_id=admin.id, entity="category", entity_id=c.id,
@@ -63,6 +78,7 @@ async def update_category(
     before = snapshot(c)
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(c, k, v)
+    _validate_accounting_flags(c)
     await log(db, user_id=admin.id, entity="category", entity_id=c.id,
               action=AuditAction.UPDATE, before=before, after=snapshot(c))
     await db.commit()

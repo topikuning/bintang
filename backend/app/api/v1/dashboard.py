@@ -31,6 +31,7 @@ from app.models.models import (
 from app.services.budget import (
     budget_status,
     health_status,
+    project_expense_breakdown,
     project_marketing_actual,
     project_totals,
 )
@@ -477,8 +478,9 @@ async def project_dashboard(
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, pid)
     totals = await project_totals(db, pid)
-    # Audit 2026-05-23: budget pengeluaran exclude marketing.
-    mkt_actual_for_budget = await project_marketing_actual(db, pid)
+    # Audit 2026-05-23: breakdown biaya per peran akuntansi.
+    expense_breakdown = await project_expense_breakdown(db, pid)
+    mkt_actual_for_budget = expense_breakdown["marketing"]
     bs = budget_status(
         p, totals["total_out"], marketing_actual=mkt_actual_for_budget,
     )
@@ -707,20 +709,9 @@ async def project_dashboard(
     if unlinked_out_count:
         warnings.append(f"{unlinked_out_count} pengeluaran masih punya sisa belum dialokasi (Rp{unlinked_out_total:,.0f})".replace(",", "."))
 
-    # Marketing aktual: SUM TX OUT VERIFIED di proyek ini dgn
-    # category.is_marketing=True. Audit 2026-05-23 cegah double count.
-    from app.models.models import Category as _Cat
-    mkt_actual_row = (await db.execute(
-        select(func.coalesce(func.sum(Transaction.amount), 0))
-        .join(_Cat, _Cat.id == Transaction.category_id)
-        .where(
-            Transaction.project_id == pid,
-            Transaction.deleted_at.is_(None),
-            Transaction.status == TxnStatus.VERIFIED,
-            Transaction.type == TxnType.OUT,
-            _Cat.is_marketing.is_(True),
-        )
-    )).scalar_one()
+    # Audit 2026-05-23: marketing_aktual reuse expense_breakdown supaya
+    # konsisten dgn Biaya Aktual (sama-sama ACTIVE statuses, bukan
+    # VERIFIED-only seperti sebelumnya).
     finance = _project_finance_breakdown(
         nilai_kontrak=Decimal(p.project_value or 0),
         ppn_pct=Decimal(p.tax_ppn_pct or 0),
@@ -728,8 +719,17 @@ async def project_dashboard(
         marketing_pct=Decimal(p.marketing_pct or 0),
         biaya_aktual=Decimal(totals["total_out"] or 0),
         biaya_proyeksi=Decimal(p.budget_amount or 0),
-        marketing_aktual=Decimal(mkt_actual_row or 0),
+        marketing_aktual=expense_breakdown["marketing"],
     )
+    # Tambah breakdown komposisi biaya utk transparansi distribusi
+    # (denda + bagi hasil + operating + marketing).
+    finance["expense_breakdown"] = {
+        "marketing": float(expense_breakdown["marketing"]),
+        "penalty": float(expense_breakdown["penalty"]),
+        "profit_share": float(expense_breakdown["profit_share"]),
+        "operating": float(expense_breakdown["operating"]),
+        "total": float(expense_breakdown["total"]),
+    }
 
     return {
         "project": {
