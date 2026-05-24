@@ -61,7 +61,9 @@ interface ScanResp {
   invoices: InvoiceSuggestion[]
   invoices_scanned: number
   invoices_skipped: number
+  items_scanned: number
   summary: string
+  ai_calls: number
 }
 
 export function BulkInvoiceCategorizePage() {
@@ -70,7 +72,7 @@ export function BulkInvoiceCategorizePage() {
   const isAdmin = role === "SUPERADMIN" || role === "CENTRAL_ADMIN"
 
   const [projectId, setProjectId] = useState<number | null>(null)
-  const [maxInvoices, setMaxInvoices] = useState(30)
+  const [maxItems, setMaxItems] = useState(500)
   const [onlyUncategorized, setOnlyUncategorized] = useState(true)
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   // overrides per item_id (admin pilih kategori beda dr saran)
@@ -85,7 +87,7 @@ export function BulkInvoiceCategorizePage() {
         {
           project_id: projectId,
           only_uncategorized: onlyUncategorized,
-          max_invoices: maxInvoices,
+          max_items: maxItems,
         },
       )
       return data
@@ -208,16 +210,19 @@ export function BulkInvoiceCategorizePage() {
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-[11px] uppercase tracking-wider">
-            Max Invoices
+            Max Items / Call
           </Label>
           <input
             type="number"
             min={1}
-            max={100}
-            value={maxInvoices}
-            onChange={(e) => setMaxInvoices(Number(e.target.value) || 30)}
+            max={1000}
+            value={maxItems}
+            onChange={(e) => setMaxItems(Number(e.target.value) || 500)}
             className="h-10 rounded border border-border-strong px-3 text-sm"
           />
+          <span className="text-[10px] text-ink-500">
+            Default 500 -- semua item dlm 1 AI call
+          </span>
         </div>
         <div className="flex items-end">
           <label className="flex items-center gap-2 text-[12px] cursor-pointer">
