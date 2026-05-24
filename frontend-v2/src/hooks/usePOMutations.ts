@@ -18,6 +18,11 @@ export interface POCreateInput {
 }
 
 export interface POUpdateInput {
+  /** Pindah proyek (audit 2026-05-23 user req): allowed saat DRAFT,
+   *  atau saat SUPERADMIN god-mode utk non-DRAFT. Backend regen number
+   *  match prefix proyek baru. */
+  project_id?: number
+  company_id?: number
   vendor_client_id?: number | null
   vendor_name?: string | null
   po_date?: string

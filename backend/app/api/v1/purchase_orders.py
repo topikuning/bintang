@@ -336,6 +336,23 @@ async def update_po(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_can_write),
 ) -> POOut:
+    """Update PO. Aturan edit:
+
+    - DRAFT: semua field bebas (siapa pun yg can_write).
+    - Non-DRAFT (ISSUED/APPROVED/...): hanya SUPERADMIN (god-mode).
+      CENTRAL_ADMIN block -- pakai workflow CANCEL kalau perlu koreksi.
+
+    Audit 2026-05-23 user lapor:
+    - project_id sekarang BISA diubah saat draft (sebelumnya silent-
+      ignored krn tdk ada di POUpdate schema).
+    - SUPERADMIN bypass lock status utk semua field termasuk
+      project_id, company_id, status -- jaminan konsistensi terkait
+      adalah tanggung jawab SUPERADMIN.
+
+    Side-effects saat project_id berubah:
+    - Number PO di-regenerate match prefix proyek baru
+      (PO/YYYY/MM/<NEW_CODE>/NNNN). Audit log catat old + new number.
+    """
     res = await db.execute(
         select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == pid)
     )
@@ -343,13 +360,84 @@ async def update_po(
     if not po or po.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, po.project_id)
-    if po.status not in (POStatus.DRAFT,) and user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
-        raise HTTPException(409, "approved_locked")
+
+    is_god = user.role == UserRole.SUPERADMIN
+    if po.status != POStatus.DRAFT and not is_god:
+        # Non-DRAFT locked utk semua kecuali SUPERADMIN.
+        # CENTRAL_ADMIN dulu di-allow oleh logic lama -- sekarang
+        # tightened (god-mode only). Kalau ini perlu di-relaxasi,
+        # pisahkan field non-financial (notes, payment_terms) vs
+        # financial (project_id, items, total).
+        raise HTTPException(409, "approved_locked: gunakan SUPERADMIN utk edit non-draft")
+
     before = snapshot(po)
     data = payload.model_dump(exclude_unset=True)
     items = data.pop("items", None)
+
+    # Validate project change kalau ada.
+    new_project_id = data.pop("project_id", None)
+    new_project: Project | None = None
+    if new_project_id is not None and new_project_id != po.project_id:
+        await ensure_project_access(db, user, new_project_id)
+        new_project = (await db.execute(
+            select(Project).where(
+                Project.id == new_project_id,
+                Project.deleted_at.is_(None),
+            )
+        )).scalar_one_or_none()
+        if new_project is None:
+            raise HTTPException(400, "target_project_not_found")
+
+    # Validate company change kalau ada.
+    new_company_id = data.pop("company_id", None)
+    if new_company_id is not None and new_company_id != po.company_id:
+        target_co = await db.get(Company, new_company_id)
+        if target_co is None or target_co.deleted_at is not None:
+            raise HTTPException(400, "target_company_not_found")
+
+    # Validate status change (gated SUPERADMIN -- dilakukan via workflow
+    # endpoints biasanya, tapi god-mode allow direct).
+    new_status = data.pop("status", None)
+    if new_status is not None and new_status != po.status and not is_god:
+        raise HTTPException(403, "status_change_requires_superadmin")
+
+    # Apply field changes (non-FK fields)
     for k, v in data.items():
         setattr(po, k, v)
+
+    # Apply project change + regen number kalau perlu.
+    if new_project is not None:
+        po.project_id = new_project.id
+        # Regen number utk match prefix baru. Pakai retry-loop sama
+        # spt create_po utk safety race.
+        for _attempt in range(5):
+            new_num = await _next_po_number(
+                db, po.company_id, new_project.code, po.po_date,
+            )
+            old_num = po.number
+            po.number = new_num
+            try:
+                await db.flush()
+                break
+            except IntegrityError:
+                await db.rollback()
+                # Re-fetch po (rollback clear session) -- re-load + retry
+                res2 = await db.execute(
+                    select(PurchaseOrder)
+                    .options(selectinload(PurchaseOrder.items))
+                    .where(PurchaseOrder.id == pid)
+                )
+                po = res2.scalar_one()
+                po.project_id = new_project.id
+        else:
+            raise HTTPException(500, "po_number_regen_failed")
+
+    if new_company_id is not None:
+        po.company_id = new_company_id
+
+    if new_status is not None:
+        po.status = new_status
+
     if items is not None:
         po.items.clear()
         await db.flush()

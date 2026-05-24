@@ -304,21 +304,34 @@ async def update_invoice(
     if not inv or inv.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, inv.project_id)
-    # Project IMMUTABLE via UPDATE -- audit trail keuangan harus tetap
-    # kuat. Reject explisit kalau payload kirim project_id beda current.
-    # Cara koreksi: CANCEL invoice + buat ulang di proyek benar.
+    is_god = user.role == UserRole.SUPERADMIN
+    # Audit 2026-05-23 user req: DRAFT bebas edit (termasuk project_id).
+    # Non-DRAFT IMMUTABLE kecuali SUPERADMIN (god-mode). Audit trail tetap
+    # tercatat via snapshot before/after.
     if payload.project_id is not None and payload.project_id != inv.project_id:
-        raise HTTPException(
-            400,
-            "project_change_forbidden: invoice tidak bisa pindah proyek "
-            "via edit. Cancel invoice (POST /:id/cancel), lalu buat "
-            "ulang di proyek yang benar.",
-        )
+        if inv.status != InvoiceStatus.DRAFT and not is_god:
+            raise HTTPException(
+                400,
+                "project_change_forbidden: invoice non-DRAFT tidak bisa "
+                "pindah proyek (butuh SUPERADMIN). Cancel invoice + buat "
+                "ulang di proyek benar.",
+            )
+        await ensure_project_access(db, user, payload.project_id)
+        target = (await db.execute(
+            select(Project).where(
+                Project.id == payload.project_id,
+                Project.deleted_at.is_(None),
+            )
+        )).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(400, "target_project_not_found")
     before = snapshot(inv)
     data = payload.model_dump(exclude_unset=True)
-    # Pop project_id supaya tdk masuk setattr loop di bawah (kita sudah
-    # validate di atas; kalau lolos validasi -> sama dgn current, no-op).
-    data.pop("project_id", None)
+    # project_id: pop dr loop generic, terapkan eksplisit (sudah
+    # validated di atas kalau berubah).
+    new_project_id = data.pop("project_id", None)
+    if new_project_id is not None and new_project_id != inv.project_id:
+        inv.project_id = new_project_id
     # Cek dup kalau number diubah ke value baru.
     if "number" in data and data["number"] != inv.number:
         clash = (await db.execute(

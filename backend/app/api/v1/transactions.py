@@ -411,20 +411,18 @@ async def update_transaction(
     if not t or t.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
-    # Project change rules:
-    # - DRAFT: BOLEH pindah ke proyek lain (termasuk ke/dari NON_PROJECT).
-    #   Belum mempengaruhi laporan apapun (semua agregat filter VERIFIED)
-    #   jadi audit trail belum kuat. Use case: user salah pilih proyek
-    #   saat create, sadar sebelum submit. Audit log catat perpindahan.
-    # - SUBMITTED/VERIFIED/REJECTED/CANCELLED: IMMUTABLE. Audit trail
-    #   keuangan harus kuat -- koreksi via CANCEL + buat ulang.
+    is_god = user.role == UserRole.SUPERADMIN
+    # Audit 2026-05-23 user req: DRAFT bebas; non-DRAFT IMMUTABLE
+    # kecuali SUPERADMIN (god-mode). Konsekuensi konsistensi (allocations,
+    # report agregat retro-active) ditanggung SUPERADMIN -- audit log
+    # catat before/after.
     if payload.project_id is not None and payload.project_id != t.project_id:
-        if t.status != TxnStatus.DRAFT:
+        if t.status != TxnStatus.DRAFT and not is_god:
             raise HTTPException(
                 400,
                 "project_change_forbidden: tx non-DRAFT tidak bisa pindah "
-                "proyek via edit. Cancel tx (POST /:id/cancel), lalu buat "
-                "ulang di proyek yang benar.",
+                "proyek (butuh SUPERADMIN). Cancel tx + buat ulang di proyek "
+                "benar.",
             )
         # Validate akses ke proyek tujuan + proyek exists & not deleted.
         await ensure_project_access(db, user, payload.project_id)
@@ -446,7 +444,8 @@ async def update_transaction(
         raise HTTPException(409, "verified_locked")
     # Kalau ini CASH_ADVANCE yg sudah ke-settle, lock edit -- supaya saldo
     # akunting tdk inkonsisten dgn settlement.
-    if t.kind == TxnKind.CASH_ADVANCE:
+    # SUPERADMIN god-mode bypass (audit 2026-05-23 user req).
+    if t.kind == TxnKind.CASH_ADVANCE and not is_god:
         settlement = (await db.execute(
             select(CashAdvanceSettlement).where(
                 CashAdvanceSettlement.cash_advance_tx_id == t.id
@@ -456,7 +455,7 @@ async def update_transaction(
             raise HTTPException(
                 409,
                 "cash_advance_already_settled: edit dilarang, hapus "
-                "settlement dulu kalau perlu koreksi.",
+                "settlement dulu (atau pakai SUPERADMIN god-mode).",
             )
     data = payload.model_dump(exclude_unset=True)
     # project_id sudah di-validate di atas: kalau berubah, status harus

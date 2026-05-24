@@ -393,6 +393,14 @@ class POCreate(POBase):
 
 
 class POUpdate(BaseModel):
+    # Audit 2026-05-23: project_id + company_id + status di-allow di
+    # schema. Endpoint enforce siapa boleh ubah (DRAFT = semua field,
+    # non-DRAFT = SUPERADMIN god-mode). Sebelumnya field-field ini
+    # silent-ignored krn tdk ada di schema -> FE kirim ubah project
+    # kelihatan sukses tapi data tdk berubah.
+    project_id: int | None = None
+    company_id: int | None = None
+    status: POStatus | None = None
     vendor_client_id: int | None = None
     vendor_name: str | None = None
     po_date: date | None = None
