@@ -128,6 +128,9 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
     }
     const partyName = data.party_name ?? null
     try {
+      // Audit 2026-05-24: direction kategori INVERSE dari invoice type.
+      // InvoiceType.IN (hutang) -> items expense -> CategoryType.OUT.
+      const catDir: "IN" | "OUT" = data.type === "IN" ? "OUT" : "IN"
       const result = await aiCategorizeMut.mutateAsync({
         items: items.map((it) => ({
           description: it.description,
@@ -135,7 +138,7 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
           unit: it.unit ?? null,
           unit_price: it.unit_price,
         })),
-        direction: (data.type as "IN" | "OUT") || null,
+        direction: catDir,
         party_name: partyName,
         project_id: data.project_id,
         context_label: data.number ? `Invoice ${data.number}` : null,
@@ -285,6 +288,10 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
   }
 
   const currentType = watch("type") as InvoiceType
+  // Audit 2026-05-24: kategori filter INVERSE dari invoice type.
+  // - InvoiceType.IN (vendor -> kita = hutang) -> items = pengeluaran -> CategoryType.OUT
+  // - InvoiceType.OUT (kita -> klien = piutang) -> items = pemasukan -> CategoryType.IN
+  const itemCategoryDirection: "IN" | "OUT" = currentType === "IN" ? "OUT" : "IN"
   // Audit 2026-05-24 Phase 1: banner inline kalau proyek terpilih closed.
   const watchedProjectId = watch("project_id")
   const { data: selectedProject } = useProject(
@@ -560,7 +567,7 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
                                     <CategoryPicker
                                       value={field.value ?? null}
                                       onChange={(id) => field.onChange(id)}
-                                      type={currentType as "IN" | "OUT"}
+                                      type={itemCategoryDirection}
                                     />
                                     {sug && sug.category_id && (
                                       <div className="mt-1 text-[10px] text-ink-500 truncate">

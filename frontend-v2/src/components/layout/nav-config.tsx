@@ -75,6 +75,7 @@ export const DESKTOP_NAV: NavGroup[] = [
       { id: "audit-log", label: "Audit Log", to: "/audit-log", icon: History },
       { id: "admin-bulk-approval", label: "Mass Action", to: "/admin/bulk-approval", icon: CheckCheck },
       { id: "admin-category-audit", label: "Audit Kategorisasi", to: "/admin/category-audit", icon: Tag },
+      { id: "admin-bulk-invoice-categorize", label: "Auto-Kategori Invoice", to: "/admin/bulk-invoice-categorize", icon: Sparkles },
     ],
   },
   {
@@ -133,6 +134,7 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
       { id: "audit-log", label: "Audit Log", to: "/audit-log", icon: History },
       { id: "admin-bulk-approval", label: "Mass Action", to: "/admin/bulk-approval", icon: CheckCheck },
       { id: "admin-category-audit", label: "Audit Kategorisasi", to: "/admin/category-audit", icon: Tag },
+      { id: "admin-bulk-invoice-categorize", label: "Auto-Kategori Invoice", to: "/admin/bulk-invoice-categorize", icon: Sparkles },
     ],
   },
   {

@@ -73,6 +73,11 @@ const CategoryAuditPage = lazy(() =>
     default: m.CategoryAuditPage,
   })),
 )
+const BulkInvoiceCategorizePage = lazy(() =>
+  import("@/pages/admin/BulkInvoiceCategorizePage").then((m) => ({
+    default: m.BulkInvoiceCategorizePage,
+  })),
+)
 const ImportsPage = lazy(() =>
   import("@/pages/Imports").then((m) => ({ default: m.ImportsPage })),
 )
@@ -213,6 +218,10 @@ export const router = createBrowserRouter([
           {
             path: "admin/category-audit",
             element: <L><CategoryAuditPage /></L>,
+          },
+          {
+            path: "admin/bulk-invoice-categorize",
+            element: <L><BulkInvoiceCategorizePage /></L>,
           },
           { path: "projects/:id", element: <L><ProjectDashboardPage /></L> },
           { path: "master/projects", element: <L><ProjectsPage /></L> },
