@@ -28,7 +28,12 @@ from app.models.models import (
     User,
     UserRole,
 )
-from app.services.budget import budget_status, health_status, project_totals
+from app.services.budget import (
+    budget_status,
+    health_status,
+    project_marketing_actual,
+    project_totals,
+)
 from app.services.non_project import transaction_eligibility_clause
 
 router = APIRouter()
@@ -303,7 +308,9 @@ async def global_dashboard(
 
     for p in projects:
         totals = await project_totals(db, p.id)
-        bs = budget_status(p, totals["total_out"])
+        # Audit 2026-05-23: budget pengeluaran exclude marketing aktual.
+        mkt_act = await project_marketing_actual(db, p.id)
+        bs = budget_status(p, totals["total_out"], marketing_actual=mkt_act)
         # any overdue invoice for this project?
         ovq = select(func.count()).select_from(Invoice).where(
             Invoice.project_id == p.id,
@@ -333,6 +340,8 @@ async def global_dashboard(
             "budget": {
                 "amount": float(bs["budget_amount"]),
                 "spent": float(bs["spent"]),
+                "spent_total": float(bs.get("spent_total", bs["spent"])),
+                "marketing_actual": float(bs.get("marketing_actual", 0)),
                 "remaining": float(bs["remaining"]),
                 "usage_pct": float(bs["usage_pct"]),
                 "status": bs["status"],
@@ -468,7 +477,11 @@ async def project_dashboard(
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, pid)
     totals = await project_totals(db, pid)
-    bs = budget_status(p, totals["total_out"])
+    # Audit 2026-05-23: budget pengeluaran exclude marketing.
+    mkt_actual_for_budget = await project_marketing_actual(db, pid)
+    bs = budget_status(
+        p, totals["total_out"], marketing_actual=mkt_actual_for_budget,
+    )
 
     # Pending dan unlinked di proyek ini
     pending_q = select(
@@ -733,6 +746,8 @@ async def project_dashboard(
         "budget": {
             "amount": float(bs["budget_amount"]),
             "spent": float(bs["spent"]),
+            "spent_total": float(bs.get("spent_total", bs["spent"])),
+            "marketing_actual": float(bs.get("marketing_actual", 0)),
             "remaining": float(bs["remaining"]),
             "usage_pct": float(bs["usage_pct"]),
             "status": bs["status"],

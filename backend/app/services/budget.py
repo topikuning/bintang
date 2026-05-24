@@ -5,7 +5,13 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.models import Project, Transaction, TxnStatus, TxnType
+from app.models.models import (
+    Category,
+    Project,
+    Transaction,
+    TxnStatus,
+    TxnType,
+)
 
 # Status yang dihitung dalam total proyek. REJECTED & CANCELLED dikeluarkan.
 ACTIVE_STATUSES = (TxnStatus.DRAFT, TxnStatus.SUBMITTED, TxnStatus.VERIFIED)
@@ -37,18 +43,61 @@ async def project_totals(db: AsyncSession, project_id: int) -> dict[str, Decimal
     }
 
 
-def budget_status(project: Project, total_out: Decimal) -> dict:
+async def project_marketing_actual(
+    db: AsyncSession, project_id: int,
+    *, statuses: tuple = ACTIVE_STATUSES,
+) -> Decimal:
+    """SUM TX OUT (statuses) di proyek yg category.is_marketing=True.
+
+    Audit 2026-05-23: dipakai utk exclude marketing dr Budget Pengeluaran
+    bar (budget di-set sbg target non-marketing; marketing reservasi
+    formula terpisah).
+    """
+    res = await db.execute(
+        select(func.coalesce(func.sum(Transaction.amount), 0))
+        .join(Category, Category.id == Transaction.category_id)
+        .where(
+            Transaction.project_id == project_id,
+            Transaction.type == TxnType.OUT,
+            Transaction.status.in_(statuses),
+            Transaction.deleted_at.is_(None),
+            Category.is_marketing.is_(True),
+        )
+    )
+    return Decimal(res.scalar_one() or 0)
+
+
+def budget_status(
+    project: Project,
+    total_out: Decimal,
+    *,
+    marketing_actual: Decimal = Decimal("0"),
+) -> dict:
+    """Status budget pengeluaran proyek (NON-MARKETING).
+
+    Audit 2026-05-23 user req: exclude marketing dr perhitungan budget.
+    Project.budget_amount adalah target pengeluaran OPERASIONAL (tanpa
+    marketing -- marketing punya reservasi formula sendiri). Spending
+    yg dibandingkan = total_out - marketing_actual.
+
+    Backward-compat: marketing_actual default 0 -> behaviour lama
+    (semua callers yg blm di-update tetap jalan tapi mungkin overstate).
+    """
     budget = Decimal(project.budget_amount or 0)
+    mkt = max(Decimal("0"), marketing_actual)
+    spent_non_marketing = max(Decimal("0"), total_out - mkt)
     if budget <= 0:
         return {
             "budget_amount": budget,
-            "spent": total_out,
+            "spent": spent_non_marketing,
+            "spent_total": total_out,
+            "marketing_actual": mkt,
             "remaining": Decimal("0"),
             "usage_pct": Decimal("0"),
             "status": "no_budget",
         }
-    pct = (total_out / budget) * Decimal("100")
-    remaining = budget - total_out
+    pct = (spent_non_marketing / budget) * Decimal("100")
+    remaining = budget - spent_non_marketing
     if pct <= Decimal("80"):
         status = "aman"
     elif pct <= Decimal("100"):
@@ -57,7 +106,11 @@ def budget_status(project: Project, total_out: Decimal) -> dict:
         status = "overbudget"
     return {
         "budget_amount": budget,
-        "spent": total_out,
+        # 'spent' = non-marketing (utk perbandingan budget). Backward
+        # callers yg pakai field 'spent' otomatis ke-update.
+        "spent": spent_non_marketing,
+        "spent_total": total_out,
+        "marketing_actual": mkt,
         "remaining": remaining,
         "usage_pct": pct.quantize(Decimal("0.01")),
         "status": status,

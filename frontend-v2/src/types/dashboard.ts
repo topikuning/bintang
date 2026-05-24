@@ -17,7 +17,13 @@ export interface ProjectTotals {
 
 export interface ProjectBudget {
   amount: number
+  /** Spent NON-MARKETING (audit 2026-05-23). Marketing aktual punya
+   *  reservasi terpisah formula -- exclude dr budget bar. */
   spent: number
+  /** Total OUT (incl marketing) -- info, tdk dipakai utk bar. */
+  spent_total?: number
+  /** Marketing aktual yg sudah di-exclude dr 'spent'. */
+  marketing_actual?: number
   remaining: number
   usage_pct: number
   status: BudgetStatus

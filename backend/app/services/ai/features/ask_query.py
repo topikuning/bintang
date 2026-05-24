@@ -178,7 +178,11 @@ async def _q_outstanding_debts(
 async def _q_project_budget_status(
     db: AsyncSession, *, pids: list[int] | None, **_,
 ) -> dict:
-    """Status budget proyek (budget vs spent vs sisa)."""
+    """Status budget proyek (budget vs spent non-marketing vs sisa).
+
+    Audit 2026-05-23: spent exclude marketing aktual (budget = target
+    OPERASIONAL; marketing punya reservasi formula).
+    """
     stmt = select(Project).where(
         Project.deleted_at.is_(None),
         Project.budget_amount > 0,
@@ -188,6 +192,7 @@ async def _q_project_budget_status(
     projs = (await db.execute(stmt)).scalars().all()
     pids_list = [p.id for p in projs]
     spent_map: dict[int, Decimal] = {}
+    mkt_map: dict[int, Decimal] = {}
     if pids_list:
         spent = (await db.execute(
             select(Transaction.project_id, func.coalesce(func.sum(Transaction.amount), 0))
@@ -200,14 +205,30 @@ async def _q_project_budget_status(
             .group_by(Transaction.project_id)
         )).all()
         spent_map = {pid: Decimal(a or 0) for pid, a in spent}
+        # Marketing aktual per project (exclude dr budget calc)
+        mkt = (await db.execute(
+            select(Transaction.project_id, func.coalesce(func.sum(Transaction.amount), 0))
+            .join(Category, Category.id == Transaction.category_id)
+            .where(
+                Transaction.project_id.in_(pids_list),
+                Transaction.type == TxnType.OUT,
+                Transaction.status == TxnStatus.VERIFIED,
+                Transaction.deleted_at.is_(None),
+                Category.is_marketing.is_(True),
+            )
+            .group_by(Transaction.project_id)
+        )).all()
+        mkt_map = {pid: Decimal(a or 0) for pid, a in mkt}
     data = []
     for p in projs:
-        s = spent_map.get(p.id, Decimal("0"))
+        s_total = spent_map.get(p.id, Decimal("0"))
+        s_mkt = mkt_map.get(p.id, Decimal("0"))
+        s = max(Decimal("0"), s_total - s_mkt)  # spent non-marketing
         b = Decimal(p.budget_amount or 0)
         pct = (s / b * 100) if b > 0 else Decimal("0")
         data.append([p.code, p.name, float(b), float(s), f"{pct:.1f}%"])
     return {
-        "columns": ["Kode", "Nama", "Budget", "Spent", "% Pakai"],
+        "columns": ["Kode", "Nama", "Budget", "Spent (non-mkt)", "% Pakai"],
         "data": data,
     }
 
