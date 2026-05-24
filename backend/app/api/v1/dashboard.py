@@ -165,9 +165,14 @@ async def global_dashboard(
     # Hub proyek operasional -- exclude bucket NON_PROJECT (punya halaman
     # sendiri di /catatan-non-proyek). Kontribusi NP ke totals/cashflow
     # ditambahkan terpisah di bawah, hormati year toggle.
+    # Audit 2026-05-24: DIBATALKAN otomatis exclude dari dashboard
+    # (semantik user: "kalau dibatalkan ya sudah selesai, jangan dibahas").
+    # Bisa diakses lewat Hub Proyek tab "Semua" / direct URL, dan kalau
+    # status di-restore ke AKTIF otomatis muncul lagi.
     proj_q = select(Project).where(
         Project.deleted_at.is_(None),
         Project.kind != ProjectKind.NON_PROJECT.value,
+        Project.status != ProjectStatus.DIBATALKAN,
     )
 
     # Shape default utk early-return (user tanpa proyek / setelah filter
@@ -226,11 +231,13 @@ async def global_dashboard(
     if not project_ids:
         return _empty_global()
 
-    # Audit 2026-05-24: "operational" subset = exclude SELESAI/DIBATALKAN
-    # dari semua warning counter (semantik: tagihan/operasional dianggap
-    # clear saat proyek selesai). Saldo & totals & list project tetap
-    # include semua. Toggle `include_closed=true` overrride utk audit.
-    _CLOSED = (ProjectStatus.SELESAI, ProjectStatus.DIBATALKAN)
+    # Audit 2026-05-24: "operational" subset = exclude SELESAI dari semua
+    # warning counter (semantik: tagihan dianggap clear saat proyek
+    # selesai). DIBATALKAN sudah tdk masuk proj_q sama sekali (treated
+    # as soft-deleted). Saldo & totals & list project tetap include
+    # SELESAI. Toggle `include_closed=true` -> SELESAI ikut counters
+    # utk audit retrospective.
+    _CLOSED = (ProjectStatus.SELESAI,)
     if include_closed:
         operational_project_ids = list(project_ids)
     else:
@@ -750,9 +757,9 @@ async def project_dashboard(
     hs = health_status(totals["balance"], has_overdue)
     ratio = float(totals["total_out"] / totals["total_in"] * 100) if totals["total_in"] > 0 else None
 
-    # Audit 2026-05-24: utk proyek SELESAI/DIBATALKAN, operational
-    # warnings ditekan (snapshot final, tagihan dianggap clear).
-    # Banner di FE sudah indikasikan status -- warning di sini redundant.
+    # Audit 2026-05-24: utk proyek SELESAI / DIBATALKAN, operational
+    # warnings ditekan (snapshot final / sudah selesai). Banner di FE
+    # sudah indikasikan status -- warning di sini redundant.
     is_closed = p.status in (ProjectStatus.SELESAI, ProjectStatus.DIBATALKAN)
     warnings: list[str] = []
     if not is_closed:

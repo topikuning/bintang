@@ -1,9 +1,11 @@
 """Dashboard global -- exclude SELESAI/DIBATALKAN dari warning counters.
 
 Audit 2026-05-24: semantik "tagihan dianggap clear saat proyek selesai".
-Operational warnings (top_spender, minus_count, overdue, pending,
-unlinked_out, overbudget, near_budget) exclude closed projects. Totals
-& saldo & project list TETAP include semua.
+- SELESAI: counters exclude default, toggle bisa tampilkan kembali.
+  Project tetap muncul di list + counted di total_projects.
+- DIBATALKAN: di-exclude total dari dashboard (tdk masuk proj_q sama
+  sekali). User: "kalau dibatalkan ya sudah selesai, jangan dibahas".
+  Hanya bisa diakses lewat Hub Proyek tab "Semua" / direct URL.
 """
 from __future__ import annotations
 
@@ -174,3 +176,40 @@ async def test_project_dashboard_warnings_suppressed_for_selesai(db, override_db
     assert len(r_aktif.json()["warnings"]) > 0
     # SELESAI: warnings disuppress (banner sudah indikasi status).
     assert r_selesai.json()["warnings"] == []
+
+
+@pytest.mark.asyncio
+async def test_dashboard_excludes_dibatalkan_completely(db, override_db):
+    """DIBATALKAN tdk pernah muncul di dashboard -- tdk di list, tdk
+    di total_projects, tdk di closed_count. Mirror behavior soft-delete."""
+    co, p_aktif, p_selesai, user = await _seed(db)
+    # Tambah 1 proyek DIBATALKAN
+    p_cancel = Project(
+        code="P-X", name="Dibatalkan", company_id=co.id,
+        status=ProjectStatus.DIBATALKAN, kind=ProjectKind.REGULAR.value,
+        budget_amount=Decimal("1000"),
+    )
+    db.add(p_cancel); await db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as ac:
+        r = await ac.get("/api/v1/dashboard/global", headers=_hdr(user))
+    body = r.json()
+    # Total seharusnya 2 (AKTIF + SELESAI), DIBATALKAN tdk dihitung.
+    assert body["total_projects"] == 2
+    # closed_count = hanya SELESAI (1), DIBATALKAN tdk dihitung.
+    assert body["closed_count"] == 1
+    # Project list tdk include DIBATALKAN.
+    project_ids = [p["id"] for p in body["projects"]]
+    assert p_cancel.id not in project_ids
+
+    # Bahkan dgn include_closed=true, DIBATALKAN tetap exclude
+    # ("kalau dibatalkan ya selesai, jangan dibahas").
+    async with AsyncClient(transport=transport, base_url="http://t") as ac:
+        r2 = await ac.get(
+            "/api/v1/dashboard/global?include_closed=true",
+            headers=_hdr(user),
+        )
+    body2 = r2.json()
+    assert body2["total_projects"] == 2
+    assert p_cancel.id not in [p["id"] for p in body2["projects"]]

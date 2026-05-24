@@ -173,15 +173,17 @@ function GlobalDashboard() {
         />
       </div>
 
-      {/* Toggle proyek selesai + hint. Audit 2026-05-24: warning counters
-          exclude SELESAI/DIBATALKAN by default ("tagihan dianggap clear
-          saat proyek selesai"). User bisa toggle utk audit retrospective. */}
+      {/* Toggle proyek selesai + hint. Audit 2026-05-24:
+          - SELESAI: exclude default dari warning counters, toggle bisa
+            tampilkan kembali (audit retrospective).
+          - DIBATALKAN: di-exclude total di backend, tdk pernah muncul
+            di hint/list ("kalau dibatalkan ya selesai, jangan dibahas"). */}
       {(d.closed_count ?? 0) > 0 && (
         <div className="flex items-center justify-between gap-3 rounded-md border bg-surface px-3 py-2 text-[12px]">
           <span className="text-ink-600">
             {d.include_closed
-              ? `Termasuk ${d.closed_count} proyek selesai/dibatalkan di warning counter.`
-              : `${d.closed_count} proyek selesai/dibatalkan tidak ditampilkan di warning.`}
+              ? `Termasuk ${d.closed_count} proyek selesai di warning counter.`
+              : `${d.closed_count} proyek selesai tidak ditampilkan di warning.`}
           </span>
           <button
             type="button"

@@ -137,6 +137,11 @@ export function ReportSection({
               value={projectId}
               onChange={setProjectId}
               placeholder="Semua proyek"
+              /* Audit 2026-05-24: laporan keuangan ikut standar period
+                 reporting -- proyek SELESAI tetap perlu bisa dipilih
+                 (laba rugi historis, audit periode). DIBATALKAN ikut
+                 ke list tp jarang dipakai (admin yg butuh saja). */
+              activeOnly={false}
             />
           </div>
         )}
