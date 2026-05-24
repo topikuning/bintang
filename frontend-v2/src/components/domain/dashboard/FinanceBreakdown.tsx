@@ -31,13 +31,26 @@ export function FinanceBreakdown({ finance, className }: FinanceBreakdownProps) 
         <Row label={`PPn (${finance.ppn_pct}%)`} value={-finance.ppn} negative />
         <Row label={`PPh (${finance.pph_pct}%)`} value={-finance.pph} negative />
         <Row label="Nilai Cair" value={finance.nilai_cair} highlight="success" bold />
+        {/* Marketing budget vs realisasi -- per-proyek %. Audit
+            2026-05-23 cegah double-count: ditampilkan eksplisit di
+            list tapi TIDAK di-subtract dr Profit (marketing aktual
+            sudah ke-include di 'Biaya Aktual'). */}
+        <Row
+          label={`Marketing Budget (${finance.marketing_pct}%)`}
+          value={finance.marketing_budget ?? finance.marketing}
+          muted
+          hint="Reservasi formula, tidak dikurangkan dr profit"
+        />
+        <Row
+          label="Realisasi Marketing"
+          value={finance.marketing_aktual ?? 0}
+          hint={(finance.marketing_aktual ?? 0) > 0 ? "TX OUT dgn kategori marketing" : "Belum ada tx marketing"}
+        />
         <Row label="Biaya Aktual (realisasi)" value={-finance.biaya_aktual} negative />
         <Row label="Biaya Proyeksi (target)" value={-finance.biaya_proyeksi} negative muted />
       </ul>
 
-      {/* Marketing variance -- audit 2026-05-23 cegah double-count.
-          Marketing TIDAK lagi di-subtract terpisah di Profit Saat Ini
-          (biaya_aktual sudah include marketing aktual). */}
+      {/* Variance card (overspend/sisa) kalau salah satu > 0. */}
       <MarketingVarianceCard finance={finance} />
 
       <div className="mt-2 grid gap-1.5">
@@ -70,11 +83,16 @@ function MarketingVarianceCard({ finance }: { finance: ProjectFinance }) {
   const variance = finance.marketing_variance ?? aktual - budget
   const usedPct = budget > 0 ? (aktual / budget) * 100 : 0
   const overspend = variance > 0
+  // Sembunyikan kalau belum ada signal apapun (budget=0 dan aktual=0).
+  if (budget <= 0 && aktual <= 0) return null
   return (
-    <div className="mt-3 rounded-md border bg-ink-50 p-2.5">
+    <div className={cn(
+      "mt-3 rounded-md border p-2.5",
+      overspend ? "bg-danger-50 border-danger-200" : "bg-ink-50",
+    )}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-[12px] font-semibold text-ink-700">
-          Marketing ({finance.marketing_pct}%)
+          Variance Marketing ({finance.marketing_pct}%)
         </span>
         {budget > 0 && (
           <span
@@ -86,25 +104,6 @@ function MarketingVarianceCard({ finance }: { finance: ProjectFinance }) {
             {usedPct.toFixed(0)}% terpakai
           </span>
         )}
-      </div>
-      <div className="mt-1.5 grid grid-cols-2 gap-2 text-[12px]">
-        <div className="flex flex-col">
-          <span className="text-ink-500">Budget reserve</span>
-          <span className="font-mono font-semibold text-ink-800 [font-variant-numeric:tabular-nums]">
-            {fmtIDR(budget)}
-          </span>
-        </div>
-        <div className="flex flex-col">
-          <span className="text-ink-500">Aktual (tx terkait)</span>
-          <span
-            className={cn(
-              "font-mono font-semibold [font-variant-numeric:tabular-nums]",
-              overspend ? "text-danger-700" : "text-ink-800",
-            )}
-          >
-            {fmtIDR(aktual)}
-          </span>
-        </div>
       </div>
       {Math.abs(variance) > 1 && (
         <div
@@ -129,6 +128,7 @@ function Row({
   muted,
   negative,
   highlight,
+  hint,
 }: {
   label: string
   value: number
@@ -136,6 +136,7 @@ function Row({
   muted?: boolean
   negative?: boolean
   highlight?: "success"
+  hint?: string
 }) {
   const display = negative
     ? `− ${fmtIDR(Math.abs(value))}`
@@ -143,17 +144,22 @@ function Row({
   return (
     <li
       className={cn(
-        "flex items-center justify-between gap-3 py-1.5",
+        "flex items-start justify-between gap-3 py-1.5",
         highlight === "success" && "-mx-2 my-1 rounded bg-success-50 px-2",
       )}
     >
-      <span className={cn("text-ink-600", muted && "text-ink-500", highlight && "font-semibold text-success-800")}>
-        {label}
-      </span>
+      <div className="flex flex-col min-w-0">
+        <span className={cn("text-ink-600", muted && "text-ink-500", highlight && "font-semibold text-success-800")}>
+          {label}
+        </span>
+        {hint && (
+          <span className="text-[10px] text-ink-400">{hint}</span>
+        )}
+      </div>
       <span
         data-num
         className={cn(
-          "font-mono [font-variant-numeric:tabular-nums]",
+          "font-mono [font-variant-numeric:tabular-nums] shrink-0",
           bold && "font-semibold",
           highlight === "success" && "font-bold text-success-800",
           negative && "text-danger-700",
