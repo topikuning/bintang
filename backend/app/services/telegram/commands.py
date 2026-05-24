@@ -106,6 +106,10 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "\n<b>Lampirkan bukti ke transaksi yang sudah ada:</b>\n"
         "  /buktitx &lt;id&gt; — buka jendela 5 menit utk attach foto/PDF\n"
         "  Contoh: <code>/buktitx 123</code> lalu kirim foto/file.\n"
+        "\n<b>AI (admin):</b>\n"
+        "  /tanya &lt;pertanyaan&gt; — tanya laporan natural\n"
+        "  Contoh: <code>/tanya top vendor bulan ini</code>\n"
+        "  /ringkas — ringkasan executive hari ini\n"
         "\n<b>Akun:</b>\n"
         "  /link &lt;kode&gt; — hubungkan akun web (kode 6 digit dari menu Pengaturan)\n"
         "  /unlink — putuskan akun\n"
@@ -386,6 +390,82 @@ async def cmd_masuk(db, user, chat_id, args, msg) -> str:
     return await _make_transaction(db, user, chat_id, args, TxnType.IN, msg)
 
 
+async def cmd_tanya(db, user, chat_id, args, msg) -> str:
+    """AI-6 router: tanya laporan natural -> template predefined.
+    Cara pakai: /tanya berapa pengeluaran material bulan ini
+
+    Audit 2026-05-23 user req: integrasi AI di Telegram.
+    """
+    if not user:
+        return "Akun belum ter-link. Kirim /link &lt;kode&gt;."
+    if not args:
+        return (
+            "Cara pakai: <code>/tanya &lt;pertanyaan&gt;</code>\n"
+            "Contoh:\n"
+            "• /tanya berapa pengeluaran material bulan ini\n"
+            "• /tanya top vendor minggu lalu\n"
+            "• /tanya sisa hutang &amp; piutang sekarang\n"
+            "• /tanya status budget semua proyek"
+        )
+    question = " ".join(args).strip()
+    try:
+        from app.services.ai.features.ask_query import run as run_ask
+        result = await run_ask(db, user=user, question=question)
+        await db.commit()
+    except Exception as e:  # noqa: BLE001
+        return f"AI gagal: {_esc(str(e))[:200]}"
+
+    if result.get("template") == "none":
+        out = f"{_esc(result.get('reason', ''))}"
+        fu = result.get("follow_up")
+        if fu:
+            out += f"\n\n💡 {_esc(fu)}"
+        return out
+
+    data = result.get("data") or {}
+    cols = data.get("columns", [])
+    rows = data.get("data", [])
+    if not rows:
+        return "Tidak ada data utk pertanyaan ini."
+    # Format table sederhana utk Telegram (HTML)
+    lines = [f"<b>{_esc(result.get('reason', ''))}</b>", ""]
+    # Header
+    lines.append(" · ".join(f"<i>{_esc(c)}</i>" for c in cols))
+    # Top 10 baris
+    for row in rows[:10]:
+        formatted = []
+        for cell in row:
+            if isinstance(cell, (int, float)):
+                formatted.append(f"Rp {_fmt_idr(cell)}")
+            else:
+                formatted.append(_esc(str(cell)))
+        lines.append(" · ".join(formatted))
+    if len(rows) > 10:
+        lines.append(f"\n<i>... +{len(rows)-10} baris lagi (buka web utk lihat)</i>")
+    return "\n".join(lines)
+
+
+async def cmd_ringkas(db, user, chat_id, args, msg) -> str:
+    """AI-8: ringkasan executive aktivitas keuangan hari ini.
+    Admin only (SUPERADMIN/CENTRAL_ADMIN).
+
+    Audit 2026-05-23 user req.
+    """
+    if not user:
+        return "Akun belum ter-link. Kirim /link &lt;kode&gt;."
+    if not _is_admin(user):
+        return "Hanya SUPERADMIN/CENTRAL_ADMIN yg bisa pakai /ringkas."
+    try:
+        from app.services.ai.features.daily_summary import run as run_summary
+        # Default target_date=None -> hari ini.
+        result = await run_summary(db, user_id=user.id, target_date=None)
+        await db.commit()
+    except Exception as e:  # noqa: BLE001
+        return f"AI gagal: {_esc(str(e))[:200]}"
+    text = result.get("text", "(no output)")
+    return f"<b>📊 Ringkasan Hari Ini</b>\n\n{_esc(text)}"
+
+
 async def cmd_buktitx(db, user, chat_id, args, msg) -> str:
     """Buka jendela attach untuk transaksi yang SUDAH ada.
     Cara pakai: /buktitx <id transaksi>. Setelah itu, semua foto/file
@@ -530,6 +610,11 @@ REGISTRY: dict[str, CommandHandler] = {
     "buktitx": cmd_buktitx,
     "bukti": cmd_buktitx,           # alias
     "lampiran": cmd_buktitx,        # alias
+    # --- AI commands (audit 2026-05-23) ---
+    "tanya": cmd_tanya,
+    "ask": cmd_tanya,
+    "ringkas": cmd_ringkas,
+    "summary": cmd_ringkas,
     # --- Workflow validasi (PR perintah lengkap) ---
     "submit": _wrap_workflow(_wf.cmd_submit),
     "kirim": _wrap_workflow(_wf.cmd_submit),     # alias ID

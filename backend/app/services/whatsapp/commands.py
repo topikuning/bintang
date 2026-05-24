@@ -85,6 +85,10 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "\n*Lampirkan bukti ke transaksi yang sudah ada:*\n"
         "  /buktitx <id> — buka jendela 5 menit utk attach foto/PDF\n"
         "  Contoh: ```/buktitx 123``` lalu kirim foto/file.\n"
+        "\n*AI (admin):*\n"
+        "  /tanya <pertanyaan> — tanya laporan natural\n"
+        "  Contoh: ```/tanya top vendor bulan ini```\n"
+        "  /ringkas — ringkasan executive hari ini\n"
         "\n*Akun:*\n"
         "  /link <kode> — hubungkan akun web (kode 6 digit dari menu Pengaturan)\n"
         "  /unlink — putuskan akun\n"
@@ -490,6 +494,75 @@ def _wrap_workflow(fn):
 from app.services import chat_workflow as _wf  # noqa: E402
 
 
+# ============================================================
+# AI commands (audit 2026-05-23). Implementasi sama dgn Telegram --
+# format output pakai WhatsApp markdown (*bold*, _italic_) bukan HTML.
+# ============================================================
+
+async def cmd_tanya(db, user, chat_id, args, msg) -> str:
+    """AI-6: tanya laporan natural language."""
+    if not user:
+        return "Akun belum ter-link. Kirim /link <kode>."
+    if not args:
+        return (
+            "Cara pakai: /tanya <pertanyaan>\n"
+            "Contoh:\n"
+            "• /tanya berapa pengeluaran material bulan ini\n"
+            "• /tanya top vendor minggu lalu\n"
+            "• /tanya sisa hutang dan piutang sekarang"
+        )
+    question = " ".join(args).strip()
+    try:
+        from app.services.ai.features.ask_query import run as run_ask
+        result = await run_ask(db, user=user, question=question)
+        await db.commit()
+    except Exception as e:  # noqa: BLE001
+        return f"AI gagal: {str(e)[:200]}"
+
+    if result.get("template") == "none":
+        out = result.get("reason", "")
+        fu = result.get("follow_up")
+        if fu:
+            out += f"\n\n💡 {fu}"
+        return out
+
+    data = result.get("data") or {}
+    cols = data.get("columns", [])
+    rows = data.get("data", [])
+    if not rows:
+        return "Tidak ada data utk pertanyaan ini."
+
+    lines = [f"*{result.get('reason', '')}*", ""]
+    lines.append(" · ".join(f"_{c}_" for c in cols))
+    for row in rows[:10]:
+        formatted = []
+        for cell in row:
+            if isinstance(cell, (int, float)):
+                formatted.append(f"Rp {_fmt_idr(cell)}")
+            else:
+                formatted.append(str(cell))
+        lines.append(" · ".join(formatted))
+    if len(rows) > 10:
+        lines.append(f"\n_... +{len(rows)-10} baris lagi (buka web)_")
+    return "\n".join(lines)
+
+
+async def cmd_ringkas(db, user, chat_id, args, msg) -> str:
+    """AI-8: ringkasan executive hari ini. Admin only."""
+    if not user:
+        return "Akun belum ter-link. Kirim /link <kode>."
+    if not _is_admin(user):
+        return "Hanya SUPERADMIN/CENTRAL_ADMIN yg bisa pakai /ringkas."
+    try:
+        from app.services.ai.features.daily_summary import run as run_summary
+        result = await run_summary(db, user_id=user.id, target_date=None)
+        await db.commit()
+    except Exception as e:  # noqa: BLE001
+        return f"AI gagal: {str(e)[:200]}"
+    text = result.get("text", "(no output)")
+    return f"*📊 Ringkasan Hari Ini*\n\n{text}"
+
+
 REGISTRY: dict[str, CommandHandler] = {
     "start": cmd_start,
     "help": cmd_help,
@@ -520,6 +593,11 @@ REGISTRY: dict[str, CommandHandler] = {
     "lihat": _wrap_workflow(_wf.cmd_lihat),
     "detail": _wrap_workflow(_wf.cmd_lihat),
     "draft": _wrap_workflow(_wf.cmd_draft),
+    # --- AI commands (audit 2026-05-23) ---
+    "tanya": cmd_tanya,
+    "ask": cmd_tanya,
+    "ringkas": cmd_ringkas,
+    "summary": cmd_ringkas,
 }
 
 
