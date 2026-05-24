@@ -163,13 +163,13 @@ export function InvoiceDetail({ invoice, isLoading, project }: InvoiceDetailProp
                   {inv.items.map((it) => (
                     <tr key={it.id} className="border-b last:border-b-0">
                       <td className="px-3 py-2">{it.description}</td>
-                      <td className="px-3 py-2 text-right font-mono text-[13px] [font-variant-numeric:tabular-nums]">
+                      <td className="px-3 py-2 whitespace-nowrap text-right font-mono text-[13px] [font-variant-numeric:tabular-nums]">
                         {it.quantity} {it.unit ?? ""}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-[13px] [font-variant-numeric:tabular-nums]">
+                      <td className="px-3 py-2 whitespace-nowrap text-right font-mono text-[13px] [font-variant-numeric:tabular-nums]">
                         {fmtIDR(it.unit_price)}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-[13px] font-semibold [font-variant-numeric:tabular-nums]">
+                      <td className="px-3 py-2 whitespace-nowrap text-right font-mono text-[13px] font-semibold [font-variant-numeric:tabular-nums]">
                         {fmtIDR(it.subtotal)}
                       </td>
                     </tr>
@@ -180,7 +180,7 @@ export function InvoiceDetail({ invoice, isLoading, project }: InvoiceDetailProp
                     <td colSpan={3} className="px-3 py-2 text-right text-[12px] text-ink-600">
                       Subtotal
                     </td>
-                    <td className="px-3 py-2 text-right font-mono text-[13px] [font-variant-numeric:tabular-nums]">
+                    <td className="px-3 py-2 whitespace-nowrap text-right font-mono text-[13px] [font-variant-numeric:tabular-nums]">
                       {fmtIDR(inv.subtotal)}
                     </td>
                   </tr>
@@ -189,7 +189,7 @@ export function InvoiceDetail({ invoice, isLoading, project }: InvoiceDetailProp
                       <td colSpan={3} className="px-3 py-2 text-right text-[12px] text-ink-600">
                         Pajak
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-[13px] [font-variant-numeric:tabular-nums]">
+                      <td className="px-3 py-2 whitespace-nowrap text-right font-mono text-[13px] [font-variant-numeric:tabular-nums]">
                         {fmtIDR(inv.tax)}
                       </td>
                     </tr>
@@ -198,7 +198,7 @@ export function InvoiceDetail({ invoice, isLoading, project }: InvoiceDetailProp
                     <td colSpan={3} className="px-3 py-2 text-right text-sm font-semibold">
                       TOTAL
                     </td>
-                    <td className="px-3 py-2 text-right font-mono text-base font-bold [font-variant-numeric:tabular-nums]">
+                    <td className="px-3 py-2 whitespace-nowrap text-right font-mono text-base font-bold [font-variant-numeric:tabular-nums]">
                       {fmtIDR(inv.total)}
                     </td>
                   </tr>

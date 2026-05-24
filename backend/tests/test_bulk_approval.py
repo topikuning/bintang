@@ -181,3 +181,52 @@ async def test_bulk_issue_invoice(db):
     assert result["success"] == [inv1.id]
     await db.refresh(inv1)
     assert inv1.status == InvoiceStatus.ISSUED
+
+
+# ---------- HTTP integration: regression guard route ordering ----------
+# Audit 2026-05-24: `/bulk/verify` HARUS register sblm `/{tid}/verify`
+# di transactions.py. Kalau urutan ke-swap, FastAPI parse "bulk" sbg
+# tid (int) -> 422 validation error. Test ini lock urutan tsb.
+
+
+@pytest.mark.asyncio
+async def test_bulk_verify_tx_http_route_no_422(db):
+    from httpx import ASGITransport, AsyncClient
+
+    from app.core.security import create_access_token
+    from app.db.session import get_db
+    from app.main import app
+
+    co, p, admin = await _seed(db)
+    t1 = Transaction(
+        project_id=p.id, tx_date=date(2026, 5, 22), type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("100"),
+        payment_method=PaymentMethod.CASH, status=TxnStatus.SUBMITTED,
+        created_by_id=admin.id,
+    )
+    db.add(t1); await db.commit()
+
+    async def _gen():
+        yield db
+    app.dependency_overrides[get_db] = _gen
+    try:
+        token = create_access_token(
+            admin.id, extra={"role": admin.role.value}
+        )
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://t") as ac:
+            r = await ac.post(
+                "/api/v1/transactions/bulk/verify",
+                json={"ids": [t1.id]},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert r.status_code == 200, (
+            f"Expected 200, got {r.status_code}. "
+            f"Body: {r.text}. "
+            f"Kalau 422 -> route /bulk/verify ter-shadow /{{tid}}/verify!"
+        )
+        body = r.json()
+        assert body["success_count"] == 1
+        assert body["success"] == [t1.id]
+    finally:
+        app.dependency_overrides.pop(get_db, None)

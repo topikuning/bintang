@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useForm, Controller, useFieldArray } from "react-hook-form"
 import { Loader2, Plus, Sparkles, Trash2 } from "lucide-react"
 import { z } from "zod"
-import { toApiDate } from "@/lib/format"
+import { fmtIDR, toApiDate } from "@/lib/format"
 import { apiErrorMessage } from "@/lib/api"
 import {
   useCreateTransaction,
@@ -230,7 +230,7 @@ export function TransactionForm({
         const sum = d.items.reduce((acc, it) => acc + Number(it.amount || 0), 0)
         if (Math.abs(sum - d.amount) > 0.01) {
           toast.error("Total nominal tidak cocok dgn jumlah rincian", {
-            description: `Nominal: ${d.amount.toLocaleString("id-ID")} | Sum item: ${sum.toLocaleString("id-ID")}`,
+            description: `Nominal: ${fmtIDR(d.amount)} | Sum item: ${fmtIDR(sum)}`,
           })
           setSubmitting(false)
           return
@@ -619,7 +619,7 @@ export function TransactionForm({
                     <div className="text-right text-[12px] text-ink-700 pt-1 border-t">
                       Total:{" "}
                       <span className="font-semibold tabular-nums">
-                        Rp {itemsSum.toLocaleString("id-ID")}
+                        {fmtIDR(itemsSum)}
                       </span>
                     </div>
                   )}

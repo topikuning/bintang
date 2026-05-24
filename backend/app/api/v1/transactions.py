@@ -547,63 +547,6 @@ async def update_transaction(
     return await _serialize_with_allocs(db, t)
 
 
-@router.post("/{tid}/submit", response_model=TransactionOut)
-async def submit_transaction(
-    tid: int,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_can_write),
-) -> TransactionOut:
-    t = await db.get(Transaction, tid)
-    if not t or t.deleted_at is not None:
-        raise HTTPException(404, "not_found")
-    await ensure_project_access(db, user, t.project_id)
-    if t.status not in (TxnStatus.DRAFT, TxnStatus.REJECTED):
-        raise HTTPException(409, "invalid_state")
-    before = snapshot(t)
-    t.status = TxnStatus.SUBMITTED
-    await log(db, user_id=user.id, entity="transaction", entity_id=t.id,
-              action=AuditAction.UPDATE, before=before, after=snapshot(t),
-              note="submitted")
-    await db.commit()
-    # Notif multi-channel (Telegram + WhatsApp), best-effort.
-    from app.services.messaging import notify_transaction_submitted
-    await notify_transaction_submitted(db, t, actor_id=user.id)
-    res = await db.execute(
-        select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == t.id)
-    )
-    return await _serialize_with_allocs(db, res.scalar_one())
-
-
-@router.post("/{tid}/verify", response_model=TransactionOut)
-async def verify_transaction(
-    tid: int,
-    db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
-) -> TransactionOut:
-    t = await db.get(Transaction, tid)
-    if not t or t.deleted_at is not None:
-        raise HTTPException(404, "not_found")
-    if t.status not in (TxnStatus.SUBMITTED, TxnStatus.DRAFT):
-        raise HTTPException(409, "invalid_state")
-    before = snapshot(t)
-    t.status = TxnStatus.VERIFIED
-    t.verified_by_id = admin.id
-    t.verified_at = datetime.now(timezone.utc)
-    if t.invoice_id:
-        inv = await db.get(Invoice, t.invoice_id)
-        if inv:
-            await recompute_invoice_status(db, inv)
-    await log(db, user_id=admin.id, entity="transaction", entity_id=t.id,
-              action=AuditAction.VERIFY, before=before, after=snapshot(t))
-    await db.commit()
-    from app.services.messaging import notify_transaction_verified
-    await notify_transaction_verified(db, t, actor_id=admin.id)
-    res = await db.execute(
-        select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == t.id)
-    )
-    return await _serialize_with_allocs(db, res.scalar_one())
-
-
 @router.post("/bulk/verify")
 async def bulk_verify_transactions(
     payload: dict,
@@ -619,6 +562,10 @@ async def bulk_verify_transactions(
     Per-item processing: tx invalid (404 / not in DRAFT|SUBMITTED) di-skip
     dgn reason, tx valid di-verify + audit log + commit di akhir batch.
     Tdk halt seluruh batch karena 1 error.
+
+    PENTING: route ini HARUS register sebelum `/{tid}/verify` --
+    kalau tdk, FastAPI match "bulk" sbg tid (int) -> 422
+    validation error. Jangan pindah ke bawah!
     """
     ids = payload.get("ids") or []
     if not isinstance(ids, list) or not ids:
@@ -682,6 +629,63 @@ async def bulk_verify_transactions(
         "success": success_ids,
         "skipped": skipped,
     }
+
+
+@router.post("/{tid}/submit", response_model=TransactionOut)
+async def submit_transaction(
+    tid: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_can_write),
+) -> TransactionOut:
+    t = await db.get(Transaction, tid)
+    if not t or t.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    await ensure_project_access(db, user, t.project_id)
+    if t.status not in (TxnStatus.DRAFT, TxnStatus.REJECTED):
+        raise HTTPException(409, "invalid_state")
+    before = snapshot(t)
+    t.status = TxnStatus.SUBMITTED
+    await log(db, user_id=user.id, entity="transaction", entity_id=t.id,
+              action=AuditAction.UPDATE, before=before, after=snapshot(t),
+              note="submitted")
+    await db.commit()
+    # Notif multi-channel (Telegram + WhatsApp), best-effort.
+    from app.services.messaging import notify_transaction_submitted
+    await notify_transaction_submitted(db, t, actor_id=user.id)
+    res = await db.execute(
+        select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == t.id)
+    )
+    return await _serialize_with_allocs(db, res.scalar_one())
+
+
+@router.post("/{tid}/verify", response_model=TransactionOut)
+async def verify_transaction(
+    tid: int,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> TransactionOut:
+    t = await db.get(Transaction, tid)
+    if not t or t.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    if t.status not in (TxnStatus.SUBMITTED, TxnStatus.DRAFT):
+        raise HTTPException(409, "invalid_state")
+    before = snapshot(t)
+    t.status = TxnStatus.VERIFIED
+    t.verified_by_id = admin.id
+    t.verified_at = datetime.now(timezone.utc)
+    if t.invoice_id:
+        inv = await db.get(Invoice, t.invoice_id)
+        if inv:
+            await recompute_invoice_status(db, inv)
+    await log(db, user_id=admin.id, entity="transaction", entity_id=t.id,
+              action=AuditAction.VERIFY, before=before, after=snapshot(t))
+    await db.commit()
+    from app.services.messaging import notify_transaction_verified
+    await notify_transaction_verified(db, t, actor_id=admin.id)
+    res = await db.execute(
+        select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == t.id)
+    )
+    return await _serialize_with_allocs(db, res.scalar_one())
 
 
 @router.post("/{tid}/reject", response_model=TransactionOut)
