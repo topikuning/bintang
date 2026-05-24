@@ -12,6 +12,7 @@ import {
   FileText,
   FolderKanban,
   HardDrive,
+  CheckCheck,
   History,
   Home,
   KeyRound,
@@ -71,6 +72,7 @@ export const DESKTOP_NAV: NavGroup[] = [
       { id: "reports", label: "Laporan", to: "/reports", icon: BarChart3 },
       { id: "reports-invoice-items", label: "Detail Invoice", to: "/reports/invoice-items", icon: Receipt },
       { id: "audit-log", label: "Audit Log", to: "/audit-log", icon: History },
+      { id: "admin-bulk-approval", label: "Approval Massal", to: "/admin/bulk-approval", icon: CheckCheck },
     ],
   },
   {
@@ -125,6 +127,7 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
       { id: "reports", label: "Laporan", to: "/reports", icon: BarChart3 },
       { id: "reports-invoice-items", label: "Detail Invoice", to: "/reports/invoice-items", icon: Receipt },
       { id: "audit-log", label: "Audit Log", to: "/audit-log", icon: History },
+      { id: "admin-bulk-approval", label: "Approval Massal", to: "/admin/bulk-approval", icon: CheckCheck },
     ],
   },
   {

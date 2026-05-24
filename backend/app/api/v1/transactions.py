@@ -598,6 +598,86 @@ async def verify_transaction(
     return await _serialize_with_allocs(db, res.scalar_one())
 
 
+@router.post("/bulk/verify")
+async def bulk_verify_transactions(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Bulk verify TX (SUPERADMIN / CENTRAL_ADMIN). Audit 2026-05-23.
+
+    Payload: {ids: list[int]}.
+    Return: {success: list[int], skipped: list[{id, reason}],
+             total_requested: int, success_count: int}.
+
+    Per-item processing: tx invalid (404 / not in DRAFT|SUBMITTED) di-skip
+    dgn reason, tx valid di-verify + audit log + commit di akhir batch.
+    Tdk halt seluruh batch karena 1 error.
+    """
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids_required")
+    if len(ids) > 500:
+        raise HTTPException(400, "max_500_per_batch")
+
+    res = await db.execute(
+        select(Transaction)
+        .options(
+            selectinload(Transaction.items),
+            selectinload(Transaction.attachments),
+            selectinload(Transaction.settlement),
+        )
+        .where(Transaction.id.in_(ids))
+    )
+    txs = {t.id: t for t in res.scalars().all()}
+
+    success_ids: list[int] = []
+    skipped: list[dict] = []
+    now = datetime.now(timezone.utc)
+
+    for tid in ids:
+        t = txs.get(tid)
+        if t is None or t.deleted_at is not None:
+            skipped.append({"id": tid, "reason": "not_found"})
+            continue
+        if t.status not in (TxnStatus.SUBMITTED, TxnStatus.DRAFT):
+            skipped.append({"id": tid, "reason": f"invalid_state_{t.status.value}"})
+            continue
+        before = snapshot(t)
+        t.status = TxnStatus.VERIFIED
+        t.verified_by_id = admin.id
+        t.verified_at = now
+        if t.invoice_id:
+            inv = await db.get(Invoice, t.invoice_id)
+            if inv:
+                await recompute_invoice_status(db, inv)
+        await log(
+            db, user_id=admin.id, entity="transaction", entity_id=t.id,
+            action=AuditAction.VERIFY, before=before, after=snapshot(t),
+            note="bulk verify",
+        )
+        success_ids.append(tid)
+
+    await db.commit()
+
+    # Notif dilakukan post-commit (best-effort). Tdk block kalau gagal.
+    try:
+        from app.services.messaging import notify_transaction_verified
+        for tid in success_ids:
+            t = txs.get(tid)
+            if t:
+                await notify_transaction_verified(db, t, actor_id=admin.id)
+    except Exception:  # noqa: BLE001
+        pass
+
+    return {
+        "total_requested": len(ids),
+        "success_count": len(success_ids),
+        "success": success_ids,
+        "skipped": skipped,
+    }
+
+
 @router.post("/{tid}/reject", response_model=TransactionOut)
 async def reject_transaction(
     tid: int,

@@ -414,6 +414,57 @@ async def update_invoice(
     return await _to_out(db, res.scalar_one())
 
 
+@router.post("/bulk/issue")
+async def bulk_issue_invoices(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_can_write),
+) -> dict:
+    """Bulk issue invoice (DRAFT -> ISSUED). Audit 2026-05-23.
+
+    Payload: {ids: list[int]}.
+    Return: {total_requested, success_count, success, skipped}.
+    """
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids_required")
+    if len(ids) > 500:
+        raise HTTPException(400, "max_500_per_batch")
+    res = await db.execute(
+        select(Invoice).options(*_full_options()).where(Invoice.id.in_(ids))
+    )
+    invs = {i.id: i for i in res.scalars().all()}
+    success_ids: list[int] = []
+    skipped: list[dict] = []
+    for iid in ids:
+        inv = invs.get(iid)
+        if inv is None or inv.deleted_at is not None:
+            skipped.append({"id": iid, "reason": "not_found"})
+            continue
+        try:
+            await ensure_project_access(db, user, inv.project_id)
+        except HTTPException as e:
+            skipped.append({"id": iid, "reason": f"access_denied_{e.status_code}"})
+            continue
+        if inv.status != InvoiceStatus.DRAFT:
+            skipped.append({"id": iid, "reason": f"invalid_state_{inv.status.value}"})
+            continue
+        inv.status = InvoiceStatus.ISSUED
+        await recompute_invoice_status(db, inv)
+        await log(
+            db, user_id=user.id, entity="invoice", entity_id=inv.id,
+            action=AuditAction.UPDATE, note="bulk issued",
+        )
+        success_ids.append(iid)
+    await db.commit()
+    return {
+        "total_requested": len(ids),
+        "success_count": len(success_ids),
+        "success": success_ids,
+        "skipped": skipped,
+    }
+
+
 @router.post("/{iid}/issue", response_model=InvoiceOut)
 async def issue_invoice(
     iid: int,

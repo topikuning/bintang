@@ -461,6 +461,107 @@ async def update_po(
     return await _to_out_async(db, res.scalar_one())
 
 
+@router.post("/bulk/issue")
+async def bulk_issue_pos(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_can_write),
+) -> dict:
+    """Bulk issue PO (DRAFT -> ISSUED). Audit 2026-05-23.
+
+    Payload: {ids: list[int]}.
+    Return: {total_requested, success_count, success, skipped}.
+    """
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids_required")
+    if len(ids) > 500:
+        raise HTTPException(400, "max_500_per_batch")
+    res = await db.execute(
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id.in_(ids))
+    )
+    pos = {p.id: p for p in res.scalars().all()}
+    success_ids: list[int] = []
+    skipped: list[dict] = []
+    for pid in ids:
+        p = pos.get(pid)
+        if p is None or p.deleted_at is not None:
+            skipped.append({"id": pid, "reason": "not_found"})
+            continue
+        # Access check per-item (project bisa beda).
+        try:
+            await ensure_project_access(db, user, p.project_id)
+        except HTTPException as e:
+            skipped.append({"id": pid, "reason": f"access_denied_{e.status_code}"})
+            continue
+        if p.status != POStatus.DRAFT:
+            skipped.append({"id": pid, "reason": f"invalid_state_{p.status.value}"})
+            continue
+        p.status = POStatus.ISSUED
+        await log(
+            db, user_id=user.id, entity="purchase_order", entity_id=p.id,
+            action=AuditAction.UPDATE, note="bulk issued",
+        )
+        success_ids.append(pid)
+    await db.commit()
+    return {
+        "total_requested": len(ids),
+        "success_count": len(success_ids),
+        "success": success_ids,
+        "skipped": skipped,
+    }
+
+
+@router.post("/bulk/approve")
+async def bulk_approve_pos(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Bulk approve PO (DRAFT/ISSUED -> APPROVED). Admin only.
+    Audit 2026-05-23.
+    """
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids_required")
+    if len(ids) > 500:
+        raise HTTPException(400, "max_500_per_batch")
+    res = await db.execute(
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id.in_(ids))
+    )
+    pos = {p.id: p for p in res.scalars().all()}
+    success_ids: list[int] = []
+    skipped: list[dict] = []
+    now = datetime.now(timezone.utc)
+    for pid in ids:
+        p = pos.get(pid)
+        if p is None or p.deleted_at is not None:
+            skipped.append({"id": pid, "reason": "not_found"})
+            continue
+        if p.status not in (POStatus.DRAFT, POStatus.ISSUED):
+            skipped.append({"id": pid, "reason": f"invalid_state_{p.status.value}"})
+            continue
+        p.status = POStatus.APPROVED
+        p.approved_by_id = admin.id
+        p.approved_at = now
+        await log(
+            db, user_id=admin.id, entity="purchase_order", entity_id=p.id,
+            action=AuditAction.APPROVE, note="bulk approve",
+        )
+        success_ids.append(pid)
+    await db.commit()
+    return {
+        "total_requested": len(ids),
+        "success_count": len(success_ids),
+        "success": success_ids,
+        "skipped": skipped,
+    }
+
+
 @router.post("/{pid}/issue", response_model=POOut)
 async def issue_po(
     pid: int,
