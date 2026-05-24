@@ -8,7 +8,12 @@ import {
   Flame,
   FolderKanban,
   Link2Off,
+  Loader2,
   PieChart as PieIcon,
+  Search,
+  Send,
+  Shield,
+  Sparkles,
   TrendingUp,
   Wallet,
 } from "lucide-react"
@@ -29,6 +34,16 @@ import { apiErrorMessage } from "@/lib/api"
 import { useBreakpoint } from "@/lib/breakpoint"
 import { cn } from "@/lib/utils"
 import type { GlobalDashboardProjectSummary, HealthStatus } from "@/types/dashboard"
+import {
+  useAskQuery,
+  useDailySummary,
+  useScanAnomalies,
+  type AnomalyFlag,
+} from "@/hooks/useAI"
+import { useAuthStore } from "@/store/auth"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { toast } from "@/components/ui/sonner"
 
 /**
  * Dashboard global -- ringkasan semua proyek dgn filter Lokasi/Dinas/
@@ -319,6 +334,10 @@ function GlobalDashboard() {
           </div>
         )}
       </Section>
+
+      {/* AI panels (audit 2026-05-23). 3 fitur: Tanya bebas, Ringkasan
+          hari ini, Scan anomali. Admin only. */}
+      <AIInsightsPanel />
     </Page>
   )
 }
@@ -582,5 +601,213 @@ function DashboardSkeleton() {
       <Skeleton className="h-64" />
       <Skeleton className="h-48" />
     </Page>
+  )
+}
+
+
+// ============================================================
+// AI Insights Panel (audit 2026-05-23 UX integration AI-5/6/8)
+// ============================================================
+function AIInsightsPanel() {
+  const role = useAuthStore((s) => s.user?.role)
+  const isAdmin = role === "SUPERADMIN" || role === "CENTRAL_ADMIN"
+  if (!isAdmin) return null
+  return (
+    <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <AskQueryCard />
+      <DailySummaryCard />
+      <AnomalyCard />
+    </section>
+  )
+}
+
+function AskQueryCard() {
+  const ask = useAskQuery()
+  const [q, setQ] = useState("")
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (q.trim().length < 3) return
+    try {
+      await ask.mutateAsync({ question: q.trim() })
+    } catch (err) {
+      toast.error("AI gagal", { description: apiErrorMessage(err) })
+    }
+  }
+  return (
+    <div className="rounded-md border bg-surface p-4">
+      <div className="flex items-center gap-2 text-sm font-semibold mb-2">
+        <Search className="h-4 w-4 text-brand-600" />
+        Tanya Laporan (AI)
+      </div>
+      <form onSubmit={handleSubmit} className="flex gap-2">
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Mis. Top vendor bulan ini, atau Saldo Q1 2026"
+          disabled={ask.isPending}
+        />
+        <Button type="submit" size="sm" disabled={ask.isPending || q.trim().length < 3}>
+          {ask.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        </Button>
+      </form>
+      {ask.data && (
+        <div className="mt-3 space-y-2">
+          {ask.data.template === "none" ? (
+            <div className="rounded border bg-warning-50 px-3 py-2 text-[12px] text-warning-900">
+              <div>{ask.data.reason}</div>
+              {ask.data.follow_up && (
+                <div className="mt-1 italic">💡 {ask.data.follow_up}</div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="text-[11px] text-ink-500">{ask.data.reason}</div>
+              {ask.data.data && (
+                <div className="overflow-x-auto rounded border">
+                  <table className="w-full text-[12px]">
+                    <thead className="bg-ink-50">
+                      <tr>
+                        {ask.data.data.columns.map((c) => (
+                          <th key={c} className="px-2 py-1.5 text-left font-medium">{c}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ask.data.data.data.slice(0, 10).map((row, i) => (
+                        <tr key={i} className="border-t">
+                          {row.map((cell, j) => (
+                            <td key={j} className="px-2 py-1.5">
+                              {typeof cell === "number" ? fmtIDR(cell) : String(cell)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DailySummaryCard() {
+  const summary = useDailySummary()
+  const handleClick = async () => {
+    try {
+      await summary.mutateAsync({})
+    } catch (err) {
+      toast.error("AI gagal", { description: apiErrorMessage(err) })
+    }
+  }
+  return (
+    <div className="rounded-md border bg-surface p-4">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Sparkles className="h-4 w-4 text-brand-600" />
+          Ringkasan Hari Ini (AI)
+        </div>
+        <Button
+          type="button"
+          variant={summary.data ? "outline" : "primary"}
+          size="sm"
+          onClick={handleClick}
+          disabled={summary.isPending}
+        >
+          {summary.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {summary.data ? "Refresh" : "Ringkas"}
+        </Button>
+      </div>
+      {summary.data && (
+        <div className="text-sm text-ink-800 whitespace-pre-wrap">
+          {summary.data.text}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AnomalyCard() {
+  const scan = useScanAnomalies()
+  const handleClick = async () => {
+    // Default: 30 hari terakhir
+    const today = new Date()
+    const monthAgo = new Date(today.getTime() - 30 * 86400_000)
+    const fmt = (d: Date) => d.toISOString().slice(0, 10)
+    try {
+      await scan.mutateAsync({
+        date_from: fmt(monthAgo),
+        date_to: fmt(today),
+      })
+    } catch (err) {
+      toast.error("AI gagal", { description: apiErrorMessage(err) })
+    }
+  }
+  return (
+    <div className="rounded-md border bg-surface p-4 md:col-span-2">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Shield className="h-4 w-4 text-warning-600" />
+          Deteksi Anomali 30 Hari Terakhir (AI)
+        </div>
+        <Button
+          type="button"
+          variant={scan.data ? "outline" : "primary"}
+          size="sm"
+          onClick={handleClick}
+          disabled={scan.isPending}
+        >
+          {scan.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
+          {scan.data ? "Scan Ulang" : "Scan"}
+        </Button>
+      </div>
+      {scan.data && (
+        <div className="space-y-2">
+          <div className="text-[12px] text-ink-600">{scan.data.summary}</div>
+          {scan.data.flagged.length === 0 ? (
+            <div className="rounded border bg-success-50 px-3 py-2 text-sm text-success-900">
+              Tdk ada anomali terdeteksi.
+            </div>
+          ) : (
+            <ul className="divide-y rounded border">
+              {scan.data.flagged.map((f) => (
+                <AnomalyRow key={f.tx_id} flag={f} />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AnomalyRow({ flag }: { flag: AnomalyFlag }) {
+  const sevColor =
+    flag.severity === "high"
+      ? "bg-danger-100 text-danger-800"
+      : flag.severity === "medium"
+      ? "bg-warning-100 text-warning-800"
+      : "bg-ink-100 text-ink-700"
+  return (
+    <li className="flex items-start gap-3 p-2.5">
+      <span className={cn("rounded px-2 py-0.5 text-[10px] font-semibold uppercase shrink-0", sevColor)}>
+        {flag.severity}
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className="text-[12px] font-medium text-ink-800">
+          {flag.anomaly_type} ·{" "}
+          <Link
+            to={`/transactions/${flag.tx_id}`}
+            className="text-brand-600 hover:underline"
+          >
+            TX #{flag.tx_id}
+          </Link>
+        </div>
+        <div className="text-[12px] text-ink-600">{flag.reason}</div>
+      </div>
+    </li>
   )
 }

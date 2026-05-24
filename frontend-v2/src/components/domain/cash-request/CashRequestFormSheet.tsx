@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { Loader2, Plus, Trash2 } from "lucide-react"
+import { Loader2, Plus, Sparkles, Trash2 } from "lucide-react"
 import { useForm, useFieldArray, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -24,6 +24,7 @@ import {
 import { useUsersLookup } from "@/hooks/useUsers"
 import { useCategories } from "@/hooks/useCategories"
 import { apiErrorMessage } from "@/lib/api"
+import { useJustifyCashRequest } from "@/hooks/useAI"
 import { useBreakpoint } from "@/lib/breakpoint"
 import { fmtIDR } from "@/lib/format"
 import type {
@@ -136,6 +137,7 @@ export function CashRequestFormSheet({ open, onClose, target }: Props) {
     reset,
     watch,
     setValue,
+    getValues,
     formState: { isSubmitting },
   } = form
   const { fields, append, remove } = useFieldArray({ control, name: "items" })
@@ -384,11 +386,28 @@ export function CashRequestFormSheet({ open, onClose, target }: Props) {
       </div>
 
       <Field label="Catatan" hint="Opsional. Tampil di detail pengajuan.">
-        <Textarea
-          rows={2}
-          placeholder="Detail tambahan / justifikasi"
-          {...register("notes")}
-        />
+        <div className="flex flex-col gap-2">
+          <Textarea
+            rows={3}
+            placeholder="Detail tambahan / justifikasi"
+            {...register("notes")}
+          />
+          <div className="flex justify-end">
+            <AIJustifyButton
+              getProjectId={() => watch("project_id")}
+              getTitle={() => watch("title") || ""}
+              getItems={() => watch("items")}
+              onGenerated={(text) => {
+                const current = getValues("notes") || ""
+                setValue(
+                  "notes",
+                  current ? `${current}\n\n${text}` : text,
+                  { shouldDirty: true },
+                )
+              }}
+            />
+          </div>
+        </div>
       </Field>
     </div>
   )
@@ -468,5 +487,75 @@ function Field({
       {children}
       {hint && <p className="text-[11px] text-ink-500">{hint}</p>}
     </div>
+  )
+}
+
+
+/**
+ * Tombol AI tulis justifikasi pengajuan dana. Audit 2026-05-23 AI-4.
+ * Generate 1 paragraf formal dari list items + judul + project context.
+ * Append ke field notes (tdk overwrite).
+ */
+function AIJustifyButton({
+  getProjectId,
+  getTitle,
+  getItems,
+  onGenerated,
+}: {
+  getProjectId: () => number | null
+  getTitle: () => string
+  getItems: () => Array<{ description: string; amount: string }>
+  onGenerated: (text: string) => void
+}) {
+  const justify = useJustifyCashRequest()
+  const handleClick = async () => {
+    const projectId = getProjectId()
+    const title = getTitle().trim()
+    const items = getItems()
+      .filter((it) => it.description.trim() && Number(it.amount) > 0)
+    if (!projectId) {
+      toast.error("Pilih proyek dulu")
+      return
+    }
+    if (!title) {
+      toast.error("Isi judul pengajuan dulu")
+      return
+    }
+    if (items.length === 0) {
+      toast.error("Minimal 1 item dgn deskripsi & nominal")
+      return
+    }
+    try {
+      const result = await justify.mutateAsync({
+        project_id: projectId,
+        title,
+        items: items.map((it) => ({
+          description: it.description,
+          amount: it.amount,
+        })),
+      })
+      onGenerated(result.text)
+      toast.success("Justifikasi AI di-append ke catatan")
+    } catch (err) {
+      toast.error("AI gagal", { description: apiErrorMessage(err) })
+    }
+  }
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={handleClick}
+      disabled={justify.isPending}
+      className="gap-1.5"
+      title="AI tulis justifikasi pengajuan dari items"
+    >
+      {justify.isPending ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <Sparkles className="h-3.5 w-3.5" />
+      )}
+      <span className="text-[12px]">AI Justifikasi</span>
+    </Button>
   )
 }

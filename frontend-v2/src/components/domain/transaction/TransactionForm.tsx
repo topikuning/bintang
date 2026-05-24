@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useForm, Controller, useFieldArray } from "react-hook-form"
-import { Loader2, Plus, Trash2 } from "lucide-react"
+import { Loader2, Plus, Sparkles, Trash2 } from "lucide-react"
 import { z } from "zod"
 import { toApiDate } from "@/lib/format"
 import { apiErrorMessage } from "@/lib/api"
@@ -28,6 +28,7 @@ import { DateInput } from "@/components/forms/DateInput"
 import { AttachmentUploader } from "@/components/forms/AttachmentUploader"
 import { ProjectPicker } from "@/components/forms/ProjectPicker"
 import { useProject } from "@/hooks/useProjects"
+import { useSuggestCategory } from "@/hooks/useAI"
 import { CategoryPicker } from "@/components/forms/CategoryPicker"
 import { VendorPicker } from "@/components/forms/VendorPicker"
 import { useBreakpoint } from "@/lib/breakpoint"
@@ -630,17 +631,26 @@ export function TransactionForm({
             {!isAdvance && !isDirect && (
               <>
                 <Field label="Kategori">
-                  <Controller
-                    control={control}
-                    name="category_id"
-                    render={({ field }) => (
-                      <CategoryPicker
-                        value={field.value ?? null}
-                        onChange={field.onChange}
-                        type={currentType}
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <Controller
+                        control={control}
+                        name="category_id"
+                        render={({ field }) => (
+                          <CategoryPicker
+                            value={field.value ?? null}
+                            onChange={field.onChange}
+                            type={currentType}
+                          />
+                        )}
                       />
-                    )}
-                  />
+                    </div>
+                    <AISuggestCategoryButton
+                      getDescription={() => watch("description") || ""}
+                      direction={currentType === "IN" ? "IN" : "OUT"}
+                      onSuggested={(id) => setValue("category_id", id, { shouldDirty: true })}
+                    />
+                  </div>
                 </Field>
 
                 <Field label="Vendor / Klien">
@@ -791,5 +801,63 @@ function Field({ label, required, hint, error, children }: FieldProps) {
       {hint && !error && <p className="text-[11px] text-ink-500">{hint}</p>}
       {error && <p className="text-[11px] text-danger-600">{error}</p>}
     </div>
+  )
+}
+
+
+/**
+ * Tombol AI saran kategori. Baca description dari form, panggil
+ * /ai/suggest-category, set category_id kalau confidence >= 0.5.
+ * Audit 2026-05-23 UX integration AI-1.
+ */
+function AISuggestCategoryButton({
+  getDescription,
+  direction,
+  onSuggested,
+}: {
+  getDescription: () => string
+  direction: "IN" | "OUT"
+  onSuggested: (id: number | null) => void
+}) {
+  const suggest = useSuggestCategory()
+  const handleClick = async () => {
+    const desc = getDescription().trim()
+    if (desc.length < 3) {
+      toast.error("Isi deskripsi dulu (min 3 karakter)")
+      return
+    }
+    try {
+      const result = await suggest.mutateAsync({ description: desc, direction })
+      if (result.category_id == null) {
+        toast.message("Tdk ada kategori cocok", { description: result.reason })
+        return
+      }
+      onSuggested(result.category_id)
+      const conf = Math.round(result.confidence * 100)
+      toast.success(`AI pilih: ${result.category_name}`, {
+        description: `${result.reason} (${conf}% yakin)`,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "AI gagal"
+      toast.error("Saran AI gagal", { description: msg })
+    }
+  }
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={handleClick}
+      disabled={suggest.isPending}
+      className="shrink-0 gap-1"
+      title="AI saran kategori dari deskripsi"
+    >
+      {suggest.isPending ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <Sparkles className="h-3.5 w-3.5" />
+      )}
+      <span className="text-[12px]">AI</span>
+    </Button>
   )
 }

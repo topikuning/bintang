@@ -1,13 +1,21 @@
+import { useState } from "react"
 import { Link as RouterLink } from "react-router-dom"
 import {
   Calendar,
+  Copy,
   ExternalLink,
   FileText,
   Hash,
+  Loader2,
   Receipt,
   ShoppingCart,
+  Sparkles,
   User,
 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { toast } from "@/components/ui/sonner"
+import { useGeneratePOCover } from "@/hooks/useAI"
+import { apiErrorMessage } from "@/lib/api"
 import type { Project, PurchaseOrder } from "@/types/api"
 import { fmtDate, fmtDateTime, fmtIDR } from "@/lib/format"
 import { usePOLinkedTransactions } from "@/hooks/usePOs"
@@ -152,6 +160,9 @@ export function PODetail({ po, isLoading, project }: PODetailProps) {
         </div>
       )}
 
+      {/* AI Cover Letter generator -- audit 2026-05-23 AI-2. */}
+      <POCoverGeneratorPanel poId={po.id} />
+
       {/* Procurement chain: TX yg dibayar pakai PO ini + invoice yg
           dibayar lewat TX tsb. Standar finance pro -- audit trail
           procurement. */}
@@ -295,6 +306,79 @@ function Field({
         <span>{label}</span>
       </dt>
       <dd className="col-span-2 text-sm">{value}</dd>
+    </div>
+  )
+}
+
+
+/**
+ * Panel AI-2: generate cover letter PO. Audit 2026-05-23.
+ * Click -> call /ai/generate-po-cover -> tampil preview + copy button.
+ */
+function POCoverGeneratorPanel({ poId }: { poId: number }) {
+  const generate = useGeneratePOCover()
+  const [text, setText] = useState<string>("")
+  const handleClick = async () => {
+    try {
+      const result = await generate.mutateAsync({ po_id: poId, tone: "formal" })
+      setText(result.text)
+      toast.success(
+        `Surat pengantar dibuat (${result._meta.cached ? "cache" : result._meta.model})`,
+      )
+    } catch (err) {
+      toast.error("Gagal generate", { description: apiErrorMessage(err) })
+    }
+  }
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success("Disalin ke clipboard")
+    } catch {
+      toast.error("Gagal copy ke clipboard")
+    }
+  }
+  return (
+    <div className="rounded-md border bg-surface p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Sparkles className="h-4 w-4 text-brand-600" />
+          Surat Pengantar (AI)
+        </div>
+        <Button
+          type="button"
+          variant={text ? "outline" : "primary"}
+          size="sm"
+          onClick={handleClick}
+          disabled={generate.isPending}
+          className="gap-1.5"
+        >
+          {generate.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+          {text ? "Generate Ulang" : "Generate"}
+        </Button>
+      </div>
+      {text && (
+        <div className="mt-3 flex flex-col gap-2">
+          <pre className="whitespace-pre-wrap rounded border bg-ink-50 p-3 text-sm text-ink-800">
+            {text}
+          </pre>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleCopy}
+              className="gap-1.5"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Salin
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
