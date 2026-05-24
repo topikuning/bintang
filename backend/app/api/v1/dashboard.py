@@ -17,6 +17,7 @@ from app.models.models import (
     Company,
     Invoice,
     InvoiceAllocation,
+    InvoiceItem,
     InvoiceStatus,
     InvoiceType,
     Project,
@@ -396,8 +397,15 @@ async def global_dashboard(
 
     proj_summary.sort(key=lambda x: x["balance"])
 
-    # spending by category (OUT, verified)
-    cat_q = (
+    # spending by category. Audit 2026-05-24: gabung 2 sumber supaya
+    # chart akurat -- TX-level (legacy) + InvoiceItem-level (granular
+    # baru, jadi primary kalau invoice diisi lengkap).
+    #
+    # Dedup: TX yg ter-link ke invoice (lewat tx.invoice_id legacy ATAU
+    # invoice_allocations) -> SKIP TX-level supaya tdk double-count
+    # dgn invoice items. TX standalone (DIRECT_EXPENSE no invoice,
+    # CASH_ADVANCE, dst) tetap pakai TX-level.
+    cat_q_tx = (
         select(Category.name, func.coalesce(func.sum(Transaction.amount), 0))
         .join(Category, Category.id == Transaction.category_id, isouter=True)
         .where(
@@ -405,14 +413,42 @@ async def global_dashboard(
             Transaction.type == TxnType.OUT,
             Transaction.status == TxnStatus.VERIFIED,
             Transaction.deleted_at.is_(None),
+            Transaction.invoice_id.is_(None),  # tdk pakai legacy invoice link
+            ~Transaction.id.in_(
+                select(InvoiceAllocation.transaction_id).where(
+                    InvoiceAllocation.deleted_at.is_(None),
+                )
+            ),
         )
         .group_by(Category.name)
-        .order_by(func.sum(Transaction.amount).desc())
     )
-    cat_rows = (await db.execute(cat_q)).all()
-    spending_by_category = [
-        {"category": (r[0] or "Tanpa Kategori"), "total": float(r[1])} for r in cat_rows
-    ]
+    cat_q_inv_items = (
+        select(Category.name, func.coalesce(func.sum(InvoiceItem.subtotal), 0))
+        .join(Invoice, Invoice.id == InvoiceItem.invoice_id)
+        .join(Category, Category.id == InvoiceItem.category_id, isouter=True)
+        .where(
+            Invoice.project_id.in_(project_ids),
+            Invoice.type == InvoiceType.IN,  # vendor invoice = expense
+            Invoice.deleted_at.is_(None),
+            Invoice.status != InvoiceStatus.CANCELLED,
+        )
+        .group_by(Category.name)
+    )
+    cat_rows_tx = (await db.execute(cat_q_tx)).all()
+    cat_rows_inv = (await db.execute(cat_q_inv_items)).all()
+    # Merge by category name di Python
+    cat_totals: dict[str | None, float] = {}
+    for name, total in cat_rows_tx:
+        cat_totals[name] = cat_totals.get(name, 0.0) + float(total)
+    for name, total in cat_rows_inv:
+        cat_totals[name] = cat_totals.get(name, 0.0) + float(total)
+    spending_by_category = sorted(
+        [
+            {"category": (n or "Tanpa Kategori"), "total": v}
+            for n, v in cat_totals.items() if v > 0
+        ],
+        key=lambda x: x["total"], reverse=True,
+    )
 
     # spending by project (OUT, verified) -- already collected via proj_summary.
     # Audit 2026-05-24: ranking "paling boros" pakai operational set --
@@ -634,8 +670,11 @@ async def project_dashboard(
             ar_aging["total"] += outstanding
             ar_aging["count"] += 1
 
-    # by category (OUT)
-    cat_q = (
+    # by category (OUT). Audit 2026-05-24: gabung TX-level (legacy) +
+    # InvoiceItem-level (primary kalau invoice lengkap). Dedup: TX yg
+    # ter-link invoice di-skip dr TX path. Lihat global dashboard utk
+    # rationale.
+    cat_q_tx = (
         select(Category.name, func.coalesce(func.sum(Transaction.amount), 0))
         .join(Category, Category.id == Transaction.category_id, isouter=True)
         .where(
@@ -643,16 +682,51 @@ async def project_dashboard(
             Transaction.type == TxnType.OUT,
             Transaction.status == TxnStatus.VERIFIED,
             Transaction.deleted_at.is_(None),
+            Transaction.invoice_id.is_(None),
+            ~Transaction.id.in_(
+                select(InvoiceAllocation.transaction_id).where(
+                    InvoiceAllocation.deleted_at.is_(None),
+                )
+            ),
         )
         .group_by(Category.name)
-        .order_by(func.sum(Transaction.amount).desc())
     )
     if date_from:
-        cat_q = cat_q.where(Transaction.tx_date >= date_from)
+        cat_q_tx = cat_q_tx.where(Transaction.tx_date >= date_from)
     if date_to:
-        cat_q = cat_q.where(Transaction.tx_date <= date_to)
-    cat_rows = (await db.execute(cat_q)).all()
-    by_category = [{"category": (r[0] or "Tanpa Kategori"), "total": float(r[1])} for r in cat_rows]
+        cat_q_tx = cat_q_tx.where(Transaction.tx_date <= date_to)
+
+    cat_q_inv_items = (
+        select(Category.name, func.coalesce(func.sum(InvoiceItem.subtotal), 0))
+        .join(Invoice, Invoice.id == InvoiceItem.invoice_id)
+        .join(Category, Category.id == InvoiceItem.category_id, isouter=True)
+        .where(
+            Invoice.project_id == pid,
+            Invoice.type == InvoiceType.IN,
+            Invoice.deleted_at.is_(None),
+            Invoice.status != InvoiceStatus.CANCELLED,
+        )
+        .group_by(Category.name)
+    )
+    if date_from:
+        cat_q_inv_items = cat_q_inv_items.where(Invoice.invoice_date >= date_from)
+    if date_to:
+        cat_q_inv_items = cat_q_inv_items.where(Invoice.invoice_date <= date_to)
+
+    cat_rows_tx = (await db.execute(cat_q_tx)).all()
+    cat_rows_inv = (await db.execute(cat_q_inv_items)).all()
+    cat_totals: dict[str | None, float] = {}
+    for name, total in cat_rows_tx:
+        cat_totals[name] = cat_totals.get(name, 0.0) + float(total)
+    for name, total in cat_rows_inv:
+        cat_totals[name] = cat_totals.get(name, 0.0) + float(total)
+    by_category = sorted(
+        [
+            {"category": (n or "Tanpa Kategori"), "total": v}
+            for n, v in cat_totals.items() if v > 0
+        ],
+        key=lambda x: x["total"], reverse=True,
+    )
 
     # cashflow monthly
     cash_q = (
