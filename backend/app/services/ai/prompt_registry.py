@@ -347,6 +347,44 @@ FEATURES: dict[str, FeatureSpec] = {
         user_template_default="",  # caller build prompt dgn data riil; tdk parameterize
         user_placeholders=(),
     ),
+    "ocr_invoice": FeatureSpec(
+        key="ocr_invoice",
+        label="OCR Invoice / Kuitansi / Struk / PO",
+        description=(
+            "System prompt OCR engine yg ekstrak field dari foto/scan "
+            "dokumen keuangan. Aturan parsing angka rupiah, tanggal, "
+            "tulisan tangan, item lines. Adapter-specific suffix "
+            "(Claude tool-call mandate, dst) ditambahkan otomatis "
+            "oleh sistem -- jangan duplicate."
+        ),
+        system_default=(
+            "Kamu OCR engine khusus dokumen keuangan Indonesia: invoice, "
+            "kuitansi, struk, purchase order. Dokumen bisa cetak ATAU "
+            "tulisan tangan -- akurat untuk keduanya.\n\n"
+            "Aturan:\n"
+            "1. Tulisan tangan: baca teliti. Kalau ragu antara dua "
+            "interpretasi, pilih yang masuk akal di konteks dokumen "
+            "keuangan dan turunkan confidence_score.\n"
+            "2. Angka rupiah: hilangkan separator titik/koma/spasi -> "
+            "number polos. \"Rp 1.250.000\" -> 1250000. \"Rp 1,250.50\" -> 1250.5.\n"
+            "3. Tanggal: konversi ke YYYY-MM-DD. \"12 April 2026\" -> "
+            "\"2026-04-12\". Kalau ambigu, pakai string kosong.\n"
+            "4. Items: WAJIB ekstrak SETIAP baris item yang terlihat -- "
+            "jangan skip walau pricing tidak tertulis. Description selalu wajib.\n"
+            "5. is_handwritten=true kalau ada SATU pun bagian tulisan tangan.\n"
+            "6. confidence_score tinggi (>=0.85) hanya kalau hasil bisa "
+            "langsung dipakai tanpa review. Tulisan tangan paling tinggi 0.7.\n"
+            "7. Bagian tidak terbaca/blur/terpotong -> isi field 'notes' "
+            "dengan deskripsi singkat.\n"
+            "8. field_confidences: berikan skor 0-1 PER FIELD utama "
+            "(invoice_number, invoice_date, vendor_name, due_date, "
+            "subtotal, tax, total). Field tdk ada di dokumen = 0. Field "
+            "jelas terbaca = 0.95+. Field ragu antara dua interpretasi = "
+            "0.5-0.7. Ini dipakai UI utk highlight field yg butuh user verify."
+        ),
+        user_template_default="",  # vision-only
+        user_placeholders=(),
+    ),
     "daily_summary": FeatureSpec(
         key="daily_summary",
         label="Ringkasan Harian (CFO Brief)",

@@ -8,6 +8,7 @@ import {
   Coins,
   Loader2,
   Plus,
+  Sparkles,
   Trash2,
   Users,
   Wallet,
@@ -23,6 +24,7 @@ import {
   type SettlementInput,
 } from "@/hooks/useCashAdvances"
 import { useInvoices } from "@/hooks/useInvoices"
+import { useAICategorizeItems } from "@/hooks/useAICategorizeItems"
 import { apiErrorMessage } from "@/lib/api"
 import { ErrorState } from "@/components/data/ErrorState"
 import { Badge } from "@/components/ui/badge"
@@ -357,12 +359,54 @@ function SettlementDialog({
     register,
     handleSubmit,
     watch,
+    setValue,
+    getValues,
     formState: { isSubmitting },
   } = useForm<SettlementFormValues>({ defaultValues })
   const itemsArr = useFieldArray({ control, name: "items" })
 
   const items = watch("items") || []
   const returned = Number(watch("returned_to_kas") || 0)
+
+  // Audit 2026-05-24: AI bulk categorize item-item settlement.
+  const aiCategorizeMut = useAICategorizeItems()
+  const handleAICategorize = async () => {
+    const data = getValues()
+    const liveItems = (data.items ?? []).filter((it) => it.description?.trim())
+    if (liveItems.length === 0) {
+      toast.error("Isi deskripsi item dulu")
+      return
+    }
+    try {
+      const result = await aiCategorizeMut.mutateAsync({
+        items: liveItems.map((it) => ({
+          description: it.description,
+          unit_price: it.amount,
+        })),
+        direction: "OUT",
+        party_name: null,  // settlement tdk ada vendor tunggal
+        project_id: target.project_id ?? null,
+        context_label: `Settlement TX #${target.id}`,
+      })
+      let filled = 0
+      result.items.forEach((s) => {
+        if (s.category_id != null && s.confidence >= 0.7) {
+          const cur = getValues(`items.${s.index}.category_id`)
+          if (cur == null) {
+            setValue(`items.${s.index}.category_id`, s.category_id, {
+              shouldDirty: true,
+            })
+            filled += 1
+          }
+        }
+      })
+      toast.success(
+        `AI selesai · ${filled}/${result.items.length} item auto-fill`,
+      )
+    } catch (e) {
+      toast.error("AI kategori gagal", { description: apiErrorMessage(e) })
+    }
+  }
   const itemsSum = items.reduce((acc, it) => acc + Number(it?.amount || 0), 0)
   const total = itemsSum + returned
   const diff = total - advanceAmount
@@ -631,23 +675,42 @@ function SettlementDialog({
                   </div>
                 </div>
               ))}
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() =>
-                  itemsArr.append({
-                    category_id: null,
-                    description: "",
-                    amount: 0,
-                    receipt_url: null,
-                    invoice_id: null,
-                  })
-                }
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Tambah Item
-              </Button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() =>
+                    itemsArr.append({
+                      category_id: null,
+                      description: "",
+                      amount: 0,
+                      receipt_url: null,
+                      invoice_id: null,
+                    })
+                  }
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Tambah Item
+                </Button>
+                {itemsArr.fields.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleAICategorize}
+                    disabled={aiCategorizeMut.isPending}
+                    title="AI saran kategori utk semua item"
+                  >
+                    {aiCategorizeMut.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5" />
+                    )}
+                    Saran kategori AI
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
 

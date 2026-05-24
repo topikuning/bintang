@@ -12,6 +12,15 @@ from typing import Any
 
 
 class OCRAdapter(ABC):
+    # Audit 2026-05-24: prompt override-able via Prompt AI menu. Caller
+    # set di adapter via `set_system_prompt()` sebelum call extract*.
+    # Adapter merge dgn adapter-specific suffix (mis. Claude wajib pakai
+    # tool-call). None = pakai default di code.
+    _system_prompt_override: str | None = None
+
+    def set_system_prompt(self, prompt: str | None) -> None:
+        self._system_prompt_override = prompt
+
     @abstractmethod
     async def extract_invoice(self, file_url: str) -> dict[str, Any]:
         """Extract via URL atau path lokal (/files/...).

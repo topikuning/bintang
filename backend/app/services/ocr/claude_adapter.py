@@ -233,11 +233,18 @@ class ClaudeVisionOCRAdapter(OCRAdapter):
             media_type,
             len(content) // 1024,
         )
+        # Audit 2026-05-24: prompt override-able (set via Prompt AI menu).
+        # Base prompt + adapter-specific Claude suffix (tool mandate).
+        base = self._system_prompt_override or INVOICE_SYSTEM_PROMPT
+        system_prompt = base + (
+            "\n8. WAJIB call tool save_invoice_extraction dengan semua field. "
+            "Jangan jawab teks bebas."
+        )
         try:
             response = await self._client.messages.create(
                 model=self._model,
                 max_tokens=4096,
-                system=SYSTEM_PROMPT,
+                system=system_prompt,
                 tools=[EXTRACT_TOOL],
                 tool_choice={"type": "tool", "name": EXTRACT_TOOL["name"]},
                 messages=[

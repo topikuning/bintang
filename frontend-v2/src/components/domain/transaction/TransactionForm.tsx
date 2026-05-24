@@ -15,6 +15,7 @@ import {
 } from "@/hooks/useTransactionAttachments"
 import { useUsersLookup } from "@/hooks/useUsers"
 import { useAuthStore } from "@/store/auth"
+import { useAICategorizeItems } from "@/hooks/useAICategorizeItems"
 import type { PaymentMethod, Transaction, TxnKind, TxnType } from "@/types/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -157,10 +158,51 @@ export function TransactionForm({
     reset,
     watch,
     setValue,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ defaultValues })
 
   const itemsArr = useFieldArray({ control, name: "items" })
+
+  // Audit 2026-05-24: AI bulk categorize per item (DIRECT_EXPENSE).
+  const aiCategorizeMut = useAICategorizeItems()
+  const handleAICategorize = async () => {
+    const data = getValues()
+    const liveItems = (data.items ?? []).filter((it) => it.description?.trim())
+    if (liveItems.length === 0) {
+      toast.error("Isi deskripsi item dulu")
+      return
+    }
+    try {
+      const result = await aiCategorizeMut.mutateAsync({
+        items: liveItems.map((it) => ({
+          description: it.description,
+          unit_price: it.amount,
+        })),
+        direction: "OUT",
+        party_name: data.party_name ?? null,
+        project_id: data.project_id,
+        context_label: "Rincian DIRECT_EXPENSE",
+      })
+      let filled = 0
+      result.items.forEach((s) => {
+        if (s.category_id != null && s.confidence >= 0.7) {
+          const cur = getValues(`items.${s.index}.category_id`)
+          if (cur == null) {
+            setValue(`items.${s.index}.category_id`, s.category_id, {
+              shouldDirty: true,
+            })
+            filled += 1
+          }
+        }
+      })
+      toast.success(
+        `AI selesai · ${filled}/${result.items.length} item auto-fill`,
+      )
+    } catch (e) {
+      toast.error("AI kategori gagal", { description: apiErrorMessage(e) })
+    }
+  }
   const usersQ = useUsersLookup({ limit: 200 })
   // Kind change rule (mirror backend):
   // - Tx VERIFIED: hanya SUPERADMIN (god-mode bypass audit lock).
@@ -616,21 +658,40 @@ export function TransactionForm({
                       </div>
                     ))
                   )}
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() =>
-                      itemsArr.append({
-                        category_id: null,
-                        description: "",
-                        amount: 0,
-                      })
-                    }
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Tambah Item
-                  </Button>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() =>
+                        itemsArr.append({
+                          category_id: null,
+                          description: "",
+                          amount: 0,
+                        })
+                      }
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Tambah Item
+                    </Button>
+                    {items.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleAICategorize}
+                        disabled={aiCategorizeMut.isPending}
+                        title="AI saran kategori utk semua item"
+                      >
+                        {aiCategorizeMut.isPending ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3.5 w-3.5" />
+                        )}
+                        Saran kategori AI
+                      </Button>
+                    )}
+                  </div>
                   {items.length > 0 && (
                     <div className="text-right text-[12px] text-ink-700 pt-1 border-t">
                       Total:{" "}

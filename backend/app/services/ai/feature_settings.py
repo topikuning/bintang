@@ -90,6 +90,17 @@ DEFAULTS: dict[str, dict] = {
         "rate_limit_per_min": 20, "web_search_enabled": False,
         "monthly_budget_usd": None,
     },
+    "ocr_invoice": {
+        # OCR sudah punya settings tersendiri di app_settings (provider,
+        # model). Di sini hanya utk prompt override + audit cost/budget.
+        # Provider/model dummy = None -> mengikuti AI_DEFAULT_PROVIDER /
+        # OCR_PROVIDER. Field-field operasional (max_tokens, cache, dst)
+        # tdk dipakai oleh adapter OCR -- ignored.
+        "provider": None, "model": None, "model_hint": "smart",
+        "max_tokens": 8192, "cache_ttl_days": 30,
+        "rate_limit_per_min": 30, "web_search_enabled": False,
+        "monthly_budget_usd": None,
+    },
     "category_audit": {
         # Audit 2026-05-24: scan + flag tx mis-categorized. Reasoning
         # task -- pakai smart model.

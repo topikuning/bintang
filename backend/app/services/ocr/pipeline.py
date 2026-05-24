@@ -183,6 +183,14 @@ async def run_extraction(
     if result is None:
         primary_engine = (engine or "").lower() or None
         adapter = get_ocr_adapter(primary_engine)
+        # Audit 2026-05-24: prompt override-able via Prompt AI menu.
+        # Resolve dr registry, set di adapter sebelum call.
+        try:
+            from app.services.ai.prompt_registry import get_prompt
+            p = await get_prompt(db, "ocr_invoice")
+            adapter.set_system_prompt(p.system)
+        except Exception:  # noqa: BLE001
+            pass  # fallback ke default constant di adapter
         result = await _call_adapter(adapter, processed_content, processed_media, source_url)
 
     # 5. Engine fallback -- OPT-IN sekarang (user request #3).
@@ -204,6 +212,12 @@ async def run_extraction(
         )
         try:
             claude_adapter = get_ocr_adapter("claude")
+            try:
+                from app.services.ai.prompt_registry import get_prompt
+                p = await get_prompt(db, "ocr_invoice")
+                claude_adapter.set_system_prompt(p.system)
+            except Exception:  # noqa: BLE001
+                pass
             claude_result = await _call_adapter(
                 claude_adapter, processed_content, processed_media, source_url,
             )
