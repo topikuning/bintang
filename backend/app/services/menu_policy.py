@@ -52,6 +52,8 @@ MENU_REGISTRY: list[dict[str, Any]] = [
     {"id": "settings-role-menus", "label": "Akses Menu per Role", "group": "sistem"},
     {"id": "settings-orphan-files", "label": "File Orphan", "group": "sistem"},
     {"id": "settings-non-project", "label": "Inklusi Catatan Non-Proyek", "group": "sistem"},
+    # Admin -- audit 2026-05-23
+    {"id": "admin-bulk-approval", "label": "Approval Massal", "group": "admin"},
 ]
 MENU_IDS = {m["id"] for m in MENU_REGISTRY}
 
@@ -60,6 +62,10 @@ MENU_IDS = {m["id"] for m in MENU_REGISTRY}
 # SUPERADMIN; role lain (CENTRAL_ADMIN sekalipun) tidak boleh tahu
 # keberadaannya supaya konsep "rahasia" terjaga.
 SUPERADMIN_ONLY_MENU_IDS = {"non-project", "settings-non-project"}
+
+# Menu admin-only (SUPERADMIN + CENTRAL_ADMIN). PROJECT_ADMIN + EXECUTIVE
+# tdk boleh lihat. Audit 2026-05-23 #bulk approval.
+ADMIN_ONLY_MENU_IDS = {"admin-bulk-approval"}
 
 # Cache: role -> set of hidden menu_ids, dgn TTL
 _CACHE_TTL = 60.0
@@ -97,6 +103,8 @@ async def list_user_menus(db: AsyncSession, role: UserRole) -> list[str]:
     hidden = await get_hidden(db, role)
     if role != UserRole.SUPERADMIN:
         hidden = hidden | SUPERADMIN_ONLY_MENU_IDS
+    if role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
+        hidden = hidden | ADMIN_ONLY_MENU_IDS
     return [m["id"] for m in MENU_REGISTRY if m["id"] not in hidden]
 
 

@@ -113,12 +113,22 @@ function BulkTxPanel() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
 
   const listQ = useQuery({
-    queryKey: ["bulk-approval", "tx", "submitted"],
+    queryKey: ["bulk-approval", "tx", "pending"],
     queryFn: async () => {
-      const { data } = await api.get("/transactions", {
-        params: { status: "SUBMITTED", size: 200 },
-      })
-      return data as { items: TxItem[]; total: number }
+      // Backend bulk_verify accept DRAFT + SUBMITTED. Fetch keduanya
+      // (list endpoint cuma terima 1 status, jadi 2 query lalu merge).
+      const [draftRes, submittedRes] = await Promise.all([
+        api.get("/transactions", { params: { status: "DRAFT", size: 200 } }),
+        api.get("/transactions", { params: { status: "SUBMITTED", size: 200 } }),
+      ])
+      const merged = [
+        ...(submittedRes.data?.items ?? []),  // submitted dulu (lebih prioritas)
+        ...(draftRes.data?.items ?? []),
+      ]
+      return {
+        items: merged as TxItem[],
+        total: (submittedRes.data?.total ?? 0) + (draftRes.data?.total ?? 0),
+      }
     },
   })
 
@@ -150,6 +160,16 @@ function BulkTxPanel() {
       bulkLabel="Verify Selected"
       renderRow={(item) => (
         <>
+          <td className="px-3 py-2 text-sm">
+            <span className={cn(
+              "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+              item.status === "DRAFT"
+                ? "bg-ink-100 text-ink-700"
+                : "bg-warning-100 text-warning-800",
+            )}>
+              {item.status}
+            </span>
+          </td>
           <td className="px-3 py-2 text-sm">{fmtDate(item.tx_date)}</td>
           <td className="px-3 py-2 text-sm">{item.type}</td>
           <td className="px-3 py-2 text-sm font-mono">{fmtIDR(Number(item.amount))}</td>
@@ -159,7 +179,7 @@ function BulkTxPanel() {
           </td>
         </>
       )}
-      headers={["Tanggal", "Tipe", "Nominal", "Pihak", "Deskripsi"]}
+      headers={["Status", "Tanggal", "Tipe", "Nominal", "Pihak", "Deskripsi"]}
     />
   )
 }
@@ -172,12 +192,21 @@ function BulkPoPanel() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
 
   const listQ = useQuery({
-    queryKey: ["bulk-approval", "po", "issued"],
+    queryKey: ["bulk-approval", "po", "pending"],
     queryFn: async () => {
-      const { data } = await api.get("/purchase-orders", {
-        params: { status: "ISSUED", size: 200 },
-      })
-      return data as { items: PoItem[]; total: number }
+      // Backend bulk_approve accept DRAFT + ISSUED. Fetch keduanya.
+      const [draftRes, issuedRes] = await Promise.all([
+        api.get("/purchase-orders", { params: { status: "DRAFT", size: 200 } }),
+        api.get("/purchase-orders", { params: { status: "ISSUED", size: 200 } }),
+      ])
+      const merged = [
+        ...(issuedRes.data?.items ?? []),
+        ...(draftRes.data?.items ?? []),
+      ]
+      return {
+        items: merged as PoItem[],
+        total: (issuedRes.data?.total ?? 0) + (draftRes.data?.total ?? 0),
+      }
     },
   })
 
@@ -197,8 +226,8 @@ function BulkPoPanel() {
 
   return (
     <BulkPanel
-      title="PO ISSUED"
-      hint="APPROVED = PO siap dikirim ke vendor & dialokasi ke pembayaran."
+      title="PO DRAFT / ISSUED"
+      hint="APPROVED = PO siap dikirim ke vendor & dialokasi ke pembayaran. DRAFT akan skip step ISSUED."
       items={listQ.data?.items ?? []}
       isLoading={listQ.isLoading}
       error={listQ.error}
@@ -209,13 +238,23 @@ function BulkPoPanel() {
       bulkLabel="Approve Selected"
       renderRow={(item) => (
         <>
+          <td className="px-3 py-2 text-sm">
+            <span className={cn(
+              "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+              item.status === "DRAFT"
+                ? "bg-ink-100 text-ink-700"
+                : "bg-warning-100 text-warning-800",
+            )}>
+              {item.status}
+            </span>
+          </td>
           <td className="px-3 py-2 text-sm font-mono">{item.number}</td>
           <td className="px-3 py-2 text-sm">{fmtDate(item.po_date)}</td>
           <td className="px-3 py-2 text-sm">{item.vendor_client_name || item.vendor_name || "—"}</td>
           <td className="px-3 py-2 text-sm font-mono">{fmtIDR(Number(item.total))}</td>
         </>
       )}
-      headers={["Nomor", "Tanggal", "Vendor", "Total"]}
+      headers={["Status", "Nomor", "Tanggal", "Vendor", "Total"]}
     />
   )
 }
@@ -452,6 +491,7 @@ interface TxItem {
   id: number
   tx_date: string
   type: string
+  status: string
   amount: string | number
   party_name: string | null
   description: string | null
@@ -460,6 +500,7 @@ interface TxItem {
 interface PoItem {
   id: number
   number: string
+  status: string
   po_date: string
   vendor_client_name?: string | null
   vendor_name: string | null
