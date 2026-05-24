@@ -189,7 +189,7 @@ class Category(TimestampMixin, Base):
     # Audit 2026-05-23: flag kategori marketing. TX OUT dgn category
     # is_marketing=True akan dipisahkan dari biaya non-marketing di
     # rincian keuangan proyek -- cegah double count dgn line item
-    # "Marketing 15%" yg formula-based.
+    # reservasi Marketing (% di-set per proyek di Project.marketing_pct).
     is_marketing: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default="0",
     )

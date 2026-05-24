@@ -312,7 +312,7 @@ function CategoryForm({
       </Field>
       <Field
         label="Tipe Khusus"
-        hint="Tag 'Marketing' kalau kategori ini dipakai utk TX komisi/fee/bonus marketing. TX terkait akan dipisah dari biaya non-marketing di rincian proyek (cegah double-count dgn reservasi Marketing 15%)."
+        hint="Tag 'Marketing' kalau kategori ini dipakai utk TX komisi/fee/bonus marketing. TX terkait dipisah dari biaya non-marketing di rincian proyek (cegah double-count dgn reservasi Marketing % yg di-set per proyek)."
       >
         <label className="flex items-center gap-2 cursor-pointer">
           <input

@@ -1,8 +1,8 @@
 """category_is_marketing
 
 Tambah Category.is_marketing utk pisahkan TX OUT marketing dari biaya
-non-marketing di rincian keuangan (cegah double-count dgn formula
-Marketing 15%).
+non-marketing di rincian keuangan -- cegah double-count dgn reservasi
+Marketing % (per-project, Project.marketing_pct).
 
 Audit 2026-05-23 user req.
 
