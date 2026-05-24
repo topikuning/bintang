@@ -37,6 +37,9 @@ export function useAICategorizeItems() {
       const { data } = await api.post<CategorizeItemsResponse>(
         "/ai/categorize-items",
         payload,
+        // Audit 2026-05-24: AI batch bisa lama (chunk 150 item ~30-60s).
+        // Override default axios timeout 30s ke 5 menit.
+        { timeout: 300_000 },
       )
       return data
     },

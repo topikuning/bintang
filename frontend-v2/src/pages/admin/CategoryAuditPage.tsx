@@ -69,13 +69,18 @@ export function CategoryAuditPage() {
 
   const scanMut = useMutation({
     mutationFn: async (): Promise<ScanResp> => {
-      const { data } = await api.post<ScanResp>("/ai/category-audit/scan", {
-        project_id: projectId,
-        date_from: dateFrom || null,
-        date_to: dateTo || null,
-        direction: direction || null,
-        use_ai: useAI,
-      })
+      const { data } = await api.post<ScanResp>(
+        "/ai/category-audit/scan",
+        {
+          project_id: projectId,
+          date_from: dateFrom || null,
+          date_to: dateTo || null,
+          direction: direction || null,
+          use_ai: useAI,
+        },
+        // Audit 2026-05-24: AI scan bisa lama. Override default 30s.
+        { timeout: 600_000 },
+      )
       return data
     },
     onSuccess: (res) => {

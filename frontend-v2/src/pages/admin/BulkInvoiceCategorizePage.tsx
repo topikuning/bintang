@@ -89,6 +89,9 @@ export function BulkInvoiceCategorizePage() {
           only_uncategorized: onlyUncategorized,
           max_items: maxItems,
         },
+        // Audit 2026-05-24: AI batch lama (chunk 150 item × N chunk).
+        // Override axios default 30s ke 10 menit utk safety margin.
+        { timeout: 600_000 },
       )
       return data
     },

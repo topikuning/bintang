@@ -5,7 +5,13 @@ import { api } from "@/lib/api"
 // AI feature client hooks. Audit 2026-05-23.
 // Setiap fitur AI punya hook React Query sendiri supaya konsisten
 // dgn pattern existing.
+//
+// Audit 2026-05-24: AI call kebanyakan > 30s default axios.
+// Override per-call dgn AI_TIMEOUT (5 menit). Override timeout
+// adapter axios PER request (bukan global) supaya CRUD biasa tetap
+// fail-fast 30s.
 // ============================================================
+const AI_TIMEOUT = 300_000 // 5 menit
 
 export interface AIMeta {
   model: string
@@ -34,7 +40,7 @@ export function useSuggestCategory() {
       direction?: "IN" | "OUT"
     }): Promise<CategorySuggestResult> => {
       const { data } = await api.post<CategorySuggestResult>(
-        "/ai/suggest-category", input,
+        "/ai/suggest-category", input, { timeout: AI_TIMEOUT },
       )
       return data
     },
@@ -54,7 +60,7 @@ export function useGeneratePOCover() {
       tone?: "formal" | "santai"
     }): Promise<POCoverResult> => {
       const { data } = await api.post<POCoverResult>(
-        "/ai/generate-po-cover", input,
+        "/ai/generate-po-cover", input, { timeout: AI_TIMEOUT },
       )
       return data
     },
@@ -76,7 +82,7 @@ export function useJustifyCashRequest() {
       items?: Array<{ description: string; amount: string | number }>
     }): Promise<CashJustifyResult> => {
       const { data } = await api.post<CashJustifyResult>(
-        "/ai/justify-cash-request", input,
+        "/ai/justify-cash-request", input, { timeout: AI_TIMEOUT },
       )
       return data
     },
@@ -104,7 +110,7 @@ export function useScanAnomalies() {
       project_id?: number
     }): Promise<AnomalyResult> => {
       const { data } = await api.post<AnomalyResult>(
-        "/ai/scan-anomalies", input,
+        "/ai/scan-anomalies", input, { timeout: AI_TIMEOUT },
       )
       return data
     },
@@ -128,7 +134,9 @@ export interface AskQueryResult {
 export function useAskQuery() {
   return useMutation({
     mutationFn: async (input: { question: string }): Promise<AskQueryResult> => {
-      const { data } = await api.post<AskQueryResult>("/ai/ask", input)
+      const { data } = await api.post<AskQueryResult>(
+        "/ai/ask", input, { timeout: AI_TIMEOUT },
+      )
       return data
     },
   })
@@ -178,7 +186,7 @@ export function useExtractContract() {
         "/ai/extract-contract", fd,
         {
           headers: { "Content-Type": "multipart/form-data" },
-          timeout: 110_000,
+          timeout: AI_TIMEOUT,
         },
       )
       return data
@@ -197,7 +205,7 @@ export function useDailySummary() {
   return useMutation({
     mutationFn: async (input: { target_date?: string } = {}): Promise<DailySummaryResult> => {
       const { data } = await api.post<DailySummaryResult>(
-        "/ai/daily-summary", input,
+        "/ai/daily-summary", input, { timeout: AI_TIMEOUT },
       )
       return data
     },
