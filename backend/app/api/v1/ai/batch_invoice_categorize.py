@@ -222,9 +222,43 @@ async def _ai_categorize_chunk(
             for desc, cat in rows:
                 lines_history.append(f"  - {desc} -> {cat}")
 
-    # Section 3: kategori
-    lines_cats: list[str] = ["\nKATEGORI VALID:"]
-    for cid, name, ctype in cats_rows:
+    # Section 3: kategori. Filter berdasar arah invoice di chunk:
+    # - Invoice IN (hutang) -> items pengeluaran -> kategori CategoryType.OUT
+    # - Invoice OUT (piutang) -> items pemasukan -> kategori CategoryType.IN
+    # Audit 2026-05-24: sebelumnya kirim SEMUA kategori (IN+OUT)
+    # walaupun chunk cuma invoice IN. Buang token + risk AI pilih arah
+    # salah. Sekarang determine direction per chunk, filter cats.
+    chunk_invoice_types = {inv.type for inv in inv_by_id.values()}
+    if chunk_invoice_types == {InvoiceType.IN}:
+        # all hutang -> hanya kategori pengeluaran
+        relevant_cats = [
+            (cid, name, ctype) for cid, name, ctype in cats_rows
+            if ctype == CategoryType.OUT
+        ]
+        cat_section_header = (
+            "\nKATEGORI VALID (hanya tipe PENGELUARAN -- semua invoice "
+            "di chunk ini adalah HUTANG):"
+        )
+    elif chunk_invoice_types == {InvoiceType.OUT}:
+        # all piutang -> hanya kategori pemasukan
+        relevant_cats = [
+            (cid, name, ctype) for cid, name, ctype in cats_rows
+            if ctype == CategoryType.IN
+        ]
+        cat_section_header = (
+            "\nKATEGORI VALID (hanya tipe PEMASUKAN -- semua invoice "
+            "di chunk ini adalah PIUTANG):"
+        )
+    else:
+        # mixed -> kirim semua dgn tag jelas
+        relevant_cats = list(cats_rows)
+        cat_section_header = (
+            "\nKATEGORI VALID (campuran -- pilih sesuai tipe invoice "
+            "per item):"
+        )
+
+    lines_cats: list[str] = [cat_section_header]
+    for cid, name, ctype in relevant_cats:
         tag = "PEMASUKAN" if ctype == CategoryType.IN else "PENGELUARAN"
         lines_cats.append(f"  ID {cid}: {name} [{tag}]")
 
@@ -331,7 +365,7 @@ async def batch_categorize_project_invoices(
         )
     )).all()
     cat_name_by_id = {cid: name for cid, name, _ in cats_rows}
-    valid_ids = {cid for cid, _, _ in cats_rows}
+    # valid_ids: cek per-direction di response loop (audit 2026-05-24).
 
     project = await db.get(Project, payload.project_id)
     proj_label = f"{project.name} ({project.code})" if project else f"#{payload.project_id}"
@@ -348,14 +382,18 @@ async def batch_categorize_project_invoices(
             ai_calls=0,
         )
 
-    # Audit 2026-05-24: chunk items kalau > CHUNK_SIZE -- AI output tdk
-    # cukup di 16K token utk 500 item ramai field. Per chunk 150 item
-    # supaya respond < 60s.
+    # Audit 2026-05-24: chunk items per direction supaya prompt
+    # homogeneous (cat filter pas + AI tdk bingung campur direction).
+    # Per chunk 150 item supaya respond < 60s.
     CHUNK_SIZE = 150
-    pair_chunks: list[list[tuple[Invoice, InvoiceItem]]] = [
-        target_pairs[i : i + CHUNK_SIZE]
-        for i in range(0, len(target_pairs), CHUNK_SIZE)
-    ]
+    pairs_in = [(inv, it) for inv, it in target_pairs if inv.type == InvoiceType.IN]
+    pairs_out = [(inv, it) for inv, it in target_pairs if inv.type == InvoiceType.OUT]
+    pair_chunks: list[list[tuple[Invoice, InvoiceItem]]] = []
+    for bucket in (pairs_in, pairs_out):
+        for i in range(0, len(bucket), CHUNK_SIZE):
+            chunk = bucket[i : i + CHUNK_SIZE]
+            if chunk:
+                pair_chunks.append(chunk)
 
     # Fetch vendor patterns sekali utk SEMUA vendor di batch
     unique_vendors = {(inv.party_name or "").strip()
@@ -384,16 +422,26 @@ async def batch_categorize_project_invoices(
 
     # Build response: group by invoice, items dgn enriched suggestion
     result_invoices: list[InvoiceSuggestion] = []
+    # Per-direction valid sets utk validate suggestion sesuai arah.
+    valid_ids_out = {cid for cid, _, ctype in cats_rows if ctype == CategoryType.OUT}
+    valid_ids_in = {cid for cid, _, ctype in cats_rows if ctype == CategoryType.IN}
+
     items_scanned = 0
     for inv_id, items in grouped_by_inv.items():
         inv = inv_by_id[inv_id]
+        # Expected direction utk item-item invoice ini.
+        expected_ids = (
+            valid_ids_out if inv.type == InvoiceType.IN else valid_ids_in
+        )
         item_suggestions: list[ItemSuggestion] = []
         high_conf = 0
         for it in items:
             items_scanned += 1
             s = ai_by_item_id.get(it.id, {})
             sug_cid = s.get("category_id")
-            if sug_cid is not None and sug_cid not in valid_ids:
+            # Strict: cek harus ada di valid set sesuai direction
+            # (audit 2026-05-24 -- AI kadang salah pilih arah).
+            if sug_cid is not None and sug_cid not in expected_ids:
                 sug_cid = None
             conf = float(s.get("confidence") or 0)
             if conf >= 0.7 and sug_cid is not None:
