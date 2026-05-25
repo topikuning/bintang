@@ -1,18 +1,27 @@
 /**
  * Definisi navigasi sekali, dipakai oleh Sidebar (desktop), NavRail
  * (tablet), dan BottomNav (mobile).
+ *
+ * Audit 2026-05-24: tata letak menu di-redesign. Group baru:
+ * - Beranda (entry point)
+ * - Operasional (harian, frequent) -- OCR pindah ke sini
+ * - Laporan (read-only) -- audit/bulk tools pindah keluar
+ * - Admin Tools (mingguan, admin-only) -- baru: Mass Action, Audit
+ *   Kategorisasi, Auto-Kategori, Import Data
+ * - Master Data
+ * - Pengaturan (settings only) -- rename dari "Sistem"
  */
 import {
   ArrowLeftRight,
   BadgeDollarSign,
   BarChart3,
   Building2,
+  CheckCheck,
   ClipboardList,
   Database,
   FileText,
   FolderKanban,
   HardDrive,
-  CheckCheck,
   History,
   Home,
   KeyRound,
@@ -27,6 +36,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Tag,
+  UserCircle,
   Users,
   Wallet,
 } from "lucide-react"
@@ -65,6 +75,7 @@ export const DESKTOP_NAV: NavGroup[] = [
       { id: "purchase-orders", label: "Purchase Order", to: "/purchase-orders", icon: ShoppingCart },
       { id: "budget", label: "Budget", to: "/budget", icon: BadgeDollarSign },
       { id: "non-project", label: "Catatan Non-Proyek", to: "/non-project", icon: Notebook },
+      { id: "ocr", label: "Asisten OCR", to: "/ocr", icon: ScanLine },
     ],
   },
   {
@@ -73,9 +84,15 @@ export const DESKTOP_NAV: NavGroup[] = [
       { id: "reports", label: "Laporan", to: "/reports", icon: BarChart3 },
       { id: "reports-invoice-items", label: "Detail Invoice", to: "/reports/invoice-items", icon: Receipt },
       { id: "audit-log", label: "Audit Log", to: "/audit-log", icon: History },
+    ],
+  },
+  {
+    label: "Admin Tools",
+    items: [
       { id: "admin-bulk-approval", label: "Mass Action", to: "/admin/bulk-approval", icon: CheckCheck },
       { id: "admin-category-audit", label: "Audit Kategorisasi", to: "/admin/category-audit", icon: Tag },
       { id: "admin-bulk-invoice-categorize", label: "Auto-Kategori Invoice", to: "/admin/bulk-invoice-categorize", icon: Sparkles },
+      { id: "imports", label: "Import Data", to: "/imports", icon: Database },
     ],
   },
   {
@@ -91,17 +108,15 @@ export const DESKTOP_NAV: NavGroup[] = [
     ],
   },
   {
-    label: "Sistem",
+    label: "Pengaturan",
     items: [
-      { id: "imports", label: "Import Data", to: "/imports", icon: Database },
-      { id: "ocr", label: "Asisten OCR", to: "/ocr", icon: ScanLine },
-      { id: "settings", label: "Pengaturan", to: "/settings", icon: Settings },
-      { id: "settings-system", label: "Sistem (API Keys)", to: "/settings/system", icon: KeyRound },
+      { id: "settings", label: "Profil Saya", to: "/settings", icon: UserCircle },
+      { id: "settings-system", label: "API Keys & Provider", to: "/settings/system", icon: KeyRound },
       { id: "settings-role-menus", label: "Akses Menu per Role", to: "/settings/role-menus", icon: ShieldCheck },
-      { id: "settings-orphan-files", label: "File Orphan", to: "/settings/orphan-files", icon: HardDrive },
       { id: "settings-non-project", label: "Inklusi Catatan Non-Proyek", to: "/settings/non-project", icon: SlidersHorizontal },
       { id: "settings-ai-prompts", label: "Prompt AI", to: "/settings/ai-prompts", icon: Sparkles },
-      { id: "settings-ai-features", label: "Setting AI per Fitur", to: "/settings/ai-features", icon: SlidersHorizontal },
+      { id: "settings-ai-features", label: "Setting AI per Fitur", to: "/settings/ai-features", icon: Settings },
+      { id: "settings-orphan-files", label: "File Orphan", to: "/settings/orphan-files", icon: HardDrive },
     ],
   },
 ]
@@ -115,15 +130,19 @@ export const MOBILE_BOTTOM_NAV: NavItem[] = [
   { label: "Lainnya", to: "/more", icon: MoreHorizontal },
 ]
 
-/** Halaman yang muncul di mobile /more. */
+/** Halaman yang muncul di mobile /more. Mirror struktur DESKTOP_NAV
+ *  kecuali item yg sudah ada di bottom nav (dashboard, projects,
+ *  transactions, invoices). */
 export const MOBILE_MORE_NAV: NavGroup[] = [
   {
     label: "Operasional",
     items: [
+      { id: "cash-advances", label: "Dana Operasional", to: "/transactions/cash-advances", icon: Wallet },
       { id: "cash-requests", label: "Pengajuan Dana", to: "/cash-requests", icon: FileText },
       { id: "purchase-orders", label: "Purchase Order", to: "/purchase-orders", icon: ShoppingCart },
       { id: "budget", label: "Budget", to: "/budget", icon: BadgeDollarSign },
       { id: "non-project", label: "Catatan Non-Proyek", to: "/non-project", icon: Notebook },
+      { id: "ocr", label: "Asisten OCR", to: "/ocr", icon: ScanLine },
     ],
   },
   {
@@ -132,9 +151,15 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
       { id: "reports", label: "Laporan", to: "/reports", icon: BarChart3 },
       { id: "reports-invoice-items", label: "Detail Invoice", to: "/reports/invoice-items", icon: Receipt },
       { id: "audit-log", label: "Audit Log", to: "/audit-log", icon: History },
+    ],
+  },
+  {
+    label: "Admin Tools",
+    items: [
       { id: "admin-bulk-approval", label: "Mass Action", to: "/admin/bulk-approval", icon: CheckCheck },
       { id: "admin-category-audit", label: "Audit Kategorisasi", to: "/admin/category-audit", icon: Tag },
       { id: "admin-bulk-invoice-categorize", label: "Auto-Kategori Invoice", to: "/admin/bulk-invoice-categorize", icon: Sparkles },
+      { id: "imports", label: "Import Data", to: "/imports", icon: Database },
     ],
   },
   {
@@ -150,17 +175,15 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
     ],
   },
   {
-    label: "Sistem",
+    label: "Pengaturan",
     items: [
-      { id: "imports", label: "Import Data", to: "/imports", icon: Database },
-      { id: "ocr", label: "Asisten OCR", to: "/ocr", icon: ScanLine },
-      { id: "settings", label: "Pengaturan", to: "/settings", icon: Settings },
-      { id: "settings-system", label: "Sistem (API Keys)", to: "/settings/system", icon: KeyRound },
+      { id: "settings", label: "Profil Saya", to: "/settings", icon: UserCircle },
+      { id: "settings-system", label: "API Keys & Provider", to: "/settings/system", icon: KeyRound },
       { id: "settings-role-menus", label: "Akses Menu per Role", to: "/settings/role-menus", icon: ShieldCheck },
-      { id: "settings-orphan-files", label: "File Orphan", to: "/settings/orphan-files", icon: HardDrive },
       { id: "settings-non-project", label: "Inklusi Catatan Non-Proyek", to: "/settings/non-project", icon: SlidersHorizontal },
       { id: "settings-ai-prompts", label: "Prompt AI", to: "/settings/ai-prompts", icon: Sparkles },
-      { id: "settings-ai-features", label: "Setting AI per Fitur", to: "/settings/ai-features", icon: SlidersHorizontal },
+      { id: "settings-ai-features", label: "Setting AI per Fitur", to: "/settings/ai-features", icon: Settings },
+      { id: "settings-orphan-files", label: "File Orphan", to: "/settings/orphan-files", icon: HardDrive },
     ],
   },
 ]

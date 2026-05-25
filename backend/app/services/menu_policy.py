@@ -24,7 +24,7 @@ MENU_REGISTRY: list[dict[str, Any]] = [
     # Beranda
     {"id": "dashboard", "label": "Dashboard / Beranda", "group": "beranda"},
     {"id": "projects", "label": "Proyek (Hub Operasional)", "group": "beranda"},
-    # Operasional
+    # Operasional -- dipakai harian
     {"id": "transactions", "label": "Transaksi", "group": "operasional"},
     {"id": "cash-advances", "label": "Dana Operasional", "group": "operasional"},
     {"id": "cash-requests", "label": "Pengajuan Dana", "group": "operasional"},
@@ -32,11 +32,17 @@ MENU_REGISTRY: list[dict[str, Any]] = [
     {"id": "purchase-orders", "label": "Purchase Order", "group": "operasional"},
     {"id": "budget", "label": "Budget", "group": "operasional"},
     {"id": "non-project", "label": "Catatan Non-Proyek", "group": "operasional"},
-    # Laporan
+    {"id": "ocr", "label": "Asisten OCR", "group": "operasional"},
+    # Laporan -- read-only
     {"id": "reports", "label": "Laporan", "group": "laporan"},
     {"id": "reports-invoice-items", "label": "Detail Invoice (Interaktif)", "group": "laporan"},
     {"id": "audit-log", "label": "Audit Log", "group": "laporan"},
-    # Master
+    # Admin Tools -- jarang dipakai (mingguan), admin only
+    {"id": "admin-bulk-approval", "label": "Mass Action", "group": "admin"},
+    {"id": "admin-category-audit", "label": "Audit Kategorisasi", "group": "admin"},
+    {"id": "admin-bulk-invoice-categorize", "label": "Auto-Kategori Invoice", "group": "admin"},
+    {"id": "imports", "label": "Import Data", "group": "admin"},
+    # Master Data
     {"id": "master-projects", "label": "Master Proyek", "group": "master"},
     {"id": "master-companies", "label": "Master Perusahaan", "group": "master"},
     {"id": "master-categories", "label": "Master Kategori", "group": "master"},
@@ -44,20 +50,14 @@ MENU_REGISTRY: list[dict[str, Any]] = [
     # NOTE: master-funders dihapus -- pendana merge ke users (role=EXECUTIVE).
     # Kelola lewat master-users dgn filter role.
     {"id": "master-users", "label": "Master Pengguna", "group": "master"},
-    # Sistem
-    {"id": "imports", "label": "Import Data", "group": "sistem"},
-    {"id": "ocr", "label": "Asisten OCR", "group": "sistem"},
-    {"id": "settings", "label": "Pengaturan Profil", "group": "sistem"},
-    {"id": "settings-system", "label": "Sistem (API Keys)", "group": "sistem"},
-    {"id": "settings-role-menus", "label": "Akses Menu per Role", "group": "sistem"},
-    {"id": "settings-orphan-files", "label": "File Orphan", "group": "sistem"},
-    {"id": "settings-non-project", "label": "Inklusi Catatan Non-Proyek", "group": "sistem"},
-    {"id": "settings-ai-prompts", "label": "Prompt AI", "group": "sistem"},
-    {"id": "settings-ai-features", "label": "Setting AI per Fitur", "group": "sistem"},
-    # Admin -- audit 2026-05-23
-    {"id": "admin-bulk-approval", "label": "Mass Action", "group": "admin"},
-    {"id": "admin-category-audit", "label": "Audit Kategorisasi", "group": "admin"},
-    {"id": "admin-bulk-invoice-categorize", "label": "Auto-Kategori Invoice", "group": "admin"},
+    # Pengaturan -- settings only (bukan tools)
+    {"id": "settings", "label": "Profil Saya", "group": "pengaturan"},
+    {"id": "settings-system", "label": "API Keys & Provider", "group": "pengaturan"},
+    {"id": "settings-role-menus", "label": "Akses Menu per Role", "group": "pengaturan"},
+    {"id": "settings-orphan-files", "label": "File Orphan", "group": "pengaturan"},
+    {"id": "settings-non-project", "label": "Inklusi Catatan Non-Proyek", "group": "pengaturan"},
+    {"id": "settings-ai-prompts", "label": "Prompt AI", "group": "pengaturan"},
+    {"id": "settings-ai-features", "label": "Setting AI per Fitur", "group": "pengaturan"},
 ]
 MENU_IDS = {m["id"] for m in MENU_REGISTRY}
 
