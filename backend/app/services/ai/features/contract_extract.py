@@ -89,7 +89,6 @@ async def run(
         content=content, media_type=media_type,
         system_prompt=p.system, schema=SCHEMA,
         tool_name="save_contract_extraction",
-        cache_ttl_days=30,
-        rate_limit_max=10, rate_limit_period=60.0,
-        max_tokens=6144,
+        rate_limit_period=60.0,
+        feature_key="contract_extract",
     )

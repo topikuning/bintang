@@ -97,7 +97,12 @@ export function CategoryAuditPage() {
     mutationFn: async (
       items: Array<{ tx_id: number; new_category_id: number }>,
     ) => {
-      const { data } = await api.post("/ai/category-audit/apply", { items })
+      const { data } = await api.post(
+        "/ai/category-audit/apply",
+        { items },
+        // Audit 2026-05-24: apply 500+ item bisa lama. Override 30s default.
+        { timeout: 300_000 },
+      )
       return data
     },
     onSuccess: (res) => {

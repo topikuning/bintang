@@ -44,6 +44,10 @@ async def extract_from_image(
     rate_limit_max: int = 20,
     rate_limit_period: float = 60.0,
     max_tokens: int = 4096,
+    # Audit 2026-05-24: per-feature config overlay (sama spt chat()).
+    # Kalau di-set, lookup ai_feature_settings + budget check + fill
+    # default. Caller args explicit tetap menang.
+    feature_key: str | None = None,
 ) -> dict[str, Any]:
     """Extract dokumen image/PDF via Claude vision dgn schema custom.
 
@@ -51,6 +55,22 @@ async def extract_from_image(
 
     Caller commit DB.
     """
+    # Per-feature config overlay (audit 2026-05-24).
+    if feature_key:
+        from app.services.ai.feature_settings import (
+            assert_within_budget, get_effective,
+        )
+        _cfg = await get_effective(db, feature_key)
+        await assert_within_budget(db, feature_key, _cfg)
+        if model is None and _cfg.model:
+            model = _cfg.model
+        # Caller args yg = default arg -> di-override config
+        if max_tokens == 4096:
+            max_tokens = _cfg.max_tokens
+        if cache_ttl_days == 30:
+            cache_ttl_days = _cfg.cache_ttl_days
+        if rate_limit_max == 20:
+            rate_limit_max = _cfg.rate_limit_per_min
     # Rate-limit per feature per user
     limiter = get_limiter(
         feature, max_calls=rate_limit_max, period_seconds=rate_limit_period,
