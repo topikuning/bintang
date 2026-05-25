@@ -182,9 +182,22 @@ async def run_extraction(
     # 4. Primary adapter call (kalau tesseract miss/disabled)
     if result is None:
         primary_engine = (engine or "").lower() or None
-        adapter = get_ocr_adapter(primary_engine)
-        # Audit 2026-05-24: prompt override-able via Prompt AI menu.
-        # Resolve dr registry, set di adapter sebelum call.
+        # Audit 2026-05-24: kalau admin override model/provider di
+        # ai_feature_settings.ocr_invoice, pakai itu (konsisten dgn
+        # AI feature lain). User-passed `engine` param tetap menang.
+        model_override: str | None = None
+        try:
+            from app.services.ai.feature_settings import get_effective
+            cfg = await get_effective(db, "ocr_invoice")
+            if primary_engine is None and cfg.provider:
+                primary_engine = cfg.provider
+            if cfg.model:
+                model_override = cfg.model
+        except Exception:  # noqa: BLE001
+            pass
+
+        adapter = get_ocr_adapter(primary_engine, model_override=model_override)
+        # Prompt override-able via Prompt AI menu.
         try:
             from app.services.ai.prompt_registry import get_prompt
             p = await get_prompt(db, "ocr_invoice")

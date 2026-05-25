@@ -217,19 +217,120 @@ async def assert_within_budget(
         )
 
 
-# Daftar model yg di-support utk dropdown FE (sync dgn pricing.py +
-# _MODEL_HINTS di llm.py).
+# Daftar model yg di-support utk dropdown FE. Schema diperkaya supaya
+# user tau kapabilitas + cost + use case tiap model.
+#
+# `capabilities`:
+#   - "chat": teks-only chat completion (kategori, ringkas, dst)
+#   - "structured": support strict JSON schema output (Mistral Custom
+#     Structured Outputs / Claude tool_use)
+#   - "vision": bisa terima image input (utk OCR + extract dokumen)
+#   - "web_search": built-in web search tool (Claude Sonnet/Opus only)
+#
+# `cost_tier`: relative, 1=cheapest, 5=most expensive.
 SUPPORTED_MODELS = [
-    # Mistral
-    {"id": "mistral-small-latest", "provider": "mistral",
-     "label": "Mistral Small (cepat & murah)"},
-    {"id": "mistral-large-latest", "provider": "mistral",
-     "label": "Mistral Large (smart, reasoning)"},
-    # Claude
-    {"id": "claude-haiku-4-5", "provider": "claude",
-     "label": "Claude Haiku 4.5 (cepat)"},
-    {"id": "claude-sonnet-4-6", "provider": "claude",
-     "label": "Claude Sonnet 4.6 (balanced + web search)"},
-    {"id": "claude-opus-4-7", "provider": "claude",
-     "label": "Claude Opus 4.7 (top quality, mahal)"},
+    # ---------- Mistral ----------
+    {
+        "id": "mistral-small-latest",
+        "provider": "mistral",
+        "label": "Mistral Small (cepat & murah)",
+        "description": (
+            "Default chat model. Cocok utk tugas ringan: saran kategori, "
+            "justifier text, ringkasan harian. ~10x lebih murah dari Large."
+        ),
+        "capabilities": ["chat", "structured"],
+        "cost_tier": 1,
+        "cost_per_1m_input_usd": 0.20,
+        "cost_per_1m_output_usd": 0.60,
+        "best_for": ["category", "cash_justify", "daily_summary", "ask_query"],
+    },
+    {
+        "id": "mistral-large-latest",
+        "provider": "mistral",
+        "label": "Mistral Large (reasoning kuat)",
+        "description": (
+            "Reasoning lebih dalam utk task analitis: deteksi anomali, "
+            "audit kategori, batch categorize ramai context."
+        ),
+        "capabilities": ["chat", "structured"],
+        "cost_tier": 3,
+        "cost_per_1m_input_usd": 2.00,
+        "cost_per_1m_output_usd": 6.00,
+        "best_for": ["anomaly", "categorize_items", "category_audit"],
+    },
+    {
+        "id": "mistral-ocr-latest",
+        "provider": "mistral",
+        "label": "Mistral OCR (khusus dokumen)",
+        "description": (
+            "Model OCR-spesifik. Hanya utk extract dokumen (invoice, "
+            "kuitansi, kontrak). Tdk bisa chat. Support PDF multi-page "
+            "natif. Jauh lebih murah dr Claude Vision."
+        ),
+        "capabilities": ["vision", "structured"],
+        "cost_tier": 1,
+        "cost_per_1m_input_usd": None,  # per-page pricing (~$0.001/page)
+        "cost_per_1m_output_usd": None,
+        "best_for": ["ocr_invoice", "contract_extract"],
+    },
+    # ---------- Claude (Anthropic) ----------
+    {
+        "id": "claude-haiku-4-5",
+        "provider": "claude",
+        "label": "Claude Haiku 4.5 (cepat + vision)",
+        "description": (
+            "Cepat + murah utk chat ringan. Sudah support vision = bisa "
+            "OCR juga. Cocok utk volume tinggi yg masih butuh akurasi."
+        ),
+        "capabilities": ["chat", "structured", "vision"],
+        "cost_tier": 2,
+        "cost_per_1m_input_usd": 1.00,
+        "cost_per_1m_output_usd": 5.00,
+        "best_for": ["category", "cash_justify", "ocr_invoice"],
+    },
+    {
+        "id": "claude-sonnet-4-6",
+        "provider": "claude",
+        "label": "Claude Sonnet 4.6 (balanced + web search)",
+        "description": (
+            "Reasoning bagus + vision + web_search built-in. Pakai utk "
+            "fitur agentic (price check via web), OCR sulit handwriting, "
+            "analisis kompleks."
+        ),
+        "capabilities": ["chat", "structured", "vision", "web_search"],
+        "cost_tier": 4,
+        "cost_per_1m_input_usd": 3.00,
+        "cost_per_1m_output_usd": 15.00,
+        "best_for": ["po_cover", "anomaly", "contract_extract", "category_audit"],
+    },
+    {
+        "id": "claude-opus-4-7",
+        "provider": "claude",
+        "label": "Claude Opus 4.7 (top quality, mahal)",
+        "description": (
+            "Top-tier reasoning + vision + web_search. Pakai hanya utk "
+            "case kritis yg butuh akurasi maksimal. Cost 5-10x Sonnet."
+        ),
+        "capabilities": ["chat", "structured", "vision", "web_search"],
+        "cost_tier": 5,
+        "cost_per_1m_input_usd": 15.00,
+        "cost_per_1m_output_usd": 75.00,
+        "best_for": [],  # opsi premium, no default recommendation
+    },
 ]
+
+
+# Per-feature kapabilitas yg DIBUTUHKAN. FE filter dropdown -- model
+# yg tdk match capability di-hide. Audit 2026-05-24.
+FEATURE_REQUIRED_CAPABILITIES: dict[str, tuple[str, ...]] = {
+    "category": ("chat", "structured"),
+    "anomaly": ("chat", "structured"),
+    "po_cover": ("chat",),  # text generation, no schema
+    "cash_justify": ("chat",),
+    "contract_extract": ("vision", "structured"),
+    "ask_query": ("chat", "structured"),
+    "daily_summary": ("chat",),
+    "categorize_items": ("chat", "structured"),
+    "category_audit": ("chat", "structured"),
+    "ocr_invoice": ("vision",),
+}

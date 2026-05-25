@@ -171,7 +171,7 @@ async def test_pipeline_fallback_to_claude_when_mistral_low_conf(db, monkeypatch
     class _MistralSentinel: pass
     class _ClaudeSentinel: pass
 
-    def _fake_get(engine):
+    def _fake_get(engine, model_override=None):
         if engine == "claude":
             return _ClaudeSentinel()
         return _MistralSentinel()

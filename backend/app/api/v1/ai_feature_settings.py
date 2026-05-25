@@ -21,6 +21,7 @@ from app.db.session import get_db
 from app.models.models import AIFeatureSettings, User
 from app.services.ai.feature_settings import (
     DEFAULTS,
+    FEATURE_REQUIRED_CAPABILITIES,
     SUPPORTED_MODELS,
     get_effective,
     monthly_spend_usd,
@@ -49,6 +50,9 @@ class FeatureSettingsOut(BaseModel):
     monthly_spend_usd: Decimal
     # Default values (utk reset UI)
     defaults: dict
+    # Audit 2026-05-24: kapabilitas WAJIB utk feature ini -- FE pakai
+    # buat filter dropdown model (hide model yg tdk match).
+    required_capabilities: list[str]
     updated_at: datetime | None = None
     updated_by_id: int | None = None
 
@@ -95,6 +99,9 @@ async def _build_out(
         overridden_fields=list(cfg.overridden_fields),
         monthly_spend_usd=spend,
         defaults=DEFAULTS.get(feature_key, {}),
+        required_capabilities=list(
+            FEATURE_REQUIRED_CAPABILITIES.get(feature_key, ())
+        ),
         updated_at=row.updated_at if row else None,
         updated_by_id=row.updated_by_id if row else None,
     )

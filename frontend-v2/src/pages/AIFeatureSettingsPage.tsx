@@ -45,6 +45,7 @@ interface FeatureSettings {
   overridden_fields: string[]
   monthly_spend_usd: string | number
   defaults: Record<string, unknown>
+  required_capabilities: string[]
   updated_at: string | null
   updated_by_id: number | null
 }
@@ -53,6 +54,12 @@ interface SupportedModel {
   id: string
   provider: string
   label: string
+  description?: string
+  capabilities?: string[]
+  cost_tier?: number
+  cost_per_1m_input_usd?: number | null
+  cost_per_1m_output_usd?: number | null
+  best_for?: string[]
 }
 
 interface ListResp {
@@ -99,6 +106,35 @@ export function AIFeatureSettingsPage() {
           selalu fallback dari kode kalau field kosong. Spending bulanan
           ditampilkan real-time.
         </p>
+      </div>
+
+      <div className="rounded-md border border-info-200 bg-info-50 px-3 py-2.5 text-[12px] text-info-900">
+        <div className="font-semibold mb-1">Tips pilih model</div>
+        <ul className="list-disc pl-4 space-y-0.5">
+          <li>
+            <strong>Mistral Small</strong>: default chat ringan. Murah.
+          </li>
+          <li>
+            <strong>Mistral Large</strong>: reasoning kuat. Pakai utk audit,
+            anomali, batch kategori.
+          </li>
+          <li>
+            <strong>Mistral OCR</strong>: KHUSUS ekstrak dokumen
+            (invoice/struk/PO). Tidak bisa chat. Per-page pricing termurah.
+          </li>
+          <li>
+            <strong>Claude Haiku/Sonnet/Opus</strong>: support vision
+            (bisa OCR juga) + web_search (Sonnet/Opus). Lebih jago tulisan
+            tangan rumit dari Mistral OCR, tapi 5-10x lebih mahal.
+          </li>
+        </ul>
+        <div className="mt-1.5 text-[11px] text-info-700">
+          Dropdown model di-filter otomatis sesuai kapabilitas yg fitur butuh.
+          API key + engine default OCR di-set di{" "}
+          <a href="/settings/system" className="underline font-semibold">
+            Pengaturan → Sistem (API Keys)
+          </a>.
+        </div>
       </div>
 
       {listQ.isLoading && <Skeleton className="h-96" />}
@@ -300,9 +336,14 @@ function EditDialog({
 
   const defaults = feature.defaults
 
-  const filteredModels = provider
-    ? models.filter((m) => m.provider === provider)
-    : models
+  // Audit 2026-05-24: filter model sesuai required_capabilities feature.
+  // Mis. ocr_invoice butuh "vision" -> Mistral Small (chat-only) hilang.
+  const required = feature.required_capabilities ?? []
+  const capabilityMatch = (m: SupportedModel) =>
+    required.every((cap) => (m.capabilities ?? []).includes(cap))
+  const filteredModels = models
+    .filter(capabilityMatch)
+    .filter((m) => !provider || m.provider === provider)
 
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -360,12 +401,35 @@ function EditDialog({
               </Label>
               <Select value={model} onChange={(e) => setModel(e.target.value)}>
                 <option value="">— Auto (hint: {feature.model_hint}) —</option>
-                {filteredModels.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label}</option>
-                ))}
+                {filteredModels.map((m) => {
+                  const cost = m.cost_tier ? "·".repeat(m.cost_tier) : "?"
+                  return (
+                    <option key={m.id} value={m.id}>
+                      {m.label}  [{cost}]
+                    </option>
+                  )
+                })}
               </Select>
+              {required.length > 0 && (
+                <span className="text-[10px] text-ink-500">
+                  Filter: butuh capability {required.map((c) => (
+                    <code key={c} className="bg-ink-100 px-1 rounded font-mono">
+                      {c}
+                    </code>
+                  )).reduce<React.ReactNode[]>((acc, el, i) => {
+                    if (i > 0) acc.push(" + ")
+                    acc.push(el)
+                    return acc
+                  }, [])}
+                </span>
+              )}
             </div>
           </div>
+
+          {/* Info card model terpilih */}
+          {model && (
+            <ModelInfoCard model={models.find((m) => m.id === model)} />
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
@@ -460,5 +524,58 @@ function EditDialog({
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+
+// ============================================================
+// ModelInfoCard -- detail kapabilitas + cost untuk model terpilih.
+// Audit 2026-05-24 user req: kasih info lengkap per model.
+// ============================================================
+function ModelInfoCard({ model }: { model: SupportedModel | undefined }) {
+  if (!model) return null
+  const caps = model.capabilities ?? []
+  return (
+    <div className="rounded border bg-ink-50/40 px-3 py-2.5 text-[12px] text-ink-700">
+      <div className="font-semibold text-ink-900 mb-1">{model.label}</div>
+      {model.description && (
+        <p className="text-[11.5px] text-ink-600 mb-1.5">{model.description}</p>
+      )}
+      <div className="flex items-center gap-2 flex-wrap text-[10px]">
+        <span className="text-ink-500">Kapabilitas:</span>
+        {caps.map((c) => (
+          <code
+            key={c}
+            className={cn(
+              "rounded px-1.5 py-0.5 font-mono font-semibold",
+              c === "vision" ? "bg-info-100 text-info-800" :
+              c === "web_search" ? "bg-warning-100 text-warning-800" :
+              c === "structured" ? "bg-success-100 text-success-800" :
+              "bg-ink-100 text-ink-700",
+            )}
+          >
+            {c}
+          </code>
+        ))}
+      </div>
+      {(model.cost_per_1m_input_usd != null ||
+        model.cost_per_1m_output_usd != null) && (
+        <div className="text-[10px] text-ink-500 mt-1">
+          Cost: ${model.cost_per_1m_input_usd}/1M input · $
+          {model.cost_per_1m_output_usd}/1M output
+        </div>
+      )}
+      {model.id === "mistral-ocr-latest" && (
+        <div className="text-[10px] text-ink-500 mt-1">
+          Cost: ~$0.001 per halaman (per-page pricing).
+        </div>
+      )}
+      {(model.best_for ?? []).length > 0 && (
+        <div className="text-[10px] text-ink-500 mt-1">
+          Direkomendasi utk:{" "}
+          <span className="font-mono">{model.best_for!.join(", ")}</span>
+        </div>
+      )}
+    </div>
   )
 }
