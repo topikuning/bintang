@@ -245,15 +245,16 @@ function ProfitComparison({
         </div>
       )}
 
-      {/* Side-by-side proporsional */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Side-by-side proporsional. Audit 2026-05-24: stack 1-col di
+          mobile -- angka 10+ digit + badge tdk cukup di half-width cell. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Profit Saat Ini (operating, sebelum bagi hasil) */}
         <div className={cn("rounded-md border-2 p-3", styles.bg, styles.border)}>
-          <div className="flex items-center justify-between gap-2 mb-1">
+          <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
             <span className={cn("text-[11px] font-semibold uppercase tracking-wider", styles.text)}>
               Profit Saat Ini
             </span>
-            <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-bold uppercase", styles.badge)}>
+            <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-bold uppercase whitespace-nowrap", styles.badge)}>
               <span className="mr-0.5">{styles.icon}</span>
               {statusText}
             </span>
@@ -261,7 +262,7 @@ function ProfitComparison({
           <div
             data-num
             className={cn(
-              "font-mono text-lg font-bold [font-variant-numeric:tabular-nums] sm:text-xl",
+              "font-mono text-lg font-bold [font-variant-numeric:tabular-nums] sm:text-xl break-all",
               styles.text,
             )}
           >
@@ -276,17 +277,17 @@ function ProfitComparison({
 
         {/* Profit Proyeksi -- reference */}
         <div className="rounded-md border bg-ink-50/60 p-3">
-          <div className="mb-1 flex items-center justify-between gap-2">
+          <div className="mb-1 flex items-center justify-between gap-2 flex-wrap">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-600">
               Profit Proyeksi
             </span>
-            <span className="text-[9px] uppercase text-ink-400">
+            <span className="text-[9px] uppercase text-ink-400 whitespace-nowrap">
               Target
             </span>
           </div>
           <div
             data-num
-            className="font-mono text-lg font-bold text-ink-700 [font-variant-numeric:tabular-nums] sm:text-xl"
+            className="font-mono text-lg font-bold text-ink-700 [font-variant-numeric:tabular-nums] sm:text-xl break-all"
           >
             {profitProj < 0 ? `− ${fmtIDR(Math.abs(profitProj))}` : fmtIDR(profitProj)}
           </div>
@@ -355,7 +356,10 @@ function Row({
   return (
     <li
       className={cn(
-        "flex items-start justify-between gap-3 py-1.5",
+        // Audit 2026-05-24: stack di mobile supaya angka 10+ digit
+        // tidak terpotong. Side-by-side hanya di sm+.
+        "flex flex-col items-stretch gap-0.5 py-1.5",
+        "sm:flex-row sm:items-start sm:justify-between sm:gap-3",
         highlight === "success" && "-mx-2 my-1 rounded bg-success-50 px-2",
       )}
     >
@@ -374,7 +378,7 @@ function Row({
       <span
         data-num
         className={cn(
-          "font-mono [font-variant-numeric:tabular-nums] shrink-0",
+          "font-mono [font-variant-numeric:tabular-nums] text-right sm:shrink-0 break-all",
           bold && "font-semibold",
           highlight === "success" && "font-bold text-success-800",
           negative && "text-danger-700",
