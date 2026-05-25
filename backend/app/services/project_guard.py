@@ -18,7 +18,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.models import Project, ProjectStatus, User, UserRole
+from app.models.models import Project, ProjectKind, ProjectStatus, User, UserRole
 
 # Status yg block create mutasi baru.
 # - SELESAI: project closed, financial snapshot frozen.
@@ -59,10 +59,16 @@ async def operational_project_ids(
     None, caller TIDAK perlu filter project_id (asumsi sudah filter
     dgn JOIN ke Project + status check). Tapi simpler: caller selalu
     pakai list (resolve None ke seluruh ids).
+
+    Audit 2026-05-24: juga exclude NON_PROJECT kind. Notif dulu pernah
+    munculkan tx SUBMITTED di NON_PROJECT -- klik notif lempar ke
+    /transactions list yg default exclude NP -> list kosong. Konsisten
+    dgn list endpoint behavior.
     """
     stmt = select(Project.id).where(
         Project.deleted_at.is_(None),
         Project.status.notin_(OPERATIONAL_HIDE_STATUSES),
+        Project.kind != ProjectKind.NON_PROJECT.value,
     )
     if scope is not None:
         if not scope:

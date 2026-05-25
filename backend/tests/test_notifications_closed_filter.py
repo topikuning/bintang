@@ -108,6 +108,36 @@ async def test_notifications_summary_excludes_closed(db, override_db):
 
 
 @pytest.mark.asyncio
+async def test_notifications_summary_excludes_non_project(db, override_db):
+    """Audit 2026-05-24: tx SUBMITTED di NON_PROJECT proyek tdk
+    boleh muncul di notif karena /transactions list default
+    exclude NP -> klik notif = list kosong = user bingung."""
+    co, p_aktif, _, _, admin = await _seed(db)
+    p_np = Project(
+        code="NP-1", name="Catatan Non-Proyek", company_id=co.id,
+        status=ProjectStatus.AKTIF, kind=ProjectKind.NON_PROJECT.value,
+    )
+    db.add(p_np); await db.flush()
+    # Tambah TX SUBMITTED di NP (harusnya tdk muncul di notif counter)
+    from datetime import date as _date
+    db.add(Transaction(
+        project_id=p_np.id, tx_date=_date.today(),
+        type=TxnType.OUT, kind=TxnKind.DIRECT_EXPENSE.value,
+        amount=Decimal("100"), payment_method=PaymentMethod.CASH,
+        status=TxnStatus.SUBMITTED, created_by_id=admin.id,
+    ))
+    await db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as ac:
+        r = await ac.get("/api/v1/notifications/summary", headers=_hdr(admin))
+    body = r.json()
+    items = {it["kind"]: it for it in body["items"]}
+    # NP TX tdk dihitung -> tetap 1 (yg di AKTIF dari seed asal)
+    assert items["tx_pending_verify"]["count"] == 1, items
+
+
+@pytest.mark.asyncio
 async def test_telegram_cmd_pending_excludes_closed(db):
     """Telegram /pending: exclude proyek closed dari list."""
     from app.services.telegram.commands import cmd_pending
