@@ -920,11 +920,17 @@ async def upload_attachment(
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
     # VERIFIED: hanya SUPERADMIN yang boleh modifikasi (god-mode).
-    # Audit trail keuangan harus kuat -- CENTRAL_ADMIN tidak boleh
-    # ubah transaksi/lampiran yang sudah tervalidasi. Untuk koreksi,
-    # gunakan workflow CANCEL (POST /:id/cancel) lalu buat ulang.
+    # Audit 2026-05-24: relax utk VERIFIED tx yg BELUM PUNYA lampiran
+    # sama sekali -- admin biasa boleh upload bukti supaya audit trail
+    # tetap lengkap. Append-only, tdk overwrite/delete data existing.
+    # Punya lampiran + VERIFIED -> tetap locked (cegah modifikasi bukti).
     if t.status == TxnStatus.VERIFIED and user.role != UserRole.SUPERADMIN:
-        raise HTTPException(409, "verified_locked")
+        existing = (await db.execute(
+            select(func.count(TransactionAttachment.id))
+            .where(TransactionAttachment.transaction_id == t.id)
+        )).scalar_one() or 0
+        if existing > 0:
+            raise HTTPException(409, "verified_locked")
     meta = await save_upload(file, subdir=f"transactions/{t.id}")
     att = TransactionAttachment(transaction_id=t.id, uploaded_by_id=user.id, **meta)
     db.add(att)
@@ -948,11 +954,16 @@ async def attach_external_link(
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
     # VERIFIED: hanya SUPERADMIN yang boleh modifikasi (god-mode).
-    # Audit trail keuangan harus kuat -- CENTRAL_ADMIN tidak boleh
-    # ubah transaksi/lampiran yang sudah tervalidasi. Untuk koreksi,
-    # gunakan workflow CANCEL (POST /:id/cancel) lalu buat ulang.
+    # Audit 2026-05-24: relax utk VERIFIED tx yg BELUM PUNYA lampiran
+    # sama sekali -- admin biasa boleh upload bukti supaya audit trail
+    # tetap lengkap. Punya lampiran + VERIFIED -> tetap locked.
     if t.status == TxnStatus.VERIFIED and user.role != UserRole.SUPERADMIN:
-        raise HTTPException(409, "verified_locked")
+        existing = (await db.execute(
+            select(func.count(TransactionAttachment.id))
+            .where(TransactionAttachment.transaction_id == t.id)
+        )).scalar_one() or 0
+        if existing > 0:
+            raise HTTPException(409, "verified_locked")
     meta = normalize_external_link(body.url, label=body.label, file_name=body.file_name)
     att = TransactionAttachment(transaction_id=t.id, uploaded_by_id=user.id, **meta)
     db.add(att)
