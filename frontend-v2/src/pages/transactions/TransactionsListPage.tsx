@@ -4,9 +4,9 @@ import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Plus, Search, Wallet, X } 
 import { useTransaction, useTransactions, type TransactionListParams } from "@/hooks/useTransactions"
 import { useProjects } from "@/hooks/useProjects"
 import { useCategories } from "@/hooks/useCategories"
-import { MultiProjectPicker } from "@/components/forms/MultiProjectPicker"
 import { DateRangeFilter } from "@/components/forms/DateRangeFilter"
 import { FilterBar, FilterButton, FilterRadioList, FilterToggle } from "@/components/data/FilterBar"
+import { MultiSelectList } from "@/components/data/MultiSelectList"
 import { usePageTitle } from "@/hooks/usePageTitle"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
@@ -310,12 +310,20 @@ export function TransactionsListPage() {
             }}
             width={320}
           >
-            <MultiProjectPicker
+            <MultiSelectList<number>
               value={projectFilter}
               onChange={(ids) => {
                 setProjectFilter(ids)
                 setPage(1)
               }}
+              options={(projectsQuery.data?.items ?? []).map((p) => ({
+                value: p.id,
+                label: p.name,
+                hint: p.code,
+              }))}
+              isLoading={projectsQuery.isLoading}
+              searchPlaceholder="Cari proyek…"
+              emptyMessage="Belum ada proyek"
             />
           </FilterButton>
 
