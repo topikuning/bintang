@@ -3,8 +3,9 @@ import { useSearchParams } from "react-router-dom"
 import { Clock, FileMinus, FilePlus, Plus, Receipt, Search, X } from "lucide-react"
 import { useInvoice, useInvoices, type InvoiceListParams } from "@/hooks/useInvoices"
 import { useProjects } from "@/hooks/useProjects"
-import { MultiProjectPicker } from "@/components/forms/MultiProjectPicker"
 import { DateRangeFilter } from "@/components/forms/DateRangeFilter"
+import { FilterBar, FilterButton, FilterRadioList } from "@/components/data/FilterBar"
+import { MultiSelectList } from "@/components/data/MultiSelectList"
 import { usePageTitle } from "@/hooks/usePageTitle"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
@@ -274,49 +275,89 @@ export function InvoicesListPage() {
           </div>
         )}
 
-        {/* Filter rows */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] uppercase tracking-wider text-ink-500 shrink-0 w-12">
-              Proyek
-            </span>
-            <div className="flex-1 max-w-sm">
-              <MultiProjectPicker
-                value={projectFilter}
-                onChange={(ids) => {
-                  setProjectFilter(ids)
-                  setPage(1)
-                }}
-              />
-            </div>
-          </div>
-          <DateRangeFilter
-            from={dateFrom}
-            to={dateTo}
-            onChange={(next) => {
-              setDateRange(next)
-              setPage(1)
-            }}
-          />
-          <FilterChips
+        {/* Audit 2026-05-24: compact filter toolbar (popover buttons). */}
+        <FilterBar
+          hasActive={
+            projectFilter.length > 0 ||
+            !!dateFrom || !!dateTo ||
+            typeFilter !== "ALL" ||
+            statusFilter !== "ALL"
+          }
+          onReset={() => {
+            setProjectFilter([])
+            setDateRange({ from: null, to: null })
+            setTypeFilter("ALL")
+            setStatusFilter("ALL")
+            setPage(1)
+          }}
+        >
+          <FilterButton
+            label="Proyek"
+            active={projectFilter.length > 0}
+            displayValue={
+              projectFilter.length === 1
+                ? projectMap.get(projectFilter[0]!)?.name ?? "1 proyek"
+                : projectFilter.length > 1
+                ? `${projectFilter.length} proyek`
+                : null
+            }
+            onClear={() => { setProjectFilter([]); setPage(1) }}
+            width={320}
+          >
+            <MultiSelectList<number>
+              value={projectFilter}
+              onChange={(ids) => { setProjectFilter(ids); setPage(1) }}
+              options={(projectsQuery.data?.items ?? []).map((p) => ({
+                value: p.id, label: p.name, hint: p.code,
+              }))}
+              isLoading={projectsQuery.isLoading}
+              searchPlaceholder="Cari proyek…"
+              emptyMessage="Belum ada proyek"
+            />
+          </FilterButton>
+
+          <FilterButton
+            label="Periode"
+            active={!!dateFrom || !!dateTo}
+            displayValue={formatPeriod(dateFrom, dateTo)}
+            onClear={() => { setDateRange({ from: null, to: null }); setPage(1) }}
+            width={360}
+          >
+            <DateRangeFilter
+              from={dateFrom}
+              to={dateTo}
+              onChange={(next) => { setDateRange(next); setPage(1) }}
+            />
+          </FilterButton>
+
+          <FilterButton
             label="Tipe"
-            value={typeFilter}
-            options={TYPE_TABS}
-            onChange={(v) => {
-              setTypeFilter(v as TypeFilter)
-              setPage(1)
-            }}
-          />
-          <FilterChips
+            active={typeFilter !== "ALL"}
+            displayValue={typeFilter !== "ALL" ? TYPE_TABS.find((t) => t.value === typeFilter)?.label ?? null : null}
+            onClear={() => { setTypeFilter("ALL"); setPage(1) }}
+            width={200}
+          >
+            <FilterRadioList
+              value={typeFilter}
+              options={TYPE_TABS}
+              onChange={(v) => { setTypeFilter(v as TypeFilter); setPage(1) }}
+            />
+          </FilterButton>
+
+          <FilterButton
             label="Status"
-            value={statusFilter}
-            options={STATUS_TABS}
-            onChange={(v) => {
-              setStatusFilter(v as StatusFilter)
-              setPage(1)
-            }}
-          />
-        </div>
+            active={statusFilter !== "ALL"}
+            displayValue={statusFilter !== "ALL" ? STATUS_TABS.find((s) => s.value === statusFilter)?.label ?? null : null}
+            onClear={() => { setStatusFilter("ALL"); setPage(1) }}
+            width={220}
+          >
+            <FilterRadioList
+              value={statusFilter}
+              options={STATUS_TABS}
+              onChange={(v) => { setStatusFilter(v as StatusFilter); setPage(1) }}
+            />
+          </FilterButton>
+        </FilterBar>
 
         {/* List */}
         <div className="rounded-md bg-surface md:bg-transparent">
@@ -467,11 +508,18 @@ export function InvoicesListPage() {
   )
 }
 
-interface FilterChipsProps<V extends string> {
-  label: string
-  value: V
-  options: Array<{ value: V; label: string }>
-  onChange: (v: V) => void
+// Format period range jadi label kompak utk FilterButton.displayValue.
+function formatPeriod(from: string | null, to: string | null): string | null {
+  if (!from && !to) return null
+  const fmt = (s: string) => {
+    const [, m, d] = s.split("-")
+    return `${d}/${m}`
+  }
+  if (from && to && from === to) return fmt(from)
+  if (from && to) return `${fmt(from)} – ${fmt(to)}`
+  if (from) return `≥ ${fmt(from)}`
+  if (to) return `≤ ${fmt(to)}`
+  return null
 }
 
 function InvoiceItemsInline({ invoice }: { invoice: Invoice }) {
@@ -565,31 +613,3 @@ function InvoiceItemsInline({ invoice }: { invoice: Invoice }) {
   )
 }
 
-function FilterChips<V extends string>({ label, value, options, onChange }: FilterChipsProps<V>) {
-  return (
-    <div className="flex items-center gap-2 overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
-      <span className="text-[11px] uppercase tracking-wider text-ink-500 shrink-0">
-        {label}
-      </span>
-      <div className="flex gap-1.5 shrink-0">
-        {options.map((opt) => {
-          const active = value === opt.value
-          return (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => onChange(opt.value)}
-              className={
-                active
-                  ? "h-8 rounded-full bg-brand-500 text-white px-3 text-[12px] font-semibold whitespace-nowrap"
-                  : "h-8 rounded-full bg-surface border border-border-strong text-ink-700 px-3 text-[12px] font-medium hover:bg-ink-100 whitespace-nowrap"
-              }
-            >
-              {opt.label}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
