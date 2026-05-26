@@ -20,7 +20,7 @@
  *   </FilterBar>
  */
 import * as Popover from "@radix-ui/react-popover"
-import { ChevronDown, RotateCcw, X } from "lucide-react"
+import { ChevronDown, Filter, RotateCcw, X } from "lucide-react"
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
@@ -38,13 +38,25 @@ export function FilterBar({
   className,
 }: FilterBarProps) {
   return (
-    <div className={cn("flex items-center gap-1.5 flex-wrap", className)}>
+    <div
+      className={cn(
+        // Audit 2026-05-24: container muted bg + border supaya jelas
+        // ini section filter (bukan tombol-tombol lepas). Anchor icon
+        // "Filter" di kiri sebagai visual cue.
+        "flex items-center gap-1.5 flex-wrap rounded-md border bg-surface-muted/40 px-2.5 py-2",
+        className,
+      )}
+    >
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-500 shrink-0 mr-1">
+        <Filter className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">Filter</span>
+      </div>
       {children}
       {hasActive && onReset && (
         <button
           type="button"
           onClick={onReset}
-          className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[12px] font-medium text-ink-500 hover:bg-ink-100 hover:text-ink-900"
+          className="ml-auto flex items-center gap-1 rounded-md px-2 py-1.5 text-[12px] font-medium text-ink-500 hover:bg-ink-100 hover:text-ink-900"
           title="Reset semua filter"
         >
           <RotateCcw className="h-3 w-3" />
