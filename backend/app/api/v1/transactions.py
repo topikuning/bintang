@@ -195,6 +195,10 @@ async def list_transactions(
     # /transactions normal bersih dari catatan non-proyek).
     # True -> ONLY tx non-proyek (halaman /catatan-non-proyek).
     non_project: bool | None = None,
+    # Audit 2026-05-24: filter "TX OUT yg belum/parsial dialokasi ke
+    # invoice" -- drill-down dari dashboard counter "N pengeluaran masih
+    # punya sisa belum dialokasi". TX yg remaining_amount > 0 only.
+    unlinked_only: bool = Query(False),
     page: int = Query(1, ge=1),
     size: int = Query(50, ge=1, le=2000),
     db: AsyncSession = Depends(get_db),
@@ -250,6 +254,31 @@ async def list_transactions(
             (Transaction.description.ilike(like))
             | (Transaction.party_name.ilike(like))
             | (Transaction.reference_no.ilike(like))
+        )
+    if unlinked_only:
+        # TX OUT yg masih punya sisa belum dialokasi ke invoice.
+        # Status DRAFT/SUBMITTED/VERIFIED only (CANCELLED tdk dihitung
+        # outstanding). Audit 2026-05-24 -- match dashboard counter.
+        from sqlalchemy import select as _sel
+        alloc_sub = (
+            _sel(
+                InvoiceAllocation.transaction_id.label("txn_id"),
+                func.coalesce(
+                    func.sum(InvoiceAllocation.allocated_amount), 0,
+                ).label("alloc_sum"),
+            )
+            .where(InvoiceAllocation.deleted_at.is_(None))
+            .group_by(InvoiceAllocation.transaction_id)
+            .subquery()
+        )
+        stmt = stmt.outerjoin(
+            alloc_sub, alloc_sub.c.txn_id == Transaction.id,
+        ).where(
+            Transaction.type == TxnType.OUT,
+            Transaction.status.in_([
+                TxnStatus.DRAFT, TxnStatus.SUBMITTED, TxnStatus.VERIFIED,
+            ]),
+            (Transaction.amount - func.coalesce(alloc_sub.c.alloc_sum, 0)) > 0,
         )
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     stmt = (

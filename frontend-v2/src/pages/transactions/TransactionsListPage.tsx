@@ -104,6 +104,9 @@ export function TransactionsListPage() {
   // drilldown link. Selain itu pakai filter chip state.
   const urlStatus = searchParams.get("status")
   const urlType = searchParams.get("type")
+  // Audit 2026-05-24: drill-down dari dashboard counter "N pengeluaran
+  // masih punya sisa belum dialokasi".
+  const unlinkedOnly = searchParams.get("unlinked") === "true"
   const effectiveStatus =
     urlStatus && urlStatus !== "ALL"
       ? (urlStatus as TxnStatus)
@@ -123,8 +126,9 @@ export function TransactionsListPage() {
       q: q || undefined,
       date_from: dateFrom ?? undefined,
       date_to: dateTo ?? undefined,
+      unlinked_only: unlinkedOnly || undefined,
     }),
-    [page, size, projectFilter, effectiveStatus, effectiveType, q, dateFrom, dateTo],
+    [page, size, projectFilter, effectiveStatus, effectiveType, q, dateFrom, dateTo, unlinkedOnly],
   )
 
   // Reset ke page 1 kalau query/filter berubah.
@@ -303,6 +307,32 @@ export function TransactionsListPage() {
               setPage(1)
             }}
           />
+          {/* Audit 2026-05-24: toggle "Belum dialokasi" -- drill-down
+              dari dashboard counter "N pengeluaran punya sisa belum
+              dialokasi". Persist di URL ?unlinked=true. */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] uppercase tracking-wider text-ink-500">
+              Alokasi
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                const next = new URLSearchParams(searchParams)
+                if (unlinkedOnly) next.delete("unlinked")
+                else next.set("unlinked", "true")
+                setSearchParams(next, { replace: true })
+                setPage(1)
+              }}
+              className={
+                "rounded-md border px-3 py-1.5 text-[13px] font-medium transition-colors " +
+                (unlinkedOnly
+                  ? "border-warning-300 bg-warning-50 text-warning-800"
+                  : "border-border-strong bg-surface text-ink-700 hover:bg-ink-50")
+              }
+            >
+              {unlinkedOnly ? "✓ Belum dialokasi" : "Belum dialokasi"}
+            </button>
+          </div>
         </div>
 
         {/* Data view */}
@@ -313,7 +343,7 @@ export function TransactionsListPage() {
             columns={columns}
             onItemClick={(t) => setSelectedId(t.id)}
             emptyState={
-              statusFilter !== "ALL" || typeFilter !== "ALL" || projectFilter.length > 0 || dateFrom || dateTo || q ? (
+              statusFilter !== "ALL" || typeFilter !== "ALL" || projectFilter.length > 0 || dateFrom || dateTo || q || unlinkedOnly ? (
                 <EmptyState
                   icon={Search}
                   title="Tidak ada hasil"

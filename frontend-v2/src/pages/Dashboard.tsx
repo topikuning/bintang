@@ -201,7 +201,7 @@ function GlobalDashboard() {
       {(d.pending_count > 0 || d.unlinked_out_count > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {d.pending_count > 0 && (
-            <Link to="/transactions" className="block">
+            <Link to="/transactions?status=SUBMITTED" className="block">
               <HighlightCard
                 tone="warning"
                 icon={Clock}
@@ -212,13 +212,13 @@ function GlobalDashboard() {
             </Link>
           )}
           {d.unlinked_out_count > 0 && (
-            <Link to="/transactions" className="block">
+            <Link to="/transactions?unlinked=true" className="block">
               <HighlightCard
                 tone="info"
                 icon={Link2Off}
                 label="Pengeluaran Belum Dialokasi"
                 bigValue={`${d.unlinked_out_count} transaksi`}
-                hint={`Sisa ${fmtIDR(d.unlinked_out_total)}`}
+                hint={`Sisa ${fmtIDR(d.unlinked_out_total)} · klik utk lihat`}
               />
             </Link>
           )}
