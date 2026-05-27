@@ -154,6 +154,7 @@ async def global_dashboard(
     location: list[str] | None = Query(None),
     client_name: list[str] | None = Query(None),
     funder_id: list[int] | None = Query(None),
+    project_id: list[int] | None = Query(None),
     # Audit 2026-05-24: toggle utk include proyek SELESAI/DIBATALKAN di
     # warning counters. Default False -- operational view exclude closed
     # ("tagihan dianggap clear saat proyek selesai"). Set True utk
@@ -207,6 +208,8 @@ async def global_dashboard(
     if q:
         like = f"%{q}%"
         proj_q = proj_q.where((Project.name.ilike(like)) | (Project.code.ilike(like)))
+    if project_id:
+        proj_q = proj_q.where(Project.id.in_(project_id))
     if company_id:
         proj_q = proj_q.where(Project.company_id == company_id)
     if location:

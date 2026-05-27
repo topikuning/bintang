@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import { Link } from "react-router-dom"
 import { useGlobalDashboard } from "@/hooks/useDashboard"
+import { useProjects } from "@/hooks/useProjects"
 import { useProjectFilters } from "@/hooks/useProjectsStats"
 import { usePageTitle } from "@/hooks/usePageTitle"
 import { MultiCombobox } from "@/components/forms/MultiCombobox"
@@ -62,6 +63,7 @@ function GlobalDashboard() {
   usePageTitle("Beranda")
   const bp = useBreakpoint()
   // Filter state -- multi-value (sesuai backend yg sdh terima list[]).
+  const [projectIds, setProjectIds] = useState<number[]>([])
   const [locations, setLocations] = useState<string[]>([])
   const [clientNames, setClientNames] = useState<string[]>([])
   const [funderIds, setFunderIds] = useState<number[]>([])
@@ -71,18 +73,25 @@ function GlobalDashboard() {
 
   const params = useMemo(
     () => ({
+      project_id: projectIds.length ? projectIds : undefined,
       location: locations.length ? locations : undefined,
       client_name: clientNames.length ? clientNames : undefined,
       funder_id: funderIds.length ? funderIds : undefined,
       include_closed: includeClosed || undefined,
     }),
-    [locations, clientNames, funderIds, includeClosed],
+    [projectIds, locations, clientNames, funderIds, includeClosed],
   )
 
   const q = useGlobalDashboard(params)
   const filtersQ = useProjectFilters()
+  // Daftar proyek aktif utk picker. Pakai status=AKTIF supaya list pendek
+  // & relevan (sama spt picker di list pages).
+  const projectsQ = useProjects({ status: "AKTIF" })
   const hasActiveFilter =
-    locations.length > 0 || clientNames.length > 0 || funderIds.length > 0
+    projectIds.length > 0 ||
+    locations.length > 0 ||
+    clientNames.length > 0 ||
+    funderIds.length > 0
 
   // PENTING: hook dipanggil di setiap render -- sebelum any conditional
   // return -- supaya urutan/jumlah hook konsisten (React error #310).
@@ -125,6 +134,7 @@ function GlobalDashboard() {
           <button
             type="button"
             onClick={() => {
+              setProjectIds([])
               setLocations([])
               setClientNames([])
               setFunderIds([])
@@ -136,8 +146,20 @@ function GlobalDashboard() {
         )}
       </div>
 
-      {/* Filter bar -- multi-select Lokasi / Dinas / Pendana */}
-      <div className="rounded-md border bg-surface p-2.5 grid grid-cols-1 sm:grid-cols-3 gap-2">
+      {/* Filter bar -- multi-select Proyek / Lokasi / Dinas / Pendana */}
+      <div className="rounded-md border bg-surface p-2.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        <MultiCombobox<number>
+          value={projectIds}
+          onChange={setProjectIds}
+          options={(projectsQ.data?.items ?? []).map((p) => ({
+            value: p.id,
+            label: p.name,
+            hint: p.code,
+          }))}
+          placeholder="Semua proyek"
+          sheetTitle="Filter Proyek"
+          emptyMessage="Belum ada proyek aktif"
+        />
         <MultiCombobox<string>
           value={locations}
           onChange={setLocations}
