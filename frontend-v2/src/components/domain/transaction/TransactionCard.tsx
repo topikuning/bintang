@@ -1,6 +1,6 @@
 import { ChevronRight, Coins, Paperclip, Receipt, Wallet } from "lucide-react"
 import type { Transaction } from "@/types/api"
-import { fmtDate } from "@/lib/format"
+import { fmtCompact, fmtDate, fmtIDR } from "@/lib/format"
 import { AmountDisplay } from "@/components/domain/shared/AmountDisplay"
 import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/domain/shared/StatusBadge"
@@ -26,6 +26,10 @@ export function TransactionCard({
   className,
 }: TransactionCardProps) {
   const isIn = t.type === "IN"
+  const remaining = Number(t.remaining_amount ?? 0)
+  const allocated = Number(t.allocated_amount ?? 0)
+  const showAllocBadge = t.type === "OUT" && remaining > 0
+  const isFullUnalloc = showAllocBadge && allocated === 0
   return (
     <button
       type="button"
@@ -50,12 +54,33 @@ export function TransactionCard({
             {isIn ? "Pemasukan" : "Pengeluaran"}
           </span>
         </div>
-        <AmountDisplay
-          value={t.amount}
-          type={t.type}
-          colored
-          size="lg"
-        />
+        <div className="flex flex-col items-end gap-1">
+          <AmountDisplay
+            value={t.amount}
+            type={t.type}
+            colored
+            size="lg"
+          />
+          {showAllocBadge && (
+            <span
+              className={cn(
+                "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                isFullUnalloc
+                  ? "bg-danger-100 text-danger-800"
+                  : "bg-warning-100 text-warning-800",
+              )}
+              title={
+                isFullUnalloc
+                  ? "Belum dialokasi sama sekali"
+                  : `Sudah dialokasi ${fmtIDR(allocated)} · sisa ${fmtIDR(remaining)}`
+              }
+            >
+              {isFullUnalloc
+                ? "Belum dialokasi"
+                : `Sisa ${fmtCompact(remaining)}`}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Row 2: pihak / proyek */}

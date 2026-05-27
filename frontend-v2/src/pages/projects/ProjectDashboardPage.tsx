@@ -343,7 +343,7 @@ export function ProjectDashboardPage() {
             )}
             {dash.unlinked_out_count > 0 && (
               <Link
-                to={`/transactions?project_id=${projectId}&type=OUT`}
+                to={`/transactions?project_id=${projectId}&type=OUT&unlinked=true`}
                 className="rounded-md border border-info-200 bg-info-50 p-3 hover:bg-info-100 active:bg-info-100/70"
               >
                 <div className="flex items-start gap-2">
