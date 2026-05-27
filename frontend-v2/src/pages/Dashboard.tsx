@@ -19,9 +19,10 @@ import {
 } from "lucide-react"
 import { Link } from "react-router-dom"
 import { useGlobalDashboard } from "@/hooks/useDashboard"
-import { useProjects } from "@/hooks/useProjects"
+import { useCompanies } from "@/hooks/useCompanies"
 import { useProjectFilters } from "@/hooks/useProjectsStats"
 import { usePageTitle } from "@/hooks/usePageTitle"
+import { Combobox } from "@/components/forms/Combobox"
 import { MultiCombobox } from "@/components/forms/MultiCombobox"
 import { EmptyState } from "@/components/data/EmptyState"
 import { ErrorState } from "@/components/data/ErrorState"
@@ -62,33 +63,35 @@ export function DashboardPage() {
 function GlobalDashboard() {
   usePageTitle("Beranda")
   const bp = useBreakpoint()
-  // Filter state -- multi-value (sesuai backend yg sdh terima list[]).
-  const [projectIds, setProjectIds] = useState<number[]>([])
+  // Filter state -- samakan dgn ProjectsHubPage: search + perusahaan +
+  // 3 multi-select + tabs Aktif/Semua.
+  const [qSearch, setQSearch] = useState("")
+  const [companyId, setCompanyId] = useState<number | null>(null)
   const [locations, setLocations] = useState<string[]>([])
   const [clientNames, setClientNames] = useState<string[]>([])
   const [funderIds, setFunderIds] = useState<number[]>([])
-  // Audit 2026-05-24: toggle "Tampilkan proyek selesai" -- default
-  // operational view (exclude SELESAI/DIBATALKAN dari warning counters).
-  const [includeClosed, setIncludeClosed] = useState(false)
+  // Tabs "Aktif | Semua" -- "Aktif" = exclude SELESAI/DIBATALKAN dari
+  // warning counters (default operational); "Semua" = include_closed.
+  const [statusTab, setStatusTab] = useState<"AKTIF" | "ALL">("AKTIF")
 
   const params = useMemo(
     () => ({
-      project_id: projectIds.length ? projectIds : undefined,
+      q: qSearch.trim() || undefined,
+      company_id: companyId ?? undefined,
       location: locations.length ? locations : undefined,
       client_name: clientNames.length ? clientNames : undefined,
       funder_id: funderIds.length ? funderIds : undefined,
-      include_closed: includeClosed || undefined,
+      include_closed: statusTab === "ALL" || undefined,
     }),
-    [projectIds, locations, clientNames, funderIds, includeClosed],
+    [qSearch, companyId, locations, clientNames, funderIds, statusTab],
   )
 
   const q = useGlobalDashboard(params)
   const filtersQ = useProjectFilters()
-  // Daftar proyek aktif utk picker. Pakai status=AKTIF supaya list pendek
-  // & relevan (sama spt picker di list pages).
-  const projectsQ = useProjects({ status: "AKTIF" })
+  const companiesQ = useCompanies()
   const hasActiveFilter =
-    projectIds.length > 0 ||
+    qSearch.trim().length > 0 ||
+    companyId != null ||
     locations.length > 0 ||
     clientNames.length > 0 ||
     funderIds.length > 0
@@ -134,7 +137,8 @@ function GlobalDashboard() {
           <button
             type="button"
             onClick={() => {
-              setProjectIds([])
+              setQSearch("")
+              setCompanyId(null)
               setLocations([])
               setClientNames([])
               setFunderIds([])
@@ -146,19 +150,29 @@ function GlobalDashboard() {
         )}
       </div>
 
-      {/* Filter bar -- multi-select Proyek / Lokasi / Dinas / Pendana */}
-      <div className="rounded-md border bg-surface p-2.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-        <MultiCombobox<number>
-          value={projectIds}
-          onChange={setProjectIds}
-          options={(projectsQ.data?.items ?? []).map((p) => ({
-            value: p.id,
-            label: p.name,
-            hint: p.code,
+      {/* Filter bar -- samakan dgn ProjectsHubPage:
+          Search + Perusahaan + Lokasi + Dinas + Pendana + tabs Aktif/Semua.
+          Tabs replace toggle banner include_closed (lebih kompak). */}
+      <div className="rounded-md border bg-surface p-2.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
+          <Input
+            value={qSearch}
+            onChange={(e) => setQSearch(e.target.value)}
+            placeholder="Cari nama / kode..."
+            className="pl-9"
+          />
+        </div>
+        <Combobox
+          value={companyId}
+          onChange={(v) => setCompanyId(v == null ? null : Number(v))}
+          options={(companiesQ.data?.items ?? []).map((c) => ({
+            value: c.id,
+            label: c.name,
           }))}
-          placeholder="Semua proyek"
-          sheetTitle="Filter Proyek"
-          emptyMessage="Belum ada proyek aktif"
+          placeholder="Semua perusahaan"
+          clearable
+          sheetTitle="Pilih Perusahaan"
         />
         <MultiCombobox<string>
           value={locations}
@@ -168,7 +182,7 @@ function GlobalDashboard() {
             label: loc,
           }))}
           placeholder="Semua lokasi"
-          sheetTitle="Filter Lokasi"
+          sheetTitle="Pilih Lokasi"
           emptyMessage="Belum ada lokasi di proyek"
         />
         <MultiCombobox<string>
@@ -179,7 +193,7 @@ function GlobalDashboard() {
             label: c,
           }))}
           placeholder="Semua Dinas/Klien"
-          sheetTitle="Filter Dinas/Klien"
+          sheetTitle="Pilih Dinas/Klien"
           emptyMessage="Belum ada Dinas/Klien di proyek"
         />
         <MultiCombobox<number>
@@ -190,32 +204,22 @@ function GlobalDashboard() {
             label: f.name,
           }))}
           placeholder="Semua Pendana"
-          sheetTitle="Filter Pendana"
+          sheetTitle="Pilih Pendana"
           emptyMessage="Belum ada pendana di-link ke proyek"
         />
-      </div>
-
-      {/* Toggle proyek selesai + hint. Audit 2026-05-24:
-          - SELESAI: exclude default dari warning counters, toggle bisa
-            tampilkan kembali (audit retrospective).
-          - DIBATALKAN: di-exclude total di backend, tdk pernah muncul
-            di hint/list ("kalau dibatalkan ya selesai, jangan dibahas"). */}
-      {(d.closed_count ?? 0) > 0 && (
-        <div className="flex items-center justify-between gap-3 rounded-md border bg-surface px-3 py-2 text-[12px]">
-          <span className="text-ink-600">
-            {d.include_closed
-              ? `Termasuk ${d.closed_count} proyek selesai di warning counter.`
-              : `${d.closed_count} proyek selesai tidak ditampilkan di warning.`}
-          </span>
-          <button
-            type="button"
-            onClick={() => setIncludeClosed((v) => !v)}
-            className="rounded border border-brand-300 px-2 py-0.5 text-brand-700 hover:bg-brand-50"
-          >
-            {d.include_closed ? "Sembunyikan" : "Tampilkan semua"}
-          </button>
+        <div className="flex rounded border border-border-strong bg-surface text-[12px] overflow-hidden">
+          <FilterTab
+            label="Aktif"
+            active={statusTab === "AKTIF"}
+            onClick={() => setStatusTab("AKTIF")}
+          />
+          <FilterTab
+            label="Semua"
+            active={statusTab === "ALL"}
+            onClick={() => setStatusTab("ALL")}
+          />
         </div>
-      )}
+      </div>
 
       {d.warnings.length > 0 && <WarningBanner warnings={d.warnings} />}
 
@@ -565,6 +569,29 @@ function HighlightCard({
         </div>
       </div>
     </div>
+  )
+}
+
+function FilterTab({
+  label,
+  active,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex-1 px-2 py-2 transition-colors",
+        active ? "bg-brand-50 text-brand-700 font-semibold" : "text-ink-600 hover:bg-ink-50",
+      )}
+    >
+      {label}
+    </button>
   )
 }
 
