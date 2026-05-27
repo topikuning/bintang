@@ -24,6 +24,7 @@ from app.models.models import (
     ProjectKind,
     ProjectStatus,
     Transaction,
+    TxnKind,
     TxnStatus,
     TxnType,
     User,
@@ -324,6 +325,9 @@ async def global_dashboard(
 
         # Transaksi OUT yang masih punya remaining_amount > 0 (belum sepenuhnya
         # dialokasikan ke invoice manapun lewat tabel invoice_allocations).
+        # Audit 2026-05-27: exclude kind=DIRECT_EXPENSE -- TX itu memang tdk
+        # boleh dialokasikan (beban sudah tercatat via items), jadi tdk masuk
+        # counter "belum dialokasi".
         alloc_sub = _txn_alloc_subq()
         remaining_expr = Transaction.amount - func.coalesce(alloc_sub.c.alloc_sum, 0)
         unlinked_out_q = (
@@ -337,6 +341,7 @@ async def global_dashboard(
             Transaction.project_id.in_(operational_project_ids),
             Transaction.type == TxnType.OUT,
             Transaction.status.in_([TxnStatus.DRAFT, TxnStatus.SUBMITTED, TxnStatus.VERIFIED]),
+            Transaction.kind != TxnKind.DIRECT_EXPENSE.value,
             remaining_expr > 0,
             Transaction.deleted_at.is_(None),
         )
@@ -600,6 +605,7 @@ async def project_dashboard(
     # Transaksi OUT dengan remaining_amount > 0 (belum semua nilainya
     # dialokasikan ke invoice). Yang ditampilkan adalah jumlah txn dan
     # nominal sisa yang belum terpetakan, BUKAN total nominal txn.
+    # Audit 2026-05-27: exclude kind=DIRECT_EXPENSE (tdk dialokasi by design).
     alloc_sub = _txn_alloc_subq()
     remaining_expr = Transaction.amount - func.coalesce(alloc_sub.c.alloc_sum, 0)
     unlinked_out_q = (
@@ -613,6 +619,7 @@ async def project_dashboard(
         Transaction.project_id == pid,
         Transaction.type == TxnType.OUT,
         Transaction.status.in_([TxnStatus.DRAFT, TxnStatus.SUBMITTED, TxnStatus.VERIFIED]),
+        Transaction.kind != TxnKind.DIRECT_EXPENSE.value,
         Transaction.deleted_at.is_(None),
         remaining_expr > 0,
     )

@@ -31,6 +31,7 @@ from app.models.models import (
     InvoiceStatus,
     InvoiceType,
     Transaction,
+    TxnKind,
     TxnStatus,
     TxnType,
     User,
@@ -46,6 +47,7 @@ from app.schemas.finance import (
 from app.services.allocation import (
     ALLOCATABLE_INVOICE_STATUSES,
     ALLOCATABLE_TXN_STATUSES,
+    NON_ALLOCATABLE_TXN_KINDS,
     apply_allocations_to_invoice,
     apply_allocations_to_transaction,
     delete_allocation,
@@ -91,6 +93,9 @@ async def list_allocatable_transactions(
         .subquery()
     )
 
+    # Audit 2026-05-27: exclude kind=DIRECT_EXPENSE -- beban sudah tercatat
+    # in-place via TX items, alokasi ke invoice = double-count.
+    excluded_kinds = [k.value for k in NON_ALLOCATABLE_TXN_KINDS]
     stmt = (
         select(Transaction, func.coalesce(sum_alloc.c.alloc_sum, 0))
         .outerjoin(sum_alloc, sum_alloc.c.transaction_id == Transaction.id)
@@ -99,6 +104,7 @@ async def list_allocatable_transactions(
             Transaction.type == txn_type,
             Transaction.deleted_at.is_(None),
             Transaction.status.in_(ALLOCATABLE_TXN_STATUSES),
+            Transaction.kind.notin_(excluded_kinds),
         )
         .order_by(Transaction.tx_date.desc(), Transaction.id.desc())
     )

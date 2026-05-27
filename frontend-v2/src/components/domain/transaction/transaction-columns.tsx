@@ -103,9 +103,13 @@ export function buildTransactionColumns({
         // Audit 2026-05-24: badge alokasi (Belum/Sisa) utk TX OUT.
         // Hanya tampil kalau ada outstanding (remaining > 0). Kalau full
         // allocated atau IN -> tdk tampil (clean).
+        // Audit 2026-05-27: skip DIRECT_EXPENSE -- by design tdk dialokasi
+        // ke invoice (beban tercatat in-place via items), jadi badge
+        // "Belum dialokasi" menyesatkan.
         const remaining = Number(t.remaining_amount ?? 0)
         const allocated = Number(t.allocated_amount ?? 0)
-        const showBadge = t.type === "OUT" && remaining > 0
+        const showBadge =
+          t.type === "OUT" && t.kind !== "DIRECT_EXPENSE" && remaining > 0
         const isFullUnalloc = showBadge && allocated === 0
         return (
           <div className="flex flex-col items-end gap-0.5">

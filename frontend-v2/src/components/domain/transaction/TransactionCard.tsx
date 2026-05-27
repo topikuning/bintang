@@ -28,7 +28,9 @@ export function TransactionCard({
   const isIn = t.type === "IN"
   const remaining = Number(t.remaining_amount ?? 0)
   const allocated = Number(t.allocated_amount ?? 0)
-  const showAllocBadge = t.type === "OUT" && remaining > 0
+  // Audit 2026-05-27: DIRECT_EXPENSE by design tdk dialokasi ke invoice.
+  const showAllocBadge =
+    t.type === "OUT" && t.kind !== "DIRECT_EXPENSE" && remaining > 0
   const isFullUnalloc = showAllocBadge && allocated === 0
   return (
     <button

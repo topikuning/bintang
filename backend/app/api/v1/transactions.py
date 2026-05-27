@@ -271,6 +271,9 @@ async def list_transactions(
             .group_by(InvoiceAllocation.transaction_id)
             .subquery()
         )
+        # Audit 2026-05-27: exclude kind=DIRECT_EXPENSE -- TX itu memang tdk
+        # dialokasikan ke invoice (beban tercatat in-place via items), jadi
+        # tdk masuk filter "belum dialokasi".
         stmt = stmt.outerjoin(
             alloc_sub, alloc_sub.c.txn_id == Transaction.id,
         ).where(
@@ -278,6 +281,7 @@ async def list_transactions(
             Transaction.status.in_([
                 TxnStatus.DRAFT, TxnStatus.SUBMITTED, TxnStatus.VERIFIED,
             ]),
+            Transaction.kind != TxnKind.DIRECT_EXPENSE.value,
             (Transaction.amount - func.coalesce(alloc_sub.c.alloc_sum, 0)) > 0,
         )
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
