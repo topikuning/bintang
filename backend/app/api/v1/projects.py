@@ -312,6 +312,32 @@ async def list_projects_with_stats(
         )).all()
         out_map = {pid: float(s or 0) for pid, s in out_rows}
 
+        # Audit 2026-05-23: exclude marketing + profit_share dr budget.
+        # Konsisten dgn budget_status() helper di endpoint lain.
+        from app.models.models import Category as _Cat
+
+        def _flag_q(flag_col):
+            return (
+                select(_Transaction.project_id, func.coalesce(func.sum(_Transaction.amount), 0))
+                .join(_Cat, _Cat.id == _Transaction.category_id)
+                .where(
+                    _Transaction.project_id.in_(pids),
+                    _Transaction.type == _TxnType.OUT,
+                    _Transaction.status.in_(active_tx_statuses),
+                    _Transaction.deleted_at.is_(None),
+                    flag_col.is_(True),
+                )
+                .group_by(_Transaction.project_id)
+            )
+        mkt_map = {
+            pid: float(s or 0)
+            for pid, s in (await db.execute(_flag_q(_Cat.is_marketing))).all()
+        }
+        ps_map = {
+            pid: float(s or 0)
+            for pid, s in (await db.execute(_flag_q(_Cat.is_profit_share))).all()
+        }
+
         inv_rows = (await db.execute(
             select(_Invoice.project_id, func.coalesce(func.sum(_Invoice.total), 0))
             .where(
@@ -324,6 +350,8 @@ async def list_projects_with_stats(
         inv_open_map = {pid: float(s or 0) for pid, s in inv_rows}
     else:
         in_map = out_map = inv_open_map = {}
+        mkt_map: dict[int, float] = {}
+        ps_map: dict[int, float] = {}
 
     for p in projects:
         total_in = in_map.get(p.id, 0.0)
@@ -331,7 +359,11 @@ async def list_projects_with_stats(
         inv_open = inv_open_map.get(p.id, 0.0)
 
         budget = float(p.budget_amount or 0)
-        spent = total_out
+        # Audit 2026-05-23: spent utk perbandingan budget EXCLUDE
+        # marketing + bagi hasil (keduanya bukan biaya operasi).
+        mkt_actual = mkt_map.get(p.id, 0.0)
+        ps_actual = ps_map.get(p.id, 0.0)
+        spent = max(0.0, total_out - mkt_actual - ps_actual)
         usage_pct = (spent / budget * 100) if budget > 0 else 0.0
         if budget <= 0:
             bstatus = "no_budget"

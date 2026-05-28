@@ -143,7 +143,32 @@ async def budget_summary(
         if date_to:
             spend_q = spend_q.where(Transaction.tx_date <= date_to)
         spent = Decimal((await db.execute(spend_q)).scalar_one() or 0)
-        bs = budget_status(p, spent)
+        # Audit 2026-05-23: exclude marketing + bagi hasil dr budget.
+        # SUM TX OUT ACTIVE dgn category flag relevan.
+        def _flag_sum(flag_col):
+            q = (
+                select(func.coalesce(func.sum(Transaction.amount), 0))
+                .join(Category, Category.id == Transaction.category_id)
+                .where(
+                    Transaction.project_id == p.id,
+                    Transaction.type == TxnType.OUT,
+                    Transaction.status.in_(ACTIVE_STATUSES),
+                    Transaction.deleted_at.is_(None),
+                    flag_col.is_(True),
+                )
+            )
+            if date_from:
+                q = q.where(Transaction.tx_date >= date_from)
+            if date_to:
+                q = q.where(Transaction.tx_date <= date_to)
+            return q
+        mkt_actual = Decimal((await db.execute(_flag_sum(Category.is_marketing))).scalar_one() or 0)
+        ps_actual = Decimal((await db.execute(_flag_sum(Category.is_profit_share))).scalar_one() or 0)
+        bs = budget_status(
+            p, spent,
+            marketing_actual=mkt_actual,
+            profit_share_actual=ps_actual,
+        )
 
         # Company name (cached)
         company_name = None

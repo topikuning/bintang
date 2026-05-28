@@ -19,6 +19,10 @@ export interface TransactionListParams {
   /** true -> hanya tx di bucket NON_PROJECT (Catatan Non-Proyek).
    *  undefined/false -> tx reguler saja (NON_PROJECT di-exclude). */
   non_project?: boolean
+  /** Audit 2026-05-24: tx OUT yg masih punya sisa belum dialokasi ke
+   *  invoice. Drill-down dari dashboard counter "N pengeluaran masih
+   *  punya sisa belum dialokasi". */
+  unlinked_only?: boolean
 }
 
 export function useTransactions(params: TransactionListParams = {}) {

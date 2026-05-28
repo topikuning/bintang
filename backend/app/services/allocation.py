@@ -32,6 +32,7 @@ from app.models.models import (
     InvoiceStatus,
     InvoiceType,
     Transaction,
+    TxnKind,
     TxnStatus,
     TxnType,
 )
@@ -65,6 +66,16 @@ ALLOCATABLE_INVOICE_STATUSES = (
 # dulu di flow tx, baru link ke invoice.
 ALLOCATABLE_TXN_STATUSES = (
     TxnStatus.VERIFIED,
+)
+# Audit 2026-05-27: kind=DIRECT_EXPENSE tdk boleh dialokasikan ke invoice.
+# DIRECT_EXPENSE sudah punya `items` (multi-line per kategori) -- beban
+# tercatat in-place via TX. Kalau di-link ke invoice -> double-count
+# (beban terhitung 2x: dari TX OUT amount + dari invoice vendor yg
+# dianggap "dibayar"). User keputusan: restrict DIRECT_EXPENSE saja
+# untuk sekarang; CASH_ADVANCE sementara biar terbuka (workflow settle
+# yg handle, bukan ban total).
+NON_ALLOCATABLE_TXN_KINDS = (
+    TxnKind.DIRECT_EXPENSE,
 )
 
 
@@ -182,6 +193,8 @@ async def apply_allocations_to_invoice(
         txn = txns[tid]
         if txn.deleted_at is not None or txn.status not in ALLOCATABLE_TXN_STATUSES:
             raise HTTPException(409, f"transaction_not_allocatable:{tid}")
+        if txn.kind in NON_ALLOCATABLE_TXN_KINDS:
+            raise HTTPException(409, f"direct_expense_not_allocatable:{tid}")
         if txn.project_id != inv.project_id:
             raise HTTPException(409, f"project_mismatch:{tid}")
         if not direction_compatible(inv.type, txn.type):
@@ -249,6 +262,8 @@ async def apply_allocations_to_transaction(
         raise HTTPException(404, "transaction_not_found")
     if txn.status not in ALLOCATABLE_TXN_STATUSES:
         raise HTTPException(409, "transaction_not_allocatable")
+    if txn.kind in NON_ALLOCATABLE_TXN_KINDS:
+        raise HTTPException(409, "direct_expense_not_allocatable")
 
     txn_remaining = q2(Decimal(txn.amount or 0) - await transaction_allocated(db, txn.id))
     if txn_remaining <= 0:

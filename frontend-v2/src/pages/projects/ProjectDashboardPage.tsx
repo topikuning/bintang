@@ -53,12 +53,14 @@ import { TransactionForm } from "@/components/domain/transaction/TransactionForm
 import { InvoiceForm } from "@/components/domain/invoice/InvoiceForm"
 import { POForm } from "@/components/domain/po/POForm"
 import { ProjectForm } from "@/components/domain/project/ProjectForm"
+import { ProjectStatusBanner } from "@/components/domain/project/ProjectStatusBanner"
 import { ConfirmDeleteDialog } from "@/components/data/ConfirmDeleteDialog"
 import { useDeleteProject } from "@/hooks/useProjectMutations"
 import { usePageTitle } from "@/hooks/usePageTitle"
 import { useNavigate } from "react-router-dom"
 import { CashflowChart } from "@/components/charts/CashflowChart"
 import { SpendingBreakdown } from "@/components/domain/dashboard/SpendingBreakdown"
+import { FinanceBreakdown } from "@/components/domain/dashboard/FinanceBreakdown"
 import { AttachmentUploader } from "@/components/forms/AttachmentUploader"
 import { Combobox, type ComboboxOption } from "@/components/forms/Combobox"
 import { toast } from "@/components/ui/sonner"
@@ -138,6 +140,11 @@ export function ProjectDashboardPage() {
   return (
     <>
       <div className="flex flex-col gap-3 p-3 sm:p-5 lg:p-6 max-w-4xl">
+        {/* Banner status proyek non-AKTIF -- audit 2026-05-24 Phase 1. */}
+        <ProjectStatusBanner
+          status={project.status}
+          sinceIso={project.updated_at}
+        />
         {/* HEADER */}
         <div>
           <Link
@@ -336,7 +343,7 @@ export function ProjectDashboardPage() {
             )}
             {dash.unlinked_out_count > 0 && (
               <Link
-                to={`/transactions?project_id=${projectId}&type=OUT`}
+                to={`/transactions?project_id=${projectId}&type=OUT&unlinked=true`}
                 className="rounded-md border border-info-200 bg-info-50 p-3 hover:bg-info-100 active:bg-info-100/70"
               >
                 <div className="flex items-start gap-2">
@@ -738,67 +745,14 @@ function FinanceTable({
 }: {
   f: NonNullable<ReturnType<typeof useProjectDashboard>["data"]>["finance"] & object
 }) {
-  const Row = ({
-    label,
-    value,
-    negative,
-    highlight,
-  }: {
-    label: React.ReactNode
-    value: number
-    negative?: boolean
-    highlight?: "good" | "bad"
-  }) => (
-    <li
-      className={cn(
-        "flex items-baseline justify-between gap-2 px-3 sm:px-4 py-1.5",
-        highlight === "good" && "bg-success-50",
-        highlight === "bad" && "bg-danger-50",
-      )}
-    >
-      <span className="text-[12px] text-ink-700">{label}</span>
-      <span
-        data-num
-        className={cn(
-          "font-mono text-[13px] [font-variant-numeric:tabular-nums]",
-          negative && "text-danger-700",
-          highlight === "good" && "font-bold text-success-800",
-          highlight === "bad" && "font-bold text-danger-800",
-          !highlight && !negative && "font-semibold",
-        )}
-      >
-        {negative && "− "}
-        {fmtIDR(Math.abs(value))}
-      </span>
-    </li>
-  )
+  // Audit 2026-05-23: refactor pakai shared FinanceBreakdown supaya
+  // tampilan rincian KONSISTEN antar route (sebelumnya FinanceTable
+  // inline di sini tdk ikut update fix double-count marketing +
+  // realisasi marketing row). Padding ditambah supaya match Section
+  // wrapping style page ini.
   return (
-    <div className="pb-3 pt-1">
-      <ul className="divide-y">
-        <Row label="Nilai Kontrak" value={f.nilai_kontrak} />
-        <Row label="DPP" value={f.dpp} />
-        <Row label={`PPn (${f.ppn_pct}%)`} value={f.ppn} negative />
-        <Row label={`PPh (${f.pph_pct}%)`} value={f.pph} negative />
-        <Row label="Nilai Cair" value={f.nilai_cair} highlight="good" />
-        <Row label={`Marketing (${f.marketing_pct}%)`} value={f.marketing} negative />
-        <Row label="Biaya Aktual (realisasi)" value={f.biaya_aktual} negative />
-        <Row label="Biaya Proyeksi (target)" value={f.biaya_proyeksi} negative />
-        <Row
-          label="Profit Saat Ini"
-          value={f.profit_now}
-          highlight={f.profit_now < 0 ? "bad" : "good"}
-        />
-        <Row
-          label="Profit Proyeksi"
-          value={f.profit_proj}
-          highlight={f.profit_proj < 0 ? "bad" : "good"}
-        />
-      </ul>
-      <p className="px-3 sm:px-4 mt-2 text-[11px] text-ink-500 leading-relaxed">
-        DPP = Nilai Kontrak ÷ (1 + PPn%). Profit Saat Ini pakai realisasi
-        pengeluaran; Profit Proyeksi pakai target pengeluaran (budget).
-        Persentase pajak & marketing diatur di edit proyek.
-      </p>
+    <div className="px-3 sm:px-4 pb-3 pt-1">
+      <FinanceBreakdown finance={f} className="border-0 p-0 shadow-none" />
     </div>
   )
 }

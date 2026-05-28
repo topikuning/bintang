@@ -65,11 +65,12 @@ export function useOcrExtract() {
       entity?: string
       engine?: string | null
     }): Promise<OcrExtractResult> => {
-      const { data } = await api.post<OcrExtractResult>("/ocr/extract", {
-        file_url,
-        entity,
-        engine: engine || undefined,
-      })
+      const { data } = await api.post<OcrExtractResult>(
+        "/ocr/extract",
+        { file_url, entity, engine: engine || undefined },
+        // Audit 2026-05-24: OCR vision call bisa > 30s utk scan rumit.
+        { timeout: 300_000 },
+      )
       return data
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ocr", "drafts"] }),
@@ -99,10 +100,10 @@ export function useOcrExtractUpload() {
         fd,
         {
           headers: { "Content-Type": "multipart/form-data" },
-          // Backend OCR call bisa makan 10-30 detik utk dokumen ramai
-          // (handwriting + banyak items). Backend SDK timeout 75s, beri
-          // buffer jaringan/proxy -> 110s di sini.
-          timeout: 110_000,
+          // Backend OCR call bisa makan 10-60 detik utk dokumen ramai
+          // (handwriting + banyak items). Audit 2026-05-24: naikkan ke
+          // 5 menit utk safety margin (sblm-nya 110s).
+          timeout: 300_000,
           onUploadProgress: (e) => {
             if (onProgress && e.total) {
               onProgress(Math.round((e.loaded / e.total) * 100))

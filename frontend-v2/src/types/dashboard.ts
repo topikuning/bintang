@@ -17,7 +17,13 @@ export interface ProjectTotals {
 
 export interface ProjectBudget {
   amount: number
+  /** Spent NON-MARKETING (audit 2026-05-23). Marketing aktual punya
+   *  reservasi terpisah formula -- exclude dr budget bar. */
   spent: number
+  /** Total OUT (incl marketing) -- info, tdk dipakai utk bar. */
+  spent_total?: number
+  /** Marketing aktual yg sudah di-exclude dr 'spent'. */
+  marketing_actual?: number
   remaining: number
   usage_pct: number
   status: BudgetStatus
@@ -33,11 +39,32 @@ export interface ProjectFinance {
   ppn: number
   pph: number
   nilai_cair: number
+  /** Backward-compat alias = marketing_budget (formula). */
   marketing: number
   biaya_aktual: number
   biaya_proyeksi: number
   profit_now: number
+  /** Audit 2026-05-23: profit setelah bagi hasil dibayar. */
+  profit_net?: number
+  /** Bagi hasil yg sudah ditransaksikan (info, tdk kurangi profit_now). */
+  profit_share_paid?: number
   profit_proj: number
+  // Audit 2026-05-23: marketing dipecah utk cegah double-count.
+  marketing_budget: number
+  marketing_aktual: number
+  /** marketing_aktual - marketing_budget. Positif = overspend. */
+  marketing_variance: number
+  /** biaya_aktual - marketing_aktual. */
+  biaya_aktual_non_marketing: number
+  /** Audit 2026-05-23: breakdown komposisi biaya aktual per peran
+   *  akuntansi (marketing / penalty / profit_share / operating). */
+  expense_breakdown?: {
+    marketing: number
+    penalty: number
+    profit_share: number
+    operating: number
+    total: number
+  }
 }
 
 export interface MonthlyCashflowPoint {
@@ -149,6 +176,11 @@ export interface GlobalDashboardResponse {
   }
   active_projects: number
   total_projects: number
+  /** Audit 2026-05-24: jumlah proyek SELESAI/DIBATALKAN yg di-exclude
+   *  dari warning counters. FE pakai utk hint + toggle. */
+  closed_count?: number
+  /** Echo dari backend: filter currently active? */
+  include_closed?: boolean
   minus_projects: number
   pending_count: number
   pending_total: number

@@ -181,6 +181,7 @@ async def _serialize_with_allocs(db: AsyncSession, t: Transaction) -> Transactio
 @router.get("", response_model=Page[TransactionOut])
 async def list_transactions(
     project_id: list[int] | None = Query(None),
+    company_id: int | None = None,
     type: TxnType | None = None,
     status: TxnStatus | None = None,
     category_id: int | None = None,
@@ -194,6 +195,10 @@ async def list_transactions(
     # /transactions normal bersih dari catatan non-proyek).
     # True -> ONLY tx non-proyek (halaman /catatan-non-proyek).
     non_project: bool | None = None,
+    # Audit 2026-05-24: filter "TX OUT yg belum/parsial dialokasi ke
+    # invoice" -- drill-down dari dashboard counter "N pengeluaran masih
+    # punya sisa belum dialokasi". TX yg remaining_amount > 0 only.
+    unlinked_only: bool = Query(False),
     page: int = Query(1, ge=1),
     size: int = Query(50, ge=1, le=2000),
     db: AsyncSession = Depends(get_db),
@@ -224,6 +229,11 @@ async def list_transactions(
         for pid in project_id:
             await ensure_project_access(db, user, pid)
         stmt = stmt.where(Transaction.project_id.in_(project_id))
+    if company_id:
+        # Filter via Project.company_id. Subquery: project IDs di company tsb.
+        from app.models.models import Project as _P
+        co_pids_subq = select(_P.id).where(_P.company_id == company_id).scalar_subquery()
+        stmt = stmt.where(Transaction.project_id.in_(co_pids_subq))
     if type:
         stmt = stmt.where(Transaction.type == type)
     if status:
@@ -244,6 +254,35 @@ async def list_transactions(
             (Transaction.description.ilike(like))
             | (Transaction.party_name.ilike(like))
             | (Transaction.reference_no.ilike(like))
+        )
+    if unlinked_only:
+        # TX OUT yg masih punya sisa belum dialokasi ke invoice.
+        # Status DRAFT/SUBMITTED/VERIFIED only (CANCELLED tdk dihitung
+        # outstanding). Audit 2026-05-24 -- match dashboard counter.
+        from sqlalchemy import select as _sel
+        alloc_sub = (
+            _sel(
+                InvoiceAllocation.transaction_id.label("txn_id"),
+                func.coalesce(
+                    func.sum(InvoiceAllocation.allocated_amount), 0,
+                ).label("alloc_sum"),
+            )
+            .where(InvoiceAllocation.deleted_at.is_(None))
+            .group_by(InvoiceAllocation.transaction_id)
+            .subquery()
+        )
+        # Audit 2026-05-27: exclude kind=DIRECT_EXPENSE -- TX itu memang tdk
+        # dialokasikan ke invoice (beban tercatat in-place via items), jadi
+        # tdk masuk filter "belum dialokasi".
+        stmt = stmt.outerjoin(
+            alloc_sub, alloc_sub.c.txn_id == Transaction.id,
+        ).where(
+            Transaction.type == TxnType.OUT,
+            Transaction.status.in_([
+                TxnStatus.DRAFT, TxnStatus.SUBMITTED, TxnStatus.VERIFIED,
+            ]),
+            Transaction.kind != TxnKind.DIRECT_EXPENSE.value,
+            (Transaction.amount - func.coalesce(alloc_sub.c.alloc_sum, 0)) > 0,
         )
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     stmt = (
@@ -334,10 +373,17 @@ def _get_item_field(i, key):
 @router.post("", response_model=TransactionOut, status_code=201)
 async def create_transaction(
     payload: TransactionCreate,
+    force: bool = Query(False, description="SUPERADMIN-only: bypass project_closed guard"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_can_write),
 ) -> TransactionOut:
     await ensure_project_access(db, user, payload.project_id)
+    # Audit 2026-05-24 Phase 1: block create di proyek SELESAI / DIBATALKAN.
+    # SUPERADMIN bypass dgn ?force=true (audit log tagging).
+    from app.services.project_guard import assert_project_open
+    _, forced = await assert_project_open(
+        db, payload.project_id, user=user, force=force,
+    )
     _validate_kind_invariants(
         payload, tx_type=payload.type, kind=payload.kind,
         amount=payload.amount, items=payload.items,
@@ -367,7 +413,8 @@ async def create_transaction(
         t, attribute_names=[c.name for c in Transaction.__table__.columns]
     )
     await log(db, user_id=user.id, entity="transaction", entity_id=t.id,
-              action=AuditAction.CREATE, after=snapshot(t))
+              action=AuditAction.CREATE, after=snapshot(t),
+              note="FORCE bypass closed project" if forced else None)
     await db.commit()
     return await _serialize_with_allocs(db, t)
 
@@ -411,20 +458,18 @@ async def update_transaction(
     if not t or t.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
-    # Project change rules:
-    # - DRAFT: BOLEH pindah ke proyek lain (termasuk ke/dari NON_PROJECT).
-    #   Belum mempengaruhi laporan apapun (semua agregat filter VERIFIED)
-    #   jadi audit trail belum kuat. Use case: user salah pilih proyek
-    #   saat create, sadar sebelum submit. Audit log catat perpindahan.
-    # - SUBMITTED/VERIFIED/REJECTED/CANCELLED: IMMUTABLE. Audit trail
-    #   keuangan harus kuat -- koreksi via CANCEL + buat ulang.
+    is_god = user.role == UserRole.SUPERADMIN
+    # Audit 2026-05-23 user req: DRAFT bebas; non-DRAFT IMMUTABLE
+    # kecuali SUPERADMIN (god-mode). Konsekuensi konsistensi (allocations,
+    # report agregat retro-active) ditanggung SUPERADMIN -- audit log
+    # catat before/after.
     if payload.project_id is not None and payload.project_id != t.project_id:
-        if t.status != TxnStatus.DRAFT:
+        if t.status != TxnStatus.DRAFT and not is_god:
             raise HTTPException(
                 400,
                 "project_change_forbidden: tx non-DRAFT tidak bisa pindah "
-                "proyek via edit. Cancel tx (POST /:id/cancel), lalu buat "
-                "ulang di proyek yang benar.",
+                "proyek (butuh SUPERADMIN). Cancel tx + buat ulang di proyek "
+                "benar.",
             )
         # Validate akses ke proyek tujuan + proyek exists & not deleted.
         await ensure_project_access(db, user, payload.project_id)
@@ -446,7 +491,8 @@ async def update_transaction(
         raise HTTPException(409, "verified_locked")
     # Kalau ini CASH_ADVANCE yg sudah ke-settle, lock edit -- supaya saldo
     # akunting tdk inkonsisten dgn settlement.
-    if t.kind == TxnKind.CASH_ADVANCE:
+    # SUPERADMIN god-mode bypass (audit 2026-05-23 user req).
+    if t.kind == TxnKind.CASH_ADVANCE and not is_god:
         settlement = (await db.execute(
             select(CashAdvanceSettlement).where(
                 CashAdvanceSettlement.cash_advance_tx_id == t.id
@@ -456,7 +502,7 @@ async def update_transaction(
             raise HTTPException(
                 409,
                 "cash_advance_already_settled: edit dilarang, hapus "
-                "settlement dulu kalau perlu koreksi.",
+                "settlement dulu (atau pakai SUPERADMIN god-mode).",
             )
     data = payload.model_dump(exclude_unset=True)
     # project_id sudah di-validate di atas: kalau berubah, status harus
@@ -540,6 +586,173 @@ async def update_transaction(
               action=AuditAction.UPDATE, before=before, after=snapshot(t))
     await db.commit()
     return await _serialize_with_allocs(db, t)
+
+
+@router.post("/bulk/verify")
+async def bulk_verify_transactions(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Bulk verify TX (SUPERADMIN / CENTRAL_ADMIN). Audit 2026-05-23.
+
+    Payload: {ids: list[int]}.
+    Return: {success: list[int], skipped: list[{id, reason}],
+             total_requested: int, success_count: int}.
+
+    Per-item processing: tx invalid (404 / not in DRAFT|SUBMITTED) di-skip
+    dgn reason, tx valid di-verify + audit log + commit di akhir batch.
+    Tdk halt seluruh batch karena 1 error.
+
+    PENTING: route ini HARUS register sebelum `/{tid}/verify` --
+    kalau tdk, FastAPI match "bulk" sbg tid (int) -> 422
+    validation error. Jangan pindah ke bawah!
+    """
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids_required")
+    if len(ids) > 500:
+        raise HTTPException(400, "max_500_per_batch")
+
+    res = await db.execute(
+        select(Transaction)
+        .options(
+            selectinload(Transaction.items),
+            selectinload(Transaction.attachments),
+            selectinload(Transaction.settlement),
+        )
+        .where(Transaction.id.in_(ids))
+    )
+    txs = {t.id: t for t in res.scalars().all()}
+
+    success_ids: list[int] = []
+    skipped: list[dict] = []
+    now = datetime.now(timezone.utc)
+
+    for tid in ids:
+        t = txs.get(tid)
+        if t is None or t.deleted_at is not None:
+            skipped.append({"id": tid, "reason": "not_found"})
+            continue
+        if t.status not in (TxnStatus.SUBMITTED, TxnStatus.DRAFT):
+            skipped.append({"id": tid, "reason": f"invalid_state_{t.status.value}"})
+            continue
+        before = snapshot(t)
+        t.status = TxnStatus.VERIFIED
+        t.verified_by_id = admin.id
+        t.verified_at = now
+        if t.invoice_id:
+            inv = await db.get(Invoice, t.invoice_id)
+            if inv:
+                await recompute_invoice_status(db, inv)
+        await log(
+            db, user_id=admin.id, entity="transaction", entity_id=t.id,
+            action=AuditAction.VERIFY, before=before, after=snapshot(t),
+            note="bulk verify",
+        )
+        success_ids.append(tid)
+
+    await db.commit()
+
+    # Notif dilakukan post-commit (best-effort). Tdk block kalau gagal.
+    try:
+        from app.services.messaging import notify_transaction_verified
+        for tid in success_ids:
+            t = txs.get(tid)
+            if t:
+                await notify_transaction_verified(db, t, actor_id=admin.id)
+    except Exception:  # noqa: BLE001
+        pass
+
+    return {
+        "total_requested": len(ids),
+        "success_count": len(success_ids),
+        "success": success_ids,
+        "skipped": skipped,
+    }
+
+
+@router.post("/bulk/delete")
+async def bulk_delete_transactions(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Bulk soft-delete TX. Audit 2026-05-24 user req mass action.
+
+    Payload: {ids: list[int]}.
+    Return: {total_requested, success_count, success, skipped}.
+
+    Per-item:
+    - CENTRAL_ADMIN: VERIFIED ditolak (mirror single delete strict).
+    - SUPERADMIN (god-mode 2026-05-24): bypass status check, cascade
+      soft-delete allocations + recompute invoice status terdampak.
+      Konsisten dgn single /hard endpoint (god-mode).
+    """
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids_required")
+    if len(ids) > 500:
+        raise HTTPException(400, "max_500_per_batch")
+
+    god = admin.role == UserRole.SUPERADMIN
+
+    res = await db.execute(
+        select(Transaction).where(Transaction.id.in_(ids))
+    )
+    txs = {t.id: t for t in res.scalars().all()}
+
+    success_ids: list[int] = []
+    skipped: list[dict] = []
+    now = datetime.utcnow()
+    affected_inv_ids: set[int] = set()
+
+    for tid in ids:
+        t = txs.get(tid)
+        if t is None or t.deleted_at is not None:
+            skipped.append({"id": tid, "reason": "not_found"})
+            continue
+        if not god and t.status == TxnStatus.VERIFIED:
+            skipped.append({"id": tid, "reason": "verified_must_be_cancelled"})
+            continue
+        before = snapshot(t)
+
+        # God-mode: cascade soft-delete allocations + collect invoices
+        # utk recompute setelah loop selesai.
+        if god:
+            alloc_res = await db.execute(
+                select(InvoiceAllocation).where(
+                    InvoiceAllocation.transaction_id == t.id,
+                    InvoiceAllocation.deleted_at.is_(None),
+                )
+            )
+            for a in alloc_res.scalars().all():
+                a.deleted_at = now
+                affected_inv_ids.add(a.invoice_id)
+            if t.invoice_id:
+                affected_inv_ids.add(t.invoice_id)
+
+        t.deleted_at = now
+        await log(
+            db, user_id=admin.id, entity="transaction", entity_id=t.id,
+            action=AuditAction.DELETE, before=before,
+            note="bulk delete (god-mode)" if god else "bulk delete",
+        )
+        success_ids.append(tid)
+
+    # Recompute invoice status terdampak (sekali per invoice, di luar loop)
+    for iid in affected_inv_ids:
+        inv = await db.get(Invoice, iid)
+        if inv and inv.deleted_at is None:
+            await recompute_invoice_status(db, inv)
+
+    await db.commit()
+    return {
+        "total_requested": len(ids),
+        "success_count": len(success_ids),
+        "success": success_ids,
+        "skipped": skipped,
+    }
 
 
 @router.post("/{tid}/submit", response_model=TransactionOut)
@@ -740,11 +953,17 @@ async def upload_attachment(
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
     # VERIFIED: hanya SUPERADMIN yang boleh modifikasi (god-mode).
-    # Audit trail keuangan harus kuat -- CENTRAL_ADMIN tidak boleh
-    # ubah transaksi/lampiran yang sudah tervalidasi. Untuk koreksi,
-    # gunakan workflow CANCEL (POST /:id/cancel) lalu buat ulang.
+    # Audit 2026-05-24: relax utk VERIFIED tx yg BELUM PUNYA lampiran
+    # sama sekali -- admin biasa boleh upload bukti supaya audit trail
+    # tetap lengkap. Append-only, tdk overwrite/delete data existing.
+    # Punya lampiran + VERIFIED -> tetap locked (cegah modifikasi bukti).
     if t.status == TxnStatus.VERIFIED and user.role != UserRole.SUPERADMIN:
-        raise HTTPException(409, "verified_locked")
+        existing = (await db.execute(
+            select(func.count(TransactionAttachment.id))
+            .where(TransactionAttachment.transaction_id == t.id)
+        )).scalar_one() or 0
+        if existing > 0:
+            raise HTTPException(409, "verified_locked")
     meta = await save_upload(file, subdir=f"transactions/{t.id}")
     att = TransactionAttachment(transaction_id=t.id, uploaded_by_id=user.id, **meta)
     db.add(att)
@@ -768,11 +987,16 @@ async def attach_external_link(
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, t.project_id)
     # VERIFIED: hanya SUPERADMIN yang boleh modifikasi (god-mode).
-    # Audit trail keuangan harus kuat -- CENTRAL_ADMIN tidak boleh
-    # ubah transaksi/lampiran yang sudah tervalidasi. Untuk koreksi,
-    # gunakan workflow CANCEL (POST /:id/cancel) lalu buat ulang.
+    # Audit 2026-05-24: relax utk VERIFIED tx yg BELUM PUNYA lampiran
+    # sama sekali -- admin biasa boleh upload bukti supaya audit trail
+    # tetap lengkap. Punya lampiran + VERIFIED -> tetap locked.
     if t.status == TxnStatus.VERIFIED and user.role != UserRole.SUPERADMIN:
-        raise HTTPException(409, "verified_locked")
+        existing = (await db.execute(
+            select(func.count(TransactionAttachment.id))
+            .where(TransactionAttachment.transaction_id == t.id)
+        )).scalar_one() or 0
+        if existing > 0:
+            raise HTTPException(409, "verified_locked")
     meta = normalize_external_link(body.url, label=body.label, file_name=body.file_name)
     att = TransactionAttachment(transaction_id=t.id, uploaded_by_id=user.id, **meta)
     db.add(att)

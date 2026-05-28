@@ -23,6 +23,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -263,6 +264,134 @@ class AIExtraction(TimestampMixin, Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class OCRCache(TimestampMixin, Base):
+    """Cache hasil OCR by content-hash. Audit 2026-05-23 OCR opt #T1.2.
+
+    Tujuan: user re-upload file yang sama (mis. salah klik / re-OCR
+    iterasi) tdk re-bill LLM. Hit-rate real-world 10-20% di SME.
+
+    Key: sha256(file_bytes). Cache cross-engine -- entry pertama saja
+    yang panggil LLM, entry berikutnya pakai data tersimpan (raw_response
+    catat engine asal).
+
+    TTL: 30 hari (cleanup via cron / pre-insert). Setelah TTL, miss ->
+    re-extract & overwrite.
+    """
+    __tablename__ = "ocr_cache"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # SHA256 hex (64 char). Indexed unique utk fast lookup.
+    file_hash: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True,
+    )
+    # Engine yg generate hasil ini (mis. "claude:claude-haiku-4-5",
+    # "mistral:mistral-ocr-latest"). Informational only.
+    source_engine: Mapped[str] = mapped_column(String(80), nullable=False)
+    # Media type asli sblm preprocess.
+    media_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    # Size original bytes (info, bukan key).
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Hasil ekstraksi lengkap (struktur sama dgn extract_invoice return).
+    extracted_data: Mapped[dict] = mapped_column(JSON, nullable=False)
+    # Statistik hit utk monitoring efektivitas cache.
+    hits: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_hit_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
+
+class AICache(TimestampMixin, Base):
+    """Generic AI response cache. Audit 2026-05-23 AI foundation.
+
+    Lebih luas dari OCRCache: namespace-based supaya bisa cache hasil
+    chat (kategori suggest, justifier, dll) selain OCR. Key bebas
+    (caller bertanggung jawab buat key unik per (namespace, input)).
+
+    Namespace convention:
+      ocr:invoice           -- OCR invoice/struk/PO (key=sha256(bytes))
+      chat:category         -- saran kategori (key=hash(prompt))
+      chat:po-cover         -- generate PO cover letter
+      ...
+
+    Cache existing `ocr_cache` table tetap utk OCR (data lama).
+    Tabel ini fresh, generic.
+    """
+    __tablename__ = "ai_cache"
+    __table_args__ = (
+        UniqueConstraint("namespace", "cache_key", name="uq_ai_cache_ns_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    namespace: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    cache_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    # Hasil call AI (bisa struktur apapun -- dict/list/string wrapped dict)
+    value: Mapped[dict] = mapped_column(JSON, nullable=False)
+    # Info source (model, engine, cost, etc) utk audit trail
+    source_info: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    hits: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_hit_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
+
+class AICallLog(TimestampMixin, Base):
+    """Log setiap call AI utk analytics + cost tracking + audit.
+    Audit 2026-05-23 AI foundation.
+
+    Dipakai utk:
+    - Monitor biaya per-feature per-user per-tenant.
+    - Identify abuse (user X spam OCR / chat).
+    - Iterate prompt: lihat input/output token vs hasil quality.
+    - Compliance: log siapa minta apa ke AI.
+
+    Tdk simpan full request/response (privacy + storage). Hanya
+    metadata: feature, model, tokens, cost, latency, cached, success.
+    """
+    __tablename__ = "ai_call_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True,
+    )
+    # Feature ID -- e.g. "ocr:invoice", "chat:category", "chat:po-cover".
+    feature: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    model: Mapped[str] = mapped_column(String(80), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Estimasi cost USD (dihitung di runtime dgn tabel price per-model).
+    # String supaya tahan precision tanpa Numeric overhead.
+    cost_usd: Mapped[str] = mapped_column(String(20), default="0", nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    cached: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    success: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class OCRJob(TimestampMixin, Base):
+    """Async OCR job utk fire-and-forget upload bulk.
+
+    Audit 2026-05-23 OCR opt #T3.8. Tujuan: user upload 10 struk
+    sekaligus tdk blocking UI 30+ detik. POST /ocr/jobs return immediately
+    dgn job_id, processing di background (asyncio.create_task).
+
+    State machine: PENDING -> PROCESSING -> DONE/FAILED.
+    Poll via GET /ocr/jobs/{id} atau stream via SSE /ocr/jobs/{id}/stream.
+    """
+    __tablename__ = "ocr_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    entity: Mapped[str] = mapped_column(String(40), default="invoice", nullable=False)
+    source_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    engine_requested: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    status: Mapped[OCRJobStatus] = mapped_column(
+        Enum(OCRJobStatus), default=OCRJobStatus.PENDING, nullable=False, index=True,
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class AppSetting(TimestampMixin, Base):
@@ -306,3 +435,56 @@ class RoleMenuPolicy(TimestampMixin, Base):
     menu_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     hidden: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class AIPromptOverride(Base):
+    """SUPERADMIN custom prompt per feature AI. Audit 2026-05-24.
+
+    Default selalu di code (services/ai/prompt_registry.py). Row ini
+    cuma ada kalau admin override. PK = (feature_key, field).
+
+    field: 'system' atau 'user_template'.
+    """
+    __tablename__ = "ai_prompt_overrides"
+
+    feature_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    field: Mapped[str] = mapped_column(String(32), primary_key=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class AIFeatureSettings(Base):
+    """Per-feature AI runtime settings. Audit 2026-05-24.
+
+    Override default code per fitur: provider, model, max_tokens,
+    web_search, budget bulanan, dst. Field NULL = pakai default.
+    """
+    __tablename__ = "ai_feature_settings"
+
+    feature_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    max_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cache_ttl_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rate_limit_per_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    web_search_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    monthly_budget_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 4), nullable=True,
+    )
+    updated_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

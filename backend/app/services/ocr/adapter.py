@@ -12,6 +12,15 @@ from typing import Any
 
 
 class OCRAdapter(ABC):
+    # Audit 2026-05-24: prompt override-able via Prompt AI menu. Caller
+    # set di adapter via `set_system_prompt()` sebelum call extract*.
+    # Adapter merge dgn adapter-specific suffix (mis. Claude wajib pakai
+    # tool-call). None = pakai default di code.
+    _system_prompt_override: str | None = None
+
+    def set_system_prompt(self, prompt: str | None) -> None:
+        self._system_prompt_override = prompt
+
     @abstractmethod
     async def extract_invoice(self, file_url: str) -> dict[str, Any]:
         """Extract via URL atau path lokal (/files/...).
@@ -116,18 +125,26 @@ def _resolve_model(engine: str) -> str:
     return _DEFAULT_MODEL.get(engine, "")
 
 
-def get_ocr_adapter(engine_override: str | None = None) -> OCRAdapter:
+def get_ocr_adapter(
+    engine_override: str | None = None,
+    model_override: str | None = None,
+) -> OCRAdapter:
     """Pilih adapter berdasarkan env OCR_ENGINE atau override eksplisit.
 
     Args:
         engine_override: kalau diisi (mis. dari request param), pakai itu;
             else fallback ke settings.OCR_ENGINE.
+        model_override: kalau diisi (mis. dari ai_feature_settings.ocr_invoice
+            .model), pakai itu; else fallback ke _resolve_model().
 
     - "claude"  + ANTHROPIC_API_KEY -> ClaudeVisionOCRAdapter
     - "mistral" + MISTRAL_API_KEY   -> MistralOCRAdapter (lebih murah)
     - selain itu                    -> StubOCRAdapter
 
-    Model di-resolve via _resolve_model() (per-engine env > legacy > default).
+    Model di-resolve dgn priority:
+      model_override > _resolve_model() (per-engine env > legacy > default).
+    Audit 2026-05-24: model_override lewat ai_feature_settings.ocr_invoice
+    supaya admin bisa pilih dr menu yg konsisten dgn AI lain.
     """
     from app.services.app_settings import get_cached
 
@@ -136,19 +153,18 @@ def get_ocr_adapter(engine_override: str | None = None) -> OCRAdapter:
     anthropic_key = get_cached("ANTHROPIC_API_KEY")
     mistral_key = get_cached("MISTRAL_API_KEY")
     if engine == "claude" and anthropic_key:
-        # Lazy import biar stub mode tidak butuh anthropic SDK ter-install.
         from app.services.ocr.claude_adapter import ClaudeVisionOCRAdapter
 
         return ClaudeVisionOCRAdapter(
             api_key=anthropic_key,
-            model=_resolve_model("claude"),
+            model=model_override or _resolve_model("claude"),
         )
     if engine == "mistral" and mistral_key:
         from app.services.ocr.mistral_adapter import MistralOCRAdapter
 
         return MistralOCRAdapter(
             api_key=mistral_key,
-            model=_resolve_model("mistral"),
+            model=model_override or _resolve_model("mistral"),
         )
     return StubOCRAdapter()
 

@@ -8,14 +8,21 @@ import {
   Flame,
   FolderKanban,
   Link2Off,
+  Loader2,
   PieChart as PieIcon,
+  Search,
+  Send,
+  Shield,
+  Sparkles,
   TrendingUp,
   Wallet,
 } from "lucide-react"
 import { Link } from "react-router-dom"
 import { useGlobalDashboard } from "@/hooks/useDashboard"
+import { useCompanies } from "@/hooks/useCompanies"
 import { useProjectFilters } from "@/hooks/useProjectsStats"
 import { usePageTitle } from "@/hooks/usePageTitle"
+import { Combobox } from "@/components/forms/Combobox"
 import { MultiCombobox } from "@/components/forms/MultiCombobox"
 import { EmptyState } from "@/components/data/EmptyState"
 import { ErrorState } from "@/components/data/ErrorState"
@@ -29,6 +36,16 @@ import { apiErrorMessage } from "@/lib/api"
 import { useBreakpoint } from "@/lib/breakpoint"
 import { cn } from "@/lib/utils"
 import type { GlobalDashboardProjectSummary, HealthStatus } from "@/types/dashboard"
+import {
+  useAskQuery,
+  useDailySummary,
+  useScanAnomalies,
+  type AnomalyFlag,
+} from "@/hooks/useAI"
+import { useAuthStore } from "@/store/auth"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { toast } from "@/components/ui/sonner"
 
 /**
  * Dashboard global -- ringkasan semua proyek dgn filter Lokasi/Dinas/
@@ -46,24 +63,38 @@ export function DashboardPage() {
 function GlobalDashboard() {
   usePageTitle("Beranda")
   const bp = useBreakpoint()
-  // Filter state -- multi-value (sesuai backend yg sdh terima list[]).
+  // Filter state -- samakan dgn ProjectsHubPage: search + perusahaan +
+  // 3 multi-select + tabs Aktif/Semua.
+  const [qSearch, setQSearch] = useState("")
+  const [companyId, setCompanyId] = useState<number | null>(null)
   const [locations, setLocations] = useState<string[]>([])
   const [clientNames, setClientNames] = useState<string[]>([])
   const [funderIds, setFunderIds] = useState<number[]>([])
+  // Tabs "Aktif | Semua" -- "Aktif" = exclude SELESAI/DIBATALKAN dari
+  // warning counters (default operational); "Semua" = include_closed.
+  const [statusTab, setStatusTab] = useState<"AKTIF" | "ALL">("AKTIF")
 
   const params = useMemo(
     () => ({
+      q: qSearch.trim() || undefined,
+      company_id: companyId ?? undefined,
       location: locations.length ? locations : undefined,
       client_name: clientNames.length ? clientNames : undefined,
       funder_id: funderIds.length ? funderIds : undefined,
+      include_closed: statusTab === "ALL" || undefined,
     }),
-    [locations, clientNames, funderIds],
+    [qSearch, companyId, locations, clientNames, funderIds, statusTab],
   )
 
   const q = useGlobalDashboard(params)
   const filtersQ = useProjectFilters()
+  const companiesQ = useCompanies()
   const hasActiveFilter =
-    locations.length > 0 || clientNames.length > 0 || funderIds.length > 0
+    qSearch.trim().length > 0 ||
+    companyId != null ||
+    locations.length > 0 ||
+    clientNames.length > 0 ||
+    funderIds.length > 0
 
   // PENTING: hook dipanggil di setiap render -- sebelum any conditional
   // return -- supaya urutan/jumlah hook konsisten (React error #310).
@@ -106,6 +137,8 @@ function GlobalDashboard() {
           <button
             type="button"
             onClick={() => {
+              setQSearch("")
+              setCompanyId(null)
               setLocations([])
               setClientNames([])
               setFunderIds([])
@@ -117,8 +150,30 @@ function GlobalDashboard() {
         )}
       </div>
 
-      {/* Filter bar -- multi-select Lokasi / Dinas / Pendana */}
-      <div className="rounded-md border bg-surface p-2.5 grid grid-cols-1 sm:grid-cols-3 gap-2">
+      {/* Filter bar -- samakan dgn ProjectsHubPage:
+          Search + Perusahaan + Lokasi + Dinas + Pendana + tabs Aktif/Semua.
+          Tabs replace toggle banner include_closed (lebih kompak). */}
+      <div className="rounded-md border bg-surface p-2.5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400" />
+          <Input
+            value={qSearch}
+            onChange={(e) => setQSearch(e.target.value)}
+            placeholder="Cari nama / kode..."
+            className="pl-9"
+          />
+        </div>
+        <Combobox
+          value={companyId}
+          onChange={(v) => setCompanyId(v == null ? null : Number(v))}
+          options={(companiesQ.data?.items ?? []).map((c) => ({
+            value: c.id,
+            label: c.name,
+          }))}
+          placeholder="Semua perusahaan"
+          clearable
+          sheetTitle="Pilih Perusahaan"
+        />
         <MultiCombobox<string>
           value={locations}
           onChange={setLocations}
@@ -127,7 +182,7 @@ function GlobalDashboard() {
             label: loc,
           }))}
           placeholder="Semua lokasi"
-          sheetTitle="Filter Lokasi"
+          sheetTitle="Pilih Lokasi"
           emptyMessage="Belum ada lokasi di proyek"
         />
         <MultiCombobox<string>
@@ -138,7 +193,7 @@ function GlobalDashboard() {
             label: c,
           }))}
           placeholder="Semua Dinas/Klien"
-          sheetTitle="Filter Dinas/Klien"
+          sheetTitle="Pilih Dinas/Klien"
           emptyMessage="Belum ada Dinas/Klien di proyek"
         />
         <MultiCombobox<number>
@@ -149,9 +204,21 @@ function GlobalDashboard() {
             label: f.name,
           }))}
           placeholder="Semua Pendana"
-          sheetTitle="Filter Pendana"
+          sheetTitle="Pilih Pendana"
           emptyMessage="Belum ada pendana di-link ke proyek"
         />
+        <div className="flex rounded border border-border-strong bg-surface text-[12px] overflow-hidden">
+          <FilterTab
+            label="Aktif"
+            active={statusTab === "AKTIF"}
+            onClick={() => setStatusTab("AKTIF")}
+          />
+          <FilterTab
+            label="Semua"
+            active={statusTab === "ALL"}
+            onClick={() => setStatusTab("ALL")}
+          />
+        </div>
       </div>
 
       {d.warnings.length > 0 && <WarningBanner warnings={d.warnings} />}
@@ -160,7 +227,7 @@ function GlobalDashboard() {
       {(d.pending_count > 0 || d.unlinked_out_count > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {d.pending_count > 0 && (
-            <Link to="/transactions" className="block">
+            <Link to="/transactions?status=SUBMITTED" className="block">
               <HighlightCard
                 tone="warning"
                 icon={Clock}
@@ -171,13 +238,13 @@ function GlobalDashboard() {
             </Link>
           )}
           {d.unlinked_out_count > 0 && (
-            <Link to="/transactions" className="block">
+            <Link to="/transactions?unlinked=true" className="block">
               <HighlightCard
                 tone="info"
                 icon={Link2Off}
                 label="Pengeluaran Belum Dialokasi"
                 bigValue={`${d.unlinked_out_count} transaksi`}
-                hint={`Sisa ${fmtIDR(d.unlinked_out_total)}`}
+                hint={`Sisa ${fmtIDR(d.unlinked_out_total)} · klik utk lihat`}
               />
             </Link>
           )}
@@ -319,6 +386,10 @@ function GlobalDashboard() {
           </div>
         )}
       </Section>
+
+      {/* AI panels (audit 2026-05-23). 3 fitur: Tanya bebas, Ringkasan
+          hari ini, Scan anomali. Admin only. */}
+      <AIInsightsPanel />
     </Page>
   )
 }
@@ -501,6 +572,29 @@ function HighlightCard({
   )
 }
 
+function FilterTab({
+  label,
+  active,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex-1 px-2 py-2 transition-colors",
+        active ? "bg-brand-50 text-brand-700 font-semibold" : "text-ink-600 hover:bg-ink-50",
+      )}
+    >
+      {label}
+    </button>
+  )
+}
+
 function WarningBanner({ warnings }: { warnings: string[] }) {
   return (
     <div className="rounded-md border border-warning-200 bg-warning-50 p-3 sm:p-4 space-y-1.5">
@@ -582,5 +676,213 @@ function DashboardSkeleton() {
       <Skeleton className="h-64" />
       <Skeleton className="h-48" />
     </Page>
+  )
+}
+
+
+// ============================================================
+// AI Insights Panel (audit 2026-05-23 UX integration AI-5/6/8)
+// ============================================================
+function AIInsightsPanel() {
+  const role = useAuthStore((s) => s.user?.role)
+  const isAdmin = role === "SUPERADMIN" || role === "CENTRAL_ADMIN"
+  if (!isAdmin) return null
+  return (
+    <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <AskQueryCard />
+      <DailySummaryCard />
+      <AnomalyCard />
+    </section>
+  )
+}
+
+function AskQueryCard() {
+  const ask = useAskQuery()
+  const [q, setQ] = useState("")
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (q.trim().length < 3) return
+    try {
+      await ask.mutateAsync({ question: q.trim() })
+    } catch (err) {
+      toast.error("AI gagal", { description: apiErrorMessage(err) })
+    }
+  }
+  return (
+    <div className="rounded-md border bg-surface p-4">
+      <div className="flex items-center gap-2 text-sm font-semibold mb-2">
+        <Search className="h-4 w-4 text-brand-600" />
+        Tanya Laporan (AI)
+      </div>
+      <form onSubmit={handleSubmit} className="flex gap-2">
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Mis. Top vendor bulan ini, atau Saldo Q1 2026"
+          disabled={ask.isPending}
+        />
+        <Button type="submit" size="sm" disabled={ask.isPending || q.trim().length < 3}>
+          {ask.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        </Button>
+      </form>
+      {ask.data && (
+        <div className="mt-3 space-y-2">
+          {ask.data.template === "none" ? (
+            <div className="rounded border bg-warning-50 px-3 py-2 text-[12px] text-warning-900">
+              <div>{ask.data.reason}</div>
+              {ask.data.follow_up && (
+                <div className="mt-1 italic">💡 {ask.data.follow_up}</div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="text-[11px] text-ink-500">{ask.data.reason}</div>
+              {ask.data.data && (
+                <div className="overflow-x-auto rounded border">
+                  <table className="w-full text-[12px]">
+                    <thead className="bg-ink-50">
+                      <tr>
+                        {ask.data.data.columns.map((c) => (
+                          <th key={c} className="px-2 py-1.5 text-left font-medium">{c}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ask.data.data.data.slice(0, 10).map((row, i) => (
+                        <tr key={i} className="border-t">
+                          {row.map((cell, j) => (
+                            <td key={j} className="px-2 py-1.5">
+                              {typeof cell === "number" ? fmtIDR(cell) : String(cell)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DailySummaryCard() {
+  const summary = useDailySummary()
+  const handleClick = async () => {
+    try {
+      await summary.mutateAsync({})
+    } catch (err) {
+      toast.error("AI gagal", { description: apiErrorMessage(err) })
+    }
+  }
+  return (
+    <div className="rounded-md border bg-surface p-4">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Sparkles className="h-4 w-4 text-brand-600" />
+          Ringkasan Hari Ini (AI)
+        </div>
+        <Button
+          type="button"
+          variant={summary.data ? "outline" : "primary"}
+          size="sm"
+          onClick={handleClick}
+          disabled={summary.isPending}
+        >
+          {summary.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {summary.data ? "Refresh" : "Ringkas"}
+        </Button>
+      </div>
+      {summary.data && (
+        <div className="text-sm text-ink-800 whitespace-pre-wrap">
+          {summary.data.text}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AnomalyCard() {
+  const scan = useScanAnomalies()
+  const handleClick = async () => {
+    // Default: 30 hari terakhir
+    const today = new Date()
+    const monthAgo = new Date(today.getTime() - 30 * 86400_000)
+    const fmt = (d: Date) => d.toISOString().slice(0, 10)
+    try {
+      await scan.mutateAsync({
+        date_from: fmt(monthAgo),
+        date_to: fmt(today),
+      })
+    } catch (err) {
+      toast.error("AI gagal", { description: apiErrorMessage(err) })
+    }
+  }
+  return (
+    <div className="rounded-md border bg-surface p-4 md:col-span-2">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Shield className="h-4 w-4 text-warning-600" />
+          Deteksi Anomali 30 Hari Terakhir (AI)
+        </div>
+        <Button
+          type="button"
+          variant={scan.data ? "outline" : "primary"}
+          size="sm"
+          onClick={handleClick}
+          disabled={scan.isPending}
+        >
+          {scan.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
+          {scan.data ? "Scan Ulang" : "Scan"}
+        </Button>
+      </div>
+      {scan.data && (
+        <div className="space-y-2">
+          <div className="text-[12px] text-ink-600">{scan.data.summary}</div>
+          {scan.data.flagged.length === 0 ? (
+            <div className="rounded border bg-success-50 px-3 py-2 text-sm text-success-900">
+              Tdk ada anomali terdeteksi.
+            </div>
+          ) : (
+            <ul className="divide-y rounded border">
+              {scan.data.flagged.map((f) => (
+                <AnomalyRow key={f.tx_id} flag={f} />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AnomalyRow({ flag }: { flag: AnomalyFlag }) {
+  const sevColor =
+    flag.severity === "high"
+      ? "bg-danger-100 text-danger-800"
+      : flag.severity === "medium"
+      ? "bg-warning-100 text-warning-800"
+      : "bg-ink-100 text-ink-700"
+  return (
+    <li className="flex items-start gap-3 p-2.5">
+      <span className={cn("rounded px-2 py-0.5 text-[10px] font-semibold uppercase shrink-0", sevColor)}>
+        {flag.severity}
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className="text-[12px] font-medium text-ink-800">
+          {flag.anomaly_type} ·{" "}
+          <Link
+            to={`/transactions/${flag.tx_id}`}
+            className="text-brand-600 hover:underline"
+          >
+            TX #{flag.tx_id}
+          </Link>
+        </div>
+        <div className="text-[12px] text-ink-600">{flag.reason}</div>
+      </div>
+    </li>
   )
 }

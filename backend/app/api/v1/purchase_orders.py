@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -45,19 +46,61 @@ def _compute_totals(items: list[POItem], tax: Decimal, discount: Decimal) -> tup
 
 
 async def _next_po_number(db: AsyncSession, company_id: int, project_code: str, when: date_type) -> str:
+    """Generate nomor PO berikutnya untuk (company, project, year/month).
+
+    Audit 2026-05-23 BUG FIX:
+    - Sebelumnya pakai COUNT(*) WHERE company_id=X -- BUG: UNIQUE constraint
+      pada PurchaseOrder.number bersifat GLOBAL (lintas company). Kalau 2
+      company punya project_code sama (mis. 'GEO1'), keduanya generate
+      'PO/.../GEO1/0001' -> UniqueViolationError.
+    - Sekarang scan SEMUA PO dgn prefix sama (lintas company) + parse
+      sequence number, return max + 1.
+    - company_id param tetap di-keep utk future kalau UNIQUE diubah ke
+      composite (company_id, number) -- saat ini tdk dipakai filter.
+
+    Tdk fully race-safe -- gunakan retry di caller (create_po) utk handle
+    concurrent submission. Untuk hard race-safe, butuh advisory lock atau
+    SEQUENCE per (company, project, month). Saat ini single-instance
+    Railway dgn concurrency rendah, MAX+1 + retry sudah cukup.
+    """
     prefix = f"PO/{when.year}/{when.month:02d}/{project_code.upper()}/"
-    res = await db.execute(
-        select(func.count()).select_from(PurchaseOrder).where(
-            PurchaseOrder.company_id == company_id,
+    rows = (await db.execute(
+        select(PurchaseOrder.number).where(
             PurchaseOrder.number.like(f"{prefix}%"),
         )
-    )
-    count = res.scalar_one() or 0
-    return f"{prefix}{count + 1:04d}"
+    )).scalars().all()
+    max_seq = 0
+    for n in rows:
+        suffix = n[len(prefix):]
+        # Parse leading digit segment (toleran kalau ada slash/suffix)
+        digit_str = ""
+        for ch in suffix:
+            if ch.isdigit():
+                digit_str += ch
+            else:
+                break
+        if digit_str:
+            try:
+                max_seq = max(max_seq, int(digit_str))
+            except ValueError:
+                continue
+    return f"{prefix}{max_seq + 1:04d}"
 
 
-def _to_out(po: PurchaseOrder) -> POOut:
-    return POOut.model_validate(po)
+def _to_out(po: PurchaseOrder, vendor_client_name: str | None = None) -> POOut:
+    out = POOut.model_validate(po)
+    out.vendor_client_name = vendor_client_name
+    return out
+
+
+async def _to_out_async(db: AsyncSession, po: PurchaseOrder) -> POOut:
+    """Single-PO helper: lookup vendor_client.name dr master kalau ada."""
+    name: str | None = None
+    if po.vendor_client_id:
+        vc = await db.get(VendorClient, po.vendor_client_id)
+        if vc:
+            name = vc.name
+    return _to_out(po, name)
 
 
 @router.get("", response_model=Page[POOut])
@@ -102,60 +145,99 @@ async def list_pos(
         .limit(size)
     )
     items = (await db.execute(stmt)).scalars().all()
-    return Page(items=[_to_out(p) for p in items], total=total, page=page, size=size)
+    # Bulk-load vendor_client.name utk yg link ke master. Audit #2.
+    vc_ids = {p.vendor_client_id for p in items if p.vendor_client_id}
+    vc_map: dict[int, str] = {}
+    if vc_ids:
+        vc_map = {
+            vid: name for vid, name in (await db.execute(
+                select(VendorClient.id, VendorClient.name)
+                .where(VendorClient.id.in_(vc_ids))
+            )).all()
+        }
+    return Page(
+        items=[_to_out(p, vc_map.get(p.vendor_client_id)) for p in items],
+        total=total, page=page, size=size,
+    )
 
 
 @router.post("", response_model=POOut, status_code=201)
 async def create_po(
     payload: POCreate,
+    force: bool = Query(False, description="SUPERADMIN-only: bypass project_closed guard"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_can_write),
 ) -> POOut:
     await ensure_project_access(db, user, payload.project_id)
-    project = await db.get(Project, payload.project_id)
-    if not project:
-        raise HTTPException(404, "project_not_found")
+    # Audit 2026-05-24 Phase 1: project-status guard. Helper return
+    # project juga -- skip db.get duplikat.
+    from app.services.project_guard import assert_project_open
+    project, forced = await assert_project_open(
+        db, payload.project_id, user=user, force=force,
+    )
     company = await db.get(Company, payload.company_id)
     if not company:
         raise HTTPException(404, "company_not_found")
 
-    number = await _next_po_number(db, company.id, project.code, payload.po_date)
-    po = PurchaseOrder(
-        number=number,
-        project_id=payload.project_id,
-        company_id=payload.company_id,
-        vendor_client_id=payload.vendor_client_id,
-        vendor_name=payload.vendor_name,
-        po_date=payload.po_date,
-        needed_date=payload.needed_date,
-        tax=payload.tax,
-        discount=payload.discount,
-        payment_terms=payload.payment_terms,
-        notes=payload.notes,
-        status=POStatus.DRAFT,
-        created_by_id=user.id,
-    )
-    for it in payload.items:
-        po.items.append(POItem(
-            description=it.description,
-            quantity=it.quantity,
-            unit=it.unit,
-            unit_price=it.unit_price,
-            subtotal=Decimal(it.unit_price) * Decimal(it.quantity),
-        ))
-    subtotal, total = _compute_totals(po.items, po.tax, po.discount)
-    po.subtotal = subtotal
-    po.total = total
+    # Audit 2026-05-23: retry on UniqueViolation. Race protection +
+    # safety net kalau cross-company collision sliced lewat.
+    MAX_ATTEMPTS = 5
+    po: PurchaseOrder | None = None
+    last_err: Exception | None = None
+    for attempt in range(MAX_ATTEMPTS):
+        number = await _next_po_number(db, company.id, project.code, payload.po_date)
+        po = PurchaseOrder(
+            number=number,
+            project_id=payload.project_id,
+            company_id=payload.company_id,
+            vendor_client_id=payload.vendor_client_id,
+            vendor_name=payload.vendor_name,
+            po_date=payload.po_date,
+            needed_date=payload.needed_date,
+            tax=payload.tax,
+            discount=payload.discount,
+            payment_terms=payload.payment_terms,
+            notes=payload.notes,
+            status=POStatus.DRAFT,
+            created_by_id=user.id,
+        )
+        for it in payload.items:
+            po.items.append(POItem(
+                description=it.description,
+                quantity=it.quantity,
+                unit=it.unit,
+                unit_price=it.unit_price,
+                subtotal=Decimal(it.unit_price) * Decimal(it.quantity),
+            ))
+        subtotal, total = _compute_totals(po.items, po.tax, po.discount)
+        po.subtotal = subtotal
+        po.total = total
 
-    db.add(po)
-    await db.flush()
+        db.add(po)
+        try:
+            await db.flush()
+            break  # success
+        except IntegrityError as e:
+            last_err = e
+            await db.rollback()
+            # Re-fetch project+company krn rollback clear session state.
+            project = await db.get(Project, payload.project_id)
+            company = await db.get(Company, payload.company_id)
+            if attempt == MAX_ATTEMPTS - 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"po_number_collision: gagal generate nomor unik setelah {MAX_ATTEMPTS} percobaan",
+                ) from e
+            # else: loop continues, _next_po_number re-scan & try again
+    assert po is not None  # appease type checker
     await log(db, user_id=user.id, entity="purchase_order", entity_id=po.id,
-              action=AuditAction.CREATE, after=snapshot(po))
+              action=AuditAction.CREATE, after=snapshot(po),
+              note="FORCE bypass closed project" if forced else None)
     await db.commit()
     res = await db.execute(
         select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == po.id)
     )
-    return _to_out(res.scalar_one())
+    return await _to_out_async(db, res.scalar_one())
 
 
 @router.get("/{pid}", response_model=POOut)
@@ -171,7 +253,7 @@ async def get_po(
     if not po or po.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, po.project_id)
-    return _to_out(po)
+    return await _to_out_async(db, po)
 
 
 @router.get("/{pid}/linked-transactions")
@@ -259,6 +341,23 @@ async def update_po(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_can_write),
 ) -> POOut:
+    """Update PO. Aturan edit:
+
+    - DRAFT: semua field bebas (siapa pun yg can_write).
+    - Non-DRAFT (ISSUED/APPROVED/...): hanya SUPERADMIN (god-mode).
+      CENTRAL_ADMIN block -- pakai workflow CANCEL kalau perlu koreksi.
+
+    Audit 2026-05-23 user lapor:
+    - project_id sekarang BISA diubah saat draft (sebelumnya silent-
+      ignored krn tdk ada di POUpdate schema).
+    - SUPERADMIN bypass lock status utk semua field termasuk
+      project_id, company_id, status -- jaminan konsistensi terkait
+      adalah tanggung jawab SUPERADMIN.
+
+    Side-effects saat project_id berubah:
+    - Number PO di-regenerate match prefix proyek baru
+      (PO/YYYY/MM/<NEW_CODE>/NNNN). Audit log catat old + new number.
+    """
     res = await db.execute(
         select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == pid)
     )
@@ -266,13 +365,84 @@ async def update_po(
     if not po or po.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, po.project_id)
-    if po.status not in (POStatus.DRAFT,) and user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
-        raise HTTPException(409, "approved_locked")
+
+    is_god = user.role == UserRole.SUPERADMIN
+    if po.status != POStatus.DRAFT and not is_god:
+        # Non-DRAFT locked utk semua kecuali SUPERADMIN.
+        # CENTRAL_ADMIN dulu di-allow oleh logic lama -- sekarang
+        # tightened (god-mode only). Kalau ini perlu di-relaxasi,
+        # pisahkan field non-financial (notes, payment_terms) vs
+        # financial (project_id, items, total).
+        raise HTTPException(409, "approved_locked: gunakan SUPERADMIN utk edit non-draft")
+
     before = snapshot(po)
     data = payload.model_dump(exclude_unset=True)
     items = data.pop("items", None)
+
+    # Validate project change kalau ada.
+    new_project_id = data.pop("project_id", None)
+    new_project: Project | None = None
+    if new_project_id is not None and new_project_id != po.project_id:
+        await ensure_project_access(db, user, new_project_id)
+        new_project = (await db.execute(
+            select(Project).where(
+                Project.id == new_project_id,
+                Project.deleted_at.is_(None),
+            )
+        )).scalar_one_or_none()
+        if new_project is None:
+            raise HTTPException(400, "target_project_not_found")
+
+    # Validate company change kalau ada.
+    new_company_id = data.pop("company_id", None)
+    if new_company_id is not None and new_company_id != po.company_id:
+        target_co = await db.get(Company, new_company_id)
+        if target_co is None or target_co.deleted_at is not None:
+            raise HTTPException(400, "target_company_not_found")
+
+    # Validate status change (gated SUPERADMIN -- dilakukan via workflow
+    # endpoints biasanya, tapi god-mode allow direct).
+    new_status = data.pop("status", None)
+    if new_status is not None and new_status != po.status and not is_god:
+        raise HTTPException(403, "status_change_requires_superadmin")
+
+    # Apply field changes (non-FK fields)
     for k, v in data.items():
         setattr(po, k, v)
+
+    # Apply project change + regen number kalau perlu.
+    if new_project is not None:
+        po.project_id = new_project.id
+        # Regen number utk match prefix baru. Pakai retry-loop sama
+        # spt create_po utk safety race.
+        for _attempt in range(5):
+            new_num = await _next_po_number(
+                db, po.company_id, new_project.code, po.po_date,
+            )
+            old_num = po.number
+            po.number = new_num
+            try:
+                await db.flush()
+                break
+            except IntegrityError:
+                await db.rollback()
+                # Re-fetch po (rollback clear session) -- re-load + retry
+                res2 = await db.execute(
+                    select(PurchaseOrder)
+                    .options(selectinload(PurchaseOrder.items))
+                    .where(PurchaseOrder.id == pid)
+                )
+                po = res2.scalar_one()
+                po.project_id = new_project.id
+        else:
+            raise HTTPException(500, "po_number_regen_failed")
+
+    if new_company_id is not None:
+        po.company_id = new_company_id
+
+    if new_status is not None:
+        po.status = new_status
+
     if items is not None:
         po.items.clear()
         await db.flush()
@@ -293,7 +463,183 @@ async def update_po(
     res = await db.execute(
         select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == po.id)
     )
-    return _to_out(res.scalar_one())
+    return await _to_out_async(db, res.scalar_one())
+
+
+@router.post("/bulk/issue")
+async def bulk_issue_pos(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_can_write),
+) -> dict:
+    """Bulk issue PO (DRAFT -> ISSUED). Audit 2026-05-23.
+
+    Payload: {ids: list[int]}.
+    Return: {total_requested, success_count, success, skipped}.
+    """
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids_required")
+    if len(ids) > 500:
+        raise HTTPException(400, "max_500_per_batch")
+    res = await db.execute(
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id.in_(ids))
+    )
+    pos = {p.id: p for p in res.scalars().all()}
+    success_ids: list[int] = []
+    skipped: list[dict] = []
+    for pid in ids:
+        p = pos.get(pid)
+        if p is None or p.deleted_at is not None:
+            skipped.append({"id": pid, "reason": "not_found"})
+            continue
+        # Access check per-item (project bisa beda).
+        try:
+            await ensure_project_access(db, user, p.project_id)
+        except HTTPException as e:
+            skipped.append({"id": pid, "reason": f"access_denied_{e.status_code}"})
+            continue
+        if p.status != POStatus.DRAFT:
+            skipped.append({"id": pid, "reason": f"invalid_state_{p.status.value}"})
+            continue
+        p.status = POStatus.ISSUED
+        await log(
+            db, user_id=user.id, entity="purchase_order", entity_id=p.id,
+            action=AuditAction.UPDATE, note="bulk issued",
+        )
+        success_ids.append(pid)
+    await db.commit()
+    return {
+        "total_requested": len(ids),
+        "success_count": len(success_ids),
+        "success": success_ids,
+        "skipped": skipped,
+    }
+
+
+@router.post("/bulk/approve")
+async def bulk_approve_pos(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Bulk approve PO (DRAFT/ISSUED -> APPROVED). Admin only.
+    Audit 2026-05-23.
+    """
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids_required")
+    if len(ids) > 500:
+        raise HTTPException(400, "max_500_per_batch")
+    res = await db.execute(
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id.in_(ids))
+    )
+    pos = {p.id: p for p in res.scalars().all()}
+    success_ids: list[int] = []
+    skipped: list[dict] = []
+    now = datetime.now(timezone.utc)
+    for pid in ids:
+        p = pos.get(pid)
+        if p is None or p.deleted_at is not None:
+            skipped.append({"id": pid, "reason": "not_found"})
+            continue
+        if p.status not in (POStatus.DRAFT, POStatus.ISSUED):
+            skipped.append({"id": pid, "reason": f"invalid_state_{p.status.value}"})
+            continue
+        p.status = POStatus.APPROVED
+        p.approved_by_id = admin.id
+        p.approved_at = now
+        await log(
+            db, user_id=admin.id, entity="purchase_order", entity_id=p.id,
+            action=AuditAction.APPROVE, note="bulk approve",
+        )
+        success_ids.append(pid)
+    await db.commit()
+    return {
+        "total_requested": len(ids),
+        "success_count": len(success_ids),
+        "success": success_ids,
+        "skipped": skipped,
+    }
+
+
+@router.post("/bulk/delete")
+async def bulk_delete_pos(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Bulk soft-delete PO. Audit 2026-05-24 user req mass action.
+
+    Payload: {ids: list[int]}.
+    Return: {total_requested, success_count, success, skipped}.
+
+    Per-item:
+    - CENTRAL_ADMIN: hanya DRAFT/CANCELLED (mirror single delete).
+    - SUPERADMIN (god-mode 2026-05-24): bypass status, unlink
+      transactions yg menunjuk PO ini (purchase_order_id = NULL)
+      sebelum soft-delete. Konsisten dgn single /hard endpoint.
+    """
+    from app.models.models import Transaction as TxnModel
+
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids_required")
+    if len(ids) > 500:
+        raise HTTPException(400, "max_500_per_batch")
+
+    god = admin.role == UserRole.SUPERADMIN
+
+    res = await db.execute(
+        select(PurchaseOrder).where(PurchaseOrder.id.in_(ids))
+    )
+    pos = {p.id: p for p in res.scalars().all()}
+
+    success_ids: list[int] = []
+    skipped: list[dict] = []
+    now = datetime.utcnow()
+
+    for pid in ids:
+        p = pos.get(pid)
+        if p is None or p.deleted_at is not None:
+            skipped.append({"id": pid, "reason": "not_found"})
+            continue
+        if not god and p.status not in (POStatus.DRAFT, POStatus.CANCELLED):
+            skipped.append({"id": pid, "reason": f"invalid_state_{p.status.value}_must_cancel_first"})
+            continue
+
+        # God-mode: unlink TX yg punya purchase_order_id = pid.
+        unlinked = 0
+        if god:
+            res_t = await db.execute(
+                select(TxnModel).where(TxnModel.purchase_order_id == p.id)
+            )
+            for t in res_t.scalars().all():
+                t.purchase_order_id = None
+                unlinked += 1
+
+        p.deleted_at = now
+        await log(
+            db, user_id=admin.id, entity="purchase_order", entity_id=p.id,
+            action=AuditAction.DELETE,
+            note=(
+                f"bulk delete (god-mode, {unlinked} tx unlinked)"
+                if god else "bulk delete"
+            ),
+        )
+        success_ids.append(pid)
+
+    await db.commit()
+    return {
+        "total_requested": len(ids),
+        "success_count": len(success_ids),
+        "success": success_ids,
+        "skipped": skipped,
+    }
 
 
 @router.post("/{pid}/issue", response_model=POOut)
@@ -315,7 +661,7 @@ async def issue_po(
     res = await db.execute(
         select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == po.id)
     )
-    return _to_out(res.scalar_one())
+    return await _to_out_async(db, res.scalar_one())
 
 
 @router.post("/{pid}/approve", response_model=POOut)
@@ -338,7 +684,7 @@ async def approve_po(
     res = await db.execute(
         select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == po.id)
     )
-    return _to_out(res.scalar_one())
+    return await _to_out_async(db, res.scalar_one())
 
 
 @router.post("/{pid}/cancel", response_model=POOut)
@@ -359,7 +705,7 @@ async def cancel_po(
     res = await db.execute(
         select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == po.id)
     )
-    return _to_out(res.scalar_one())
+    return await _to_out_async(db, res.scalar_one())
 
 
 @router.delete("/{pid}", status_code=204)

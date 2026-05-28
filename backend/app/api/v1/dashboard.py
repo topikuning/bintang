@@ -17,18 +17,26 @@ from app.models.models import (
     Company,
     Invoice,
     InvoiceAllocation,
+    InvoiceItem,
     InvoiceStatus,
     InvoiceType,
     Project,
     ProjectKind,
     ProjectStatus,
     Transaction,
+    TxnKind,
     TxnStatus,
     TxnType,
     User,
     UserRole,
 )
-from app.services.budget import budget_status, health_status, project_totals
+from app.services.budget import (
+    budget_status,
+    health_status,
+    project_expense_breakdown,
+    project_marketing_actual,
+    project_totals,
+)
 from app.services.non_project import transaction_eligibility_clause
 
 router = APIRouter()
@@ -55,17 +63,33 @@ def _project_finance_breakdown(
     marketing_pct: Decimal,
     biaya_aktual: Decimal,
     biaya_proyeksi: Decimal,
+    marketing_aktual: Decimal = Decimal("0"),
+    profit_share_actual: Decimal = Decimal("0"),
 ) -> dict:
-    """Hitung DPP, PPn, PPh, Nilai Cair, Marketing, dan profit (saat ini & proyeksi).
+    """Hitung DPP, PPn, PPh, Nilai Cair, Marketing, dan profit.
 
-    Rumus mengikuti konvensi Indonesia:
+    Rumus (Indonesia):
         DPP = Nilai Kontrak / (1 + PPn%)
         PPn = DPP * PPn%
         PPh = DPP * PPh%
         Nilai Cair = Nilai Kontrak - (PPn + PPh)
-        Marketing = Nilai Cair * Marketing%
-        Profit Saat Ini   = Nilai Cair - (Marketing + Biaya Aktual)
-        Profit Proyeksi   = Nilai Cair - (Marketing + Biaya Proyeksi)
+        Marketing Budget = Nilai Cair * Marketing%
+
+    Audit 2026-05-23 fix:
+        * Marketing aktual sudah include di Biaya Aktual (no double count).
+        * Bagi hasil (profit_share) = DISTRIBUSI profit, BUKAN expense.
+          Profit operating display = SEBELUM dikurangi bagi hasil
+          (user req: 'TX bagi hasil cuma sync, tdk kurangi profit').
+
+    Profit:
+        biaya_excl_share = biaya_aktual - profit_share_actual
+            (expense yg kurangi profit operasi: marketing + denda + operating).
+        profit_now (OPERATING)   = Nilai Cair - biaya_excl_share
+            -- profit sebelum distribusi ke mitra.
+        profit_net (AFTER SHARE) = Nilai Cair - biaya_aktual
+            -- laba akhir setelah bagi hasil dibayar.
+        profit_proj (TARGET)     = Nilai Cair - max(marketing_budget,
+                                    marketing_actual) - biaya_proyeksi.
     """
     one = Decimal("1")
     hundred = Decimal("100")
@@ -76,9 +100,18 @@ def _project_finance_breakdown(
     ppn = dpp * ppn_rate
     pph = dpp * pph_rate
     cair = nilai_kontrak - (ppn + pph)
-    marketing = cair * mkt_rate
-    profit_now = cair - (marketing + biaya_aktual)
-    profit_proj = cair - (marketing + biaya_proyeksi)
+    marketing_budget = cair * mkt_rate
+    marketing_used = max(marketing_aktual, Decimal("0"))
+    profit_share_used = max(profit_share_actual, Decimal("0"))
+    biaya_aktual_non_marketing = max(biaya_aktual - marketing_used, Decimal("0"))
+    # Bagi hasil JANGAN kurangi profit operating (audit user req).
+    biaya_excl_share = max(biaya_aktual - profit_share_used, Decimal("0"))
+
+    profit_now = cair - biaya_excl_share          # operating, sebelum bagi hasil
+    profit_net = cair - biaya_aktual              # net, setelah bagi hasil
+    marketing_reserve = max(marketing_budget, marketing_used)
+    profit_proj = cair - marketing_reserve - biaya_proyeksi
+
     return {
         "nilai_kontrak": float(nilai_kontrak),
         "ppn_pct": float(ppn_pct),
@@ -88,10 +121,18 @@ def _project_finance_breakdown(
         "ppn": float(ppn),
         "pph": float(pph),
         "nilai_cair": float(cair),
-        "marketing": float(marketing),
+        # Backward-compat alias.
+        "marketing": float(marketing_budget),
+        "marketing_budget": float(marketing_budget),
+        "marketing_aktual": float(marketing_used),
+        "marketing_variance": float(marketing_used - marketing_budget),
         "biaya_aktual": float(biaya_aktual),
+        "biaya_aktual_non_marketing": float(biaya_aktual_non_marketing),
         "biaya_proyeksi": float(biaya_proyeksi),
-        "profit_now": float(profit_now),
+        # Profit fields:
+        "profit_now": float(profit_now),                # operating
+        "profit_net": float(profit_net),                # after profit_share
+        "profit_share_paid": float(profit_share_used),  # info distribusi
         "profit_proj": float(profit_proj),
     }
 
@@ -114,6 +155,12 @@ async def global_dashboard(
     location: list[str] | None = Query(None),
     client_name: list[str] | None = Query(None),
     funder_id: list[int] | None = Query(None),
+    project_id: list[int] | None = Query(None),
+    # Audit 2026-05-24: toggle utk include proyek SELESAI/DIBATALKAN di
+    # warning counters. Default False -- operational view exclude closed
+    # ("tagihan dianggap clear saat proyek selesai"). Set True utk
+    # retrospective audit.
+    include_closed: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
@@ -121,10 +168,21 @@ async def global_dashboard(
     # Hub proyek operasional -- exclude bucket NON_PROJECT (punya halaman
     # sendiri di /catatan-non-proyek). Kontribusi NP ke totals/cashflow
     # ditambahkan terpisah di bawah, hormati year toggle.
+    # Audit 2026-05-24: DIBATALKAN otomatis exclude dari dashboard
+    # (semantik user: "kalau dibatalkan ya sudah selesai, jangan dibahas").
+    # Audit 2026-05-27: tab "Aktif" (include_closed=false) -> SELESAI
+    # exclude dari SEMUA scope (totals, count, list, chart, warning),
+    # bukan cuma warning. Tab "Semua" (include_closed=true) -> SELESAI
+    # ikut. Sebelumnya: totals/list selalu include SELESAI, cuma warning
+    # yg toggle -- menyesatkan: user pilih "Aktif" tapi angka beda dgn
+    # filter.
     proj_q = select(Project).where(
         Project.deleted_at.is_(None),
         Project.kind != ProjectKind.NON_PROJECT.value,
+        Project.status != ProjectStatus.DIBATALKAN,
     )
+    if not include_closed:
+        proj_q = proj_q.where(Project.status != ProjectStatus.SELESAI)
 
     # Shape default utk early-return (user tanpa proyek / setelah filter
     # tdk ada proyek). Wajib include SEMUA field yg dipakai FE supaya tdk
@@ -157,6 +215,8 @@ async def global_dashboard(
     if q:
         like = f"%{q}%"
         proj_q = proj_q.where((Project.name.ilike(like)) | (Project.code.ilike(like)))
+    if project_id:
+        proj_q = proj_q.where(Project.id.in_(project_id))
     if company_id:
         proj_q = proj_q.where(Project.company_id == company_id)
     if location:
@@ -181,6 +241,14 @@ async def global_dashboard(
 
     if not project_ids:
         return _empty_global()
+
+    # Audit 2026-05-27: SELESAI sudah di-filter di proj_q level kalau
+    # include_closed=false. Jadi project_ids = scope final (konsisten utk
+    # semua section). operational_* alias retained utk backward-compat
+    # variable name di section di bawah.
+    _CLOSED = (ProjectStatus.SELESAI,)
+    operational_project_ids = list(project_ids)
+    operational_set = set(operational_project_ids)
 
     # NON_PROJECT pids accessible ke user. Cuma muncul di agregat
     # (totals, monthly_cashflow) -- dgn year toggle dr NonProjectYearSetting.
@@ -229,43 +297,54 @@ async def global_dashboard(
     rows = (await db.execute(monthly_q)).all()
     monthly = [{"month": r.ym, "in": float(r.in_), "out": float(r.out_)} for r in rows[-12:]]
 
-    overdue_count_q = select(func.count()).select_from(Invoice).where(
-        Invoice.project_id.in_(project_ids),
-        Invoice.status == InvoiceStatus.OVERDUE,
-        Invoice.deleted_at.is_(None),
-    )
-    overdue_count = (await db.execute(overdue_count_q)).scalar_one()
-
-    # Pending verifikasi (DRAFT + SUBMITTED)
-    pending_q = select(
-        func.count(),
-        func.coalesce(func.sum(Transaction.amount), 0),
-    ).where(
-        Transaction.project_id.in_(project_ids),
-        Transaction.status.in_([TxnStatus.DRAFT, TxnStatus.SUBMITTED]),
-        Transaction.deleted_at.is_(None),
-    )
-    pending_count, pending_total = (await db.execute(pending_q)).one()
-
-    # Transaksi OUT yang masih punya remaining_amount > 0 (belum sepenuhnya
-    # dialokasikan ke invoice manapun lewat tabel invoice_allocations).
-    alloc_sub = _txn_alloc_subq()
-    remaining_expr = Transaction.amount - func.coalesce(alloc_sub.c.alloc_sum, 0)
-    unlinked_out_q = (
-        select(
-            func.count(),
-            func.coalesce(func.sum(remaining_expr), 0),
+    # Warning counters pakai operational subset (exclude SELESAI/DIBATALKAN
+    # by default). Audit 2026-05-24 -- semantik clear-on-close.
+    if not operational_project_ids:
+        overdue_count = 0
+        pending_count, pending_total = 0, Decimal("0")
+        unlinked_out_count, unlinked_out_total = 0, Decimal("0")
+    else:
+        overdue_count_q = select(func.count()).select_from(Invoice).where(
+            Invoice.project_id.in_(operational_project_ids),
+            Invoice.status == InvoiceStatus.OVERDUE,
+            Invoice.deleted_at.is_(None),
         )
-        .select_from(Transaction)
-        .outerjoin(alloc_sub, alloc_sub.c.txn_id == Transaction.id)
-    ).where(
-        Transaction.project_id.in_(project_ids),
-        Transaction.type == TxnType.OUT,
-        Transaction.status.in_([TxnStatus.DRAFT, TxnStatus.SUBMITTED, TxnStatus.VERIFIED]),
-        remaining_expr > 0,
-        Transaction.deleted_at.is_(None),
-    )
-    unlinked_out_count, unlinked_out_total = (await db.execute(unlinked_out_q)).one()
+        overdue_count = (await db.execute(overdue_count_q)).scalar_one()
+
+        # Pending verifikasi (DRAFT + SUBMITTED)
+        pending_q = select(
+            func.count(),
+            func.coalesce(func.sum(Transaction.amount), 0),
+        ).where(
+            Transaction.project_id.in_(operational_project_ids),
+            Transaction.status.in_([TxnStatus.DRAFT, TxnStatus.SUBMITTED]),
+            Transaction.deleted_at.is_(None),
+        )
+        pending_count, pending_total = (await db.execute(pending_q)).one()
+
+        # Transaksi OUT yang masih punya remaining_amount > 0 (belum sepenuhnya
+        # dialokasikan ke invoice manapun lewat tabel invoice_allocations).
+        # Audit 2026-05-27: exclude kind=DIRECT_EXPENSE -- TX itu memang tdk
+        # boleh dialokasikan (beban sudah tercatat via items), jadi tdk masuk
+        # counter "belum dialokasi".
+        alloc_sub = _txn_alloc_subq()
+        remaining_expr = Transaction.amount - func.coalesce(alloc_sub.c.alloc_sum, 0)
+        unlinked_out_q = (
+            select(
+                func.count(),
+                func.coalesce(func.sum(remaining_expr), 0),
+            )
+            .select_from(Transaction)
+            .outerjoin(alloc_sub, alloc_sub.c.txn_id == Transaction.id)
+        ).where(
+            Transaction.project_id.in_(operational_project_ids),
+            Transaction.type == TxnType.OUT,
+            Transaction.status.in_([TxnStatus.DRAFT, TxnStatus.SUBMITTED, TxnStatus.VERIFIED]),
+            Transaction.kind != TxnKind.DIRECT_EXPENSE.value,
+            remaining_expr > 0,
+            Transaction.deleted_at.is_(None),
+        )
+        unlinked_out_count, unlinked_out_total = (await db.execute(unlinked_out_q)).one()
 
     proj_summary: list[dict] = []
     minus_count = 0
@@ -274,7 +353,14 @@ async def global_dashboard(
 
     for p in projects:
         totals = await project_totals(db, p.id)
-        bs = budget_status(p, totals["total_out"])
+        # Audit 2026-05-23: budget pengeluaran exclude marketing +
+        # bagi hasil (keduanya bukan biaya operasi).
+        exp_brk = await project_expense_breakdown(db, p.id)
+        bs = budget_status(
+            p, totals["total_out"],
+            marketing_actual=exp_brk["marketing"],
+            profit_share_actual=exp_brk["profit_share"],
+        )
         # any overdue invoice for this project?
         ovq = select(func.count()).select_from(Invoice).where(
             Invoice.project_id == p.id,
@@ -283,7 +369,10 @@ async def global_dashboard(
         )
         has_overdue = ((await db.execute(ovq)).scalar_one() or 0) > 0
         hs = health_status(totals["balance"], has_overdue)
-        if hs == "minus":
+        # Audit 2026-05-24: minus warning hanya utk operational project.
+        # Proyek SELESAI/DIBATALKAN dgn saldo minus = rugi terealisasi,
+        # bukan action-item.
+        if hs == "minus" and p.id in operational_set:
             minus_count += 1
         engaged = totals["total_in"] + totals["total_out"]
         if engaged > biggest["total"]:
@@ -304,6 +393,8 @@ async def global_dashboard(
             "budget": {
                 "amount": float(bs["budget_amount"]),
                 "spent": float(bs["spent"]),
+                "spent_total": float(bs.get("spent_total", bs["spent"])),
+                "marketing_actual": float(bs.get("marketing_actual", 0)),
                 "remaining": float(bs["remaining"]),
                 "usage_pct": float(bs["usage_pct"]),
                 "status": bs["status"],
@@ -313,8 +404,15 @@ async def global_dashboard(
 
     proj_summary.sort(key=lambda x: x["balance"])
 
-    # spending by category (OUT, verified)
-    cat_q = (
+    # spending by category. Audit 2026-05-24: gabung 2 sumber supaya
+    # chart akurat -- TX-level (legacy) + InvoiceItem-level (granular
+    # baru, jadi primary kalau invoice diisi lengkap).
+    #
+    # Dedup: TX yg ter-link ke invoice (lewat tx.invoice_id legacy ATAU
+    # invoice_allocations) -> SKIP TX-level supaya tdk double-count
+    # dgn invoice items. TX standalone (DIRECT_EXPENSE no invoice,
+    # CASH_ADVANCE, dst) tetap pakai TX-level.
+    cat_q_tx = (
         select(Category.name, func.coalesce(func.sum(Transaction.amount), 0))
         .join(Category, Category.id == Transaction.category_id, isouter=True)
         .where(
@@ -322,21 +420,51 @@ async def global_dashboard(
             Transaction.type == TxnType.OUT,
             Transaction.status == TxnStatus.VERIFIED,
             Transaction.deleted_at.is_(None),
+            Transaction.invoice_id.is_(None),  # tdk pakai legacy invoice link
+            ~Transaction.id.in_(
+                select(InvoiceAllocation.transaction_id).where(
+                    InvoiceAllocation.deleted_at.is_(None),
+                )
+            ),
         )
         .group_by(Category.name)
-        .order_by(func.sum(Transaction.amount).desc())
     )
-    cat_rows = (await db.execute(cat_q)).all()
-    spending_by_category = [
-        {"category": (r[0] or "Tanpa Kategori"), "total": float(r[1])} for r in cat_rows
-    ]
+    cat_q_inv_items = (
+        select(Category.name, func.coalesce(func.sum(InvoiceItem.subtotal), 0))
+        .join(Invoice, Invoice.id == InvoiceItem.invoice_id)
+        .join(Category, Category.id == InvoiceItem.category_id, isouter=True)
+        .where(
+            Invoice.project_id.in_(project_ids),
+            Invoice.type == InvoiceType.IN,  # vendor invoice = expense
+            Invoice.deleted_at.is_(None),
+            Invoice.status != InvoiceStatus.CANCELLED,
+        )
+        .group_by(Category.name)
+    )
+    cat_rows_tx = (await db.execute(cat_q_tx)).all()
+    cat_rows_inv = (await db.execute(cat_q_inv_items)).all()
+    # Merge by category name di Python
+    cat_totals: dict[str | None, float] = {}
+    for name, total in cat_rows_tx:
+        cat_totals[name] = cat_totals.get(name, 0.0) + float(total)
+    for name, total in cat_rows_inv:
+        cat_totals[name] = cat_totals.get(name, 0.0) + float(total)
+    spending_by_category = sorted(
+        [
+            {"category": (n or "Tanpa Kategori"), "total": v}
+            for n, v in cat_totals.items() if v > 0
+        ],
+        key=lambda x: x["total"], reverse=True,
+    )
 
-    # spending by project (OUT, verified) -- already collected via proj_summary
+    # spending by project (OUT, verified) -- already collected via proj_summary.
+    # Audit 2026-05-24: ranking "paling boros" pakai operational set --
+    # proyek SELESAI sudah final, ranking tdk actionable.
     spending_by_project = sorted(
         [
             {"project_id": p["id"], "name": p["name"], "total": p["total_out"]}
             for p in proj_summary
-            if p["total_out"] > 0
+            if p["total_out"] > 0 and p["id"] in operational_set
         ],
         key=lambda x: x["total"],
         reverse=True,
@@ -348,10 +476,17 @@ async def global_dashboard(
         warnings.append(f"{minus_count} proyek bersaldo minus")
     if overdue_count:
         warnings.append(f"{overdue_count} invoice overdue")
-    over_budget = [p for p in proj_summary if p["budget"]["status"] == "overbudget"]
+    # Audit 2026-05-24: budget warning hanya utk operational project.
+    over_budget = [
+        p for p in proj_summary
+        if p["budget"]["status"] == "overbudget" and p["id"] in operational_set
+    ]
     if over_budget:
         warnings.append(f"{len(over_budget)} proyek overbudget")
-    near_budget = [p for p in proj_summary if p["budget"]["status"] == "mendekati_batas"]
+    near_budget = [
+        p for p in proj_summary
+        if p["budget"]["status"] == "mendekati_batas" and p["id"] in operational_set
+    ]
     if near_budget:
         warnings.append(f"{len(near_budget)} proyek mendekati batas budget")
     if pending_count:
@@ -392,6 +527,25 @@ async def global_dashboard(
         sum_in_total += np_in_eligible
         sum_out_total += np_out_eligible
 
+    # closed_count: query independent dr `include_closed` toggle, supaya
+    # tab "Aktif" tetap tahu "ada N proyek selesai" (utk hint discovery
+    # ke tab "Semua"). Honors filter scope yg sama (pids, company, dst)
+    # selain status.
+    closed_q = select(func.count()).select_from(Project).where(
+        Project.deleted_at.is_(None),
+        Project.kind != ProjectKind.NON_PROJECT.value,
+        Project.status == ProjectStatus.SELESAI,
+    )
+    if pids is not None:
+        closed_q = closed_q.where(Project.id.in_(pids))
+    if company_id:
+        closed_q = closed_q.where(Project.company_id == company_id)
+    if location:
+        closed_q = closed_q.where(func.lower(Project.location).in_([s.lower() for s in location]))
+    if client_name:
+        closed_q = closed_q.where(func.lower(Project.client_name).in_([s.lower() for s in client_name]))
+    closed_count = (await db.execute(closed_q)).scalar_one() or 0
+
     return {
         "totals": {
             "in": float(sum_in_total),
@@ -402,6 +556,11 @@ async def global_dashboard(
         },
         "active_projects": active,
         "total_projects": len(projects),
+        # Audit 2026-05-24: jumlah proyek SELESAI/DIBATALKAN yg di-exclude
+        # dari warning counter. FE pakai utk hint "ada N proyek selesai
+        # tdk ditampilkan" + toggle "Tampilkan proyek selesai".
+        "closed_count": closed_count,
+        "include_closed": include_closed,
         "minus_projects": minus_count,
         "pending_count": int(pending_count),
         "pending_total": float(pending_total),
@@ -439,7 +598,14 @@ async def project_dashboard(
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, pid)
     totals = await project_totals(db, pid)
-    bs = budget_status(p, totals["total_out"])
+    # Audit 2026-05-23: breakdown biaya per peran akuntansi.
+    expense_breakdown = await project_expense_breakdown(db, pid)
+    mkt_actual_for_budget = expense_breakdown["marketing"]
+    bs = budget_status(
+        p, totals["total_out"],
+        marketing_actual=mkt_actual_for_budget,
+        profit_share_actual=expense_breakdown["profit_share"],
+    )
 
     # Pending dan unlinked di proyek ini
     pending_q = select(
@@ -455,6 +621,7 @@ async def project_dashboard(
     # Transaksi OUT dengan remaining_amount > 0 (belum semua nilainya
     # dialokasikan ke invoice). Yang ditampilkan adalah jumlah txn dan
     # nominal sisa yang belum terpetakan, BUKAN total nominal txn.
+    # Audit 2026-05-27: exclude kind=DIRECT_EXPENSE (tdk dialokasi by design).
     alloc_sub = _txn_alloc_subq()
     remaining_expr = Transaction.amount - func.coalesce(alloc_sub.c.alloc_sum, 0)
     unlinked_out_q = (
@@ -468,6 +635,7 @@ async def project_dashboard(
         Transaction.project_id == pid,
         Transaction.type == TxnType.OUT,
         Transaction.status.in_([TxnStatus.DRAFT, TxnStatus.SUBMITTED, TxnStatus.VERIFIED]),
+        Transaction.kind != TxnKind.DIRECT_EXPENSE.value,
         Transaction.deleted_at.is_(None),
         remaining_expr > 0,
     )
@@ -528,8 +696,11 @@ async def project_dashboard(
             ar_aging["total"] += outstanding
             ar_aging["count"] += 1
 
-    # by category (OUT)
-    cat_q = (
+    # by category (OUT). Audit 2026-05-24: gabung TX-level (legacy) +
+    # InvoiceItem-level (primary kalau invoice lengkap). Dedup: TX yg
+    # ter-link invoice di-skip dr TX path. Lihat global dashboard utk
+    # rationale.
+    cat_q_tx = (
         select(Category.name, func.coalesce(func.sum(Transaction.amount), 0))
         .join(Category, Category.id == Transaction.category_id, isouter=True)
         .where(
@@ -537,16 +708,51 @@ async def project_dashboard(
             Transaction.type == TxnType.OUT,
             Transaction.status == TxnStatus.VERIFIED,
             Transaction.deleted_at.is_(None),
+            Transaction.invoice_id.is_(None),
+            ~Transaction.id.in_(
+                select(InvoiceAllocation.transaction_id).where(
+                    InvoiceAllocation.deleted_at.is_(None),
+                )
+            ),
         )
         .group_by(Category.name)
-        .order_by(func.sum(Transaction.amount).desc())
     )
     if date_from:
-        cat_q = cat_q.where(Transaction.tx_date >= date_from)
+        cat_q_tx = cat_q_tx.where(Transaction.tx_date >= date_from)
     if date_to:
-        cat_q = cat_q.where(Transaction.tx_date <= date_to)
-    cat_rows = (await db.execute(cat_q)).all()
-    by_category = [{"category": (r[0] or "Tanpa Kategori"), "total": float(r[1])} for r in cat_rows]
+        cat_q_tx = cat_q_tx.where(Transaction.tx_date <= date_to)
+
+    cat_q_inv_items = (
+        select(Category.name, func.coalesce(func.sum(InvoiceItem.subtotal), 0))
+        .join(Invoice, Invoice.id == InvoiceItem.invoice_id)
+        .join(Category, Category.id == InvoiceItem.category_id, isouter=True)
+        .where(
+            Invoice.project_id == pid,
+            Invoice.type == InvoiceType.IN,
+            Invoice.deleted_at.is_(None),
+            Invoice.status != InvoiceStatus.CANCELLED,
+        )
+        .group_by(Category.name)
+    )
+    if date_from:
+        cat_q_inv_items = cat_q_inv_items.where(Invoice.invoice_date >= date_from)
+    if date_to:
+        cat_q_inv_items = cat_q_inv_items.where(Invoice.invoice_date <= date_to)
+
+    cat_rows_tx = (await db.execute(cat_q_tx)).all()
+    cat_rows_inv = (await db.execute(cat_q_inv_items)).all()
+    cat_totals: dict[str | None, float] = {}
+    for name, total in cat_rows_tx:
+        cat_totals[name] = cat_totals.get(name, 0.0) + float(total)
+    for name, total in cat_rows_inv:
+        cat_totals[name] = cat_totals.get(name, 0.0) + float(total)
+    by_category = sorted(
+        [
+            {"category": (n or "Tanpa Kategori"), "total": v}
+            for n, v in cat_totals.items() if v > 0
+        ],
+        key=lambda x: x["total"], reverse=True,
+    )
 
     # cashflow monthly
     cash_q = (
@@ -651,20 +857,28 @@ async def project_dashboard(
     hs = health_status(totals["balance"], has_overdue)
     ratio = float(totals["total_out"] / totals["total_in"] * 100) if totals["total_in"] > 0 else None
 
+    # Audit 2026-05-24: utk proyek SELESAI / DIBATALKAN, operational
+    # warnings ditekan (snapshot final / sudah selesai). Banner di FE
+    # sudah indikasikan status -- warning di sini redundant.
+    is_closed = p.status in (ProjectStatus.SELESAI, ProjectStatus.DIBATALKAN)
     warnings: list[str] = []
-    if totals["balance"] < 0:
-        warnings.append("Saldo proyek minus")
-    if bs["status"] == "overbudget":
-        warnings.append("Pemakaian budget melebihi 100%")
-    elif bs["status"] == "mendekati_batas":
-        warnings.append("Pemakaian budget di atas 80%")
-    if has_overdue:
-        warnings.append("Ada invoice overdue")
-    if pending_count:
-        warnings.append(f"{pending_count} transaksi belum diverifikasi")
-    if unlinked_out_count:
-        warnings.append(f"{unlinked_out_count} pengeluaran masih punya sisa belum dialokasi (Rp{unlinked_out_total:,.0f})".replace(",", "."))
+    if not is_closed:
+        if totals["balance"] < 0:
+            warnings.append("Saldo proyek minus")
+        if bs["status"] == "overbudget":
+            warnings.append("Pemakaian budget melebihi 100%")
+        elif bs["status"] == "mendekati_batas":
+            warnings.append("Pemakaian budget di atas 80%")
+        if has_overdue:
+            warnings.append("Ada invoice overdue")
+        if pending_count:
+            warnings.append(f"{pending_count} transaksi belum diverifikasi")
+        if unlinked_out_count:
+            warnings.append(f"{unlinked_out_count} pengeluaran masih punya sisa belum dialokasi (Rp{unlinked_out_total:,.0f})".replace(",", "."))
 
+    # Audit 2026-05-23: marketing_aktual reuse expense_breakdown supaya
+    # konsisten dgn Biaya Aktual (sama-sama ACTIVE statuses, bukan
+    # VERIFIED-only seperti sebelumnya).
     finance = _project_finance_breakdown(
         nilai_kontrak=Decimal(p.project_value or 0),
         ppn_pct=Decimal(p.tax_ppn_pct or 0),
@@ -672,7 +886,18 @@ async def project_dashboard(
         marketing_pct=Decimal(p.marketing_pct or 0),
         biaya_aktual=Decimal(totals["total_out"] or 0),
         biaya_proyeksi=Decimal(p.budget_amount or 0),
+        marketing_aktual=expense_breakdown["marketing"],
+        profit_share_actual=expense_breakdown["profit_share"],
     )
+    # Tambah breakdown komposisi biaya utk transparansi distribusi
+    # (denda + bagi hasil + operating + marketing).
+    finance["expense_breakdown"] = {
+        "marketing": float(expense_breakdown["marketing"]),
+        "penalty": float(expense_breakdown["penalty"]),
+        "profit_share": float(expense_breakdown["profit_share"]),
+        "operating": float(expense_breakdown["operating"]),
+        "total": float(expense_breakdown["total"]),
+    }
 
     return {
         "project": {
@@ -689,6 +914,8 @@ async def project_dashboard(
         "budget": {
             "amount": float(bs["budget_amount"]),
             "spent": float(bs["spent"]),
+            "spent_total": float(bs.get("spent_total", bs["spent"])),
+            "marketing_actual": float(bs.get("marketing_actual", 0)),
             "remaining": float(bs["remaining"]),
             "usage_pct": float(bs["usage_pct"]),
             "status": bs["status"],

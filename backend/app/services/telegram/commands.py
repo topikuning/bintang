@@ -106,6 +106,10 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "\n<b>Lampirkan bukti ke transaksi yang sudah ada:</b>\n"
         "  /buktitx &lt;id&gt; — buka jendela 5 menit utk attach foto/PDF\n"
         "  Contoh: <code>/buktitx 123</code> lalu kirim foto/file.\n"
+        "\n<b>AI (admin):</b>\n"
+        "  /tanya &lt;pertanyaan&gt; — tanya laporan natural\n"
+        "  Contoh: <code>/tanya top vendor bulan ini</code>\n"
+        "  /ringkas — ringkasan executive hari ini\n"
         "\n<b>Akun:</b>\n"
         "  /link &lt;kode&gt; — hubungkan akun web (kode 6 digit dari menu Pengaturan)\n"
         "  /unlink — putuskan akun\n"
@@ -191,7 +195,14 @@ async def cmd_saldo(db, user, chat_id, args, msg) -> str:
         if proj.id not in {p.id for p in accessible}:
             return "Kamu tidak punya akses ke proyek ini."
         totals = await project_totals(db, proj.id)
-        bs = budget_status(proj, totals["total_out"])
+        # Audit 2026-05-23: exclude marketing + bagi hasil dr budget bar.
+        from app.services.budget import project_expense_breakdown
+        exp_brk = await project_expense_breakdown(db, proj.id)
+        bs = budget_status(
+            proj, totals["total_out"],
+            marketing_actual=exp_brk["marketing"],
+            profit_share_actual=exp_brk["profit_share"],
+        )
         return (
             f"<b>{_esc(proj.name)}</b> ({_esc(proj.code)})\n"
             f"Masuk: Rp {_fmt_idr(totals['total_in'])}\n"
@@ -200,8 +211,14 @@ async def cmd_saldo(db, user, chat_id, args, msg) -> str:
             f"Budget: Rp {_fmt_idr(bs['spent'])} / Rp {_fmt_idr(bs['budget_amount'])} "
             f"({float(bs['usage_pct']):.1f}% — {_esc(bs['status'])})"
         )
-    # global
-    projects = await _accessible_projects(db, user)
+    # global -- KONSISTEN dgn dashboard: exclude DIBATALKAN (soft-deleted).
+    # SELESAI tetap ikut (saldo = real money, financial position).
+    # Audit 2026-05-24.
+    from app.models.models import ProjectStatus as _PS
+    projects = [
+        p for p in await _accessible_projects(db, user)
+        if p.status != _PS.DIBATALKAN
+    ]
     if not projects:
         return "Tidak ada proyek yang bisa diakses."
     total_in = total_out = Decimal("0")
@@ -225,20 +242,23 @@ async def cmd_pending(db, user, chat_id, args, msg) -> str:
     if not _is_admin(user):
         return "Hanya admin yang bisa lihat list pending verifikasi."
     pids = await user_project_ids(db, user)
+    # Audit 2026-05-24: KONSISTEN dgn dashboard/notifikasi -- exclude
+    # proyek SELESAI + DIBATALKAN dari list operasional.
+    from app.services.project_guard import operational_project_ids
+    op_pids = await operational_project_ids(db, pids)
+    if not op_pids:
+        return "Tidak ada transaksi pending."
     q = (
         select(Transaction, Project.code)
         .join(Project, Project.id == Transaction.project_id)
         .where(
             Transaction.status == TxnStatus.SUBMITTED,
             Transaction.deleted_at.is_(None),
+            Transaction.project_id.in_(op_pids),
         )
         .order_by(Transaction.tx_date.desc())
         .limit(20)
     )
-    if pids is not None:
-        if not pids:
-            return "Tidak ada akses."
-        q = q.where(Transaction.project_id.in_(pids))
     rows = (await db.execute(q)).all()
     if not rows:
         return "Tidak ada transaksi pending."
@@ -257,6 +277,12 @@ async def cmd_invoice(db, user, chat_id, args, msg) -> str:
     if not user:
         return "Akun belum ter-link."
     pids = await user_project_ids(db, user)
+    # Audit 2026-05-24: KONSISTEN -- skip invoice di proyek SELESAI
+    # (tagihan dianggap clear) + DIBATALKAN (soft-deleted).
+    from app.services.project_guard import operational_project_ids
+    op_pids = await operational_project_ids(db, pids)
+    if not op_pids:
+        return "Tidak ada invoice belum lunas."
     paid_sub = (
         select(
             InvoiceAllocation.invoice_id.label("inv_id"),
@@ -273,14 +299,11 @@ async def cmd_invoice(db, user, chat_id, args, msg) -> str:
         .where(
             Invoice.status.in_([InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE]),
             Invoice.deleted_at.is_(None),
+            Invoice.project_id.in_(op_pids),
         )
         .order_by(Invoice.due_date.asc().nulls_last(), Invoice.id.desc())
         .limit(20)
     )
-    if pids is not None:
-        if not pids:
-            return "Tidak ada akses."
-        q = q.where(Invoice.project_id.in_(pids))
     rows = (await db.execute(q)).all()
     if not rows:
         return "Tidak ada invoice belum lunas."
@@ -384,6 +407,82 @@ async def cmd_keluar(db, user, chat_id, args, msg) -> str:
 
 async def cmd_masuk(db, user, chat_id, args, msg) -> str:
     return await _make_transaction(db, user, chat_id, args, TxnType.IN, msg)
+
+
+async def cmd_tanya(db, user, chat_id, args, msg) -> str:
+    """AI-6 router: tanya laporan natural -> template predefined.
+    Cara pakai: /tanya berapa pengeluaran material bulan ini
+
+    Audit 2026-05-23 user req: integrasi AI di Telegram.
+    """
+    if not user:
+        return "Akun belum ter-link. Kirim /link &lt;kode&gt;."
+    if not args:
+        return (
+            "Cara pakai: <code>/tanya &lt;pertanyaan&gt;</code>\n"
+            "Contoh:\n"
+            "• /tanya berapa pengeluaran material bulan ini\n"
+            "• /tanya top vendor minggu lalu\n"
+            "• /tanya sisa hutang &amp; piutang sekarang\n"
+            "• /tanya status budget semua proyek"
+        )
+    question = " ".join(args).strip()
+    try:
+        from app.services.ai.features.ask_query import run as run_ask
+        result = await run_ask(db, user=user, question=question)
+        await db.commit()
+    except Exception as e:  # noqa: BLE001
+        return f"AI gagal: {_esc(str(e))[:200]}"
+
+    if result.get("template") == "none":
+        out = f"{_esc(result.get('reason', ''))}"
+        fu = result.get("follow_up")
+        if fu:
+            out += f"\n\n💡 {_esc(fu)}"
+        return out
+
+    data = result.get("data") or {}
+    cols = data.get("columns", [])
+    rows = data.get("data", [])
+    if not rows:
+        return "Tidak ada data utk pertanyaan ini."
+    # Format table sederhana utk Telegram (HTML)
+    lines = [f"<b>{_esc(result.get('reason', ''))}</b>", ""]
+    # Header
+    lines.append(" · ".join(f"<i>{_esc(c)}</i>" for c in cols))
+    # Top 10 baris
+    for row in rows[:10]:
+        formatted = []
+        for cell in row:
+            if isinstance(cell, (int, float)):
+                formatted.append(f"Rp {_fmt_idr(cell)}")
+            else:
+                formatted.append(_esc(str(cell)))
+        lines.append(" · ".join(formatted))
+    if len(rows) > 10:
+        lines.append(f"\n<i>... +{len(rows)-10} baris lagi (buka web utk lihat)</i>")
+    return "\n".join(lines)
+
+
+async def cmd_ringkas(db, user, chat_id, args, msg) -> str:
+    """AI-8: ringkasan executive aktivitas keuangan hari ini.
+    Admin only (SUPERADMIN/CENTRAL_ADMIN).
+
+    Audit 2026-05-23 user req.
+    """
+    if not user:
+        return "Akun belum ter-link. Kirim /link &lt;kode&gt;."
+    if not _is_admin(user):
+        return "Hanya SUPERADMIN/CENTRAL_ADMIN yg bisa pakai /ringkas."
+    try:
+        from app.services.ai.features.daily_summary import run as run_summary
+        # Default target_date=None -> hari ini.
+        result = await run_summary(db, user_id=user.id, target_date=None)
+        await db.commit()
+    except Exception as e:  # noqa: BLE001
+        return f"AI gagal: {_esc(str(e))[:200]}"
+    text = result.get("text", "(no output)")
+    return f"<b>📊 Ringkasan Hari Ini</b>\n\n{_esc(text)}"
 
 
 async def cmd_buktitx(db, user, chat_id, args, msg) -> str:
@@ -530,6 +629,11 @@ REGISTRY: dict[str, CommandHandler] = {
     "buktitx": cmd_buktitx,
     "bukti": cmd_buktitx,           # alias
     "lampiran": cmd_buktitx,        # alias
+    # --- AI commands (audit 2026-05-23) ---
+    "tanya": cmd_tanya,
+    "ask": cmd_tanya,
+    "ringkas": cmd_ringkas,
+    "summary": cmd_ringkas,
     # --- Workflow validasi (PR perintah lengkap) ---
     "submit": _wrap_workflow(_wf.cmd_submit),
     "kirim": _wrap_workflow(_wf.cmd_submit),     # alias ID

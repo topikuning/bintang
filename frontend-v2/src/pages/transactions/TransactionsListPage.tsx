@@ -4,8 +4,9 @@ import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Plus, Search, Wallet, X } 
 import { useTransaction, useTransactions, type TransactionListParams } from "@/hooks/useTransactions"
 import { useProjects } from "@/hooks/useProjects"
 import { useCategories } from "@/hooks/useCategories"
-import { MultiProjectPicker } from "@/components/forms/MultiProjectPicker"
 import { DateRangeFilter } from "@/components/forms/DateRangeFilter"
+import { FilterBar, FilterButton, FilterRadioList, FilterToggle } from "@/components/data/FilterBar"
+import { MultiSelectList } from "@/components/data/MultiSelectList"
 import { usePageTitle } from "@/hooks/usePageTitle"
 import { AdaptiveDataView } from "@/components/data/AdaptiveDataView"
 import { Pagination } from "@/components/data/Pagination"
@@ -104,6 +105,9 @@ export function TransactionsListPage() {
   // drilldown link. Selain itu pakai filter chip state.
   const urlStatus = searchParams.get("status")
   const urlType = searchParams.get("type")
+  // Audit 2026-05-24: drill-down dari dashboard counter "N pengeluaran
+  // masih punya sisa belum dialokasi".
+  const unlinkedOnly = searchParams.get("unlinked") === "true"
   const effectiveStatus =
     urlStatus && urlStatus !== "ALL"
       ? (urlStatus as TxnStatus)
@@ -123,8 +127,9 @@ export function TransactionsListPage() {
       q: q || undefined,
       date_from: dateFrom ?? undefined,
       date_to: dateTo ?? undefined,
+      unlinked_only: unlinkedOnly || undefined,
     }),
-    [page, size, projectFilter, effectiveStatus, effectiveType, q, dateFrom, dateTo],
+    [page, size, projectFilter, effectiveStatus, effectiveType, q, dateFrom, dateTo, unlinkedOnly],
   )
 
   // Reset ke page 1 kalau query/filter berubah.
@@ -261,49 +266,141 @@ export function TransactionsListPage() {
           </div>
         )}
 
-        {/* Filter rows */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] uppercase tracking-wider text-ink-500 shrink-0 w-12">
-              Proyek
-            </span>
-            <div className="flex-1 max-w-sm">
-              <MultiProjectPicker
-                value={projectFilter}
-                onChange={(ids) => {
-                  setProjectFilter(ids)
-                  setPage(1)
-                }}
-              />
-            </div>
-          </div>
-          <DateRangeFilter
-            from={dateFrom}
-            to={dateTo}
-            onChange={(next) => {
-              setDateRange(next)
+        {/* Audit 2026-05-24: compact filter toolbar.
+            Sblm-nya 5-row "label + control" layout. Now: single row
+            tombol popover (Linear/Notion-style). Active filter -> button
+            warna brand + display value inline. */}
+        <FilterBar
+          hasActive={
+            projectFilter.length > 0 ||
+            !!dateFrom ||
+            !!dateTo ||
+            typeFilter !== "ALL" ||
+            statusFilter !== "ALL" ||
+            unlinkedOnly
+          }
+          onReset={() => {
+            const next = new URLSearchParams(searchParams)
+            next.delete("project_id")
+            next.delete("date_from")
+            next.delete("date_to")
+            next.delete("status")
+            next.delete("type")
+            next.delete("unlinked")
+            setSearchParams(next, { replace: true })
+            setProjectFilter([])
+            setStatusFilter("ALL")
+            setTypeFilter("ALL")
+            setPage(1)
+          }}
+        >
+          <FilterButton
+            label="Proyek"
+            active={projectFilter.length > 0}
+            displayValue={
+              projectFilter.length === 1
+                ? projectMap.get(projectFilter[0]!)?.name ?? "1 proyek"
+                : projectFilter.length > 1
+                ? `${projectFilter.length} proyek`
+                : null
+            }
+            onClear={() => {
+              setProjectFilter([])
               setPage(1)
             }}
-          />
-          <FilterChips
+            width={320}
+          >
+            <MultiSelectList<number>
+              value={projectFilter}
+              onChange={(ids) => {
+                setProjectFilter(ids)
+                setPage(1)
+              }}
+              options={(projectsQuery.data?.items ?? []).map((p) => ({
+                value: p.id,
+                label: p.name,
+                hint: p.code,
+              }))}
+              isLoading={projectsQuery.isLoading}
+              searchPlaceholder="Cari proyek…"
+              emptyMessage="Belum ada proyek"
+            />
+          </FilterButton>
+
+          <FilterButton
+            label="Periode"
+            active={!!dateFrom || !!dateTo}
+            displayValue={formatPeriod(dateFrom, dateTo)}
+            onClear={() => {
+              setDateRange({ from: null, to: null })
+              setPage(1)
+            }}
+            width={360}
+          >
+            <DateRangeFilter
+              from={dateFrom}
+              to={dateTo}
+              onChange={(next) => {
+                setDateRange(next)
+                setPage(1)
+              }}
+            />
+          </FilterButton>
+
+          <FilterButton
             label="Arah"
-            value={typeFilter}
-            options={TYPE_TABS}
-            onChange={(v) => {
-              setTypeFilter(v as TypeFilter)
+            active={typeFilter !== "ALL"}
+            displayValue={typeFilter !== "ALL" ? TYPE_TABS.find((t) => t.value === typeFilter)?.label ?? null : null}
+            onClear={() => {
+              setTypeFilter("ALL")
               setPage(1)
             }}
-          />
-          <FilterChips
+            width={200}
+          >
+            <FilterRadioList
+              value={typeFilter}
+              options={TYPE_TABS}
+              onChange={(v) => {
+                setTypeFilter(v as TypeFilter)
+                setPage(1)
+              }}
+            />
+          </FilterButton>
+
+          <FilterButton
             label="Status"
-            value={statusFilter}
-            options={STATUS_TABS}
-            onChange={(v) => {
-              setStatusFilter(v as StatusFilter)
+            active={statusFilter !== "ALL"}
+            displayValue={statusFilter !== "ALL" ? STATUS_TABS.find((s) => s.value === statusFilter)?.label ?? null : null}
+            onClear={() => {
+              setStatusFilter("ALL")
               setPage(1)
             }}
-          />
-        </div>
+            width={200}
+          >
+            <FilterRadioList
+              value={statusFilter}
+              options={STATUS_TABS}
+              onChange={(v) => {
+                setStatusFilter(v as StatusFilter)
+                setPage(1)
+              }}
+            />
+          </FilterButton>
+
+          <FilterToggle
+            active={unlinkedOnly}
+            onToggle={() => {
+              const next = new URLSearchParams(searchParams)
+              if (unlinkedOnly) next.delete("unlinked")
+              else next.set("unlinked", "true")
+              setSearchParams(next, { replace: true })
+              setPage(1)
+            }}
+            tone="warning"
+          >
+            Belum dialokasi
+          </FilterToggle>
+        </FilterBar>
 
         {/* Data view */}
         <div className="rounded-md bg-surface md:bg-transparent">
@@ -313,7 +410,7 @@ export function TransactionsListPage() {
             columns={columns}
             onItemClick={(t) => setSelectedId(t.id)}
             emptyState={
-              statusFilter !== "ALL" || typeFilter !== "ALL" || projectFilter.length > 0 || dateFrom || dateTo || q ? (
+              statusFilter !== "ALL" || typeFilter !== "ALL" || projectFilter.length > 0 || dateFrom || dateTo || q || unlinkedOnly ? (
                 <EmptyState
                   icon={Search}
                   title="Tidak ada hasil"
@@ -465,38 +562,18 @@ export function TransactionsListPage() {
   )
 }
 
-interface FilterChipsProps<V extends string> {
-  label: string
-  value: V
-  options: Array<{ value: V; label: string }>
-  onChange: (v: V) => void
-}
-
-function FilterChips<V extends string>({ label, value, options, onChange }: FilterChipsProps<V>) {
-  return (
-    <div className="flex items-center gap-2 overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
-      <span className="text-[11px] uppercase tracking-wider text-ink-500 shrink-0">
-        {label}
-      </span>
-      <div className="flex gap-1.5 shrink-0">
-        {options.map((opt) => {
-          const active = value === opt.value
-          return (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => onChange(opt.value)}
-              className={
-                active
-                  ? "h-8 rounded-full bg-brand-500 text-white px-3 text-[12px] font-semibold whitespace-nowrap"
-                  : "h-8 rounded-full bg-surface border border-border-strong text-ink-700 px-3 text-[12px] font-medium hover:bg-ink-100 whitespace-nowrap"
-              }
-            >
-              {opt.label}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
+// Format period range jadi label kompak utk display di FilterButton.
+// Audit 2026-05-24.
+function formatPeriod(from: string | null, to: string | null): string | null {
+  if (!from && !to) return null
+  const fmt = (s: string) => {
+    // YYYY-MM-DD -> DD/MM
+    const [, m, d] = s.split("-")
+    return `${d}/${m}`
+  }
+  if (from && to && from === to) return fmt(from)
+  if (from && to) return `${fmt(from)} – ${fmt(to)}`
+  if (from) return `≥ ${fmt(from)}`
+  if (to) return `≤ ${fmt(to)}`
+  return null
 }

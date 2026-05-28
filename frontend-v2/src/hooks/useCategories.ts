@@ -8,6 +8,10 @@ export interface Category {
   name: string
   type: CategoryType
   description: string | null
+  /** Audit 2026-05-23: peran akuntansi khusus. Max 1 boleh true. */
+  is_marketing?: boolean
+  is_penalty?: boolean
+  is_profit_share?: boolean
 }
 
 export function useCategories(params: { type?: CategoryType; q?: string } = {}) {

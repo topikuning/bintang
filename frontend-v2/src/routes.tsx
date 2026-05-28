@@ -63,6 +63,21 @@ const ProposalQueuePage = lazy(() =>
     default: m.ProposalQueuePage,
   })),
 )
+const BulkApprovalPage = lazy(() =>
+  import("@/pages/admin/BulkApprovalPage").then((m) => ({
+    default: m.BulkApprovalPage,
+  })),
+)
+const CategoryAuditPage = lazy(() =>
+  import("@/pages/admin/CategoryAuditPage").then((m) => ({
+    default: m.CategoryAuditPage,
+  })),
+)
+const BulkInvoiceCategorizePage = lazy(() =>
+  import("@/pages/admin/BulkInvoiceCategorizePage").then((m) => ({
+    default: m.BulkInvoiceCategorizePage,
+  })),
+)
 const ImportsPage = lazy(() =>
   import("@/pages/Imports").then((m) => ({ default: m.ImportsPage })),
 )
@@ -91,6 +106,14 @@ const SystemSettingsPage = lazy(() =>
 )
 const RoleMenusPage = lazy(() =>
   import("@/pages/RoleMenusPage").then((m) => ({ default: m.RoleMenusPage })),
+)
+const AIPromptsPage = lazy(() =>
+  import("@/pages/AIPromptsPage").then((m) => ({ default: m.AIPromptsPage })),
+)
+const AIFeatureSettingsPage = lazy(() =>
+  import("@/pages/AIFeatureSettingsPage").then((m) => ({
+    default: m.AIFeatureSettingsPage,
+  })),
 )
 const OrphanFilesPage = lazy(() =>
   import("@/pages/OrphanFilesPage").then((m) => ({ default: m.OrphanFilesPage })),
@@ -188,6 +211,18 @@ export const router = createBrowserRouter([
             path: "projects/approval-queue",
             element: <L><ProposalQueuePage /></L>,
           },
+          {
+            path: "admin/bulk-approval",
+            element: <L><BulkApprovalPage /></L>,
+          },
+          {
+            path: "admin/category-audit",
+            element: <L><CategoryAuditPage /></L>,
+          },
+          {
+            path: "admin/bulk-invoice-categorize",
+            element: <L><BulkInvoiceCategorizePage /></L>,
+          },
           { path: "projects/:id", element: <L><ProjectDashboardPage /></L> },
           { path: "master/projects", element: <L><ProjectsPage /></L> },
           {
@@ -211,6 +246,8 @@ export const router = createBrowserRouter([
           { path: "settings", element: <L><SettingsPage /></L> },
           { path: "settings/system", element: <L><SystemSettingsPage /></L> },
           { path: "settings/role-menus", element: <L><RoleMenusPage /></L> },
+          { path: "settings/ai-prompts", element: <L><AIPromptsPage /></L> },
+          { path: "settings/ai-features", element: <L><AIFeatureSettingsPage /></L> },
           { path: "settings/orphan-files", element: <L><OrphanFilesPage /></L> },
           { path: "more", element: <L><MorePage /></L> },
         ],

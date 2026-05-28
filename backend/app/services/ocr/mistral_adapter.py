@@ -210,6 +210,8 @@ class MistralOCRAdapter(OCRAdapter):
         # document_annotation_format = structured output utk seluruh
         # dokumen. Pakai JSON Schema. Mistral akan fill schema otomatis
         # berdasarkan teks OCR + instruksi sistem (kalau didukung).
+        # Audit 2026-05-24: prompt override-able via Prompt AI menu.
+        sys_prompt = self._system_prompt_override or INVOICE_SYSTEM_PROMPT
         payload = {
             "model": self._model,
             "document": document,
@@ -217,7 +219,7 @@ class MistralOCRAdapter(OCRAdapter):
                 "type": "json_schema",
                 "json_schema": {
                     "name": "invoice_extraction",
-                    "description": INVOICE_SYSTEM_PROMPT,
+                    "description": sys_prompt,
                     "schema": INVOICE_SCHEMA,
                     "strict": False,  # strict=True kadang tolak partial fill
                 },
@@ -318,6 +320,7 @@ class MistralOCRAdapter(OCRAdapter):
             "notes": ann.get("notes") or None,
             "confidence_score": _to_decimal(ann.get("confidence_score"))
             or Decimal("0"),
+            "field_confidences": ann.get("field_confidences") or {},
             "raw_response": {
                 "engine": f"mistral:{self._model}",
                 "model": data.get("model"),

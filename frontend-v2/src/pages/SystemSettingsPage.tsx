@@ -11,6 +11,7 @@ import {
   ScanLine,
   Server,
   ShieldCheck,
+  Sparkles,
   Trash2,
 } from "lucide-react"
 import { useAuthStore } from "@/store/auth"
@@ -37,6 +38,12 @@ const GROUP_META: Record<
     icon: ScanLine,
     description:
       "API key OCR engine + default engine. Pilih engine saat upload — setting di sini hanya menentukan default awal di dropdown.",
+  },
+  ai: {
+    label: "AI (Saran Kategori, Justifier, dll)",
+    icon: Sparkles,
+    description:
+      "Pengaturan provider AI utk fitur selain OCR (kategori suggest, justifier, ringkasan, ask query, dll). Default Mistral (lebih murah ~10x dr Claude). API key di-share dgn group OCR.",
   },
   telegram: {
     label: "Telegram Bot",

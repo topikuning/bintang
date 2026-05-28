@@ -1,7 +1,7 @@
 import type { ColumnDef } from "@tanstack/react-table"
 import type { Project, Transaction } from "@/types/api"
 import type { Category } from "@/hooks/useCategories"
-import { fmtDate } from "@/lib/format"
+import { fmtCompact, fmtDate, fmtIDR } from "@/lib/format"
 import { AmountDisplay } from "@/components/domain/shared/AmountDisplay"
 import { StatusBadge } from "@/components/domain/shared/StatusBadge"
 
@@ -98,14 +98,45 @@ export function buildTransactionColumns({
       id: "amount",
       header: "Nominal",
       accessorKey: "amount",
-      cell: ({ row }) => (
-        <AmountDisplay
-          value={row.original.amount}
-          type={row.original.type}
-          colored
-        />
-      ),
-      meta: { align: "num", width: "150px" },
+      cell: ({ row }) => {
+        const t = row.original
+        // Audit 2026-05-24: badge alokasi (Belum/Sisa) utk TX OUT.
+        // Hanya tampil kalau ada outstanding (remaining > 0). Kalau full
+        // allocated atau IN -> tdk tampil (clean).
+        // Audit 2026-05-27: skip DIRECT_EXPENSE -- by design tdk dialokasi
+        // ke invoice (beban tercatat in-place via items), jadi badge
+        // "Belum dialokasi" menyesatkan.
+        const remaining = Number(t.remaining_amount ?? 0)
+        const allocated = Number(t.allocated_amount ?? 0)
+        const showBadge =
+          t.type === "OUT" && t.kind !== "DIRECT_EXPENSE" && remaining > 0
+        const isFullUnalloc = showBadge && allocated === 0
+        return (
+          <div className="flex flex-col items-end gap-0.5">
+            <AmountDisplay value={t.amount} type={t.type} colored />
+            {showBadge && (
+              <span
+                className={
+                  "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide " +
+                  (isFullUnalloc
+                    ? "bg-danger-100 text-danger-800"
+                    : "bg-warning-100 text-warning-800")
+                }
+                title={
+                  isFullUnalloc
+                    ? "Belum dialokasi sama sekali"
+                    : `Sudah dialokasi ${fmtIDR(allocated)} · sisa ${fmtIDR(remaining)}`
+                }
+              >
+                {isFullUnalloc
+                  ? "Belum dialokasi"
+                  : `Sisa ${fmtCompact(remaining)}`}
+              </span>
+            )}
+          </div>
+        )
+      },
+      meta: { align: "num", width: "170px" },
       enableSorting: true,
     },
   )

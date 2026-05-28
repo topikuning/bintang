@@ -66,8 +66,13 @@ export function useCommitImport() {
     }): Promise<ImportPreviewResult> => {
       const fd = new FormData()
       fd.append("file", file)
+      // Audit 2026-05-23 bug: backend pakai Form(), bukan Query.
+      // Sebelumnya FE kirim ?dup_action=update di URL -> di-ignore
+      // backend -> fallback ke default 'skip' -> data lama tdk
+      // overwrite walau user pilih update.
+      fd.append("dup_action", dupAction)
       const { data } = await api.post<ImportPreviewResult>(
-        `/imports/${entity}/commit?dup_action=${dupAction}`,
+        `/imports/${entity}/commit`,
         fd,
         { headers: { "Content-Type": "multipart/form-data" } },
       )

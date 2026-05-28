@@ -8,11 +8,13 @@ export function Toaster(props: ToasterProps) {
       closeButton
       duration={4000}
       toastOptions={{
+        // Audit 2026-05-24: tambah `select-text` supaya keterangan
+        // error bisa dicopy user (default sonner pakai user-select:none).
         classNames: {
           toast:
-            "group rounded-md border bg-surface text-ink-900 shadow-lg",
-          title: "text-sm font-semibold",
-          description: "text-[13px] text-ink-500",
+            "group rounded-md border bg-surface text-ink-900 shadow-lg select-text",
+          title: "text-sm font-semibold select-text",
+          description: "text-[13px] text-ink-500 select-text",
         },
       }}
       {...props}

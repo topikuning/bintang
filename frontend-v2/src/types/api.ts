@@ -57,6 +57,9 @@ export interface Project {
   start_date: string | null
   end_date: string | null
   status: ProjectStatus
+  /** Timestamp perubahan field apapun -- FE pakai sbg proxy "sejak kapan
+   *  status ini" di banner ProjectStatusBanner. Audit 2026-05-24. */
+  updated_at?: string
   /** Klasifikasi proyek (REGULAR / NON_PROJECT). System project
    *  Catatan Non-Proyek = NON_PROJECT (1 per company). */
   kind: ProjectKind
@@ -218,6 +221,8 @@ export interface InvoiceItem {
   unit: string | null
   unit_price: string
   subtotal: string
+  /** Audit 2026-05-24: per-item kategori. */
+  category_id: number | null
 }
 
 export interface InvoiceItemInput {
@@ -225,6 +230,7 @@ export interface InvoiceItemInput {
   quantity: number | string
   unit?: string | null
   unit_price: number | string
+  category_id?: number | null
 }
 
 export interface InvoicePayment {
@@ -348,6 +354,10 @@ export interface PurchaseOrder {
   company_id: number
   vendor_client_id: number | null
   vendor_name: string | null
+  /** Resolved nama vendor dari master VendorClient (kalau
+   *  vendor_client_id di-set). Backend prefill -- FE pakai dgn
+   *  fallback ke vendor_name. */
+  vendor_client_name?: string | null
   po_date: string
   needed_date?: string | null
   payment_terms?: string | null
@@ -398,6 +408,9 @@ export interface CategoryInput {
   name: string
   type: CategoryType
   description?: string | null
+  is_marketing?: boolean
+  is_penalty?: boolean
+  is_profit_share?: boolean
 }
 
 export type VendorClientType = "VENDOR" | "CLIENT" | "BOTH"

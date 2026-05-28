@@ -9,6 +9,7 @@ import {
   useUpdatePO,
   type POCreateInput,
 } from "@/hooks/usePOMutations"
+import { useProject } from "@/hooks/useProjects"
 import type { PurchaseOrder } from "@/types/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,7 +20,9 @@ import { toast } from "@/components/ui/sonner"
 import { AmountInput } from "@/components/forms/AmountInput"
 import { DateInput } from "@/components/forms/DateInput"
 import { ProjectPicker } from "@/components/forms/ProjectPicker"
+import { ProjectStatusBanner } from "@/components/domain/project/ProjectStatusBanner"
 import { CompanyPicker } from "@/components/forms/CompanyPicker"
+import { ScanButton, type ExtractedFields } from "@/components/forms/ScanButton"
 import { VendorPicker } from "@/components/forms/VendorPicker"
 import { useBreakpoint } from "@/lib/breakpoint"
 
@@ -93,11 +96,64 @@ export function POForm({ open, onClose, po, lockProjectId, onSaved }: POFormProp
     register,
     handleSubmit,
     reset,
+    setValue,
+    getValues,
     watch,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, dirtyFields },
   } = useForm<FormValues>({ defaultValues })
 
   const itemsField = useFieldArray({ control, name: "items" })
+
+  // Audit 2026-05-23 user request #1: kalau project dipilih, auto-set
+  // company ke project.company_id. User tetap bisa override manual --
+  // setelah override, project change berikutnya TIDAK auto-overwrite
+  // (dirtyFields.company_id true).
+  const watchedProjectId = watch("project_id")
+  const { data: projectDetail } = useProject(
+    watchedProjectId && watchedProjectId > 0 ? watchedProjectId : null,
+  )
+  useEffect(() => {
+    if (!projectDetail) return
+    const currentCompany = getValues("company_id")
+    if (!dirtyFields.company_id || currentCompany === 0 || currentCompany == null) {
+      setValue("company_id", projectDetail.company_id, { shouldDirty: false })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectDetail?.id])
+
+  // Audit 2026-05-23 UX integration A: scan button populate form values
+  // dari OCR (struk/PO foto). Field invoice_number diabaikan utk PO
+  // (PO number di-generate auto/manual). due_date -> needed_date.
+  const handleScanResult = (extracted: ExtractedFields) => {
+    if (extracted.invoice_date)
+      setValue("po_date", extracted.invoice_date, { shouldDirty: true })
+    if (extracted.due_date)
+      setValue("needed_date", extracted.due_date, { shouldDirty: true })
+    if (extracted.vendor_name && !getValues("vendor_name"))
+      setValue("vendor_name", extracted.vendor_name, { shouldDirty: true })
+    if (extracted.tax != null)
+      setValue("tax", Number(extracted.tax) || 0, { shouldDirty: true })
+    if (extracted.items && extracted.items.length > 0) {
+      const mapped = extracted.items.map((it) => ({
+        description: it.description || "(tanpa deskripsi)",
+        quantity: Number(it.qty ?? 1) || 1,
+        unit: it.unit ?? null,
+        unit_price: Number(it.price ?? it.amount ?? 0) || 0,
+      }))
+      setValue("items", mapped, { shouldDirty: true })
+    }
+    if (extracted.notes) {
+      const existing = getValues("notes") || ""
+      setValue("notes", existing + (existing ? "\n" : "") + extracted.notes, {
+        shouldDirty: true,
+      })
+    }
+    if (extracted.vendor_match) {
+      toast.message("Vendor cocok di database", {
+        description: `${extracted.vendor_match.name} (skor ${Math.round(extracted.vendor_match.score * 100)}%). Pilih manual di dropdown vendor.`,
+      })
+    }
+  }
 
   useEffect(() => {
     if (open) reset(defaultValues)
@@ -186,7 +242,17 @@ export function POForm({ open, onClose, po, lockProjectId, onSaved }: POFormProp
           <SheetTitle className="text-center flex-1">
             {isEdit ? "Edit PO" : "Tambah PO"}
           </SheetTitle>
-          <div className="w-12" />
+          {!isEdit ? (
+            <ScanButton
+              onResult={handleScanResult}
+              label="Scan"
+              size="sm"
+              iconStyle="camera"
+              disabled={isSubmitting}
+            />
+          ) : (
+            <div className="w-12" />
+          )}
         </SheetHeader>
 
         <form
@@ -194,6 +260,13 @@ export function POForm({ open, onClose, po, lockProjectId, onSaved }: POFormProp
           className="flex flex-col flex-1 overflow-hidden"
         >
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 sm:px-5">
+            {/* Banner status proyek non-AKTIF -- audit 2026-05-24 Phase 1. */}
+            {projectDetail && (
+              <ProjectStatusBanner
+                status={projectDetail.status}
+                sinceIso={projectDetail.updated_at}
+              />
+            )}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Tanggal PO" required error={errors.po_date?.message}>
                 <Controller

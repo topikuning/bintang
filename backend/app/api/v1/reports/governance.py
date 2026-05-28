@@ -121,6 +121,43 @@ async def report_budget(
             pid: Decimal(amt or 0)
             for pid, amt in (await db.execute(spent_q)).all()
         }
+        # Audit 2026-05-23: spent utk perbandingan budget EXCLUDE
+        # marketing + bagi hasil (keduanya bukan biaya operasi).
+        def _flag_q(flag_col):
+            return (
+                select(
+                    Transaction.project_id,
+                    func.coalesce(func.sum(Transaction.amount), 0),
+                )
+                .join(Category, Category.id == Transaction.category_id)
+                .where(
+                    Transaction.project_id.in_(proj_ids_list),
+                    Transaction.type == TxnType.OUT,
+                    Transaction.status == TxnStatus.VERIFIED,
+                    Transaction.deleted_at.is_(None),
+                    flag_col.is_(True),
+                )
+                .group_by(Transaction.project_id)
+            )
+        marketing_map: dict[int, Decimal] = {
+            pid: Decimal(amt or 0)
+            for pid, amt in (await db.execute(_flag_q(Category.is_marketing))).all()
+        }
+        profit_share_map: dict[int, Decimal] = {
+            pid: Decimal(amt or 0)
+            for pid, amt in (await db.execute(_flag_q(Category.is_profit_share))).all()
+        }
+        # Spent for budget = total - marketing - profit_share.
+        all_pids = set(spent_map) | set(marketing_map) | set(profit_share_map)
+        spent_map = {
+            pid: max(
+                Decimal("0"),
+                spent_map.get(pid, Decimal("0"))
+                - marketing_map.get(pid, Decimal("0"))
+                - profit_share_map.get(pid, Decimal("0")),
+            )
+            for pid in all_pids
+        }
         # Audit 2026-05-23: Committed PO = PO terbit/disetujui tapi blm
         # ter-realisasi sbg tx OUT. Mencegah overstate sisa anggaran.
         #   committed_per_po = po.total - SUM(tx.amount WHERE tx.po_id=po, VERIFIED)

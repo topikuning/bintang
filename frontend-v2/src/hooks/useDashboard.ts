@@ -12,6 +12,10 @@ export interface GlobalDashboardParams {
   location?: string[]
   client_name?: string[]
   funder_id?: number[]
+  project_id?: number[]
+  // Audit 2026-05-24: include proyek SELESAI/DIBATALKAN di warning
+  // counters. Default false (operational view).
+  include_closed?: boolean
 }
 
 export function useGlobalDashboard(params?: GlobalDashboardParams) {

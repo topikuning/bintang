@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { useForm, Controller, useFieldArray } from "react-hook-form"
-import { Loader2, Plus, Trash2 } from "lucide-react"
+import { Loader2, Plus, Sparkles, Trash2 } from "lucide-react"
 import { z } from "zod"
-import { toApiDate } from "@/lib/format"
+import { fmtIDR, toApiDate } from "@/lib/format"
 import { apiErrorMessage } from "@/lib/api"
 import {
   useCreateTransaction,
@@ -15,6 +15,7 @@ import {
 } from "@/hooks/useTransactionAttachments"
 import { useUsersLookup } from "@/hooks/useUsers"
 import { useAuthStore } from "@/store/auth"
+import { useAICategorizeItems } from "@/hooks/useAICategorizeItems"
 import type { PaymentMethod, Transaction, TxnKind, TxnType } from "@/types/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,6 +29,8 @@ import { DateInput } from "@/components/forms/DateInput"
 import { AttachmentUploader } from "@/components/forms/AttachmentUploader"
 import { ProjectPicker } from "@/components/forms/ProjectPicker"
 import { useProject } from "@/hooks/useProjects"
+import { ProjectStatusBanner } from "@/components/domain/project/ProjectStatusBanner"
+import { useSuggestCategory } from "@/hooks/useAI"
 import { CategoryPicker } from "@/components/forms/CategoryPicker"
 import { VendorPicker } from "@/components/forms/VendorPicker"
 import { useBreakpoint } from "@/lib/breakpoint"
@@ -155,10 +158,51 @@ export function TransactionForm({
     reset,
     watch,
     setValue,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ defaultValues })
 
   const itemsArr = useFieldArray({ control, name: "items" })
+
+  // Audit 2026-05-24: AI bulk categorize per item (DIRECT_EXPENSE).
+  const aiCategorizeMut = useAICategorizeItems()
+  const handleAICategorize = async () => {
+    const data = getValues()
+    const liveItems = (data.items ?? []).filter((it) => it.description?.trim())
+    if (liveItems.length === 0) {
+      toast.error("Isi deskripsi item dulu")
+      return
+    }
+    try {
+      const result = await aiCategorizeMut.mutateAsync({
+        items: liveItems.map((it) => ({
+          description: it.description,
+          unit_price: it.amount,
+        })),
+        direction: "OUT",
+        party_name: data.party_name ?? null,
+        project_id: data.project_id,
+        context_label: "Rincian DIRECT_EXPENSE",
+      })
+      let filled = 0
+      result.items.forEach((s) => {
+        if (s.category_id != null && s.confidence >= 0.7) {
+          const cur = getValues(`items.${s.index}.category_id`)
+          if (cur == null) {
+            setValue(`items.${s.index}.category_id`, s.category_id, {
+              shouldDirty: true,
+            })
+            filled += 1
+          }
+        }
+      })
+      toast.success(
+        `AI selesai · ${filled}/${result.items.length} item auto-fill`,
+      )
+    } catch (e) {
+      toast.error("AI kategori gagal", { description: apiErrorMessage(e) })
+    }
+  }
   const usersQ = useUsersLookup({ limit: 200 })
   // Kind change rule (mirror backend):
   // - Tx VERIFIED: hanya SUPERADMIN (god-mode bypass audit lock).
@@ -229,7 +273,7 @@ export function TransactionForm({
         const sum = d.items.reduce((acc, it) => acc + Number(it.amount || 0), 0)
         if (Math.abs(sum - d.amount) > 0.01) {
           toast.error("Total nominal tidak cocok dgn jumlah rincian", {
-            description: `Nominal: ${d.amount.toLocaleString("id-ID")} | Sum item: ${sum.toLocaleString("id-ID")}`,
+            description: `Nominal: ${fmtIDR(d.amount)} | Sum item: ${fmtIDR(sum)}`,
           })
           setSubmitting(false)
           return
@@ -282,6 +326,12 @@ export function TransactionForm({
 
   const currentType = watch("type") as TxnType
   const currentKind = watch("kind") as TxnKind
+  // Watch project_id -> tarik info status proyek utk banner inline kalau
+  // closed (SELESAI/DIBATALKAN). Audit 2026-05-24 Phase 1.
+  const watchedProjectId = watch("project_id")
+  const { data: selectedProject } = useProject(
+    watchedProjectId && watchedProjectId > 0 ? watchedProjectId : null,
+  )
   // Untuk IN, paksa INVOICE_PAYMENT supaya conditional logic konsisten.
   const effectiveKind: TxnKind = currentType === "IN" ? "INVOICE_PAYMENT" : currentKind
   const isAdvance = effectiveKind === "CASH_ADVANCE"
@@ -350,6 +400,15 @@ export function TransactionForm({
         >
           {/* Body scroll */}
           <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+            {/* Banner status proyek non-AKTIF -- audit 2026-05-24 Phase 1.
+                SELESAI/DIBATALKAN -> backend reject 409 saat submit.
+                DITAHAN -> warn only (submit lolos). */}
+            {selectedProject && (
+              <ProjectStatusBanner
+                status={selectedProject.status}
+                sinceIso={selectedProject.updated_at}
+              />
+            )}
             {/* IN / OUT toggle */}
             <Controller
               control={control}
@@ -599,26 +658,45 @@ export function TransactionForm({
                       </div>
                     ))
                   )}
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() =>
-                      itemsArr.append({
-                        category_id: null,
-                        description: "",
-                        amount: 0,
-                      })
-                    }
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Tambah Item
-                  </Button>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() =>
+                        itemsArr.append({
+                          category_id: null,
+                          description: "",
+                          amount: 0,
+                        })
+                      }
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Tambah Item
+                    </Button>
+                    {items.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleAICategorize}
+                        disabled={aiCategorizeMut.isPending}
+                        title="AI saran kategori utk semua item"
+                      >
+                        {aiCategorizeMut.isPending ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3.5 w-3.5" />
+                        )}
+                        Saran kategori AI
+                      </Button>
+                    )}
+                  </div>
                   {items.length > 0 && (
                     <div className="text-right text-[12px] text-ink-700 pt-1 border-t">
                       Total:{" "}
                       <span className="font-semibold tabular-nums">
-                        Rp {itemsSum.toLocaleString("id-ID")}
+                        {fmtIDR(itemsSum)}
                       </span>
                     </div>
                   )}
@@ -630,17 +708,31 @@ export function TransactionForm({
             {!isAdvance && !isDirect && (
               <>
                 <Field label="Kategori">
-                  <Controller
-                    control={control}
-                    name="category_id"
-                    render={({ field }) => (
-                      <CategoryPicker
-                        value={field.value ?? null}
-                        onChange={field.onChange}
-                        type={currentType}
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <Controller
+                        control={control}
+                        name="category_id"
+                        render={({ field }) => (
+                          <CategoryPicker
+                            value={field.value ?? null}
+                            onChange={field.onChange}
+                            type={currentType}
+                          />
+                        )}
                       />
-                    )}
-                  />
+                    </div>
+                    <AISuggestCategoryButton
+                      getContext={() => ({
+                        description: watch("description") || null,
+                        party_name: watch("party_name") || null,
+                        amount: watch("amount") || null,
+                        kind: watch("kind") || null,
+                      })}
+                      direction={currentType === "IN" ? "IN" : "OUT"}
+                      onSuggested={(id) => setValue("category_id", id, { shouldDirty: true })}
+                    />
+                  </div>
                 </Field>
 
                 <Field label="Vendor / Klien">
@@ -791,5 +883,84 @@ function Field({ label, required, hint, error, children }: FieldProps) {
       {hint && !error && <p className="text-[11px] text-ink-500">{hint}</p>}
       {error && <p className="text-[11px] text-danger-600">{error}</p>}
     </div>
+  )
+}
+
+
+/**
+ * Tombol AI saran kategori. Baca konteks form (description, party_name,
+ * amount, kind) -> /ai/suggest-category -> setValue category_id.
+ *
+ * Audit 2026-05-23 UX integration AI-1 + perbaikan konteks:
+ * sebelumnya cuma description (sering kosong saat user masih input
+ * amount). Sekarang AI dapat sinyal dari party_name + amount + kind
+ * juga -- bisa suggest walau description belum diisi (mis. cuma vendor
+ * 'PT Beton Jaya' + amount 5jt = strong signal "Material Beton").
+ */
+function AISuggestCategoryButton({
+  getContext,
+  direction,
+  onSuggested,
+}: {
+  getContext: () => {
+    description: string | null
+    party_name: string | null
+    amount: number | string | null
+    kind: string | null
+  }
+  direction: "IN" | "OUT"
+  onSuggested: (id: number | null) => void
+}) {
+  const suggest = useSuggestCategory()
+  const handleClick = async () => {
+    const ctx = getContext()
+    // Minimum: salah satu dari description atau party_name harus ada.
+    const hasDesc = (ctx.description || "").trim().length >= 3
+    const hasParty = (ctx.party_name || "").trim().length >= 2
+    if (!hasDesc && !hasParty) {
+      toast.error("Isi deskripsi atau vendor/klien dulu", {
+        description: "AI butuh konteks (min 3 huruf deskripsi atau 2 huruf nama vendor).",
+      })
+      return
+    }
+    try {
+      const result = await suggest.mutateAsync({
+        description: ctx.description,
+        party_name: ctx.party_name,
+        amount: ctx.amount,
+        kind: ctx.kind,
+        direction,
+      })
+      if (result.category_id == null) {
+        toast.message("Tdk ada kategori cocok", { description: result.reason })
+        return
+      }
+      onSuggested(result.category_id)
+      const conf = Math.round(result.confidence * 100)
+      toast.success(`AI pilih: ${result.category_name}`, {
+        description: `${result.reason} (${conf}% yakin)`,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "AI gagal"
+      toast.error("Saran AI gagal", { description: msg })
+    }
+  }
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={handleClick}
+      disabled={suggest.isPending}
+      className="shrink-0 gap-1"
+      title="AI saran kategori dari deskripsi"
+    >
+      {suggest.isPending ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <Sparkles className="h-3.5 w-3.5" />
+      )}
+      <span className="text-[12px]">AI</span>
+    </Button>
   )
 }

@@ -326,9 +326,14 @@ function AttachmentSection({ transaction }: { transaction: Transaction }) {
   const isReadOnly = role === "EXECUTIVE"
 
   // Pakai rule yang sama dgn modify transaksi: VERIFIED -> SUPERADMIN only
-  // utk attach/hapus bukti (audit trail kuat).
+  // utk delete bukti (audit trail kuat).
+  // Audit 2026-05-24: VERIFIED dgn 0 lampiran -> admin biasa BOLEH upload
+  // bukti pertama (audit jadi lengkap; append-only, tdk overwrite).
   const lockedByVerified = transaction.status === "VERIFIED" && !isSuperAdmin
-  const canModifyAttachments = !isReadOnly && !lockedByVerified
+  const hasExistingAttachments = (transaction.attachments?.length ?? 0) > 0
+  const canUploadAttachment =
+    !isReadOnly && (!lockedByVerified || !hasExistingAttachments)
+  const canDeleteAttachment = !isReadOnly && !lockedByVerified
 
   const upload = useUploadTransactionAttachment()
   const link = useLinkTransactionAttachment()
@@ -358,17 +363,17 @@ function AttachmentSection({ transaction }: { transaction: Transaction }) {
 
       <AttachmentList
         attachments={attachments}
-        canDelete={canModifyAttachments}
+        canDelete={canDeleteAttachment}
         onDelete={(a) => handleDelete(a.id)}
         deletingId={del.isPending ? del.variables?.attachmentId ?? null : null}
         emptyMessage={
-          canModifyAttachments
+          canUploadAttachment
             ? "Belum ada bukti. Tambah file/link di bawah."
             : "Belum ada bukti."
         }
       />
 
-      {canModifyAttachments && (
+      {canUploadAttachment && (
         <AttachmentUploader
           uploadFile={(file, onProgress) =>
             upload.mutateAsync({ transactionId: transaction.id, file, onProgress }).then(() => undefined)

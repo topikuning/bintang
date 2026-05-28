@@ -1,10 +1,11 @@
-from datetime import date, date as date_type, datetime
+from datetime import date, date as date_type, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -169,6 +170,7 @@ def _full_options():
 @router.get("", response_model=Page[InvoiceOut])
 async def list_invoices(
     project_id: list[int] | None = Query(None),
+    company_id: int | None = None,
     type: str | None = None,
     status: InvoiceStatus | None = None,
     vendor_client_id: int | None = None,
@@ -190,6 +192,10 @@ async def list_invoices(
         for pid in project_id:
             await ensure_project_access(db, user, pid)
         stmt = stmt.where(Invoice.project_id.in_(project_id))
+    if company_id:
+        from app.models.models import Project as _P
+        co_pids_subq = select(_P.id).where(_P.company_id == company_id).scalar_subquery()
+        stmt = stmt.where(Invoice.project_id.in_(co_pids_subq))
     if type:
         stmt = stmt.where(Invoice.type == type)
     if status:
@@ -230,10 +236,16 @@ async def list_invoices(
 @router.post("", response_model=InvoiceOut, status_code=201)
 async def create_invoice(
     payload: InvoiceCreate,
+    force: bool = Query(False, description="SUPERADMIN-only: bypass project_closed guard"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_can_write),
 ) -> InvoiceOut:
     await ensure_project_access(db, user, payload.project_id)
+    # Audit 2026-05-24 Phase 1: project-status guard.
+    from app.services.project_guard import assert_project_open
+    _, forced = await assert_project_open(
+        db, payload.project_id, user=user, force=force,
+    )
     # Cek dup nomor invoice -- harus unik global (legal: Faktur Pajak).
     # Cek SOFT-DELETE included supaya nomor yg pernah dipakai tdk recycled
     # (audit trail tetap stabil di laporan historis).
@@ -251,14 +263,23 @@ async def create_invoice(
             unit=it.unit,
             unit_price=it.unit_price,
             subtotal=Decimal(it.unit_price) * Decimal(it.quantity),
+            category_id=it.category_id,  # audit 2026-05-24
         ))
     sub, tot = _compute_totals(inv.items, inv.tax)
     inv.subtotal = sub
     inv.total = tot
     db.add(inv)
-    await db.flush()
+    # Audit 2026-05-23: race-safe -- 2 concurrent POST same number bisa
+    # bypass pre-check & dua-duanya flush. UNIQUE constraint global akan
+    # reject yg ke-2 dgn IntegrityError -- konversi ke 409 (friendly).
+    try:
+        await db.flush()
+    except IntegrityError as e:
+        await db.rollback()
+        raise HTTPException(409, "invoice_number_already_used") from e
     await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
-              action=AuditAction.CREATE, after=snapshot(inv))
+              action=AuditAction.CREATE, after=snapshot(inv),
+              note="FORCE bypass closed project" if forced else None)
     await db.commit()
     res = await db.execute(
         select(Invoice).options(*_full_options()).where(Invoice.id == inv.id)
@@ -296,21 +317,34 @@ async def update_invoice(
     if not inv or inv.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, inv.project_id)
-    # Project IMMUTABLE via UPDATE -- audit trail keuangan harus tetap
-    # kuat. Reject explisit kalau payload kirim project_id beda current.
-    # Cara koreksi: CANCEL invoice + buat ulang di proyek benar.
+    is_god = user.role == UserRole.SUPERADMIN
+    # Audit 2026-05-23 user req: DRAFT bebas edit (termasuk project_id).
+    # Non-DRAFT IMMUTABLE kecuali SUPERADMIN (god-mode). Audit trail tetap
+    # tercatat via snapshot before/after.
     if payload.project_id is not None and payload.project_id != inv.project_id:
-        raise HTTPException(
-            400,
-            "project_change_forbidden: invoice tidak bisa pindah proyek "
-            "via edit. Cancel invoice (POST /:id/cancel), lalu buat "
-            "ulang di proyek yang benar.",
-        )
+        if inv.status != InvoiceStatus.DRAFT and not is_god:
+            raise HTTPException(
+                400,
+                "project_change_forbidden: invoice non-DRAFT tidak bisa "
+                "pindah proyek (butuh SUPERADMIN). Cancel invoice + buat "
+                "ulang di proyek benar.",
+            )
+        await ensure_project_access(db, user, payload.project_id)
+        target = (await db.execute(
+            select(Project).where(
+                Project.id == payload.project_id,
+                Project.deleted_at.is_(None),
+            )
+        )).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(400, "target_project_not_found")
     before = snapshot(inv)
     data = payload.model_dump(exclude_unset=True)
-    # Pop project_id supaya tdk masuk setattr loop di bawah (kita sudah
-    # validate di atas; kalau lolos validasi -> sama dgn current, no-op).
-    data.pop("project_id", None)
+    # project_id: pop dr loop generic, terapkan eksplisit (sudah
+    # validated di atas kalau berubah).
+    new_project_id = data.pop("project_id", None)
+    if new_project_id is not None and new_project_id != inv.project_id:
+        inv.project_id = new_project_id
     # Cek dup kalau number diubah ke value baru.
     if "number" in data and data["number"] != inv.number:
         clash = (await db.execute(
@@ -363,6 +397,7 @@ async def update_invoice(
                 unit=it.get("unit"),
                 unit_price=Decimal(str(it.get("unit_price", 0))),
                 subtotal=Decimal(str(it.get("unit_price", 0))) * Decimal(str(it.get("quantity", 1))),
+                category_id=it.get("category_id"),  # audit 2026-05-24
             ))
     if inv.items:
         # ada items -- subtotal selalu mengikuti item
@@ -393,6 +428,235 @@ async def update_invoice(
     return await _to_out(db, res.scalar_one())
 
 
+@router.post("/bulk/issue")
+async def bulk_issue_invoices(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_can_write),
+) -> dict:
+    """Bulk issue invoice (DRAFT -> ISSUED). Audit 2026-05-23.
+
+    Payload: {ids: list[int]}.
+    Return: {total_requested, success_count, success, skipped}.
+    """
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids_required")
+    if len(ids) > 500:
+        raise HTTPException(400, "max_500_per_batch")
+    res = await db.execute(
+        select(Invoice).options(*_full_options()).where(Invoice.id.in_(ids))
+    )
+    invs = {i.id: i for i in res.scalars().all()}
+    success_ids: list[int] = []
+    skipped: list[dict] = []
+    for iid in ids:
+        inv = invs.get(iid)
+        if inv is None or inv.deleted_at is not None:
+            skipped.append({"id": iid, "reason": "not_found"})
+            continue
+        try:
+            await ensure_project_access(db, user, inv.project_id)
+        except HTTPException as e:
+            skipped.append({"id": iid, "reason": f"access_denied_{e.status_code}"})
+            continue
+        if inv.status != InvoiceStatus.DRAFT:
+            skipped.append({"id": iid, "reason": f"invalid_state_{inv.status.value}"})
+            continue
+        inv.status = InvoiceStatus.ISSUED
+        await recompute_invoice_status(db, inv)
+        await log(
+            db, user_id=user.id, entity="invoice", entity_id=inv.id,
+            action=AuditAction.UPDATE, note="bulk issued",
+        )
+        success_ids.append(iid)
+    await db.commit()
+    return {
+        "total_requested": len(ids),
+        "success_count": len(success_ids),
+        "success": success_ids,
+        "skipped": skipped,
+    }
+
+
+@router.post("/bulk/mark-paid")
+async def bulk_mark_paid_invoices(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Bulk mark-paid invoice. Audit 2026-05-24 user req mass action.
+
+    Payload: {ids: list[int]}.
+    Return: {total_requested, success_count, success, skipped}.
+
+    Per-item: replikasi logic mark_invoice_paid (auto-create tx VERIFIED
+    sebesar outstanding lalu alokasi). Item invalid (CANCELLED / DRAFT /
+    total_zero) di-skip dgn reason, tdk halt seluruh batch.
+    """
+    from app.services.allocation import apply_allocations_to_invoice
+
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids_required")
+    if len(ids) > 500:
+        raise HTTPException(400, "max_500_per_batch")
+
+    res = await db.execute(
+        select(Invoice).options(*_full_options()).where(Invoice.id.in_(ids))
+    )
+    invs = {i.id: i for i in res.scalars().all()}
+
+    # Allocatable invoice states utk mark-paid (selain CANCELLED, PAID, DRAFT)
+    allocatable_states = (
+        InvoiceStatus.ISSUED,
+        InvoiceStatus.PARTIALLY_PAID,
+        InvoiceStatus.OVERDUE,
+    )
+
+    success_ids: list[int] = []
+    skipped: list[dict] = []
+    now = datetime.now(timezone.utc)
+
+    for iid in ids:
+        inv = invs.get(iid)
+        if inv is None or inv.deleted_at is not None:
+            skipped.append({"id": iid, "reason": "not_found"})
+            continue
+        if inv.status == InvoiceStatus.PAID:
+            skipped.append({"id": iid, "reason": "already_paid"})
+            continue
+        if inv.status not in allocatable_states:
+            skipped.append({"id": iid, "reason": f"invalid_state_{inv.status.value}"})
+            continue
+        total = Decimal(inv.total or 0)
+        if total <= 0:
+            skipped.append({"id": iid, "reason": "total_zero"})
+            continue
+        paid = await paid_amount(db, inv.id)
+        outstanding = total - paid
+        if outstanding <= 0:
+            inv.status = InvoiceStatus.PAID
+            success_ids.append(iid)
+            continue
+
+        tx_type = TxnType.OUT if inv.type == InvoiceType.IN else TxnType.IN
+        new_tx = Transaction(
+            project_id=inv.project_id,
+            tx_date=date.today(),
+            type=tx_type,
+            amount=outstanding,
+            party_name=inv.party_name,
+            vendor_client_id=inv.vendor_client_id,
+            payment_method=PaymentMethod.TRANSFER,
+            description=f"Pelunasan invoice {inv.number}",
+            status=TxnStatus.VERIFIED,
+            verified_by_id=admin.id,
+            verified_at=now,
+            created_by_id=admin.id,
+        )
+        db.add(new_tx)
+        await db.flush()
+        await log(
+            db, user_id=admin.id, entity="transaction", entity_id=new_tx.id,
+            action=AuditAction.CREATE, after=snapshot(new_tx),
+            note=f"Bulk mark_paid invoice {inv.number}",
+        )
+        await apply_allocations_to_invoice(
+            db,
+            invoice_id=inv.id,
+            items=[(new_tx.id, outstanding)],
+            note="bulk mark-paid",
+            user_id=admin.id,
+        )
+        await log(
+            db, user_id=admin.id, entity="invoice", entity_id=inv.id,
+            action=AuditAction.UPDATE, note="bulk mark-paid",
+        )
+        success_ids.append(iid)
+
+    await db.commit()
+    return {
+        "total_requested": len(ids),
+        "success_count": len(success_ids),
+        "success": success_ids,
+        "skipped": skipped,
+    }
+
+
+@router.post("/bulk/delete")
+async def bulk_delete_invoices(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> dict:
+    """Bulk soft-delete invoice. Audit 2026-05-24 user req mass action.
+
+    Payload: {ids: list[int]}.
+    Return: {total_requested, success_count, success, skipped}.
+
+    Per-item:
+    - CENTRAL_ADMIN: mirror single soft-delete (line 702) -- semua
+      status OK, allocation row TIDAK diubah.
+    - SUPERADMIN (god-mode 2026-05-24): juga soft-delete allocation
+      row terkait supaya invoice yg dihapus tdk meninggalkan jejak
+      "paid" di TX. Konsisten dgn single /hard endpoint.
+    """
+    ids = payload.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids_required")
+    if len(ids) > 500:
+        raise HTTPException(400, "max_500_per_batch")
+
+    god = admin.role == UserRole.SUPERADMIN
+
+    res = await db.execute(
+        select(Invoice).where(Invoice.id.in_(ids))
+    )
+    invs = {i.id: i for i in res.scalars().all()}
+
+    success_ids: list[int] = []
+    skipped: list[dict] = []
+    now = datetime.utcnow()
+
+    for iid in ids:
+        inv = invs.get(iid)
+        if inv is None or inv.deleted_at is not None:
+            skipped.append({"id": iid, "reason": "not_found"})
+            continue
+
+        alloc_count = 0
+        if god:
+            alloc_res = await db.execute(
+                select(InvoiceAllocation).where(
+                    InvoiceAllocation.invoice_id == inv.id,
+                    InvoiceAllocation.deleted_at.is_(None),
+                )
+            )
+            for a in alloc_res.scalars().all():
+                a.deleted_at = now
+                alloc_count += 1
+
+        inv.deleted_at = now
+        await log(
+            db, user_id=admin.id, entity="invoice", entity_id=inv.id,
+            action=AuditAction.DELETE,
+            note=(
+                f"bulk delete (god-mode, {alloc_count} alloc dilepas)"
+                if god else "bulk delete"
+            ),
+        )
+        success_ids.append(iid)
+
+    await db.commit()
+    return {
+        "total_requested": len(ids),
+        "success_count": len(success_ids),
+        "success": success_ids,
+        "skipped": skipped,
+    }
+
+
 @router.post("/{iid}/issue", response_model=InvoiceOut)
 async def issue_invoice(
     iid: int,
@@ -420,21 +684,27 @@ async def issue_invoice(
 async def mark_invoice_paid(
     iid: int,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_can_write),
+    admin: User = Depends(require_admin),
 ) -> InvoiceOut:
     """Tandai invoice LUNAS.
 
     Skema baru (M:N allocations):
       1. Hitung outstanding = total - SUM(allocations aktif).
-      2. Kalau outstanding > 0, buat transaksi DRAFT untuk selisih +
+      2. Kalau outstanding > 0, buat transaksi VERIFIED untuk selisih +
          allocation row sebesar outstanding (auto-link via tabel
          `invoice_allocations`, BUKAN lewat `transactions.invoice_id`).
       3. Allocation service akan menaikkan status invoice ke PAID.
+
+    Audit 2026-05-24: tx auto-create HARUS VERIFIED (bukan DRAFT) krn
+    allocation service enforce strict policy (audit #H3 2026-05-22) --
+    hanya VERIFIED yg boleh di-allocate. Endpoint dibatasi admin
+    (SUPERADMIN/CENTRAL_ADMIN) krn assertif "invoice lunas" = setara
+    verify tx pembayaran -- bypass workflow DRAFT->SUBMITTED->VERIFIED.
     """
     inv = await db.get(Invoice, iid)
     if not inv or inv.deleted_at is not None:
         raise HTTPException(404, "not_found")
-    await ensure_project_access(db, user, inv.project_id)
+    await ensure_project_access(db, admin, inv.project_id)
     if inv.status == InvoiceStatus.CANCELLED:
         raise HTTPException(409, "invoice_cancelled")
 
@@ -448,6 +718,7 @@ async def mark_invoice_paid(
     note_msg = None
     if outstanding > 0:
         tx_type = TxnType.OUT if inv.type == InvoiceType.IN else TxnType.IN
+        now = datetime.now(timezone.utc)
         new_tx = Transaction(
             project_id=inv.project_id,
             tx_date=date.today(),
@@ -457,12 +728,14 @@ async def mark_invoice_paid(
             vendor_client_id=inv.vendor_client_id,
             payment_method=PaymentMethod.TRANSFER,
             description=f"Pelunasan invoice {inv.number}",
-            status=TxnStatus.DRAFT,
-            created_by_id=user.id,
+            status=TxnStatus.VERIFIED,
+            verified_by_id=admin.id,
+            verified_at=now,
+            created_by_id=admin.id,
         )
         db.add(new_tx)
         await db.flush()
-        await log(db, user_id=user.id, entity="transaction", entity_id=new_tx.id,
+        await log(db, user_id=admin.id, entity="transaction", entity_id=new_tx.id,
                   action=AuditAction.CREATE, after=snapshot(new_tx),
                   note=f"Auto-create dari mark_paid invoice {inv.number}")
         # Buat allocation row sebesar outstanding (lewat service supaya
@@ -473,14 +746,14 @@ async def mark_invoice_paid(
             invoice_id=inv.id,
             items=[(new_tx.id, outstanding)],
             note=f"auto mark-paid",
-            user_id=user.id,
+            user_id=admin.id,
         )
         note_msg = f"auto-create transaksi {tx_type.value} Rp{outstanding} untuk pelunasan"
     else:
         # sudah lunas via alokasi sebelumnya; pastikan status PAID
         inv.status = InvoiceStatus.PAID
 
-    await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
+    await log(db, user_id=admin.id, entity="invoice", entity_id=inv.id,
               action=AuditAction.UPDATE, note=note_msg or "marked paid")
     await db.commit()
     res = await db.execute(

@@ -118,17 +118,30 @@ export function apiErrorMessage(err: unknown): string {
     const data = err.response?.data
     if (typeof data === "string") return data
     if (data && typeof data === "object") {
-      if ("detail" in data && typeof data.detail === "string") {
+      if ("detail" in data) {
         const detail = data.detail
-        const code = extractCode(detail)
-        // Kalau code dikenal di registry, gunakan friendly version.
-        if (ERROR_MESSAGES[code]) return ERROR_MESSAGES[code]
-        // Kalau detail punya format "code:penjelasan", trim code prefix
-        // supaya user lihat penjelasan saja (lebih readable).
-        if (detail.includes(":")) {
-          return detail.slice(detail.indexOf(":") + 1).trim() || detail
+        if (typeof detail === "string") {
+          const code = extractCode(detail)
+          // Kalau code dikenal di registry, gunakan friendly version.
+          if (ERROR_MESSAGES[code]) return ERROR_MESSAGES[code]
+          // Kalau detail punya format "code:penjelasan", trim code prefix
+          // supaya user lihat penjelasan saja (lebih readable).
+          if (detail.includes(":")) {
+            return detail.slice(detail.indexOf(":") + 1).trim() || detail
+          }
+          return detail
         }
-        return detail
+        // Dict detail (audit 2026-05-24 project_guard). Coba field
+        // `message`, fallback ke JSON stringify.
+        if (detail && typeof detail === "object") {
+          if (typeof (detail as { message?: unknown }).message === "string") {
+            return (detail as { message: string }).message
+          }
+          if (typeof (detail as { code?: unknown }).code === "string") {
+            const code = (detail as { code: string }).code
+            return ERROR_MESSAGES[code] ?? code
+          }
+        }
       }
       if ("message" in data && typeof data.message === "string") return data.message
     }
@@ -136,4 +149,19 @@ export function apiErrorMessage(err: unknown): string {
   }
   if (err instanceof Error) return err.message
   return "Terjadi kesalahan tidak diketahui."
+}
+
+/** Extract dict detail dari Axios error -- utk render banner kontekstual.
+ *  Audit 2026-05-24 project_closed flow. */
+export function apiErrorDetail(err: unknown): Record<string, unknown> | null {
+  if (err instanceof AxiosError) {
+    const data = err.response?.data
+    if (data && typeof data === "object" && "detail" in data) {
+      const detail = (data as { detail: unknown }).detail
+      if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+        return detail as Record<string, unknown>
+      }
+    }
+  }
+  return null
 }

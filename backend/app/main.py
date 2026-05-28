@@ -67,6 +67,40 @@ async def _sync_pg_columns(conn) -> None:
         "ALTER TABLE companies ALTER COLUMN bank_account TYPE VARCHAR(500)",
         "ALTER TABLE vendors_clients ALTER COLUMN bank_account TYPE VARCHAR(500)",
         "ALTER TABLE transactions ALTER COLUMN party_account TYPE VARCHAR(500)",
+        # Category marketing flag (audit 2026-05-23) -- cegah double count
+        # marketing di rincian proyek. Migrasi h9e4b2d6f3a8.
+        "ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_marketing BOOLEAN NOT NULL DEFAULT FALSE",
+        # Category penalty + profit_share flags (audit 2026-05-23) -- transparansi
+        # distribusi profit di Rincian Keuangan. Migrasi i3a8b5c7e9d2.
+        "ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_penalty BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_profit_share BOOLEAN NOT NULL DEFAULT FALSE",
+        # Invoice item per-kategori (audit 2026-05-24) -- migrasi
+        # l7f4a0c3e6b9. Safety net kalau deploy lewat alembic upgrade.
+        "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES categories(id)",
+        "CREATE INDEX IF NOT EXISTS ix_invoice_items_category_id ON invoice_items (category_id)",
+        # AI prompt overrides + per-feature settings (audit 2026-05-24).
+        # Migrasi j5d2e8a1c4f7 + k6e3f9b2d5a8. CREATE IF NOT EXISTS supaya
+        # idempoten -- alembic boleh "skip" karena no-op kalau sudah ada.
+        """CREATE TABLE IF NOT EXISTS ai_prompt_overrides (
+            feature_key VARCHAR(64) NOT NULL,
+            field VARCHAR(32) NOT NULL,
+            content TEXT NOT NULL,
+            updated_by_id INTEGER REFERENCES users(id),
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (feature_key, field)
+        )""",
+        """CREATE TABLE IF NOT EXISTS ai_feature_settings (
+            feature_key VARCHAR(64) PRIMARY KEY,
+            provider VARCHAR(32),
+            model VARCHAR(80),
+            max_tokens INTEGER,
+            cache_ttl_days INTEGER,
+            rate_limit_per_min INTEGER,
+            web_search_enabled BOOLEAN,
+            monthly_budget_usd NUMERIC(10,4),
+            updated_by_id INTEGER REFERENCES users(id),
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        )""",
         # Invoice number wajib unik. Drop index lama (non-unique) lalu
         # buat unique index. Tdk pakai DROP IF EXISTS sebelum CREATE
         # supaya idempoten -- kalau sudah unique, CREATE UNIQUE INDEX IF
@@ -225,6 +259,16 @@ async def lifespan(_app: FastAPI):
             await _ensure_perf_indexes(conn)
     except Exception as e:  # noqa: BLE001
         print(f"[startup] perf index warning: {e}")
+    # Audit 2026-05-24: invalidate asyncpg prepared statement cache.
+    # Tanpa ini, kolom yg baru di-ALTER (mis. invoice_items.category_id)
+    # menyebabkan UndefinedColumnError karena prepared stmt lama refer ke
+    # schema snapshot pre-ALTER. dispose() drop semua connection di pool,
+    # next request dapat conn baru dgn schema fresh.
+    if not settings.is_sqlite:
+        try:
+            await engine.dispose()
+        except Exception as e:  # noqa: BLE001
+            print(f"[startup] engine dispose warning: {e}")
     Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
 
     # Warm app_settings cache (DB > env) supaya sync readers (telegram/

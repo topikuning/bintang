@@ -35,7 +35,7 @@ import { ProjectPicker } from "@/components/forms/ProjectPicker"
 import { VendorPicker } from "@/components/forms/VendorPicker"
 import { useAuthStore } from "@/store/auth"
 import { apiErrorMessage, fileUrl as resolveFileUrl } from "@/lib/api"
-import { fmtDateTime, fmtPct } from "@/lib/format"
+import { fmtDateTime, fmtIDR, fmtPct } from "@/lib/format"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -487,7 +487,9 @@ function fmtRupiah(v: unknown): string {
   if (v == null || v === "") return "—"
   const n = Number(v)
   if (!Number.isFinite(n)) return String(v)
-  return `Rp ${n.toLocaleString("id-ID")}`
+  // Pakai fmtIDR shared supaya konsisten (NBSP antara Rp dan angka,
+  // separator id-ID). Audit 2026-05-24.
+  return fmtIDR(n)
 }
 
 function DraftCard({
@@ -761,9 +763,7 @@ function CreateInvoiceFromDraftPanel({ draft }: { draft: OcrDraft }) {
     typeof data["total"] === "number"
       ? (data["total"] as number)
       : Number(data["total"])
-  const totalLabel = Number.isFinite(totalNum)
-    ? `Rp ${Number(totalNum).toLocaleString("id-ID")}`
-    : "—"
+  const totalLabel = Number.isFinite(totalNum) ? fmtIDR(totalNum) : "—"
 
   const handleSubmit = async () => {
     if (!projectId) {
@@ -778,7 +778,7 @@ function CreateInvoiceFromDraftPanel({ draft }: { draft: OcrDraft }) {
         vendor_client_id: vendorId,
       })
       toast.success(`Invoice ${result.invoice_number} berhasil dibuat`, {
-        description: `${result.items_count} item · Rp ${result.total.toLocaleString("id-ID")} · ${result.attachments_count} lampiran. Status: ${result.status}.`,
+        description: `${result.items_count} item · ${fmtIDR(result.total)} · ${result.attachments_count} lampiran. Status: ${result.status}.`,
       })
       // Form di-collapse otomatis karena draft.entity_id ke-update via
       // invalidate query -> komponen ini hilang, replaced dgn linked badge.
