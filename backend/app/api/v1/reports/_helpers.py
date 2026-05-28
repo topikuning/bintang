@@ -190,7 +190,7 @@ async def _output(
         summary=summary or [], scope_line=scope_line,
         detail_label=detail_label, footer_row=footer_row,
         doc_no=doc_no, diagnostic=diagnostic,
-        company=company, app_name="Bintang",
+        company=company, app_name="CACAK",
         logo_data=logo_data,
         printed_at=_fmt_datetime(datetime.now()),
         printed_by=printed_by,

@@ -20,7 +20,7 @@ export const useAuthStore = create<AuthState>()(
       logout: () => set({ token: null, user: null }),
     }),
     {
-      name: "bintang-auth",
+      name: "cacak-auth",
       partialize: (s) => ({ token: s.token, user: s.user }),
     },
   ),

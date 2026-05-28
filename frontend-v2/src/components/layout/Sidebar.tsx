@@ -11,12 +11,12 @@ export function Sidebar() {
     <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r bg-surface sticky top-0 h-[100dvh] self-start">
       <div className="flex h-14 items-center gap-2 px-5 border-b shrink-0">
         <div className="flex h-7 w-7 items-center justify-center rounded bg-brand-500 text-white font-bold text-[13px]">
-          B
+          C
         </div>
         <div className="flex flex-col leading-tight">
-          <span className="text-sm font-bold">Bintang</span>
+          <span className="text-sm font-bold">CACAK</span>
           <span className="text-[10px] uppercase tracking-wider text-ink-500">
-            Finance & Project
+            Catatan Arus Cash &amp; Anggaran Kerja
           </span>
         </div>
       </div>
@@ -53,7 +53,7 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t p-3 text-[11px] text-ink-500 shrink-0">
-        Bintang v2.0 · {new Date().getFullYear()}
+        CACAK v2.0 · {new Date().getFullYear()}
       </div>
     </aside>
   )

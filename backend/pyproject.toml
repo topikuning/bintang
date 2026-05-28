@@ -1,7 +1,7 @@
 [project]
-name = "bintang-backend"
+name = "cacak-backend"
 version = "0.1.0"
-description = "Bintang - Biaya, Investasi dan Tata Anggaran Gerak (Backend API)"
+description = "CACAK - Catatan Arus Cash dan Anggaran Kerja (Backend API)"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

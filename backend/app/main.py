@@ -313,7 +313,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title=f"{settings.APP_NAME} API",
-    description="Bintang - Biaya, Investasi dan Tata Anggaran Gerak",
+    description="CACAK - Catatan Arus Cash dan Anggaran Kerja",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -379,3 +379,82 @@ app.include_router(api_router, prefix="/api/v1")
 @app.get("/health", tags=["health"])
 async def health() -> dict[str, str]:
     return {"status": "ok", "app": settings.APP_NAME}
+
+
+# ============================================================
+# SPA static serving (combined-service deploy mode).
+#
+# Aktif HANYA kalau env `STATIC_DIR` di-set dan directory-nya ada.
+# Default off -> behaviour identik dengan deploy multi-service
+# (frontend nginx terpisah). Service backend Railway eksisting tidak
+# set env ini -> blok ini skip, no change.
+#
+# Dipakai oleh Dockerfile + railway.toml di repo root yg build FE
+# (Vite) + backend dalam satu image, FE dist di-mount di /app/static.
+# ============================================================
+import os as _os
+from fastapi import HTTPException as _HTTPException
+from fastapi.responses import FileResponse as _FileResponse
+
+_STATIC_DIR = _os.getenv("STATIC_DIR", "").strip()
+if _STATIC_DIR:
+    _static_path = Path(_STATIC_DIR)
+    _assets_path = _static_path / "assets"
+    _index_path = _static_path / "index.html"
+    if _static_path.exists() and _index_path.exists():
+        # Mount Vite hashed assets (file di /assets/*-{hash}.{js,css})
+        # dgn long-lived cache. Vite sudah produce nama unik per build.
+        if _assets_path.exists():
+            app.mount(
+                "/assets",
+                StaticFiles(directory=str(_assets_path)),
+                name="spa-assets",
+            )
+
+        # Catch-all: serve file SPA + fallback ke index.html.
+        # Wajib di-register PALING AKHIR supaya tdk intercept route
+        # /api/v1/*, /files/*, /health, /docs, /openapi.json, /redoc.
+        # FastAPI match exact route dulu, baru parameterized -- jadi
+        # urutan declaration sebenernya safe, tapi defensive check di
+        # handler tetap dipasang.
+        _RESERVED_PREFIXES = (
+            "api/", "files/", "assets/",
+            "health", "docs", "redoc", "openapi.json",
+        )
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def _spa_fallback(full_path: str):
+            # Defensive: jangan serve SPA utk path API/files
+            for prefix in _RESERVED_PREFIXES:
+                if full_path == prefix.rstrip("/") or full_path.startswith(prefix):
+                    raise _HTTPException(status_code=404)
+
+            # Static file lain (favicon.ico, manifest.webmanifest, robots.txt)
+            candidate = _static_path / full_path
+            try:
+                # Resolve + jaga di dalam STATIC_DIR (anti path traversal)
+                resolved = candidate.resolve()
+                resolved.relative_to(_static_path.resolve())
+            except (ValueError, OSError):
+                raise _HTTPException(status_code=404) from None
+            if resolved.is_file():
+                return _FileResponse(str(resolved))
+
+            # Fallback SPA -- semua route React Router (/transactions,
+            # /invoices/123, dll) di-serve index.html dgn no-cache supaya
+            # update bundle (chunk hash baru) langsung ke-pick-up browser.
+            return _FileResponse(
+                str(_index_path),
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                },
+            )
+
+        print(f"[startup] SPA static mode aktif: STATIC_DIR={_STATIC_DIR}")
+    else:
+        print(
+            f"[startup] WARNING: STATIC_DIR={_STATIC_DIR} di-set tapi "
+            f"directory/index.html tdk ada -- SPA serving tdk aktif. "
+            f"Backend tetap jalan tanpa FE."
+        )

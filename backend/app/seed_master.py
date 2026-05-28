@@ -4,7 +4,7 @@ Run after fresh DB:
     python -m app.seed_master
 
 Login default:
-    admin@bintang.me / admin123  (UBAH password setelah login pertama!)
+    admin@cacak.app / admin123  (UBAH password setelah login pertama!)
 """
 
 from __future__ import annotations
@@ -49,18 +49,18 @@ async def init() -> None:
     async with SessionLocal() as db:
         # 1. Superadmin
         existing_admin = (
-            await db.execute(select(User).where(User.email == "admin@bintang.me"))
+            await db.execute(select(User).where(User.email == "admin@cacak.app"))
         ).scalar_one_or_none()
 
         if existing_admin is None:
             admin = User(
-                email="admin@bintang.me",
+                email="admin@cacak.app",
                 password_hash=hash_password("admin123"),
                 name="Super Admin",
                 role=UserRole.SUPERADMIN,
             )
             db.add(admin)
-            print("✓ Superadmin dibuat: admin@bintang.me / admin123")
+            print("✓ Superadmin dibuat: admin@cacak.app / admin123")
         else:
             print("• Superadmin sudah ada, dilewati.")
 
@@ -86,7 +86,7 @@ async def init() -> None:
         print()
         print("=" * 60)
         print("Master seed selesai. Sistem siap dipakai.")
-        print("Login: admin@bintang.me / admin123")
+        print("Login: admin@cacak.app / admin123")
         print("WAJIB ganti password lewat menu Pengguna setelah login pertama.")
         print("=" * 60)
 

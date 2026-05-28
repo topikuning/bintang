@@ -82,7 +82,7 @@ def _has_global_access(user: User) -> bool:
 
 async def cmd_help(db, user, chat_id, args, msg) -> str:
     return (
-        "<b>Bintang Bot</b> — perintah:\n"
+        "<b>CACAK Bot</b> — perintah:\n"
         "<b>Lihat data:</b>\n"
         "  /saldo — saldo semua proyek\n"
         "  /saldo &lt;kode&gt; — saldo + budget proyek\n"
@@ -123,7 +123,7 @@ async def cmd_start(db, user, chat_id, args, msg) -> str:
             "Akun ini sudah ter-link. Ketik /help untuk daftar perintah."
         )
     return (
-        "Halo! Bot ini terhubung ke aplikasi <b>Bintang</b>.\n"
+        "Halo! Bot ini terhubung ke aplikasi <b>CACAK</b>.\n"
         "Untuk pakai, kamu harus link akun web dulu:\n"
         "1. Buka aplikasi web → menu <b>Profil</b> → <b>Hubungkan Telegram</b>.\n"
         "2. Salin kode 6 digit yang muncul.\n"

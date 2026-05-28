@@ -61,7 +61,7 @@ def _is_admin(user: User) -> bool:
 
 async def cmd_help(db, user, chat_id, args, msg) -> str:
     return (
-        "*Bintang Bot* — perintah:\n"
+        "*CACAK Bot* — perintah:\n"
         "*Lihat data:*\n"
         "  /saldo — saldo semua proyek\n"
         "  /saldo <kode> — saldo + budget proyek\n"
@@ -102,7 +102,7 @@ async def cmd_start(db, user, chat_id, args, msg) -> str:
             "Akun ini sudah ter-link. Ketik /help untuk daftar perintah."
         )
     return (
-        "Halo! Bot ini terhubung ke aplikasi *Bintang*.\n"
+        "Halo! Bot ini terhubung ke aplikasi *CACAK*.\n"
         "Untuk pakai, kamu harus link akun web dulu:\n"
         "1. Buka aplikasi web → menu *Pengaturan* → *Hubungkan WhatsApp*.\n"
         "2. Salin kode 6 digit yang muncul.\n"
