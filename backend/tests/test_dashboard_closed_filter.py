@@ -1,11 +1,16 @@
-"""Dashboard global -- exclude SELESAI/DIBATALKAN dari warning counters.
+"""Dashboard global -- exclude SELESAI/DIBATALKAN sesuai semantik.
 
 Audit 2026-05-24: semantik "tagihan dianggap clear saat proyek selesai".
-- SELESAI: counters exclude default, toggle bisa tampilkan kembali.
-  Project tetap muncul di list + counted di total_projects.
+- SELESAI: default exclude dari SEMUA (totals/counter/list/chart).
+  Toggle `include_closed=true` (tab Semua) -> ikut. Audit 2026-05-27.
 - DIBATALKAN: di-exclude total dari dashboard (tdk masuk proj_q sama
   sekali). User: "kalau dibatalkan ya sudah selesai, jangan dibahas".
   Hanya bisa diakses lewat Hub Proyek tab "Semua" / direct URL.
+
+Audit 2026-05-27: scope strict -- tab "Aktif" exclude SELESAI dari
+semua section (totals, count, list, chart, warning), bukan cuma
+warning. closed_count tetap dihitung independent supaya FE bisa kasih
+hint "ada N proyek selesai" walaupun mode strict.
 """
 from __future__ import annotations
 
@@ -104,7 +109,7 @@ def override_db(db):
 
 @pytest.mark.asyncio
 async def test_dashboard_exclude_selesai_default(db, override_db):
-    """Default include_closed=False: warning counters exclude SELESAI."""
+    """Default include_closed=False (tab Aktif): SEMUA section exclude SELESAI."""
     _, p_aktif, p_selesai, user = await _seed(db)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as ac:
@@ -119,8 +124,9 @@ async def test_dashboard_exclude_selesai_default(db, override_db):
     # Top spender: SELESAI punya 9999 (lebih besar), tapi exclude ->
     # top_spender = AKTIF dgn 50.
     assert body["top_spender"]["project_id"] == p_aktif.id, body
-    # Project list: include semua (2)
-    assert body["total_projects"] == 2
+    # Audit 2026-05-27: project list & total_projects sekarang juga exclude.
+    assert body["total_projects"] == 1
+    # closed_count: independent query -- tetap hitung SELESAI yg accessible.
     assert body["closed_count"] == 1
     assert body["include_closed"] is False
 
@@ -146,18 +152,22 @@ async def test_dashboard_include_closed_toggle(db, override_db):
 
 
 @pytest.mark.asyncio
-async def test_dashboard_totals_include_closed_always(db, override_db):
-    """Totals & saldo selalu include semua proyek, terlepas filter."""
+async def test_dashboard_totals_strict_with_aktif_tab(db, override_db):
+    """Audit 2026-05-27: tab Aktif exclude SELESAI dr totals juga.
+    Sebelumnya: totals selalu include closed. Sekarang: strict scope."""
     _, p_aktif, p_selesai, user = await _seed(db)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as ac:
-        r = await ac.get("/api/v1/dashboard/global", headers=_hdr(user))
-    body = r.json()
-    # total_out di project_totals include DRAFT+SUBMITTED+VERIFIED
-    # (ACTIVE_STATUSES di budget.py). Penting: closed project TIDAK
-    # di-exclude dari sini -- saldo & total adalah real money.
-    # SELESAI 9999+100 + AKTIF 50+100 = 10249.
-    assert float(body["totals"]["out"]) == 10249.0
+        r_aktif = await ac.get("/api/v1/dashboard/global", headers=_hdr(user))
+        r_all = await ac.get(
+            "/api/v1/dashboard/global?include_closed=true", headers=_hdr(user),
+        )
+    body_aktif = r_aktif.json()
+    body_all = r_all.json()
+    # Tab Aktif: hanya AKTIF 50+100 = 150.
+    assert float(body_aktif["totals"]["out"]) == 150.0
+    # Tab Semua: AKTIF + SELESAI = 50+100 + 9999+100 = 10249.
+    assert float(body_all["totals"]["out"]) == 10249.0
 
 
 @pytest.mark.asyncio
@@ -195,16 +205,15 @@ async def test_dashboard_excludes_dibatalkan_completely(db, override_db):
     async with AsyncClient(transport=transport, base_url="http://t") as ac:
         r = await ac.get("/api/v1/dashboard/global", headers=_hdr(user))
     body = r.json()
-    # Total seharusnya 2 (AKTIF + SELESAI), DIBATALKAN tdk dihitung.
-    assert body["total_projects"] == 2
-    # closed_count = hanya SELESAI (1), DIBATALKAN tdk dihitung.
+    # Audit 2026-05-27: tab Aktif default -> total = AKTIF only (1).
+    assert body["total_projects"] == 1
+    # closed_count = SELESAI accessible (1), DIBATALKAN tdk dihitung.
     assert body["closed_count"] == 1
-    # Project list tdk include DIBATALKAN.
+    # Project list tdk include DIBATALKAN (juga tdk include SELESAI di Aktif).
     project_ids = [p["id"] for p in body["projects"]]
     assert p_cancel.id not in project_ids
 
-    # Bahkan dgn include_closed=true, DIBATALKAN tetap exclude
-    # ("kalau dibatalkan ya selesai, jangan dibahas").
+    # Tab Semua (include_closed=true): AKTIF + SELESAI = 2, DIBATALKAN tetap exclude.
     async with AsyncClient(transport=transport, base_url="http://t") as ac:
         r2 = await ac.get(
             "/api/v1/dashboard/global?include_closed=true",

@@ -170,13 +170,19 @@ async def global_dashboard(
     # ditambahkan terpisah di bawah, hormati year toggle.
     # Audit 2026-05-24: DIBATALKAN otomatis exclude dari dashboard
     # (semantik user: "kalau dibatalkan ya sudah selesai, jangan dibahas").
-    # Bisa diakses lewat Hub Proyek tab "Semua" / direct URL, dan kalau
-    # status di-restore ke AKTIF otomatis muncul lagi.
+    # Audit 2026-05-27: tab "Aktif" (include_closed=false) -> SELESAI
+    # exclude dari SEMUA scope (totals, count, list, chart, warning),
+    # bukan cuma warning. Tab "Semua" (include_closed=true) -> SELESAI
+    # ikut. Sebelumnya: totals/list selalu include SELESAI, cuma warning
+    # yg toggle -- menyesatkan: user pilih "Aktif" tapi angka beda dgn
+    # filter.
     proj_q = select(Project).where(
         Project.deleted_at.is_(None),
         Project.kind != ProjectKind.NON_PROJECT.value,
         Project.status != ProjectStatus.DIBATALKAN,
     )
+    if not include_closed:
+        proj_q = proj_q.where(Project.status != ProjectStatus.SELESAI)
 
     # Shape default utk early-return (user tanpa proyek / setelah filter
     # tdk ada proyek). Wajib include SEMUA field yg dipakai FE supaya tdk
@@ -236,19 +242,12 @@ async def global_dashboard(
     if not project_ids:
         return _empty_global()
 
-    # Audit 2026-05-24: "operational" subset = exclude SELESAI dari semua
-    # warning counter (semantik: tagihan dianggap clear saat proyek
-    # selesai). DIBATALKAN sudah tdk masuk proj_q sama sekali (treated
-    # as soft-deleted). Saldo & totals & list project tetap include
-    # SELESAI. Toggle `include_closed=true` -> SELESAI ikut counters
-    # utk audit retrospective.
+    # Audit 2026-05-27: SELESAI sudah di-filter di proj_q level kalau
+    # include_closed=false. Jadi project_ids = scope final (konsisten utk
+    # semua section). operational_* alias retained utk backward-compat
+    # variable name di section di bawah.
     _CLOSED = (ProjectStatus.SELESAI,)
-    if include_closed:
-        operational_project_ids = list(project_ids)
-    else:
-        operational_project_ids = [
-            p.id for p in projects if p.status not in _CLOSED
-        ]
+    operational_project_ids = list(project_ids)
     operational_set = set(operational_project_ids)
 
     # NON_PROJECT pids accessible ke user. Cuma muncul di agregat
@@ -528,7 +527,24 @@ async def global_dashboard(
         sum_in_total += np_in_eligible
         sum_out_total += np_out_eligible
 
-    closed_count = sum(1 for p in projects if p.status in _CLOSED)
+    # closed_count: query independent dr `include_closed` toggle, supaya
+    # tab "Aktif" tetap tahu "ada N proyek selesai" (utk hint discovery
+    # ke tab "Semua"). Honors filter scope yg sama (pids, company, dst)
+    # selain status.
+    closed_q = select(func.count()).select_from(Project).where(
+        Project.deleted_at.is_(None),
+        Project.kind != ProjectKind.NON_PROJECT.value,
+        Project.status == ProjectStatus.SELESAI,
+    )
+    if pids is not None:
+        closed_q = closed_q.where(Project.id.in_(pids))
+    if company_id:
+        closed_q = closed_q.where(Project.company_id == company_id)
+    if location:
+        closed_q = closed_q.where(func.lower(Project.location).in_([s.lower() for s in location]))
+    if client_name:
+        closed_q = closed_q.where(func.lower(Project.client_name).in_([s.lower() for s in client_name]))
+    closed_count = (await db.execute(closed_q)).scalar_one() or 0
 
     return {
         "totals": {
