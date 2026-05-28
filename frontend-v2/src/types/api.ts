@@ -1,5 +1,5 @@
 /**
- * Tipe API Bintang -- mirror dari backend Pydantic schemas.
+ * Tipe API CACAK -- mirror dari backend Pydantic schemas.
  *
  * Ini ditulis tangan dulu (subset yang kita butuh utk Phase 0-1).
  * Phase berikutnya pertimbangkan generate otomatis via openapi-typescript
