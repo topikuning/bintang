@@ -47,6 +47,9 @@ export function useProjectsStats(params: Params = {}) {
       return data
     },
     staleTime: 60_000,
+    // Smooth filter change: tetap render list lama saat fetching baru
+    // (mis. saat user ngetik di search bar) supaya tdk flicker skeleton.
+    placeholderData: (prev) => prev,
   })
 }
 

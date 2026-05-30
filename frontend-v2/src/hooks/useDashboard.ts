@@ -28,6 +28,9 @@ export function useGlobalDashboard(params?: GlobalDashboardParams) {
       return data
     },
     staleTime: 60_000,
+    // Smooth filter change: tetap render data lama saat fetching baru,
+    // hindari flicker skeleton tiap user ketik di search.
+    placeholderData: (prev) => prev,
   })
 }
 

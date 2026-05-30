@@ -7,6 +7,7 @@ import {
   type ProjectStats,
 } from "@/hooks/useProjectsStats"
 import { useCompanies } from "@/hooks/useCompanies"
+import { useDebouncedValue } from "@/hooks/useDebouncedValue"
 import { useProposalCount } from "@/hooks/useProjectProposals"
 import { usePageTitle } from "@/hooks/usePageTitle"
 import { useAuthStore } from "@/store/auth"
@@ -46,6 +47,8 @@ export function ProjectsHubPage() {
   const [funderIds, setFunderIds] = useState<number[]>([])
   const [statusFilter, setStatusFilter] = useState<"AKTIF" | "ALL">("AKTIF")
   const [proposeOpen, setProposeOpen] = useState(false)
+  // Debounce search supaya tdk fire request tiap keystroke.
+  const debouncedQ = useDebouncedValue(q, 300)
 
   // Pending proposal count (admin saja -- 403 utk non-admin, queryClient
   // tetap retry-disabled supaya tdk spam log).
@@ -54,14 +57,14 @@ export function ProjectsHubPage() {
 
   const params = useMemo(
     () => ({
-      q: q.trim() || undefined,
+      q: debouncedQ.trim() || undefined,
       company_id: companyId ?? undefined,
       location: locations.length ? locations : undefined,
       client_name: clientNames.length ? clientNames : undefined,
       funder_id: funderIds.length ? funderIds : undefined,
       status: statusFilter === "ALL" ? undefined : statusFilter,
     }),
-    [q, companyId, locations, clientNames, funderIds, statusFilter],
+    [debouncedQ, companyId, locations, clientNames, funderIds, statusFilter],
   )
 
   const projectsQ = useProjectsStats(params)

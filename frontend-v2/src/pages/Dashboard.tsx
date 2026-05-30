@@ -20,6 +20,7 @@ import {
 import { Link } from "react-router-dom"
 import { useGlobalDashboard } from "@/hooks/useDashboard"
 import { useCompanies } from "@/hooks/useCompanies"
+import { useDebouncedValue } from "@/hooks/useDebouncedValue"
 import { useProjectFilters } from "@/hooks/useProjectsStats"
 import { usePageTitle } from "@/hooks/usePageTitle"
 import { Combobox } from "@/components/forms/Combobox"
@@ -73,17 +74,19 @@ function GlobalDashboard() {
   // Tabs "Aktif | Semua" -- "Aktif" = exclude SELESAI/DIBATALKAN dari
   // warning counters (default operational); "Semua" = include_closed.
   const [statusTab, setStatusTab] = useState<"AKTIF" | "ALL">("AKTIF")
+  // Debounce search supaya tdk fire request tiap keystroke.
+  const debouncedSearch = useDebouncedValue(qSearch, 300)
 
   const params = useMemo(
     () => ({
-      q: qSearch.trim() || undefined,
+      q: debouncedSearch.trim() || undefined,
       company_id: companyId ?? undefined,
       location: locations.length ? locations : undefined,
       client_name: clientNames.length ? clientNames : undefined,
       funder_id: funderIds.length ? funderIds : undefined,
       include_closed: statusTab === "ALL" || undefined,
     }),
-    [qSearch, companyId, locations, clientNames, funderIds, statusTab],
+    [debouncedSearch, companyId, locations, clientNames, funderIds, statusTab],
   )
 
   const q = useGlobalDashboard(params)
