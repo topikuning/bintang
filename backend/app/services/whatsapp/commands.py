@@ -85,6 +85,14 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "\n*Lampirkan bukti ke transaksi yang sudah ada:*\n"
         "  /buktitx <id> — buka jendela 5 menit utk attach foto/PDF\n"
         "  Contoh: ```/buktitx 123``` lalu kirim foto/file.\n"
+        "\n*Buat PO via chat (AI parser):*\n"
+        "  /po — kirim daftar item + proyek + vendor; AI parse → preview → balas *ya*\n"
+        "  Contoh:\n"
+        "```\n/po\n"
+        "Besi 10 polos = 270 lonjor\n"
+        "Wiremesh M8 bulat = 228 lembar\n"
+        "proyek BMJ1\n"
+        "vendor PT Sumber Besi```\n"
         "\n*AI (admin):*\n"
         "  /tanya <pertanyaan> — tanya laporan natural\n"
         "  Contoh: ```/tanya top vendor bulan ini```\n"
@@ -377,6 +385,46 @@ async def cmd_masuk(db, user, chat_id, args, msg) -> str:
     return await _make_transaction(db, user, chat_id, args, TxnType.IN, msg)
 
 
+async def cmd_po(db, user, chat_id, args, msg) -> str:
+    """Buat Purchase Order via teks chat (audit 2026-05-30).
+
+    Cara pakai (1 pesan):
+      /po
+      Besi 10 polos = 270 lonjor
+      proyek BMJ1
+      vendor PT Sumber Besi
+
+    Bot AI-parse, kirim preview, balas *ya* utk simpan DRAFT.
+    """
+    if not user:
+        return "Akun belum ter-link. Pakai /link <kode> dulu."
+    text = (msg or {}).get("text") or (msg or {}).get("caption") or ""
+    if "\n" in text:
+        body = text.split("\n", 1)[1].strip()
+    else:
+        body = " ".join(args).strip()
+    if not body:
+        return (
+            "Format: */po* + daftar item per-baris, sebutkan proyek & vendor.\n\n"
+            "Contoh:\n"
+            "```\n/po\n"
+            "Besi 10 polos = 270 lonjor\n"
+            "Wiremesh M8 bulat = 228 lembar\n"
+            "proyek BMJ1\n"
+            "vendor PT Sumber Besi\n```"
+        )
+    from app.services.bot_po_assistant import BotPOError, parse_and_save
+    try:
+        return await parse_and_save(
+            db, user=user, channel="whatsapp", chat_id=chat_id, text=body,
+        )
+    except BotPOError as e:
+        return f"❌ {e}"
+    except Exception as e:
+        logger.exception("cmd_po parse failed (WA)")
+        return f"⚠️ Gagal parse: {e}"
+
+
 async def cmd_buktitx(db, user, chat_id, args, msg) -> str:
     """Buka jendela attach untuk transaksi yang SUDAH ada.
     Cara pakai: /buktitx <id transaksi>. Setelah itu, semua foto/file
@@ -598,6 +646,9 @@ REGISTRY: dict[str, CommandHandler] = {
     "buktitx": cmd_buktitx,
     "bukti": cmd_buktitx,
     "lampiran": cmd_buktitx,
+    "po": cmd_po,
+    "buatpo": cmd_po,
+    "buat-po": cmd_po,
     # --- Workflow validasi ---
     "submit": _wrap_workflow(_wf.cmd_submit),
     "kirim": _wrap_workflow(_wf.cmd_submit),
@@ -620,12 +671,22 @@ REGISTRY: dict[str, CommandHandler] = {
 
 
 def parse_command(text: str) -> tuple[str, list[str]] | None:
+    """Audit 2026-05-30: support multi-line body (mis. `/po\\n<items>`).
+    Head = chars sebelum whitespace pertama; rest = sisa (split by space
+    utk args legacy). Handler yg butuh raw body multi-line baca
+    message text langsung."""
     if not text or not text.startswith("/"):
         return None
     body = text[1:].strip()
     if not body:
         return None
-    head, _, rest = body.partition(" ")
+    head_end = len(body)
+    for i, ch in enumerate(body):
+        if ch in (" ", "\n", "\t"):
+            head_end = i
+            break
+    head = body[:head_end]
+    rest = body[head_end:].strip()
     name = head.split("@", 1)[0].lower()
     args = rest.split() if rest else []
     return name, args

@@ -31,6 +31,41 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def _handle_po_session_reply(
+    db: AsyncSession, user: User, chat_id: str, text: str,
+) -> str:
+    """Handle balasan "ya"/"batal" utk PO session aktif. Return "" kalau
+    tdk ada session aktif (caller akan lanjut ke command dispatcher /
+    skip). Audit 2026-05-30."""
+    from app.services.bot_po_assistant import (
+        BotPOError, confirm_create, delete_session, load_active_session,
+    )
+    session = await load_active_session(db, channel="telegram", chat_id=chat_id)
+    if session is None:
+        return ""
+    t = text.strip().lower()
+    if t in ("ya", "yes", "ok", "y", "✓"):
+        try:
+            po = await confirm_create(db, user=user, session=session)
+        except BotPOError as e:
+            return f"❌ {e}"
+        return (
+            f"✅ PO dibuat sebagai <b>DRAFT</b>: <code>{po.number}</code>\n"
+            f"Total: Rp {po.total or 0:,.0f}\n".replace(",", ".")
+            + "Lengkapi/edit di web kalau perlu (harga, vendor, dst), "
+            "lalu submit utk approve."
+        )
+    if t in ("batal", "cancel", "no", "tidak"):
+        await delete_session(db, session)
+        return "Dibatalkan. Session PO dihapus."
+    # Balasan lain saat session aktif: jangan paksa ya/batal -- kasih hint
+    # lalu fall-through (kalau text bukan /command -> tetap reply hint).
+    return (
+        "⏳ Ada draf PO menunggu konfirmasi. Balas <b>ya</b> untuk simpan "
+        "atau <b>batal</b> untuk batalkan."
+    )
+
+
 @router.get("/health")
 async def health(db: AsyncSession = Depends(get_db)) -> dict:
     cfg = await messaging.get_config(db)
@@ -79,7 +114,12 @@ async def webhook(
     text: str = message.get("text") or message.get("caption") or ""
     reply: str = ""
 
-    if text.startswith("/"):
+    # Audit 2026-05-30: intercept "ya"/"batal" kalau ada PO session aktif.
+    # User flow: /po -> bot preview -> user balas "ya" (plain text, no /).
+    if user and text.strip() and not text.startswith("/"):
+        reply = await _handle_po_session_reply(db, user, chat_id, text)
+
+    if not reply and text.startswith("/"):
         reply = await dispatch_command(db, user, chat_id, text, message)
 
     # Lampiran: foto, dokumen (PDF/dll), atau video. Telegram membungkus

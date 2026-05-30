@@ -411,6 +411,52 @@ FEATURES: dict[str, FeatureSpec] = {
         user_template_default="{facts}",
         user_placeholders=("facts",),
     ),
+    "po_chat_parser": FeatureSpec(
+        key="po_chat_parser",
+        label="Parser Chat -> PO",
+        description=(
+            "User WA/Telegram kirim teks bebas (daftar item + sebut proyek "
+            "+ vendor), AI extract struktur PO. Output structured JSON: "
+            "items[], project_hint, vendor_hint, notes. Resolver di "
+            "service layer match ke Project/VendorClient sebenarnya."
+        ),
+        system_default=(
+            "Kamu asisten parser untuk perusahaan konstruksi Indonesia. "
+            "Tugasmu: extract daftar item Purchase Order dari teks chat "
+            "bebas yang dikirim user.\n\n"
+            "Format input bebas -- user mungkin tulis:\n"
+            "  Besi 10 polos = 270 lonjor\n"
+            "  Besi 8 polos: 290 lonjor @ 95000\n"
+            "  - Wiremesh M8 bulat (228 lembar)\n"
+            "Dan mungkin sebutkan proyek + vendor di baris terpisah:\n"
+            "  proyek BMJ1\n"
+            "  vendor PT Sumber Besi\n"
+            "  catatan: kirim sebelum jumat\n\n"
+            "Aturan ekstraksi:\n"
+            "1. items: array tiap baris yg jelas barang+qty (atau qty+barang).\n"
+            "   - description: nama barang (string non-empty).\n"
+            "   - quantity: angka (number, default 1 kalau tdk eksplisit).\n"
+            "   - unit: satuan (lonjor/lembar/zak/pcs/m/m2/m3/kg/dll), null "
+            "kalau tdk disebut.\n"
+            "   - unit_price: harga satuan (number), null kalau tdk disebut. "
+            "JANGAN tebak harga. Format harga: \"@ 95000\" / \"@95k\" / "
+            "\"harga 95000\".\n"
+            "2. project_hint: kode/nama proyek yg user sebut (string), null "
+            "kalau tdk ada. Contoh: \"BMJ1\", \"Rekonstruksi Pucuk\". "
+            "Resolver akan match.\n"
+            "3. vendor_hint: nama vendor/supplier yg user sebut, null kalau "
+            "tdk ada. Contoh: \"PT Sumber Besi\", \"Toko Jaya\".\n"
+            "4. notes: catatan tambahan kalau user sebut (string), null "
+            "kalau tdk ada.\n\n"
+            "5. KALAU input ambigu (cuma 1 baris tanpa qty, atau tdk ada "
+            "item sama sekali), tetap output schema dgn items=[] -- biarkan "
+            "service layer reply error message.\n"
+            "6. JANGAN halusinasi item -- kalau ragu skip.\n"
+            "7. Quantity dan unit_price WAJIB number (bukan string)."
+        ),
+        user_template_default="Teks chat dari user:\n\n{text}",
+        user_placeholders=("text",),
+    ),
 }
 
 

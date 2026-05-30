@@ -117,6 +117,42 @@ class WhatsAppPendingCommand(TimestampMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class BotPendingPOSession(TimestampMixin, Base):
+    """Session sementara per (channel, chat_id) utk konfirmasi pembuatan PO
+    via bot chat (audit 2026-05-30).
+
+    Flow:
+    1. User kirim `/po <multi-line body>` di Telegram/WA.
+    2. Bot AI-parse body -> resolve project/vendor -> simpan payload JSON.
+    3. Bot reply preview, minta user balas "ya" / "batal".
+    4. Pada pesan berikutnya: handler check row aktif (not expired) utk
+       chat_id ini. Kalau ada + text "ya" -> create PO DRAFT; "batal" ->
+       hapus session; lainnya -> session di-replace dgn parse baru.
+
+    TTL default 10 menit (di service layer), expired row di-skip & boleh
+    di-cleanup di background. Unique constraint pada (channel, chat_id)
+    supaya 1 session aktif per chat -- /po kedua di chat yg sama overwrite
+    session sebelumnya.
+    """
+    __tablename__ = "bot_pending_po_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # "telegram" | "whatsapp"
+    channel: Mapped[str] = mapped_column(String(16), nullable=False)
+    chat_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False,
+    )
+    # JSON serialized payload: project_id, company_id, vendor_*, items,
+    # notes, raw_text. Pakai TEXT supaya portable SQLite + Postgres.
+    payload_json: Mapped[str] = mapped_column(String(8192), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("channel", "chat_id", name="uq_bot_pending_po_chat"),
+    )
+
+
 class MessagingConfig(TimestampMixin, Base):
     """Singleton row (id=1) menyimpan toggle on/off untuk tiap channel.
     Detail koneksi (token, URL) tetap di env -- ini hanya master switch yg

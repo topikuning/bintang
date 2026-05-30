@@ -109,6 +109,15 @@ DEFAULTS: dict[str, dict] = {
         "rate_limit_per_min": 5, "web_search_enabled": False,
         "monthly_budget_usd": None,
     },
+    "po_chat_parser": {
+        # Audit 2026-05-30: parse free-text chat ke PO struktur. Tugas
+        # ekstraksi sederhana, model fast cukup (Mistral Small / Haiku).
+        # Cache 0 -- tiap user kirim unik, caching probably tdk hit.
+        "provider": None, "model": None, "model_hint": "fast",
+        "max_tokens": 1024, "cache_ttl_days": 0,
+        "rate_limit_per_min": 30, "web_search_enabled": False,
+        "monthly_budget_usd": None,
+    },
 }
 
 

@@ -39,6 +39,36 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def _handle_po_session_reply(
+    db: AsyncSession, user: User, chat_id: str, text: str,
+) -> str:
+    """Handle "ya"/"batal" utk PO session WA. Mirror Telegram (audit 2026-05-30)."""
+    from app.services.bot_po_assistant import (
+        BotPOError, confirm_create, delete_session, load_active_session,
+    )
+    session = await load_active_session(db, channel="whatsapp", chat_id=chat_id)
+    if session is None:
+        return ""
+    t = text.strip().lower()
+    if t in ("ya", "yes", "ok", "y", "✓"):
+        try:
+            po = await confirm_create(db, user=user, session=session)
+        except BotPOError as e:
+            return f"❌ {e}"
+        return (
+            f"✅ PO dibuat sebagai *DRAFT*: `{po.number}`\n"
+            f"Total: Rp {po.total or 0:,.0f}\n".replace(",", ".")
+            + "Lengkapi/edit di web kalau perlu, lalu submit utk approve."
+        )
+    if t in ("batal", "cancel", "no", "tidak"):
+        await delete_session(db, session)
+        return "Dibatalkan. Session PO dihapus."
+    return (
+        "⏳ Ada draf PO menunggu konfirmasi. Balas *ya* untuk simpan "
+        "atau *batal* untuk batalkan."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Health & session admin endpoints
 # ---------------------------------------------------------------------------
@@ -263,7 +293,12 @@ async def webhook(
 
     text = _extract_text(payload)
     reply: str = ""
-    if text.startswith("/"):
+
+    # Audit 2026-05-30: intercept "ya"/"batal" kalau ada PO session aktif.
+    if user and text.strip() and not text.startswith("/"):
+        reply = await _handle_po_session_reply(db, user, chat_id, text)
+
+    if not reply and text.startswith("/"):
         reply = await dispatch_command(db, user, chat_id, text, payload)
 
     msg_id = (

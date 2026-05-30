@@ -106,6 +106,14 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "\n<b>Lampirkan bukti ke transaksi yang sudah ada:</b>\n"
         "  /buktitx &lt;id&gt; — buka jendela 5 menit utk attach foto/PDF\n"
         "  Contoh: <code>/buktitx 123</code> lalu kirim foto/file.\n"
+        "\n<b>Buat PO via chat (AI parser):</b>\n"
+        "  /po — kirim daftar item + proyek + vendor; AI parse → preview → balas <b>ya</b>\n"
+        "  Contoh:\n"
+        "  <pre>/po\n"
+        "Besi 10 polos = 270 lonjor\n"
+        "Wiremesh M8 bulat = 228 lembar\n"
+        "proyek BMJ1\n"
+        "vendor PT Sumber Besi</pre>\n"
         "\n<b>AI (admin):</b>\n"
         "  /tanya &lt;pertanyaan&gt; — tanya laporan natural\n"
         "  Contoh: <code>/tanya top vendor bulan ini</code>\n"
@@ -485,6 +493,60 @@ async def cmd_ringkas(db, user, chat_id, args, msg) -> str:
     return f"<b>📊 Ringkasan Hari Ini</b>\n\n{_esc(text)}"
 
 
+async def cmd_po(db, user, chat_id, args, msg) -> str:
+    """Buat Purchase Order via teks chat (audit 2026-05-30).
+
+    Cara pakai (single message):
+      /po
+      Besi 10 polos = 270 lonjor
+      Besi 8 polos = 290 lonjor
+      Wiremesh M8 bulat = 228 lembar
+      proyek BMJ1
+      vendor PT Sumber Besi
+
+    Bot AI-parse, tampilkan preview, minta balasan "ya" / "batal".
+    Harga satuan opsional (@ 95000 atau "harga 95000").
+    """
+    if not user:
+        return "Akun belum ter-link. Pakai /link &lt;kode&gt; dulu."
+    text = (msg or {}).get("text") or (msg or {}).get("caption") or ""
+    # Strip "/po" prefix dari first line.
+    if "\n" in text:
+        body = text.split("\n", 1)[1].strip()
+    else:
+        # Single-line: "/po besi 10 = 270 lonjor proyek X vendor Y"
+        body = " ".join(args).strip()
+    if not body:
+        return (
+            "Format: <code>/po</code> + daftar item per-baris, sebutkan "
+            "proyek &amp; vendor.\n\nContoh:\n<pre>/po\n"
+            "Besi 10 polos = 270 lonjor\n"
+            "Wiremesh M8 bulat = 228 lembar\n"
+            "proyek BMJ1\n"
+            "vendor PT Sumber Besi</pre>"
+        )
+    from app.services.bot_po_assistant import BotPOError, parse_and_save
+    try:
+        reply = await parse_and_save(
+            db, user=user, channel="telegram", chat_id=chat_id, text=body,
+        )
+    except BotPOError as e:
+        return f"❌ {_esc(str(e))}"
+    except Exception as e:
+        logger.exception("cmd_po parse failed")
+        return f"⚠️ Gagal parse: {_esc(str(e))}"
+    # Hasil parse_and_save sudah include format markdown-ish; escape minimal.
+    # Telegram pakai HTML, jadi convert *bold* -> <b>bold</b>.
+    return _md_to_html(reply)
+
+
+def _md_to_html(s: str) -> str:
+    """Convert *bold* markdown -> <b>bold</b> Telegram HTML.
+    Skip HTML escape utk konten yg sudah pre-rendered di service layer."""
+    import re as _re
+    return _re.sub(r"\*([^*\n]+)\*", r"<b>\1</b>", s)
+
+
 async def cmd_buktitx(db, user, chat_id, args, msg) -> str:
     """Buka jendela attach untuk transaksi yang SUDAH ada.
     Cara pakai: /buktitx <id transaksi>. Setelah itu, semua foto/file
@@ -629,6 +691,9 @@ REGISTRY: dict[str, CommandHandler] = {
     "buktitx": cmd_buktitx,
     "bukti": cmd_buktitx,           # alias
     "lampiran": cmd_buktitx,        # alias
+    "po": cmd_po,
+    "buatpo": cmd_po,
+    "buat-po": cmd_po,
     # --- AI commands (audit 2026-05-23) ---
     "tanya": cmd_tanya,
     "ask": cmd_tanya,
@@ -652,14 +717,27 @@ REGISTRY: dict[str, CommandHandler] = {
 
 def parse_command(text: str) -> tuple[str, list[str]] | None:
     """Pisahkan '/cmd@bot arg1 arg2' jadi ('cmd', ['arg1', 'arg2']).
-    Tidak quoted-aware (deskripsi multi-kata di-join lagi di handler)."""
+    Tidak quoted-aware (deskripsi multi-kata di-join lagi di handler).
+
+    Audit 2026-05-30: support multi-line body (mis. `/po\\nitem1\\nitem2`).
+    Head = chars sebelum whitespace pertama (space/newline/tab); rest =
+    sisanya (split by space utk args legacy). Handler yg butuh raw body
+    multi-line bisa baca message["text"] langsung.
+    """
     if not text or not text.startswith("/"):
         return None
     body = text[1:].strip()
     if not body:
         return None
+    # Cari whitespace pertama (space, newline, tab) sbg pemisah head.
+    head_end = len(body)
+    for i, ch in enumerate(body):
+        if ch in (" ", "\n", "\t"):
+            head_end = i
+            break
+    head = body[:head_end]
+    rest = body[head_end:].strip()
     # buang @botname
-    head, _, rest = body.partition(" ")
     name = head.split("@", 1)[0].lower()
     args = rest.split() if rest else []
     return name, args
