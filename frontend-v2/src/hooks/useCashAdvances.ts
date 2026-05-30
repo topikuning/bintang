@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { invalidateFinanceQueries, queryKeys } from "@/lib/query-keys"
+import { invalidateFinanceQueries } from "@/lib/query-keys"
 import type {
   CashAdvanceBalanceRow,
   CashAdvanceOutstandingRow,
