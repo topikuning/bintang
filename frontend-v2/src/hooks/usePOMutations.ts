@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { queryKeys } from "@/lib/query-keys"
+import { invalidateFinanceQueries } from "@/lib/query-keys"
 import type { POItemInput, PurchaseOrder } from "@/types/api"
 
 export interface POCreateInput {
@@ -41,7 +41,7 @@ export function useCreatePO() {
       const { data } = await api.post<PurchaseOrder>("/purchase-orders", payload)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.pos.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -52,7 +52,7 @@ export function useUpdatePO(id: number) {
       const { data } = await api.patch<PurchaseOrder>(`/purchase-orders/${id}`, payload)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.pos.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -63,7 +63,7 @@ export function useIssuePO() {
       const { data } = await api.post<PurchaseOrder>(`/purchase-orders/${id}/issue`)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.pos.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -74,7 +74,7 @@ export function useApprovePO() {
       const { data } = await api.post<PurchaseOrder>(`/purchase-orders/${id}/approve`)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.pos.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -85,7 +85,7 @@ export function useCancelPO() {
       const { data } = await api.post<PurchaseOrder>(`/purchase-orders/${id}/cancel`, { reason })
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.pos.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -95,7 +95,7 @@ export function useDeletePO() {
     mutationFn: async (id: number): Promise<void> => {
       await api.delete(`/purchase-orders/${id}`)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.pos.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -106,6 +106,6 @@ export function useHardDeletePO() {
     mutationFn: async (id: number): Promise<void> => {
       await api.delete(`/purchase-orders/${id}/hard`)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.pos.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { queryKeys } from "@/lib/query-keys"
+import { invalidateFinanceQueries, queryKeys } from "@/lib/query-keys"
 import type {
   CashRequest,
   CashRequestCreateInput,
@@ -95,8 +95,9 @@ export function useApproveCashRequest() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.cashRequests.all() })
-      // Approve bikin tx CASH_ADVANCE DRAFT -> invalidate tx list juga.
-      qc.invalidateQueries({ queryKey: queryKeys.transactions.all() })
+      // Approve bikin tx CASH_ADVANCE DRAFT -> invalidate semua finance
+      // (tx list, dashboard cards, budget, projects-stats).
+      invalidateFinanceQueries(qc)
     },
   })
 }

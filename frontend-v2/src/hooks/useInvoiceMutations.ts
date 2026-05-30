@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type { AxiosProgressEvent } from "axios"
 import { api } from "@/lib/api"
-import { queryKeys } from "@/lib/query-keys"
+import { invalidateFinanceQueries, queryKeys } from "@/lib/query-keys"
 import type { Attachment, Invoice, InvoiceItemInput, InvoiceType } from "@/types/api"
 
 export interface InvoiceCreateInput {
@@ -37,7 +37,7 @@ export function useCreateInvoice() {
       const { data } = await api.post<Invoice>("/invoices", payload)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.invoices.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -48,7 +48,7 @@ export function useUpdateInvoice(id: number) {
       const { data } = await api.patch<Invoice>(`/invoices/${id}`, payload)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.invoices.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -59,7 +59,7 @@ export function useIssueInvoice() {
       const { data } = await api.post<Invoice>(`/invoices/${id}/issue`)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.invoices.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -70,7 +70,7 @@ export function useMarkPaidInvoice() {
       const { data } = await api.post<Invoice>(`/invoices/${id}/mark-paid`)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.invoices.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -81,7 +81,7 @@ export function useCancelInvoice() {
       const { data } = await api.post<Invoice>(`/invoices/${id}/cancel`)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.invoices.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -91,7 +91,7 @@ export function useDeleteInvoice() {
     mutationFn: async (id: number): Promise<void> => {
       await api.delete(`/invoices/${id}`)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.invoices.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -102,10 +102,7 @@ export function useHardDeleteInvoice() {
     mutationFn: async (id: number): Promise<void> => {
       await api.delete(`/invoices/${id}/hard`)
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.invoices.all() })
-      qc.invalidateQueries({ queryKey: queryKeys.transactions.all() })
-    },
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { queryKeys } from "@/lib/query-keys"
+import { invalidateFinanceQueries, queryKeys } from "@/lib/query-keys"
 import type {
   CashAdvanceBalanceRow,
   CashAdvanceOutstandingRow,
@@ -94,7 +94,7 @@ export function useSettleCashAdvance() {
       qc.invalidateQueries({ queryKey: KEYS.outstanding })
       qc.invalidateQueries({ queryKey: KEYS.balances })
       qc.invalidateQueries({ queryKey: KEYS.settlement(vars.txId) })
-      qc.invalidateQueries({ queryKey: queryKeys.transactions.all() })
+      invalidateFinanceQueries(qc)
     },
   })
 }
@@ -110,7 +110,7 @@ export function useDeleteCashAdvanceSettlement() {
       qc.invalidateQueries({ queryKey: KEYS.outstanding })
       qc.invalidateQueries({ queryKey: KEYS.balances })
       qc.invalidateQueries({ queryKey: KEYS.settlement(txId) })
-      qc.invalidateQueries({ queryKey: queryKeys.transactions.all() })
+      invalidateFinanceQueries(qc)
     },
   })
 }

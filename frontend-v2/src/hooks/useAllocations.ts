@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { queryKeys } from "@/lib/query-keys"
+import { invalidateFinanceQueries } from "@/lib/query-keys"
 import type {
   AllocatableInvoiceRow,
   AllocatableTransactionRow,
@@ -62,8 +62,7 @@ export function useApplyInvoiceAllocations() {
       return data
     },
     onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: queryKeys.invoices.all() })
-      qc.invalidateQueries({ queryKey: queryKeys.transactions.all() })
+      invalidateFinanceQueries(qc)
       qc.invalidateQueries({ queryKey: ["allocations", "for-invoice", vars.invoiceId] })
     },
   })
@@ -83,9 +82,9 @@ export function useDeleteAllocation() {
       await api.delete(`/allocations/${allocationId}`)
     },
     onSuccess: () => {
-      // Invalidate semua karena alokasi mempengaruhi multiple resource
-      qc.invalidateQueries({ queryKey: queryKeys.invoices.all() })
-      qc.invalidateQueries({ queryKey: queryKeys.transactions.all() })
+      // Alokasi mempengaruhi multiple resource (TX, Invoice, dashboard,
+      // budget, projects-stats) -- finance helper handle semuanya.
+      invalidateFinanceQueries(qc)
       qc.invalidateQueries({ queryKey: ["allocations"] })
     },
   })
@@ -106,8 +105,7 @@ export function usePatchAllocation() {
       return data
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.invoices.all() })
-      qc.invalidateQueries({ queryKey: queryKeys.transactions.all() })
+      invalidateFinanceQueries(qc)
       qc.invalidateQueries({ queryKey: ["allocations"] })
     },
   })

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { queryKeys } from "@/lib/query-keys"
+import { invalidateFinanceQueries } from "@/lib/query-keys"
 import type { PaymentMethod, Transaction, TxnKind, TxnType } from "@/types/api"
 
 export interface TransactionItemInput {
@@ -34,7 +34,7 @@ export function useCreateTransaction() {
       const { data } = await api.post<Transaction>("/transactions", payload)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.transactions.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -45,7 +45,7 @@ export function useUpdateTransaction(id: number) {
       const { data } = await api.patch<Transaction>(`/transactions/${id}`, payload)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.transactions.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -56,7 +56,7 @@ export function useSubmitTransaction() {
       const { data } = await api.post<Transaction>(`/transactions/${id}/submit`)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.transactions.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -67,7 +67,7 @@ export function useVerifyTransaction() {
       const { data } = await api.post<Transaction>(`/transactions/${id}/verify`)
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.transactions.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -78,7 +78,7 @@ export function useRejectTransaction() {
       const { data } = await api.post<Transaction>(`/transactions/${id}/reject`, { reason })
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.transactions.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -89,7 +89,7 @@ export function useCancelTransaction() {
       const { data } = await api.post<Transaction>(`/transactions/${id}/cancel`, { reason })
       return data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.transactions.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -99,7 +99,7 @@ export function useDeleteTransaction() {
     mutationFn: async (id: number): Promise<void> => {
       await api.delete(`/transactions/${id}`)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.transactions.all() }),
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
 
@@ -114,9 +114,6 @@ export function useHardDeleteTransaction() {
     mutationFn: async (id: number): Promise<void> => {
       await api.delete(`/transactions/${id}/hard`)
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.transactions.all() })
-      qc.invalidateQueries({ queryKey: queryKeys.invoices.all() })
-    },
+    onSuccess: () => invalidateFinanceQueries(qc),
   })
 }
