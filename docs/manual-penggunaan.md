@@ -667,12 +667,20 @@ Untuk user non-scope-all, tambahkan proyek-proyek yang user boleh akses.
 4. **Restart deploy** — backend register webhook otomatis ke Telegram
 
 #### WhatsApp (via WAHA)
-1. Setup WAHA server (lihat https://waha.devlike.pro)
-2. Buka `/settings/system` → section "WhatsApp (WAHA)":
-   - `WHATSAPP_BASE_URL` (mis. `http://waha.example.com:3000`)
+
+Setup WhatsApp lebih panjang dari Telegram (perlu self-host WAHA +
+scan QR). **Panduan lengkap step-by-step**: lihat
+[`docs/setup-whatsapp.md`](setup-whatsapp.md).
+
+Ringkasnya:
+1. Deploy WAHA (Railway template / Docker / VPS)
+2. Set di `/settings/system` section "WhatsApp (WAHA)":
+   - `WHATSAPP_BASE_URL` (URL WAHA tanpa trailing slash)
    - `WHATSAPP_SESSION` (default `default`)
-   - `WHATSAPP_API_KEY` (opsional)
-3. **Restart deploy** — backend register webhook
+   - `WHATSAPP_API_KEY` (header `X-Api-Key` ke WAHA)
+3. Set env `WHATSAPP_WEBHOOK_SECRET` (= `WAHA_HMAC_KEY` di WAHA) di
+   backend
+4. Pair nomor WhatsApp via tombol **Scan QR** di `/settings/system`
 
 ### Link Akun User
 

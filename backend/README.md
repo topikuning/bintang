@@ -65,3 +65,14 @@ Foto/PDF yang dikirim ke bot dalam 5 menit setelah `/keluar` atau
 Notifikasi keluar (best-effort, tidak blok response):
 - transaksi di-submit → admin proyek terkait yang sudah link kebagian ping
 - diverifikasi/ditolak → pembuat transaksi diberi tahu
+
+## WhatsApp bot (opsional)
+
+Berbeda dari Telegram, WhatsApp perlu self-host bridge
+[WAHA](https://waha.devlike.pro/). Panduan lengkap:
+**[`docs/setup-whatsapp.md`](../docs/setup-whatsapp.md)**.
+
+Ringkas: deploy WAHA → set env `WHATSAPP_BASE_URL`,
+`WHATSAPP_API_KEY`, `WHATSAPP_WEBHOOK_SECRET` → pair nomor via scan QR
+di `/settings/system`. Daftar perintah sama dengan Telegram, plus
+`/po` (AI parser daftar item → buat PO DRAFT).
