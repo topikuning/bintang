@@ -39,33 +39,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def _handle_po_session_reply(
+async def _handle_doc_session_reply(
     db: AsyncSession, user: User, chat_id: str, text: str,
 ) -> str:
-    """Handle "ya"/"batal" utk PO session WA. Mirror Telegram (audit 2026-05-30)."""
-    from app.services.bot_po_assistant import (
-        BotPOError, confirm_create, delete_session, load_active_session,
-    )
-    session = await load_active_session(db, channel="whatsapp", chat_id=chat_id)
-    if session is None:
-        return ""
-    t = text.strip().lower()
-    if t in ("ya", "yes", "ok", "y", "✓"):
-        try:
-            po = await confirm_create(db, user=user, session=session)
-        except BotPOError as e:
-            return f"❌ {e}"
-        return (
-            f"✅ PO dibuat sebagai *DRAFT*: `{po.number}`\n"
-            f"Total: Rp {po.total or 0:,.0f}\n".replace(",", ".")
-            + "Lengkapi/edit di web kalau perlu, lalu submit utk approve."
-        )
-    if t in ("batal", "cancel", "no", "tidak"):
-        await delete_session(db, session)
-        return "Dibatalkan. Session PO dihapus."
-    return (
-        "⏳ Ada draf PO menunggu konfirmasi. Balas *ya* untuk simpan "
-        "atau *batal* untuk batalkan."
+    """Handle "ya"/"batal" utk PO/Invoice session WA. Audit 2026-06-02."""
+    from app.services.bot_doc_photo import handle_session_reply
+    return await handle_session_reply(
+        db, user=user, channel="whatsapp", chat_id=chat_id, text=text,
     )
 
 
@@ -294,13 +274,6 @@ async def webhook(
     text = _extract_text(payload)
     reply: str = ""
 
-    # Audit 2026-05-30: intercept "ya"/"batal" kalau ada PO session aktif.
-    if user and text.strip() and not text.startswith("/"):
-        reply = await _handle_po_session_reply(db, user, chat_id, text)
-
-    if not reply and text.startswith("/"):
-        reply = await dispatch_command(db, user, chat_id, text, payload)
-
     msg_id = (
         payload.get("id")
         or payload.get("messageId")
@@ -312,23 +285,50 @@ async def webhook(
     is_media_msg = bool(media or payload.get("hasMedia") or payload.get("type") in (
         "image", "video", "document", "audio"
     ))
-    if is_media_msg:
-        url, mime, fname = (media if media else (None, None, None))
-        if not media:
-            # Tidak ada URL/data di payload, tapi ada indikasi media. Log
-            # struktur payload supaya bisa di-debug, lalu coba fallback
-            # download via message id.
-            logger.warning(
-                "WAHA webhook media without url; msg_id=%s payload=%s",
-                msg_id, _sanitize_for_log(payload),
-            )
-        media_reply = await handle_media(
-            db, user, chat_id, url, mime, fname, message_id=str(msg_id) if msg_id else None
-        )
-        if reply and media_reply:
-            reply = f"{reply}\n\n{media_reply}"
+    # `text` di WAHA pas message punya media biasanya = caption.
+    caption = text
+
+    # Audit 2026-06-02: foto + caption /po atau /invoice -> OCR flow.
+    from app.services.bot_doc_photo import parse_doc_cmd
+    doc_cmd_spec = parse_doc_cmd(caption) if is_media_msg else None
+
+    if doc_cmd_spec is not None and is_media_msg and media:
+        url, mime_hint, _fname = media
+        from app.services.whatsapp import client as wa_client
+        from app.services.bot_doc_photo import handle_doc_photo
+        dl = await wa_client.download_media(url)
+        if dl is None:
+            reply = "Gagal download foto dari WhatsApp. Coba kirim ulang."
         else:
-            reply = reply or media_reply
+            content, mime = dl
+            media_type = mime or mime_hint or "image/jpeg"
+            reply = await handle_doc_photo(
+                db, user=user, channel="whatsapp", chat_id=chat_id,
+                content=content, media_type=media_type,
+                source_url=url, spec=doc_cmd_spec,
+            )
+    else:
+        # Audit 2026-05-30: intercept "ya"/"batal" kalau ada session.
+        if user and text.strip() and not text.startswith("/"):
+            reply = await _handle_doc_session_reply(db, user, chat_id, text)
+
+        if not reply and text.startswith("/"):
+            reply = await dispatch_command(db, user, chat_id, text, payload)
+
+        if is_media_msg:
+            url, mime, fname = (media if media else (None, None, None))
+            if not media:
+                logger.warning(
+                    "WAHA webhook media without url; msg_id=%s payload=%s",
+                    msg_id, _sanitize_for_log(payload),
+                )
+            media_reply = await handle_media(
+                db, user, chat_id, url, mime, fname, message_id=str(msg_id) if msg_id else None
+            )
+            if reply and media_reply:
+                reply = f"{reply}\n\n{media_reply}"
+            else:
+                reply = reply or media_reply
 
     await db.commit()
 

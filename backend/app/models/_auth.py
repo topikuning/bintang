@@ -117,24 +117,26 @@ class WhatsAppPendingCommand(TimestampMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
-class BotPendingPOSession(TimestampMixin, Base):
-    """Session sementara per (channel, chat_id) utk konfirmasi pembuatan PO
-    via bot chat (audit 2026-05-30).
+class BotPendingDocSession(TimestampMixin, Base):
+    """Session sementara per (channel, chat_id) utk konfirmasi pembuatan
+    dokumen (PO atau Invoice) via bot chat.
+
+    Audit 2026-05-30: dibuat sbg BotPendingPOSession utk PO chat-text.
+    Audit 2026-06-02: rename + tambah `entity_type` ("PO" | "INVOICE")
+    supaya pattern yg sama dipakai utk OCR-based draft Invoice dari foto.
 
     Flow:
-    1. User kirim `/po <multi-line body>` di Telegram/WA.
-    2. Bot AI-parse body -> resolve project/vendor -> simpan payload JSON.
+    1. User kirim `/po <body>` (text) ATAU `/po`/`/invoice` + foto.
+    2. Service: parse (AI text OR OCR vision) -> resolve project/vendor
+       -> simpan payload JSON.
     3. Bot reply preview, minta user balas "ya" / "batal".
-    4. Pada pesan berikutnya: handler check row aktif (not expired) utk
-       chat_id ini. Kalau ada + text "ya" -> create PO DRAFT; "batal" ->
-       hapus session; lainnya -> session di-replace dgn parse baru.
+    4. Webhook intercept "ya" -> confirm_create per entity_type -> hapus
+       session. "batal" -> hapus saja.
 
-    TTL default 10 menit (di service layer), expired row di-skip & boleh
-    di-cleanup di background. Unique constraint pada (channel, chat_id)
-    supaya 1 session aktif per chat -- /po kedua di chat yg sama overwrite
-    session sebelumnya.
+    1 session aktif per chat -- /po atau /invoice kedua di chat yg sama
+    overwrite session sebelumnya (unique constraint).
     """
-    __tablename__ = "bot_pending_po_sessions"
+    __tablename__ = "bot_pending_doc_sessions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # "telegram" | "whatsapp"
@@ -143,14 +145,21 @@ class BotPendingPOSession(TimestampMixin, Base):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False,
     )
-    # JSON serialized payload: project_id, company_id, vendor_*, items,
-    # notes, raw_text. Pakai TEXT supaya portable SQLite + Postgres.
-    payload_json: Mapped[str] = mapped_column(String(8192), nullable=False)
+    # "PO" | "INVOICE" -- audit 2026-06-02.
+    entity_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    # JSON serialized payload: project_id, items, vendor_*, type, dst.
+    # Schema tergantung entity_type. Pakai TEXT/String supaya portable.
+    payload_json: Mapped[str] = mapped_column(String(16384), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("channel", "chat_id", name="uq_bot_pending_po_chat"),
+        UniqueConstraint("channel", "chat_id", name="uq_bot_pending_doc_chat"),
     )
+
+
+# Backward-compat alias: existing code yang impor BotPendingPOSession
+# tetap jalan sampai semua call-site di-update di service layer.
+BotPendingPOSession = BotPendingDocSession
 
 
 class MessagingConfig(TimestampMixin, Base):

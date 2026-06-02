@@ -31,39 +31,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def _handle_po_session_reply(
+async def _handle_doc_session_reply(
     db: AsyncSession, user: User, chat_id: str, text: str,
 ) -> str:
-    """Handle balasan "ya"/"batal" utk PO session aktif. Return "" kalau
-    tdk ada session aktif (caller akan lanjut ke command dispatcher /
-    skip). Audit 2026-05-30."""
-    from app.services.bot_po_assistant import (
-        BotPOError, confirm_create, delete_session, load_active_session,
+    """Handle balasan "ya"/"batal" utk PO/Invoice session. Audit 2026-06-02:
+    dispatch by entity_type via shared helper."""
+    from app.services.bot_doc_photo import handle_session_reply
+    reply_md = await handle_session_reply(
+        db, user=user, channel="telegram", chat_id=chat_id, text=text,
     )
-    session = await load_active_session(db, channel="telegram", chat_id=chat_id)
-    if session is None:
-        return ""
-    t = text.strip().lower()
-    if t in ("ya", "yes", "ok", "y", "✓"):
-        try:
-            po = await confirm_create(db, user=user, session=session)
-        except BotPOError as e:
-            return f"❌ {e}"
-        return (
-            f"✅ PO dibuat sebagai <b>DRAFT</b>: <code>{po.number}</code>\n"
-            f"Total: Rp {po.total or 0:,.0f}\n".replace(",", ".")
-            + "Lengkapi/edit di web kalau perlu (harga, vendor, dst), "
-            "lalu submit utk approve."
-        )
-    if t in ("batal", "cancel", "no", "tidak"):
-        await delete_session(db, session)
-        return "Dibatalkan. Session PO dihapus."
-    # Balasan lain saat session aktif: jangan paksa ya/batal -- kasih hint
-    # lalu fall-through (kalau text bukan /command -> tetap reply hint).
-    return (
-        "⏳ Ada draf PO menunggu konfirmasi. Balas <b>ya</b> untuk simpan "
-        "atau <b>batal</b> untuk batalkan."
-    )
+    # Convert *bold* + `mono` markdown -> Telegram HTML.
+    import re as _re
+    html = _re.sub(r"\*([^*\n]+)\*", r"<b>\1</b>", reply_md)
+    html = _re.sub(r"`([^`\n]+)`", r"<code>\1</code>", html)
+    return html
 
 
 @router.get("/health")
@@ -114,14 +95,6 @@ async def webhook(
     text: str = message.get("text") or message.get("caption") or ""
     reply: str = ""
 
-    # Audit 2026-05-30: intercept "ya"/"batal" kalau ada PO session aktif.
-    # User flow: /po -> bot preview -> user balas "ya" (plain text, no /).
-    if user and text.strip() and not text.startswith("/"):
-        reply = await _handle_po_session_reply(db, user, chat_id, text)
-
-    if not reply and text.startswith("/"):
-        reply = await dispatch_command(db, user, chat_id, text, message)
-
     # Lampiran: foto, dokumen (PDF/dll), atau video. Telegram membungkus
     # masing-masing tipe di field berbeda; semua punya `file_id` yg bisa
     # di-download dengan endpoint yg sama.
@@ -140,17 +113,51 @@ async def webhook(
         file_id = video.get("file_id")
         file_name = video.get("file_name")
 
-    if file_id:
-        cap = message.get("caption") or ""
-        # Kalau caption-nya juga command (/keluar dst), command sudah
-        # diproses di atas — di sini kita tinggal nempel attachment ke
-        # transaksi pending (baru dibuat oleh command, atau dibuka oleh
-        # /buktitx sebelumnya).
-        photo_reply = await handle_photo(db, user, chat_id, file_id, cap, file_name=file_name)
-        if reply and photo_reply:
-            reply = f"{reply}\n\n{photo_reply}"
+    caption = message.get("caption") or ""
+
+    # Audit 2026-06-02: foto + caption /po atau /invoice -> OCR flow
+    # (jangan attach ke pending TX). Pakai bot_doc_photo helper.
+    from app.services.bot_doc_photo import parse_doc_cmd
+    doc_cmd_spec = parse_doc_cmd(caption) if file_id else None
+
+    if doc_cmd_spec is not None and file_id:
+        from app.services.bot_doc_photo import handle_doc_photo
+        payload = await tg.download_file(file_id)
+        if payload is None:
+            reply = "Gagal download foto dari Telegram. Coba kirim ulang."
         else:
-            reply = reply or photo_reply
+            content, file_path = payload
+            ext = (file_path.rsplit(".", 1)[-1] if "." in file_path else "jpg").lower()
+            media_type = {
+                "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                "png": "image/png", "webp": "image/webp",
+                "pdf": "application/pdf",
+            }.get(ext, "image/jpeg")
+            reply_md = await handle_doc_photo(
+                db, user=user, channel="telegram", chat_id=chat_id,
+                content=content, media_type=media_type,
+                source_url=None, spec=doc_cmd_spec,
+            )
+            # Markdown -> Telegram HTML
+            import re as _re
+            reply = _re.sub(r"\*([^*\n]+)\*", r"<b>\1</b>", reply_md)
+            reply = _re.sub(r"`([^`\n]+)`", r"<code>\1</code>", reply)
+    else:
+        # Audit 2026-05-30: intercept "ya"/"batal" kalau ada doc session.
+        if user and text.strip() and not text.startswith("/"):
+            reply = await _handle_doc_session_reply(db, user, chat_id, text)
+
+        if not reply and text.startswith("/"):
+            reply = await dispatch_command(db, user, chat_id, text, message)
+
+        if file_id:
+            # Foto/file biasa (tanpa caption /po atau /invoice): standard
+            # attachment ke TX pending (existing behavior).
+            photo_reply = await handle_photo(db, user, chat_id, file_id, caption, file_name=file_name)
+            if reply and photo_reply:
+                reply = f"{reply}\n\n{photo_reply}"
+            else:
+                reply = reply or photo_reply
 
     # commit perubahan DB (link, create transaksi, attach foto, dst)
     await db.commit()

@@ -1,172 +1,61 @@
-"""Bot WA/Telegram -> PO assistant (audit 2026-05-30).
+"""Bot WA/Telegram -> PO assistant.
 
-Mengubah pesan chat bebas user jadi PO DRAFT, lewat:
-1. parse via AI (po_chat_parser feature)
-2. resolve project_hint -> Project nyata (validasi akses user)
-3. resolve vendor_hint -> VendorClient (atau biarkan as party string)
-4. simpan session sementara (BotPendingPOSession) menunggu konfirmasi
-5. pada balasan "ya" -> create PO DRAFT (reuse _next_po_number logic)
+Audit 2026-05-30: text-based parser (/po + multi-line body).
+Audit 2026-06-02: tambah photo-based (/po + foto -> OCR INVOICE_SCHEMA
+dipakai sbg sumber items, vendor_name jadi vendor hint).
 
-Tidak ada multi-turn dialog -- kalau parse gagal / project tdk ketemu,
-bot reply error msg & user kirim ulang.
+Flow:
+1. parse_text_and_save  -- AI parser (po_chat_parser).
+2. parse_photo_and_save -- OCR pipeline (services/ocr).
+3. confirm_create -- create PO DRAFT + delete session.
+
+Session pakai BotPendingDocSession (entity_type="PO"), shared dgn
+Invoice assistant via bot_doc_session module.
 """
 from __future__ import annotations
 
-import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import user_project_ids
 from app.models.models import (
-    BotPendingPOSession,
+    BotPendingDocSession,
     POStatus,
     Project,
-    ProjectStatus,
     PurchaseOrder,
     POItem,
     User,
-    VendorClient,
 )
 from app.services.ai.features.po_chat_parser import parse as ai_parse
+from app.services.bot_doc_session import (
+    BotDocError,
+    delete_session,
+    first_accessible_project,
+    load_active_session,
+    parse_payload,
+    resolve_project,
+    resolve_vendor,
+    save_session,
+)
 
 
-SESSION_TTL_MINUTES = 10
+# Backward-compat alias.
+BotPOError = BotDocError
+
+ENTITY_TYPE = "PO"
 
 
-class BotPOError(Exception):
-    """Error yg siap di-render jadi reply user-friendly."""
+# ---------- Text path (AI parser) ----------
 
-
-# ---------- Resolver ----------
-
-async def _resolve_project(
-    db: AsyncSession, user: User, hint: str | None,
-) -> Project | None:
-    """Match hint ke Project (code exact case-insensitive, atau name ilike).
-    Scoped ke proyek yg user punya akses. AKTIF only."""
-    if not hint:
-        return None
-    hint = hint.strip()
-    pids = await user_project_ids(db, user)  # None = global, [..] = scoped
-    stmt = select(Project).where(
-        Project.deleted_at.is_(None),
-        Project.status == ProjectStatus.AKTIF,
-    )
-    if pids is not None:
-        if not pids:
-            return None
-        stmt = stmt.where(Project.id.in_(pids))
-    # Coba code exact dulu (lebih spesifik), lalu name ilike (loose).
-    by_code = stmt.where(Project.code.ilike(hint))
-    p = (await db.execute(by_code)).scalar_one_or_none()
-    if p:
-        return p
-    by_name = stmt.where(Project.name.ilike(f"%{hint}%"))
-    return (await db.execute(by_name)).scalar_one_or_none()
-
-
-async def _resolve_vendor(
-    db: AsyncSession, hint: str | None,
-) -> tuple[int | None, str | None]:
-    """Match hint ke VendorClient master (global, tdk per-company).
-    Return (vendor_client_id, vendor_name_used). Kalau tdk ketemu, return
-    (None, hint) -- biarkan as party string di PO.vendor_name."""
-    if not hint:
-        return None, None
-    hint = hint.strip()
-    # Coba exact match dulu, lalu partial.
-    exact = await db.execute(
-        select(VendorClient).where(
-            VendorClient.deleted_at.is_(None),
-            VendorClient.name.ilike(hint),
-        )
-    )
-    v = exact.scalars().first()
-    if v:
-        return v.id, v.name
-    partial = await db.execute(
-        select(VendorClient).where(
-            VendorClient.deleted_at.is_(None),
-            VendorClient.name.ilike(f"%{hint}%"),
-        )
-    )
-    v = partial.scalars().first()
-    if v:
-        return v.id, v.name
-    return None, hint
-
-
-# ---------- Session helpers ----------
-
-async def _save_session(
-    db: AsyncSession, *, channel: str, chat_id: str,
-    user_id: int, payload: dict,
-) -> None:
-    """Insert / replace session aktif utk (channel, chat_id)."""
-    # Delete existing (any state, expired or not) supaya UNIQUE constraint
-    # tdk collision. /po kedua = reset session.
-    existing = (await db.execute(
-        select(BotPendingPOSession).where(
-            BotPendingPOSession.channel == channel,
-            BotPendingPOSession.chat_id == chat_id,
-        )
-    )).scalar_one_or_none()
-    if existing is not None:
-        await db.delete(existing)
-        await db.flush()
-    row = BotPendingPOSession(
-        channel=channel,
-        chat_id=chat_id,
-        user_id=user_id,
-        payload_json=json.dumps(payload, default=str),
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=SESSION_TTL_MINUTES),
-    )
-    db.add(row)
-    await db.flush()
-
-
-async def load_active_session(
-    db: AsyncSession, *, channel: str, chat_id: str,
-) -> BotPendingPOSession | None:
-    """Ambil session aktif (belum expired) utk chat_id. None kalau tdk ada."""
-    row = (await db.execute(
-        select(BotPendingPOSession).where(
-            BotPendingPOSession.channel == channel,
-            BotPendingPOSession.chat_id == chat_id,
-        )
-    )).scalar_one_or_none()
-    if row is None:
-        return None
-    if row.expires_at < datetime.now(timezone.utc):
-        await db.delete(row)
-        await db.flush()
-        return None
-    return row
-
-
-async def delete_session(
-    db: AsyncSession, session: BotPendingPOSession,
-) -> None:
-    await db.delete(session)
-    await db.flush()
-
-
-# ---------- High-level: parse + preview ----------
-
-async def parse_and_save(
+async def parse_text_and_save(
     db: AsyncSession, *, user: User, channel: str, chat_id: str, text: str,
 ) -> str:
-    """Parse teks user via AI, resolve, simpan session. Return reply text
-    (preview + instruksi konfirmasi). Raise BotPOError dgn pesan ramah
-    kalau gagal (project tdk ketemu, items kosong, dll).
-    """
+    """Audit 2026-05-30: /po + multi-line text body."""
     parsed = await ai_parse(db, user_id=user.id, text=text)
     items: list[dict] = parsed.get("items") or []
     if not items:
-        raise BotPOError(
+        raise BotDocError(
             "Tidak terbaca daftar item dari pesanmu. Contoh format:\n"
             "Besi 10 polos = 270 lonjor\n"
             "Wiremesh M8 bulat = 228 lembar\n"
@@ -174,39 +63,158 @@ async def parse_and_save(
             "vendor PT Sumber Besi",
         )
 
-    project = await _resolve_project(db, user, parsed.get("project_hint"))
+    project = await resolve_project(db, user, parsed.get("project_hint"))
     if project is None:
         hint = parsed.get("project_hint")
         if hint:
-            raise BotPOError(
+            raise BotDocError(
                 f"Proyek '{hint}' tidak ketemu atau kamu tidak punya akses. "
                 f"Cek /proyek utk daftar proyek aktif yg bisa kamu akses.",
             )
-        raise BotPOError(
+        raise BotDocError(
             "Belum sebutkan proyeknya. Tambahkan baris seperti:\n"
             "proyek BMJ1\n"
             "atau\n"
             "proyek: Rekonstruksi Pucuk",
         )
 
-    vendor_id, vendor_name = await _resolve_vendor(
-        db, parsed.get("vendor_hint"),
-    )
+    vendor_id, vendor_name = await resolve_vendor(db, parsed.get("vendor_hint"))
 
-    payload = {
+    payload = await _build_payload(
+        project=project,
+        items=items,
+        vendor_id=vendor_id,
+        vendor_name=vendor_name,
+        notes=parsed.get("notes"),
+        source="chat_text",
+    )
+    await save_session(
+        db, channel=channel, chat_id=chat_id, user_id=user.id,
+        entity_type=ENTITY_TYPE, payload=payload,
+    )
+    return _format_preview(payload)
+
+
+# ---------- Photo path (OCR) ----------
+
+async def parse_photo_and_save(
+    db: AsyncSession, *,
+    user: User,
+    channel: str,
+    chat_id: str,
+    content: bytes,
+    media_type: str,
+    source_url: str | None,
+    project_hint: str | None,
+    vendor_hint_override: str | None = None,
+    notes: str | None = None,
+) -> str:
+    """Audit 2026-06-02: /po + foto. OCR pakai INVOICE_SCHEMA (sama utk
+    invoice + po -- struktur items + total mirip). project_hint dari
+    caption user; vendor dari OCR vendor_name (atau override caption)."""
+    from app.services.ocr.pipeline import run_extraction
+    ocr = await run_extraction(
+        db, content=content, media_type=media_type,
+        source_url=source_url, engine=None,
+    )
+    items = _ocr_items_to_payload(ocr.get("items") or [])
+    if not items:
+        raise BotDocError(
+            "OCR tidak menemukan item di foto. Pastikan foto jelas "
+            "(tidak buram, tidak terpotong), lalu coba lagi.",
+        )
+
+    project = None
+    if project_hint:
+        project = await resolve_project(db, user, project_hint)
+        if project is None:
+            raise BotDocError(
+                f"Proyek '{project_hint}' tidak ketemu atau kamu tidak "
+                f"punya akses. Cek /proyek.",
+            )
+    if project is None:
+        project = await first_accessible_project(db, user)
+    if project is None:
+        raise BotDocError(
+            "Tidak ada proyek aktif yg bisa kamu akses -- minta admin "
+            "tambahkan akses dulu.",
+        )
+
+    vendor_hint = vendor_hint_override or (ocr.get("vendor_name") or None)
+    vendor_id, vendor_name = await resolve_vendor(db, vendor_hint)
+
+    payload = await _build_payload(
+        project=project,
+        items=items,
+        vendor_id=vendor_id,
+        vendor_name=vendor_name,
+        notes=notes or ocr.get("notes") or None,
+        source="ocr_photo",
+        ocr_meta={
+            "confidence_score": float(ocr.get("confidence_score") or 0),
+            "is_handwritten": bool(ocr.get("is_handwritten") or False),
+            "ocr_total": float(ocr.get("total") or 0),
+            "engine": (ocr.get("raw_response") or {}).get("engine"),
+        },
+    )
+    await save_session(
+        db, channel=channel, chat_id=chat_id, user_id=user.id,
+        entity_type=ENTITY_TYPE, payload=payload,
+    )
+    return _format_preview(payload)
+
+
+# ---------- Helpers ----------
+
+def _ocr_items_to_payload(ocr_items: list[dict]) -> list[dict]:
+    """Normalisasi OCR items ke format payload (description, quantity, unit,
+    unit_price). OCR field: qty/price/amount."""
+    out: list[dict] = []
+    for it in ocr_items:
+        desc = (it.get("description") or "").strip()
+        if not desc:
+            continue
+        qty_raw = it.get("qty")
+        qty = float(qty_raw) if qty_raw not in (None, "") else 1.0
+        price_raw = it.get("price")
+        unit_price: float | None
+        if price_raw not in (None, "", 0):
+            unit_price = float(price_raw)
+        else:
+            # Fallback: kalau ada `amount` tapi tdk ada `price`, dan qty>0,
+            # derive unit_price = amount/qty.
+            amount_raw = it.get("amount")
+            if amount_raw not in (None, "", 0) and qty > 0:
+                unit_price = float(amount_raw) / qty
+            else:
+                unit_price = None
+        out.append({
+            "description": desc,
+            "quantity": qty,
+            "unit": (it.get("unit") or None),
+            "unit_price": unit_price,
+        })
+    return out
+
+
+async def _build_payload(
+    *, project: Project, items: list[dict],
+    vendor_id: int | None, vendor_name: str | None,
+    notes: str | None, source: str,
+    ocr_meta: dict | None = None,
+) -> dict:
+    return {
         "project_id": project.id,
         "project_code": project.code,
         "project_name": project.name,
         "company_id": project.company_id,
         "vendor_client_id": vendor_id,
-        "vendor_name": vendor_name,  # string fallback kalau vendor_id None
+        "vendor_name": vendor_name,
         "items": items,
-        "notes": parsed.get("notes"),
+        "notes": notes,
+        "source": source,
+        "ocr_meta": ocr_meta,
     }
-    await _save_session(
-        db, channel=channel, chat_id=chat_id, user_id=user.id, payload=payload,
-    )
-    return _format_preview(payload)
 
 
 def _format_preview(payload: dict) -> str:
@@ -241,34 +249,35 @@ def _format_preview(payload: dict) -> str:
         lines.append("Estimasi total: belum diisi (harga kosong)")
     if payload.get("notes"):
         lines.append(f"Catatan: {payload['notes']}")
+    meta = payload.get("ocr_meta")
+    if meta:
+        conf = meta.get("confidence_score")
+        if conf is not None:
+            lines.append(f"_OCR confidence: {conf:.0%}_")
     lines.append("")
     lines.append("Balas *ya* untuk simpan sebagai DRAFT, *batal* untuk batal.")
     return "\n".join(lines)
 
 
-# ---------- High-level: confirm -> create PO ----------
+# ---------- Confirm create ----------
 
 async def confirm_create(
-    db: AsyncSession, *, user: User, session: BotPendingPOSession,
+    db: AsyncSession, *, user: User, session: BotPendingDocSession,
 ) -> PurchaseOrder:
-    """Create PO DRAFT dari session payload. Caller harus delete session
-    setelah ini (atau ini auto-delete). Return PurchaseOrder yg sudah
-    di-flush (ID terisi)."""
+    """Create PO DRAFT dari session payload. Caller harus commit."""
     from app.api.v1.purchase_orders import _compute_totals, _next_po_number
 
-    payload = json.loads(session.payload_json)
+    payload = parse_payload(session)
     project = await db.get(Project, payload["project_id"])
     if project is None:
-        raise BotPOError("Proyek tidak ditemukan (mungkin sudah dihapus).")
+        raise BotDocError("Proyek tidak ditemukan (mungkin sudah dihapus).")
 
     po_date = datetime.now(timezone.utc).date()
     items_payload: list[dict] = payload.get("items") or []
     if not items_payload:
-        raise BotPOError("Session tidak punya item -- silakan /po ulang.")
+        raise BotDocError("Session tidak punya item -- silakan /po ulang.")
 
-    # Retry kalau ada race UniqueViolation pada nomor.
     MAX_ATTEMPTS = 5
-    last_err: Exception | None = None
     po: PurchaseOrder | None = None
     for attempt in range(MAX_ATTEMPTS):
         number = await _next_po_number(
@@ -306,15 +315,16 @@ async def confirm_create(
             await db.flush()
             break
         except Exception as e:
-            # IntegrityError dari UNIQUE(number). Re-loop generate ulang.
-            last_err = e
             await db.rollback()
             project = await db.get(Project, payload["project_id"])
             if attempt == MAX_ATTEMPTS - 1:
-                raise BotPOError(
+                raise BotDocError(
                     "Gagal generate nomor PO unik. Coba ulang sebentar lagi.",
                 ) from e
     assert po is not None
-    # Hapus session setelah sukses.
-    await db.delete(session)
+    await delete_session(db, session)
     return po
+
+
+# Backward-compat alias utk file lama yg import nama lama.
+parse_and_save = parse_text_and_save
