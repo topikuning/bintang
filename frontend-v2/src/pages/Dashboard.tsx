@@ -598,6 +598,23 @@ function FilterTab({
   )
 }
 
+/** Map warning text -> drill-down href. Bullet jadi clickable kalau
+ *  cocok salah satu pattern. Audit 2026-06-02 user req: warning yg
+ *  cuma teks tdk actionable -- "9 proyek minus", "3 overbudget" perlu
+ *  cara liat proyek mana saja. */
+function warningHref(w: string): string | null {
+  const t = w.toLowerCase()
+  if (t.includes("bersaldo minus")) return "/projects?health=minus"
+  if (t.includes("overbudget")) return "/projects?budget_status=overbudget"
+  if (t.includes("mendekati batas")) return "/projects?budget_status=mendekati_batas"
+  if (t.includes("invoice overdue")) return "/invoices?status=OVERDUE"
+  if (t.includes("transaksi belum diverifikasi"))
+    return "/transactions?status=DRAFT&status=SUBMITTED"
+  if (t.includes("belum dialokasi"))
+    return "/transactions?unlinked=true"
+  return null
+}
+
 function WarningBanner({ warnings }: { warnings: string[] }) {
   return (
     <div className="rounded-md border border-warning-200 bg-warning-50 p-3 sm:p-4 space-y-1.5">
@@ -610,9 +627,23 @@ function WarningBanner({ warnings }: { warnings: string[] }) {
         </span>
       </div>
       <ul className="ml-6 list-disc text-[13px] text-warning-700 space-y-0.5">
-        {warnings.map((w, i) => (
-          <li key={`${i}:${w}`}>{w}</li>
-        ))}
+        {warnings.map((w, i) => {
+          const href = warningHref(w)
+          return (
+            <li key={`${i}:${w}`}>
+              {href ? (
+                <Link
+                  to={href}
+                  className="text-warning-800 underline-offset-2 hover:underline hover:text-warning-900"
+                >
+                  {w} →
+                </Link>
+              ) : (
+                w
+              )}
+            </li>
+          )
+        })}
       </ul>
     </div>
   )

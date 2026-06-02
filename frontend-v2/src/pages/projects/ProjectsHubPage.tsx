@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
-import { Link } from "react-router-dom"
-import { Building2, ClipboardList, FolderKanban, Plus, Search } from "lucide-react"
+import { Link, useSearchParams } from "react-router-dom"
+import { AlertTriangle, Building2, ClipboardList, FolderKanban, Plus, Search, X } from "lucide-react"
 import {
   useProjectFilters,
   useProjectsStats,
@@ -50,6 +50,15 @@ export function ProjectsHubPage() {
   // Debounce search supaya tdk fire request tiap keystroke.
   const debouncedQ = useDebouncedValue(q, 300)
 
+  // Audit 2026-06-02: drill-down dari warning banner di Beranda.
+  // `?health=minus` -> hanya proyek balance < 0.
+  // `?budget_status=overbudget` / `=mendekati_batas` -> filter budget.
+  // Filter di-apply in-memory setelah fetch (data set kecil <100 proyek).
+  const [searchParams, setSearchParams] = useSearchParams()
+  const healthUrl = searchParams.get("health")
+  const budgetStatusUrl = searchParams.get("budget_status")
+  const hasDrillDown = !!healthUrl || !!budgetStatusUrl
+
   // Pending proposal count (admin saja -- 403 utk non-admin, queryClient
   // tetap retry-disabled supaya tdk spam log).
   const proposalCountQ = useProposalCount()
@@ -82,7 +91,31 @@ export function ProjectsHubPage() {
     )
   }
 
-  const items = projectsQ.data ?? []
+  const itemsRaw = projectsQ.data ?? []
+  const items = useMemo(() => {
+    let out = itemsRaw
+    if (healthUrl) {
+      out = out.filter((p) => p.health === healthUrl)
+    }
+    if (budgetStatusUrl) {
+      out = out.filter((p) => p.budget?.status === budgetStatusUrl)
+    }
+    return out
+  }, [itemsRaw, healthUrl, budgetStatusUrl])
+
+  const drillDownLabel = (() => {
+    if (healthUrl === "minus") return "Hanya proyek bersaldo minus"
+    if (budgetStatusUrl === "overbudget") return "Hanya proyek overbudget"
+    if (budgetStatusUrl === "mendekati_batas") return "Hanya proyek mendekati batas budget"
+    return null
+  })()
+
+  const clearDrillDown = () => {
+    const next = new URLSearchParams(searchParams)
+    next.delete("health")
+    next.delete("budget_status")
+    setSearchParams(next, { replace: true })
+  }
 
   return (
     <div className="flex flex-col gap-3 p-3 sm:p-5 lg:p-6 max-w-5xl">
@@ -191,6 +224,23 @@ export function ProjectsHubPage() {
         </div>
       </div>
 
+      {/* Drill-down banner dari warning Beranda. */}
+      {hasDrillDown && drillDownLabel && (
+        <div className="flex items-center gap-2 rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-[12px]">
+          <AlertTriangle className="h-4 w-4 text-warning-600 shrink-0" />
+          <span className="text-warning-800 font-medium">{drillDownLabel}</span>
+          <span className="text-warning-700">· {items.length} proyek</span>
+          <button
+            type="button"
+            onClick={clearDrillDown}
+            className="ml-auto flex items-center gap-1 rounded px-2 py-0.5 text-warning-700 hover:bg-warning-100"
+          >
+            <X className="h-3 w-3" />
+            Bersihkan
+          </button>
+        </div>
+      )}
+
       {projectsQ.isLoading ? (
         <div className="grid gap-2.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -199,9 +249,11 @@ export function ProjectsHubPage() {
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-md border border-dashed bg-surface p-10 text-center text-[13px] text-ink-500">
-          {q || companyId
-            ? "Tidak ada proyek yang cocok dgn filter."
-            : "Belum ada proyek. Tambahkan dari menu Lainnya → Proyek (master)."}
+          {hasDrillDown
+            ? "Tidak ada proyek dgn kondisi tsb saat ini. Filter ini didorong dari Beranda -- mungkin data sudah berubah."
+            : q || companyId
+              ? "Tidak ada proyek yang cocok dgn filter."
+              : "Belum ada proyek. Tambahkan dari menu Lainnya → Proyek (master)."}
         </div>
       ) : (
         <div className="grid gap-2.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
