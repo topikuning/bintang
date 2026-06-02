@@ -131,6 +131,7 @@ async def run_extraction(
     media_type: str,
     source_url: str | None,
     engine: str | None,
+    user_context: str | None = None,
 ) -> dict[str, Any]:
     """Full pipeline: hash -> cache lookup -> preprocess -> adapter ->
     cache store. Caller commit DB.
@@ -201,7 +202,20 @@ async def run_extraction(
         try:
             from app.services.ai.prompt_registry import get_prompt
             p = await get_prompt(db, "ocr_invoice")
-            adapter.set_system_prompt(p.system)
+            sys_prompt = p.system
+            # Audit 2026-06-02: user context (mis. "invoice terkait
+            # kegiatan konstruksi") di-append ke system prompt supaya AI
+            # bisa pakai utk disambiguasi (vendor handwriting unclear, item
+            # interpretation, dst).
+            if user_context:
+                sys_prompt = (
+                    f"{sys_prompt}\n\n"
+                    f"--- Konteks tambahan dari pengirim ---\n"
+                    f"{user_context.strip()}\n"
+                    f"Pertimbangkan konteks ini saat interpretasi field yg ambigu "
+                    f"(mis. handwriting vendor, satuan, kategori barang)."
+                )
+            adapter.set_system_prompt(sys_prompt)
         except Exception:  # noqa: BLE001
             pass  # fallback ke default constant di adapter
         result = await _call_adapter(adapter, processed_content, processed_media, source_url)
@@ -228,7 +242,15 @@ async def run_extraction(
             try:
                 from app.services.ai.prompt_registry import get_prompt
                 p = await get_prompt(db, "ocr_invoice")
-                claude_adapter.set_system_prompt(p.system)
+                sys_prompt = p.system
+                if user_context:
+                    sys_prompt = (
+                        f"{sys_prompt}\n\n"
+                        f"--- Konteks tambahan dari pengirim ---\n"
+                        f"{user_context.strip()}\n"
+                        f"Pertimbangkan konteks ini saat interpretasi field yg ambigu."
+                    )
+                claude_adapter.set_system_prompt(sys_prompt)
             except Exception:  # noqa: BLE001
                 pass
             claude_result = await _call_adapter(

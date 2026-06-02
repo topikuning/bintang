@@ -61,6 +61,9 @@ async def parse_photo_and_save(
     ocr = await run_extraction(
         db, content=content, media_type=media_type,
         source_url=source_url, engine=None,
+        # Audit 2026-06-02: user context (caption "konteks: ...") di-inject
+        # ke OCR system prompt utk disambiguasi handwriting/items.
+        user_context=notes,
     )
     items = _ocr_items_to_payload(ocr.get("items") or [])
     if not items and not (ocr.get("total") or 0):
@@ -211,7 +214,7 @@ def _format_preview(payload: dict) -> str:
     if meta.get("is_handwritten"):
         lines.append("_OCR detect tulisan tangan -- mohon verifikasi angka._")
     if payload.get("notes"):
-        lines.append(f"Catatan: {payload['notes']}")
+        lines.append(f"💬 Konteks: _{payload['notes']}_")
     lines.append("")
     lines.append("Balas *ya* untuk simpan sbg DRAFT, *batal* untuk batal.")
     return "\n".join(lines)

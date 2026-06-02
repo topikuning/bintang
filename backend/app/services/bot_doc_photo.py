@@ -32,8 +32,27 @@ _DOC_CMDS: dict[str, dict] = {
     "/inv":         {"entity": "INVOICE", "type": "IN"},
 }
 
-_PROJ_HINT_RE = re.compile(r"\bproyek\s*[:\-]?\s*([A-Za-z0-9_\-\.]{2,40})", re.IGNORECASE)
-_VENDOR_HINT_RE = re.compile(r"\bvendor\s*[:\-]?\s*([^\n]{2,80})", re.IGNORECASE)
+# Stop pattern: keyword berikutnya supaya vendor tdk nyebrang ke proyek/
+# konteks. Positive lookahead utk: "(space)keyword" / newline / end-of-string.
+_NEXT_KW = r"(?=\s+(?:proyek|projek|vendor|konteks|catatan|keterangan|note|notes|ket)\b|\s*\n|\s*$)"
+# Project code: alfanumerik + dash/underscore (mis. BMJ1, PRJ-001). Tdk
+# perlu lookahead karena character class sudah strict.
+_PROJ_HINT_RE = re.compile(
+    r"\bproyek\s*[:\-]?\s*([A-Za-z0-9_\-\.]{2,40})", re.IGNORECASE,
+)
+# Vendor: nama bisa multi-word ("PT Sumber Besi"). Lazy + lookahead supaya
+# stop di keyword berikutnya.
+_VENDOR_HINT_RE = re.compile(
+    r"\bvendor\s*[:\-]?\s*(.+?)" + _NEXT_KW,
+    re.IGNORECASE,
+)
+# Audit 2026-06-02: explicit context keyword. Kalau caption pakai
+# "konteks: ..." / "catatan: ..." / "keterangan: ...", ambil text setelah
+# kata kunci sampai akhir caption (priorities over fallback).
+_CONTEXT_RE = re.compile(
+    r"\b(?:konteks|catatan|keterangan|note|notes|ket)\s*[:\-]\s*(.+)",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 @dataclass
@@ -42,12 +61,24 @@ class DocCmdSpec:
     invoice_type: InvoiceType | None
     project_hint: str | None
     vendor_hint: str | None
-    notes: str | None
+    context: str | None
+    # Backward-compat alias (notes = context).
+    @property
+    def notes(self) -> str | None:
+        return self.context
 
 
 def parse_doc_cmd(caption: str) -> DocCmdSpec | None:
     """Detect doc-command dari caption foto. Return None kalau bukan
-    /po atau /invoice variant."""
+    /po atau /invoice variant.
+
+    Pattern caption yg dikenali (case-insensitive, urutan bebas):
+      /po              [proyek X] [vendor Y] [konteks: free text]
+      /invoice         [proyek X] [vendor Y] [catatan: free text]
+      /invoice-out     [proyek X] [keterangan: free text]
+
+    Tanpa keyword: text yg bukan pattern proyek/vendor jadi context.
+    """
     if not caption:
         return None
     stripped = caption.strip()
@@ -64,17 +95,39 @@ def parse_doc_cmd(caption: str) -> DocCmdSpec | None:
     if spec is None:
         return None
     rest = stripped[head_end:].strip()
+
+    # Cari proyek/vendor hint dulu.
     proj_match = _PROJ_HINT_RE.search(rest)
     vendor_match = _VENDOR_HINT_RE.search(rest)
     project_hint = proj_match.group(1).strip() if proj_match else None
     vendor_hint = vendor_match.group(1).strip() if vendor_match else None
-    # notes = caption tanpa command head + tanpa hints (kalau ada sisa).
-    notes_text = rest
-    if proj_match:
-        notes_text = notes_text.replace(proj_match.group(0), "")
-    if vendor_match:
-        notes_text = notes_text.replace(vendor_match.group(0), "")
-    notes = notes_text.strip() or None
+
+    # Context: 2 strategi.
+    # (1) Explicit keyword "konteks:/catatan:/keterangan:" -> ambil sisa.
+    # (2) Fallback: text setelah hint patterns di-strip, kalau ada sisa.
+    context: str | None = None
+    ctx_match = _CONTEXT_RE.search(rest)
+    if ctx_match:
+        context = ctx_match.group(1).strip()
+        # Bersihkan hint pattern di dalam context (mis. kalau urutan keyword
+        # diselingi proyek/vendor): hanya hapus kalau benar2 match.
+        if proj_match and proj_match.group(0) in context:
+            context = context.replace(proj_match.group(0), "").strip()
+        if vendor_match and vendor_match.group(0) in context:
+            context = context.replace(vendor_match.group(0), "").strip()
+        if not context:
+            context = None
+    else:
+        # Fallback: strip hint patterns dari rest, sisanya jadi context.
+        notes_text = rest
+        if proj_match:
+            notes_text = notes_text.replace(proj_match.group(0), "")
+        if vendor_match:
+            notes_text = notes_text.replace(vendor_match.group(0), "")
+        # Strip multiple whitespace + leading/trailing.
+        notes_text = re.sub(r"\s+", " ", notes_text).strip()
+        context = notes_text or None
+
     return DocCmdSpec(
         entity=spec["entity"],
         invoice_type=(
@@ -84,7 +137,7 @@ def parse_doc_cmd(caption: str) -> DocCmdSpec | None:
         ),
         project_hint=project_hint,
         vendor_hint=vendor_hint,
-        notes=notes,
+        context=context,
     )
 
 
