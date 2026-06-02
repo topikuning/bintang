@@ -115,10 +115,12 @@ async def parse_photo_and_save(
             "engine": (ocr.get("raw_response") or {}).get("engine"),
         },
     }
-    await save_session(
+    session_id = await save_session(
         db, channel=channel, chat_id=chat_id, user_id=user.id,
         entity_type=ENTITY_TYPE, payload=payload,
     )
+    from app.services.bot_doc_session import schedule_reminder
+    schedule_reminder(channel=channel, chat_id=chat_id, session_id=session_id)
     return _format_preview(payload)
 
 

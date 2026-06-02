@@ -142,6 +142,10 @@ async def handle_doc_photo(
     return ""
 
 
+_YES_TOKENS = {"ya", "yes", "ok", "y", "✓", "iya", "siap"}
+_NO_TOKENS = {"batal", "cancel", "no", "tidak", "ga", "gak", "nggak"}
+
+
 async def handle_session_reply(
     db: AsyncSession,
     *,
@@ -151,17 +155,36 @@ async def handle_session_reply(
     text: str,
 ) -> str:
     """Handle balasan ya/batal saat ada session aktif. Dispatch berdasarkan
-    entity_type. Return "" kalau tdk ada session."""
+    entity_type.
+
+    Audit 2026-06-02: kalau text match ya/batal TAPI session sudah expired
+    / tdk ada, balas pesan jelas (jangan silent) -- supaya user tdk merasa
+    "bot mati". Return "" hanya kalau text tdk match ya/batal sama sekali
+    (caller akan lanjut ke dispatcher biasa).
+    """
     from app.services.bot_doc_session import (
         BotDocError,
+        SESSION_TTL_MINUTES,
         delete_session,
         load_active_session,
     )
+    t = text.strip().lower()
+    is_yes = t in _YES_TOKENS
+    is_no = t in _NO_TOKENS
+
     session = await load_active_session(db, channel=channel, chat_id=chat_id)
     if session is None:
+        if is_yes or is_no:
+            # User reply ya/batal tapi tdk ada session. Kemungkinan besar
+            # session expired (TTL lewat). Reply jelas.
+            return (
+                f"Tidak ada draf yg menunggu konfirmasi (mungkin sudah "
+                f"kadaluarsa setelah {SESSION_TTL_MINUTES} menit). "
+                "Kirim ulang foto + caption /invoice atau /po."
+            )
         return ""
-    t = text.strip().lower()
-    if t in ("ya", "yes", "ok", "y", "✓"):
+
+    if is_yes:
         try:
             if session.entity_type == "PO":
                 from app.services.bot_po_assistant import confirm_create as create_po
@@ -182,7 +205,7 @@ async def handle_session_reply(
                 )
         except BotDocError as e:
             return f"❌ {e}"
-    if t in ("batal", "cancel", "no", "tidak"):
+    if is_no:
         await delete_session(db, session)
         return f"Dibatalkan. Session {session.entity_type.lower()} dihapus."
     return (

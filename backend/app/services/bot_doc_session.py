@@ -12,7 +12,9 @@ sesi sebelumnya.
 """
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -27,8 +29,12 @@ from app.models.models import (
     VendorClient,
 )
 
+logger = logging.getLogger(__name__)
+
 
 SESSION_TTL_MINUTES = 10
+# Audit 2026-06-02: reminder 1 menit sebelum expired (= 9 menit setelah save).
+REMINDER_DELAY_SECONDS = (SESSION_TTL_MINUTES - 1) * 60
 
 
 class BotDocError(Exception):
@@ -126,8 +132,9 @@ async def save_session(
     user_id: int,
     entity_type: str,    # "PO" | "INVOICE"
     payload: dict,
-) -> None:
-    """Insert / replace session aktif utk (channel, chat_id)."""
+) -> int:
+    """Insert / replace session aktif utk (channel, chat_id).
+    Return session.id supaya caller bisa schedule_reminder."""
     existing = (await db.execute(
         select(BotPendingDocSession).where(
             BotPendingDocSession.channel == channel,
@@ -147,6 +154,7 @@ async def save_session(
     )
     db.add(row)
     await db.flush()
+    return row.id
 
 
 async def load_active_session(
@@ -178,3 +186,51 @@ async def delete_session(
 def parse_payload(session: BotPendingDocSession) -> dict:
     """Decode payload JSON dr session row."""
     return json.loads(session.payload_json)
+
+
+# ---------- Reminder (audit 2026-06-02) ----------
+
+def schedule_reminder(
+    *, channel: str, chat_id: str, session_id: int,
+    delay_seconds: int = REMINDER_DELAY_SECONDS,
+) -> None:
+    """Fire-and-forget reminder ke chat ~1 menit sebelum session expired.
+    Kalau session sudah dihapus (confirm/batal) saat reminder fire,
+    no-op. Tdk persist -- kalau server restart, reminder hilang
+    (acceptable utk MVP).
+
+    Pakai pola async.create_task(...) seperti _process_ocr_job di
+    api/v1/ocr.py.
+    """
+    async def _runner():
+        try:
+            await asyncio.sleep(delay_seconds)
+            from app.db.session import SessionLocal
+            async with SessionLocal() as db:
+                session = await db.get(BotPendingDocSession, session_id)
+                if session is None:
+                    return  # sudah confirmed/cancelled/replaced
+                if session.expires_at < datetime.now(timezone.utc):
+                    return  # somehow already expired
+                entity = session.entity_type.lower()
+                if channel == "whatsapp":
+                    from app.services.whatsapp import client as wa
+                    await wa.send_text(
+                        chat_id,
+                        f"⏰ Pengingat: ada draf {entity} menunggu konfirmasi. "
+                        "Balas *ya* utk simpan sbg DRAFT atau *batal* utk batalkan. "
+                        "Session expire dalam 1 menit.",
+                    )
+                elif channel == "telegram":
+                    from app.services.telegram import client as tg
+                    await tg.send_message(
+                        chat_id,
+                        f"⏰ <b>Pengingat</b>: ada draf {entity} menunggu konfirmasi. "
+                        "Balas <b>ya</b> utk simpan sbg DRAFT atau <b>batal</b> "
+                        "utk batalkan. Session expire dalam 1 menit.",
+                    )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("bot_doc reminder failed channel=%s sid=%s err=%s",
+                           channel, session_id, e)
+
+    asyncio.create_task(_runner())
