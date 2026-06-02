@@ -230,7 +230,7 @@ function GlobalDashboard() {
       {(d.pending_count > 0 || d.unlinked_out_count > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {d.pending_count > 0 && (
-            <Link to="/transactions?status=SUBMITTED" className="block">
+            <Link to="/transactions?status=DRAFT&status=SUBMITTED" className="block">
               <HighlightCard
                 tone="warning"
                 icon={Clock}

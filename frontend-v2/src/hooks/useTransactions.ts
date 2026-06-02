@@ -10,7 +10,8 @@ export interface TransactionListParams {
    * paramsSerializer custom di lib/api. */
   project_id?: number[]
   type?: TxnType
-  status?: TxnStatus
+  /** Single atau multi-value. Backend pakai status.in_() kalau array. */
+  status?: TxnStatus | TxnStatus[]
   category_id?: number
   vendor_client_id?: number
   date_from?: string

@@ -101,17 +101,20 @@ export function TransactionsListPage() {
     setSearchParams(u, { replace: true })
   }
 
-  // Deep link override: ?status=DRAFT & ?type=OUT dari ProjectDashboard
-  // drilldown link. Selain itu pakai filter chip state.
-  const urlStatus = searchParams.get("status")
+  // Deep link override: ?status=DRAFT&status=SUBMITTED dari Dashboard
+  // counter "Belum Verifikasi" -- multi-status. Single-status tetap
+  // didukung (mis. ?status=DRAFT dari CommandPalette quick nav).
+  const urlStatuses = searchParams.getAll("status").filter((s) => s && s !== "ALL")
   const urlType = searchParams.get("type")
   // Audit 2026-05-24: drill-down dari dashboard counter "N pengeluaran
   // masih punya sisa belum dialokasi".
   const unlinkedOnly = searchParams.get("unlinked") === "true"
-  const effectiveStatus =
-    urlStatus && urlStatus !== "ALL"
-      ? (urlStatus as TxnStatus)
-      : statusFilter === "ALL" ? undefined : statusFilter
+  const effectiveStatus: TxnStatus | TxnStatus[] | undefined =
+    urlStatuses.length > 1
+      ? (urlStatuses as TxnStatus[])
+      : urlStatuses.length === 1
+        ? (urlStatuses[0] as TxnStatus)
+        : statusFilter === "ALL" ? undefined : statusFilter
   const effectiveType =
     urlType && urlType !== "ALL"
       ? (urlType as TxnType)
@@ -277,6 +280,7 @@ export function TransactionsListPage() {
             !!dateTo ||
             typeFilter !== "ALL" ||
             statusFilter !== "ALL" ||
+            urlStatuses.length > 0 ||
             unlinkedOnly
           }
           onReset={() => {
@@ -369,18 +373,35 @@ export function TransactionsListPage() {
 
           <FilterButton
             label="Status"
-            active={statusFilter !== "ALL"}
-            displayValue={statusFilter !== "ALL" ? STATUS_TABS.find((s) => s.value === statusFilter)?.label ?? null : null}
+            active={urlStatuses.length > 0 || statusFilter !== "ALL"}
+            displayValue={
+              urlStatuses.length > 1
+                ? `${urlStatuses.length} status`
+                : urlStatuses.length === 1
+                  ? STATUS_TABS.find((s) => s.value === urlStatuses[0])?.label ?? null
+                  : statusFilter !== "ALL"
+                    ? STATUS_TABS.find((s) => s.value === statusFilter)?.label ?? null
+                    : null
+            }
             onClear={() => {
+              const next = new URLSearchParams(searchParams)
+              next.delete("status")
+              setSearchParams(next, { replace: true })
               setStatusFilter("ALL")
               setPage(1)
             }}
             width={200}
           >
             <FilterRadioList
-              value={statusFilter}
+              value={urlStatuses.length === 1 ? (urlStatuses[0] as StatusFilter) : statusFilter}
               options={STATUS_TABS}
               onChange={(v) => {
+                // Chip pick override URL multi-status -- bersihin URL dulu.
+                if (urlStatuses.length > 0) {
+                  const next = new URLSearchParams(searchParams)
+                  next.delete("status")
+                  setSearchParams(next, { replace: true })
+                }
                 setStatusFilter(v as StatusFilter)
                 setPage(1)
               }}
@@ -410,7 +431,7 @@ export function TransactionsListPage() {
             columns={columns}
             onItemClick={(t) => setSelectedId(t.id)}
             emptyState={
-              statusFilter !== "ALL" || typeFilter !== "ALL" || projectFilter.length > 0 || dateFrom || dateTo || q || unlinkedOnly ? (
+              statusFilter !== "ALL" || urlStatuses.length > 0 || typeFilter !== "ALL" || projectFilter.length > 0 || dateFrom || dateTo || q || unlinkedOnly ? (
                 <EmptyState
                   icon={Search}
                   title="Tidak ada hasil"

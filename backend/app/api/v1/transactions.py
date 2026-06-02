@@ -183,7 +183,7 @@ async def list_transactions(
     project_id: list[int] | None = Query(None),
     company_id: int | None = None,
     type: TxnType | None = None,
-    status: TxnStatus | None = None,
+    status: list[TxnStatus] | None = Query(None),
     category_id: int | None = None,
     vendor_client_id: int | None = None,
     invoice_id: int | None = None,
@@ -237,7 +237,9 @@ async def list_transactions(
     if type:
         stmt = stmt.where(Transaction.type == type)
     if status:
-        stmt = stmt.where(Transaction.status == status)
+        # Audit 2026-06-02: multi-status filter -- FE bisa kirim
+        # ?status=DRAFT&status=SUBMITTED utk drill-down "belum verifikasi".
+        stmt = stmt.where(Transaction.status.in_(status))
     if category_id:
         stmt = stmt.where(Transaction.category_id == category_id)
     if vendor_client_id:

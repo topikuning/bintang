@@ -322,7 +322,7 @@ export function ProjectDashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {dash.pending_count > 0 && (
               <Link
-                to={`/transactions?project_id=${projectId}&status=DRAFT`}
+                to={`/transactions?project_id=${projectId}&status=DRAFT&status=SUBMITTED`}
                 className="rounded-md border border-warning-200 bg-warning-50 p-3 hover:bg-warning-100 active:bg-warning-100/70"
               >
                 <div className="flex items-start gap-2">
