@@ -57,10 +57,23 @@ async def parse_photo_and_save(
     Project hint opsional. Kalau hilang, fallback ke first accessible
     project (warning di preview).
     """
+    # Audit 2026-06-02: simpan foto ke storage supaya bisa di-view di
+    # halaman /ocr (Asisten OCR) -- user bisa verifikasi side-by-side
+    # foto + hasil OCR sebelum konfirmasi via WA.
+    from app.services.storage.local import save_bytes
+    ext = _ext_from_media_type(media_type)
+    saved = await save_bytes(
+        content,
+        original_name=f"wa-{chat_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}.{ext}",
+        subdir="ocr",
+        mime_hint=media_type,
+    )
+    public_url = saved["url"]  # /files/ocr/YYYY/MM/...
+
     from app.services.ocr.pipeline import run_extraction
     ocr = await run_extraction(
         db, content=content, media_type=media_type,
-        source_url=source_url, engine=None,
+        source_url=public_url, engine=None,
         # Audit 2026-06-02: user context (caption "konteks: ...") di-inject
         # ke OCR system prompt utk disambiguasi handwriting/items.
         user_context=notes,
@@ -117,7 +130,16 @@ async def parse_photo_and_save(
             "ocr_subtotal": float(ocr.get("subtotal") or 0),
             "engine": (ocr.get("raw_response") or {}).get("engine"),
         },
+        # Audit 2026-06-02: source_url + ai_extraction_id supaya bisa
+        # ditarik di /ocr page utk verifikasi web.
+        "source_url": public_url,
     }
+
+    # Buat AIExtraction record supaya muncul di halaman Asisten OCR
+    # (semua admin bisa lihat + bisa juga buat Invoice dari sana).
+    extraction_id = await _create_ai_extraction(db, public_url, ocr, entity="invoice")
+    payload["ai_extraction_id"] = extraction_id
+
     session_id = await save_session(
         db, channel=channel, chat_id=chat_id, user_id=user.id,
         entity_type=ENTITY_TYPE, payload=payload,
@@ -125,6 +147,44 @@ async def parse_photo_and_save(
     from app.services.bot_doc_session import schedule_reminder
     schedule_reminder(channel=channel, chat_id=chat_id, session_id=session_id)
     return _format_preview(payload)
+
+
+def _ext_from_media_type(mime: str | None) -> str:
+    if not mime:
+        return "jpg"
+    return {
+        "image/jpeg": "jpg",
+        "image/jpg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+        "application/pdf": "pdf",
+    }.get(mime.lower(), "jpg")
+
+
+async def _create_ai_extraction(
+    db: AsyncSession, source_url: str, ocr: dict, *, entity: str,
+) -> int:
+    """Persist hasil OCR sbg AIExtraction supaya tampil di Asisten OCR.
+    Audit 2026-06-02 -- bridge bot OCR ke web visibility."""
+    from app.models.models import AIExtraction, AIExtractionStatus
+    # Decimal -> str supaya JSON-serializable (sama dgn _persist_extraction
+    # di api/v1/ocr.py).
+    extracted = {
+        k: (str(v) if hasattr(v, "is_finite") else v)
+        for k, v in ocr.items()
+        if k != "raw_response"
+    }
+    rec = AIExtraction(
+        entity=entity,  # "invoice" | "po"
+        source_url=source_url,
+        status=AIExtractionStatus.DONE,
+        extracted_data=extracted,
+        confidence_score=ocr.get("confidence_score"),
+        raw_response=ocr.get("raw_response"),
+    )
+    db.add(rec)
+    await db.flush()
+    return rec.id
 
 
 # ---------- Helpers ----------
@@ -215,6 +275,10 @@ def _format_preview(payload: dict) -> str:
         lines.append("_OCR detect tulisan tangan -- mohon verifikasi angka._")
     if payload.get("notes"):
         lines.append(f"💬 Konteks: _{payload['notes']}_")
+    if payload.get("ai_extraction_id"):
+        lines.append(
+            f"🔍 Cek hasil OCR di web: /ocr (cari #{payload['ai_extraction_id']})"
+        )
     lines.append("")
     lines.append("Balas *ya* untuk simpan sbg DRAFT, *batal* untuk batal.")
     return "\n".join(lines)
@@ -296,6 +360,17 @@ async def confirm_create(
         raise BotDocError(
             "Gagal simpan invoice (mungkin nomor duplikat). Edit dulu di web.",
         ) from e
+
+    # Audit 2026-06-02: link AIExtraction.entity_id supaya badge "linked"
+    # muncul di Asisten OCR setelah Invoice dibuat.
+    extraction_id = payload.get("ai_extraction_id")
+    if extraction_id:
+        from app.models.models import AIExtraction
+        extraction = await db.get(AIExtraction, extraction_id)
+        if extraction is not None:
+            extraction.entity_id = inv.id
+            extraction.reviewed_by_id = user.id
+
     await delete_session(db, session)
     return inv
 

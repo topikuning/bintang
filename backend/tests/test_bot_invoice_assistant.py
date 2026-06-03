@@ -50,12 +50,25 @@ async def _seed(db):
 
 
 def _mock_ocr(monkeypatch, ocr_result: dict):
-    """Patch run_extraction supaya return canned OCR result."""
-    async def _fake(db, *, content, media_type, source_url, engine):
+    """Patch run_extraction + save_bytes supaya tdk panggil real OCR
+    / sentuh disk."""
+    async def _fake_ocr(db, *, content, media_type, source_url, engine,
+                       user_context=None):
         return ocr_result
 
+    async def _fake_save_bytes(content, *, original_name, subdir,
+                              mime_hint=None):
+        return {
+            "file_name": original_name,
+            "file_size": len(content),
+            "mime_type": mime_hint or "image/jpeg",
+            "url": f"/files/{subdir}/test/{original_name}",
+        }
+
     from app.services.ocr import pipeline as ocr_pipeline
-    monkeypatch.setattr(ocr_pipeline, "run_extraction", _fake)
+    from app.services.storage import local as storage_local
+    monkeypatch.setattr(ocr_pipeline, "run_extraction", _fake_ocr)
+    monkeypatch.setattr(storage_local, "save_bytes", _fake_save_bytes)
 
 
 @pytest.mark.asyncio

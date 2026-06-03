@@ -115,10 +115,25 @@ async def parse_photo_and_save(
     """Audit 2026-06-02: /po + foto. OCR pakai INVOICE_SCHEMA (sama utk
     invoice + po -- struktur items + total mirip). project_hint dari
     caption user; vendor dari OCR vendor_name (atau override caption)."""
+    # Simpan foto -> URL utk web visibility di Asisten OCR.
+    from app.services.storage.local import save_bytes
+    from app.services.bot_invoice_assistant import (
+        _create_ai_extraction,
+        _ext_from_media_type,
+    )
+    ext = _ext_from_media_type(media_type)
+    saved = await save_bytes(
+        content,
+        original_name=f"wa-{chat_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}.{ext}",
+        subdir="ocr",
+        mime_hint=media_type,
+    )
+    public_url = saved["url"]
+
     from app.services.ocr.pipeline import run_extraction
     ocr = await run_extraction(
         db, content=content, media_type=media_type,
-        source_url=source_url, engine=None,
+        source_url=public_url, engine=None,
         # Audit 2026-06-02: user context (caption "konteks: ...") di-inject
         # ke OCR system prompt utk disambiguasi handwriting/items.
         user_context=notes,
@@ -163,6 +178,11 @@ async def parse_photo_and_save(
             "engine": (ocr.get("raw_response") or {}).get("engine"),
         },
     )
+    payload["source_url"] = public_url
+    # AIExtraction record -> tampil di /ocr (Asisten OCR) sbg "po" entity.
+    extraction_id = await _create_ai_extraction(db, public_url, ocr, entity="po")
+    payload["ai_extraction_id"] = extraction_id
+
     session_id = await save_session(
         db, channel=channel, chat_id=chat_id, user_id=user.id,
         entity_type=ENTITY_TYPE, payload=payload,
@@ -258,6 +278,10 @@ def _format_preview(payload: dict) -> str:
         lines.append("Estimasi total: belum diisi (harga kosong)")
     if payload.get("notes"):
         lines.append(f"💬 Konteks: _{payload['notes']}_")
+    if payload.get("ai_extraction_id"):
+        lines.append(
+            f"🔍 Cek hasil OCR di web: /ocr (cari #{payload['ai_extraction_id']})"
+        )
     meta = payload.get("ocr_meta")
     if meta:
         conf = meta.get("confidence_score")
@@ -331,6 +355,16 @@ async def confirm_create(
                     "Gagal generate nomor PO unik. Coba ulang sebentar lagi.",
                 ) from e
     assert po is not None
+    # Audit 2026-06-02: link AIExtraction (kalau ada -- hanya utk photo
+    # path; text path tdk bikin extraction).
+    extraction_id = payload.get("ai_extraction_id")
+    if extraction_id:
+        from app.models.models import AIExtraction
+        extraction = await db.get(AIExtraction, extraction_id)
+        if extraction is not None:
+            extraction.entity_id = po.id
+            extraction.reviewed_by_id = user.id
+
     await delete_session(db, session)
     return po
 
