@@ -29,6 +29,7 @@ import {
   MoreHorizontal,
   Notebook,
   Receipt,
+  FileSpreadsheet,
   ScanLine,
   Settings,
   ShieldCheck,
@@ -83,6 +84,7 @@ export const DESKTOP_NAV: NavGroup[] = [
     items: [
       { id: "reports", label: "Laporan", to: "/reports", icon: BarChart3 },
       { id: "reports-invoice-items", label: "Detail Invoice", to: "/reports/invoice-items", icon: Receipt },
+      { id: "spreadsheet", label: "Tampilan Spreadsheet", to: "/spreadsheet", icon: FileSpreadsheet },
       { id: "audit-log", label: "Audit Log", to: "/audit-log", icon: History },
     ],
   },
@@ -150,6 +152,7 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
     items: [
       { id: "reports", label: "Laporan", to: "/reports", icon: BarChart3 },
       { id: "reports-invoice-items", label: "Detail Invoice", to: "/reports/invoice-items", icon: Receipt },
+      { id: "spreadsheet", label: "Tampilan Spreadsheet", to: "/spreadsheet", icon: FileSpreadsheet },
       { id: "audit-log", label: "Audit Log", to: "/audit-log", icon: History },
     ],
   },

@@ -36,6 +36,7 @@ MENU_REGISTRY: list[dict[str, Any]] = [
     # Laporan -- read-only
     {"id": "reports", "label": "Laporan", "group": "laporan"},
     {"id": "reports-invoice-items", "label": "Detail Invoice (Interaktif)", "group": "laporan"},
+    {"id": "spreadsheet", "label": "Tampilan Spreadsheet (per Proyek)", "group": "laporan"},
     {"id": "audit-log", "label": "Audit Log", "group": "laporan"},
     # Admin Tools -- jarang dipakai (mingguan), admin only
     {"id": "admin-bulk-approval", "label": "Mass Action", "group": "admin"},
