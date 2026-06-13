@@ -12,6 +12,14 @@ export interface OcrDraft {
   reviewed_at: string | null
 }
 
+/** Audit 2026-06-13: item override saat user edit di OcrPage. */
+export interface OcrEditableItem {
+  description: string
+  quantity: number
+  unit?: string | null
+  unit_price: number
+}
+
 export interface OcrCreateInvoiceInput {
   draft_id: number
   project_id: number
@@ -20,6 +28,12 @@ export interface OcrCreateInvoiceInput {
   override_number?: string
   override_party_name?: string
   override_notes?: string
+  override_invoice_date?: string | null   // ISO YYYY-MM-DD
+  override_due_date?: string | null
+  override_tax?: number
+  /** Kalau diisi, GANTI items hasil OCR. List sudah filter (item
+   *  yg user "exclude" tdk ada di sini). undefined = pakai OCR items. */
+  items?: OcrEditableItem[]
 }
 
 export interface OcrCreateInvoiceResult {

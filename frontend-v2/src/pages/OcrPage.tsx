@@ -12,8 +12,10 @@ import {
   Image as ImageIcon,
   Link2,
   Loader2,
+  Pencil,
   PenLine,
   Receipt,
+  RotateCcw,
   ScanLine,
   ShieldCheck,
   Sparkles,
@@ -492,6 +494,51 @@ function fmtRupiah(v: unknown): string {
   return fmtIDR(n)
 }
 
+interface EditableItemRow {
+  description: string
+  quantity: string  // string input -> parse on submit
+  unit: string
+  unit_price: string
+  included: boolean
+}
+
+interface EditState {
+  invoice_number: string
+  vendor_name: string
+  invoice_date: string  // YYYY-MM-DD
+  due_date: string
+  tax: string
+  items: EditableItemRow[]
+}
+
+function _strOf(v: unknown): string {
+  if (v == null) return ""
+  if (typeof v === "string") return v
+  if (typeof v === "number") return String(v)
+  return String(v ?? "")
+}
+
+function initEditState(data: Record<string, unknown>): EditState {
+  const rawItems = Array.isArray(data["items"]) ? (data["items"] as OcrItem[]) : []
+  return {
+    invoice_number: _strOf(data["invoice_number"]),
+    vendor_name: _strOf(data["vendor_name"]),
+    invoice_date: _strOf(data["invoice_date"]).slice(0, 10),
+    due_date: _strOf(data["due_date"]).slice(0, 10),
+    tax: _strOf(data["tax"]) || "0",
+    items: rawItems.map((it) => {
+      const priceVal = it.price ?? it.amount
+      return {
+        description: _strOf(it.description),
+        quantity: _strOf(it.qty) || "1",
+        unit: _strOf(it.unit),
+        unit_price: _strOf(priceVal) || "0",
+        included: true,
+      }
+    }),
+  }
+}
+
 function DraftCard({
   draft,
   isExpanded,
@@ -510,6 +557,18 @@ function DraftCard({
     conf >= 0.85 ? "success" : conf >= 0.6 ? "warning" : "danger"
   const isLinked = draft.entity_id != null
   const data = (draft.extracted_data ?? {}) as Record<string, unknown>
+
+  // Audit 2026-06-13: edit mode -- user bisa koreksi field + items
+  // sebelum klik Buat Invoice. Edit state lokal; tdk persist sampai
+  // user Buat Invoice (atau pakai tombol "Reset ke OCR" utk restore).
+  const [isEditing, setIsEditing] = useState(false)
+  const [edit, setEdit] = useState<EditState>(() => initEditState(data))
+
+  // Saat extracted_data berubah (refetch), re-init edit state.
+  useEffect(() => {
+    if (!isEditing) setEdit(initEditState(data))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.id, isExpanded])
 
   const summary = {
     nomor: (data["invoice_number"] as string) ?? null,
@@ -631,54 +690,142 @@ function DraftCard({
             )}
           </div>
 
-          {/* Field summary */}
-          <div className="grid gap-2 grid-cols-2 sm:grid-cols-4">
-            <FieldCell label="Nomor" value={summary.nomor} />
-            <FieldCell label="Tanggal" value={summary.tanggal} />
-            <FieldCell label="Jatuh Tempo" value={summary.dueDate} />
-            <FieldCell label="Vendor" value={summary.vendor} />
-            <FieldCell label="Subtotal" value={fmtRupiah(summary.subtotal)} mono />
-            <FieldCell label="Pajak" value={fmtRupiah(summary.tax)} mono />
-            <FieldCell label="Total" value={fmtRupiah(summary.total)} mono strong />
-          </div>
-
-          {/* Items table */}
-          {items.length > 0 && (
-            <div>
-              <div className="text-[10px] uppercase tracking-wider text-ink-500 mb-1">
-                Items ({items.length})
+          {/* Toggle Edit mode (audit 2026-06-13) */}
+          {!isLinked && (
+            <div className="flex items-center justify-between gap-2 rounded-md border bg-surface p-2">
+              <div className="text-[12px] text-ink-700 flex items-center gap-1.5">
+                {isEditing ? (
+                  <>
+                    <Pencil className="h-3.5 w-3.5 text-brand-600" />
+                    <span><strong>Mode Edit:</strong> koreksi field & item sebelum buat invoice. Item bisa di-exclude lewat checkbox.</span>
+                  </>
+                ) : (
+                  <>
+                    <PenLine className="h-3.5 w-3.5 text-ink-500" />
+                    <span>Hasil OCR di bawah ini bisa di-edit kalau ada yg salah baca.</span>
+                  </>
+                )}
               </div>
-              <div className="overflow-x-auto rounded border bg-surface">
-                <table className="w-full text-[12px]">
-                  <thead className="bg-surface-muted text-ink-500">
-                    <tr className="[&>th]:px-2 [&>th]:py-1.5 [&>th]:text-left [&>th]:font-medium">
-                      <th>Deskripsi</th>
-                      <th className="text-right">Qty</th>
-                      <th>Unit</th>
-                      <th className="text-right">Harga</th>
-                      <th className="text-right">Jumlah</th>
-                    </tr>
-                  </thead>
-                  <tbody className="[&>tr]:border-t [&>tr>td]:px-2 [&>tr>td]:py-1.5 [&>tr>td]:align-top">
-                    {items.map((it, i) => (
-                      <tr key={`${i}:${it.description ?? ""}`}>
-                        <td className="text-ink-900">{it.description ?? "—"}</td>
-                        <td className="text-right font-mono [font-variant-numeric:tabular-nums]">
-                          {it.qty ?? "—"}
-                        </td>
-                        <td className="text-ink-500">{it.unit ?? "—"}</td>
-                        <td className="text-right font-mono [font-variant-numeric:tabular-nums]">
-                          {fmtRupiah(it.price)}
-                        </td>
-                        <td className="text-right font-mono [font-variant-numeric:tabular-nums] font-medium">
-                          {fmtRupiah(it.amount ?? it.price)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="flex items-center gap-2 shrink-0">
+                {isEditing && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setEdit(initEditState(data))}
+                    title="Reset semua field & item ke hasil OCR awal"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Reset ke OCR
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant={isEditing ? "secondary" : "outline"}
+                  onClick={() => setIsEditing((v) => !v)}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  {isEditing ? "Selesai Edit" : "Edit Hasil OCR"}
+                </Button>
               </div>
             </div>
+          )}
+
+          {/* Field summary -- read-only atau editable. */}
+          {isEditing && !isLinked ? (
+            <div className="grid gap-2 grid-cols-2 sm:grid-cols-4">
+              <EditableFieldCell
+                label="Nomor"
+                value={edit.invoice_number}
+                onChange={(v) => setEdit({ ...edit, invoice_number: v })}
+              />
+              <EditableFieldCell
+                label="Tanggal"
+                type="date"
+                value={edit.invoice_date}
+                onChange={(v) => setEdit({ ...edit, invoice_date: v })}
+              />
+              <EditableFieldCell
+                label="Jatuh Tempo"
+                type="date"
+                value={edit.due_date}
+                onChange={(v) => setEdit({ ...edit, due_date: v })}
+              />
+              <EditableFieldCell
+                label="Vendor"
+                value={edit.vendor_name}
+                onChange={(v) => setEdit({ ...edit, vendor_name: v })}
+              />
+              <FieldCell label="Subtotal" value={fmtRupiah(_computeSubtotal(edit.items))} mono />
+              <EditableFieldCell
+                label="Pajak"
+                type="number"
+                value={edit.tax}
+                onChange={(v) => setEdit({ ...edit, tax: v })}
+                mono
+              />
+              <FieldCell
+                label="Total"
+                value={fmtRupiah(_computeSubtotal(edit.items) + (parseFloat(edit.tax) || 0))}
+                mono
+                strong
+              />
+            </div>
+          ) : (
+            <div className="grid gap-2 grid-cols-2 sm:grid-cols-4">
+              <FieldCell label="Nomor" value={summary.nomor} />
+              <FieldCell label="Tanggal" value={summary.tanggal} />
+              <FieldCell label="Jatuh Tempo" value={summary.dueDate} />
+              <FieldCell label="Vendor" value={summary.vendor} />
+              <FieldCell label="Subtotal" value={fmtRupiah(summary.subtotal)} mono />
+              <FieldCell label="Pajak" value={fmtRupiah(summary.tax)} mono />
+              <FieldCell label="Total" value={fmtRupiah(summary.total)} mono strong />
+            </div>
+          )}
+
+          {/* Items table -- read-only atau editable */}
+          {isEditing && !isLinked ? (
+            <EditableItemsTable
+              items={edit.items}
+              onChange={(items) => setEdit({ ...edit, items })}
+            />
+          ) : (
+            items.length > 0 && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-ink-500 mb-1">
+                  Items ({items.length})
+                </div>
+                <div className="overflow-x-auto rounded border bg-surface">
+                  <table className="w-full text-[12px]">
+                    <thead className="bg-surface-muted text-ink-500">
+                      <tr className="[&>th]:px-2 [&>th]:py-1.5 [&>th]:text-left [&>th]:font-medium">
+                        <th>Deskripsi</th>
+                        <th className="text-right">Qty</th>
+                        <th>Unit</th>
+                        <th className="text-right">Harga</th>
+                        <th className="text-right">Jumlah</th>
+                      </tr>
+                    </thead>
+                    <tbody className="[&>tr]:border-t [&>tr>td]:px-2 [&>tr>td]:py-1.5 [&>tr>td]:align-top">
+                      {items.map((it, i) => (
+                        <tr key={`${i}:${it.description ?? ""}`}>
+                          <td className="text-ink-900">{it.description ?? "—"}</td>
+                          <td className="text-right font-mono [font-variant-numeric:tabular-nums]">
+                            {it.qty ?? "—"}
+                          </td>
+                          <td className="text-ink-500">{it.unit ?? "—"}</td>
+                          <td className="text-right font-mono [font-variant-numeric:tabular-nums]">
+                            {fmtRupiah(it.price)}
+                          </td>
+                          <td className="text-right font-mono [font-variant-numeric:tabular-nums] font-medium">
+                            {fmtRupiah(it.amount ?? it.price)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
           )}
 
           {/* Notes from OCR */}
@@ -726,7 +873,10 @@ function DraftCard({
             </div>
           ) : (
             <>
-              <CreateInvoiceFromDraftPanel draft={draft} />
+              <CreateInvoiceFromDraftPanel
+                draft={draft}
+                editState={isEditing ? edit : null}
+              />
               <div className="flex justify-end">
                 <Button
                   size="sm"
@@ -748,7 +898,14 @@ function DraftCard({
   )
 }
 
-function CreateInvoiceFromDraftPanel({ draft }: { draft: OcrDraft }) {
+function CreateInvoiceFromDraftPanel({
+  draft,
+  editState,
+}: {
+  draft: OcrDraft
+  /** Kalau set, payload include overrides + items hasil edit. */
+  editState: EditState | null
+}) {
   const create = useOcrCreateInvoice()
   const [open, setOpen] = useState(false)
   const [projectId, setProjectId] = useState<number | null>(null)
@@ -756,11 +913,18 @@ function CreateInvoiceFromDraftPanel({ draft }: { draft: OcrDraft }) {
   const [vendorId, setVendorId] = useState<number | null>(null)
 
   const data = (draft.extracted_data ?? {}) as Record<string, unknown>
-  const itemsCount = Array.isArray(data["items"])
-    ? (data["items"] as unknown[]).length
-    : 0
-  const totalNum =
-    typeof data["total"] === "number"
+  // Pakai edit state utk hitung count + total kalau user lg edit.
+  const includedItems = editState
+    ? editState.items.filter((it) => it.included)
+    : []
+  const itemsCount = editState
+    ? includedItems.length
+    : Array.isArray(data["items"])
+      ? (data["items"] as unknown[]).length
+      : 0
+  const totalNum = editState
+    ? _computeSubtotal(editState.items) + (parseFloat(editState.tax) || 0)
+    : typeof data["total"] === "number"
       ? (data["total"] as number)
       : Number(data["total"])
   const totalLabel = Number.isFinite(totalNum) ? fmtIDR(totalNum) : "—"
@@ -771,17 +935,34 @@ function CreateInvoiceFromDraftPanel({ draft }: { draft: OcrDraft }) {
       return
     }
     try {
+      // Build overrides + items kalau edit state aktif.
+      const overrides = editState
+        ? {
+            override_number: editState.invoice_number.trim() || undefined,
+            override_party_name: editState.vendor_name.trim() || undefined,
+            override_invoice_date: editState.invoice_date || undefined,
+            override_due_date: editState.due_date || null,
+            override_tax: parseFloat(editState.tax) || 0,
+            items: editState.items
+              .filter((it) => it.included && it.description.trim() !== "")
+              .map((it) => ({
+                description: it.description.trim(),
+                quantity: parseFloat(it.quantity) || 1,
+                unit: it.unit.trim() || null,
+                unit_price: parseFloat(it.unit_price) || 0,
+              })),
+          }
+        : {}
       const result = await create.mutateAsync({
         draft_id: draft.id,
         project_id: projectId,
         type,
         vendor_client_id: vendorId,
+        ...overrides,
       })
       toast.success(`Invoice ${result.invoice_number} berhasil dibuat`, {
         description: `${result.items_count} item · ${fmtIDR(result.total)} · ${result.attachments_count} lampiran. Status: ${result.status}.`,
       })
-      // Form di-collapse otomatis karena draft.entity_id ke-update via
-      // invalidate query -> komponen ini hilang, replaced dgn linked badge.
       setOpen(false)
     } catch (err) {
       toast.error("Gagal buat invoice", { description: apiErrorMessage(err) })
@@ -796,8 +977,10 @@ function CreateInvoiceFromDraftPanel({ draft }: { draft: OcrDraft }) {
           <div>
             Buat <strong>Invoice DRAFT</strong> dengan{" "}
             <span className="font-mono">{itemsCount}</span> item ({totalLabel}) +
-            file gambar otomatis ter-attach sebagai lampiran. Edit / koreksi
-            field di form Invoice setelah submit.
+            file gambar otomatis ter-attach sebagai lampiran.
+            {editState
+              ? " Field & item yg kamu edit dipakai sbg data invoice."
+              : " Field & item bisa dikoreksi via tombol \"Edit Hasil OCR\" di atas, atau di InvoiceForm setelah submit."}
           </div>
         </div>
         <div className="flex justify-end">
@@ -939,6 +1122,172 @@ function FieldCell({
       </div>
     </div>
   )
+}
+
+// ============================================================
+// Audit 2026-06-13: editable cell + items table utk DraftCard edit mode
+// ============================================================
+
+function EditableFieldCell({
+  label,
+  value,
+  onChange,
+  type = "text",
+  mono,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  type?: "text" | "date" | "number"
+  mono?: boolean
+}) {
+  return (
+    <div className="rounded border bg-surface p-2 space-y-1">
+      <div className="text-[10px] uppercase tracking-wider text-ink-500">
+        {label}
+      </div>
+      <Input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn(
+          "h-7 text-[12px] px-1.5",
+          mono && "font-mono [font-variant-numeric:tabular-nums]",
+        )}
+      />
+    </div>
+  )
+}
+
+function EditableItemsTable({
+  items,
+  onChange,
+}: {
+  items: EditableItemRow[]
+  onChange: (items: EditableItemRow[]) => void
+}) {
+  const updateItem = (i: number, patch: Partial<EditableItemRow>) => {
+    const next = [...items]
+    next[i] = { ...next[i]!, ...patch }
+    onChange(next)
+  }
+  const includedCount = items.filter((it) => it.included).length
+
+  return (
+    <div>
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-ink-500 mb-1">
+        <span>Items ({includedCount} of {items.length} disertakan)</span>
+        <span className="text-ink-400 normal-case tracking-normal">
+          Hilangkan centang utk exclude dari invoice
+        </span>
+      </div>
+      <div className="overflow-x-auto rounded border bg-surface">
+        <table className="w-full text-[12px]">
+          <thead className="bg-surface-muted text-ink-500">
+            <tr className="[&>th]:px-2 [&>th]:py-1.5 [&>th]:text-left [&>th]:font-medium">
+              <th className="w-8">✓</th>
+              <th>Deskripsi</th>
+              <th className="text-right w-20">Qty</th>
+              <th className="w-20">Unit</th>
+              <th className="text-right w-32">Harga</th>
+              <th className="text-right w-32">Jumlah</th>
+            </tr>
+          </thead>
+          <tbody className="[&>tr]:border-t [&>tr>td]:px-1.5 [&>tr>td]:py-1 [&>tr>td]:align-middle">
+            {items.map((it, i) => {
+              const qty = parseFloat(it.quantity) || 0
+              const price = parseFloat(it.unit_price) || 0
+              const lineTotal = qty * price
+              return (
+                <tr
+                  key={i}
+                  className={cn(
+                    !it.included && "opacity-50 bg-ink-50/50",
+                  )}
+                >
+                  <td className="text-center">
+                    <input
+                      type="checkbox"
+                      checked={it.included}
+                      onChange={(e) =>
+                        updateItem(i, { included: e.target.checked })
+                      }
+                      title={it.included ? "Klik utk exclude" : "Klik utk include kembali"}
+                      className="cursor-pointer"
+                    />
+                  </td>
+                  <td>
+                    <Input
+                      value={it.description}
+                      onChange={(e) =>
+                        updateItem(i, { description: e.target.value })
+                      }
+                      placeholder="Deskripsi item"
+                      disabled={!it.included}
+                      className="h-7 text-[12px] px-1.5"
+                    />
+                  </td>
+                  <td>
+                    <Input
+                      type="number"
+                      step="any"
+                      value={it.quantity}
+                      onChange={(e) =>
+                        updateItem(i, { quantity: e.target.value })
+                      }
+                      disabled={!it.included}
+                      className="h-7 text-[12px] px-1.5 text-right font-mono [font-variant-numeric:tabular-nums]"
+                    />
+                  </td>
+                  <td>
+                    <Input
+                      value={it.unit}
+                      onChange={(e) => updateItem(i, { unit: e.target.value })}
+                      placeholder="pcs"
+                      disabled={!it.included}
+                      className="h-7 text-[12px] px-1.5"
+                    />
+                  </td>
+                  <td>
+                    <Input
+                      type="number"
+                      step="any"
+                      value={it.unit_price}
+                      onChange={(e) =>
+                        updateItem(i, { unit_price: e.target.value })
+                      }
+                      disabled={!it.included}
+                      className="h-7 text-[12px] px-1.5 text-right font-mono [font-variant-numeric:tabular-nums]"
+                    />
+                  </td>
+                  <td className="text-right font-mono [font-variant-numeric:tabular-nums] font-medium">
+                    {fmtRupiah(lineTotal)}
+                  </td>
+                </tr>
+              )
+            })}
+            {items.length === 0 && (
+              <tr>
+                <td colSpan={6} className="text-center text-ink-500 py-3">
+                  Belum ada item ter-ekstrak. Tambahkan manual setelah Invoice
+                  dibuat (di InvoiceForm).
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function _computeSubtotal(items: EditableItemRow[]): number {
+  let sum = 0
+  for (const it of items) {
+    if (!it.included) continue
+    sum += (parseFloat(it.quantity) || 0) * (parseFloat(it.unit_price) || 0)
+  }
+  return sum
 }
 
 // ============================================================

@@ -547,6 +547,15 @@ async def discard_draft(
     await db.commit()
 
 
+class OcrItemOverrideIn(BaseModel):
+    """Item override saat user edit di OCR Asisten sebelum Buat Invoice.
+    Audit 2026-06-13: items bisa di-edit / exclude per-baris."""
+    description: str
+    quantity: Decimal = Decimal("1")
+    unit: str | None = None
+    unit_price: Decimal = Decimal("0")
+
+
 class CreateInvoiceFromDraftIn(BaseModel):
     project_id: int
     type: InvoiceType  # IN | OUT -- OCR tidak bisa nentuin sendiri, user pilih
@@ -555,6 +564,16 @@ class CreateInvoiceFromDraftIn(BaseModel):
     override_number: str | None = None
     override_party_name: str | None = None
     override_notes: str | None = None
+    # Audit 2026-06-13: extend overrides supaya user bisa koreksi
+    # tanggal/pajak + items langsung di OcrPage tanpa harus edit di
+    # InvoiceForm setelah create.
+    override_invoice_date: date | None = None
+    override_due_date: date | None = None
+    override_tax: Decimal | None = None
+    # Kalau diisi, MENGGANTI items dari extracted_data. List ini sudah
+    # filter (item yg di-exclude user tdk ada di list). Kalau None,
+    # fallback ke extracted_data.items (behaviour lama).
+    items: list[OcrItemOverrideIn] | None = None
 
 
 def _to_decimal(v: Any, default: Decimal = Decimal("0")) -> Decimal:
@@ -634,8 +653,22 @@ async def create_invoice_from_draft(
         f"[OCR] Dibuat dari draft #{rec.id} oleh {user.email or user.id}"
     )
 
-    invoice_date = _parse_iso_date(data.get("invoice_date")) or date.today()
-    due_date = _parse_iso_date(data.get("due_date"))
+    # Audit 2026-06-13: dates + tax override-able. Fallback ke OCR.
+    invoice_date = (
+        body.override_invoice_date
+        or _parse_iso_date(data.get("invoice_date"))
+        or date.today()
+    )
+    due_date = (
+        body.override_due_date
+        if body.override_due_date is not None
+        else _parse_iso_date(data.get("due_date"))
+    )
+    tax_value = (
+        body.override_tax
+        if body.override_tax is not None
+        else _to_decimal(data.get("tax"))
+    )
 
     inv = Invoice(
         number=number,
@@ -645,14 +678,26 @@ async def create_invoice_from_draft(
         due_date=due_date,
         vendor_client_id=body.vendor_client_id,
         party_name=party_name,
-        tax=_to_decimal(data.get("tax")),
+        tax=tax_value,
         notes="\n".join(notes_parts) or None,
         status=InvoiceStatus.DRAFT,
         created_by_id=user.id,
     )
 
-    # Items dari OCR -- map ke schema InvoiceItem
-    raw_items = data.get("items") or []
+    # Audit 2026-06-13: kalau body.items dikirim (user koreksi di OcrPage),
+    # pakai itu sbg sumber kebenaran. Otherwise fallback ke extracted_data.items.
+    if body.items is not None:
+        raw_items = [
+            {
+                "description": it.description,
+                "qty": it.quantity,
+                "unit": it.unit,
+                "price": it.unit_price,
+            }
+            for it in body.items
+        ]
+    else:
+        raw_items = data.get("items") or []
     subtotal_total = Decimal("0")
     for it in raw_items:
         if not isinstance(it, dict):
