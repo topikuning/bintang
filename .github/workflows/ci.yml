@@ -40,14 +40,10 @@ jobs:
       # pun -- eslint tidak terpasang, tidak ada berkas config, dan
       # `|| true` menelan kegagalannya. Sekarang lint benar-benar jalan
       # dan memblokir. Batas warning di-pin di package.json
-      # (`--max-warnings=89`) sebagai ratchet: error apa pun langsung
-      # gagal, warning baru juga gagal, tapi warning lama yang ada
+      # (`--max-warnings=15`) sebagai ratchet: error apa pun langsung
+      # gagal, warning baru juga gagal, tapi 15 warning lama yang ada
       # tidak memblokir sampai sempat dirapikan. Turunkan angkanya tiap
       # kali sebagian dibereskan.
-      #
-      # Angkanya naik 15 -> 89 saat eslint 9 -> 10 (2026-08-30): plugin
-      # react-hooks v7 membawa aturan React Compiler yang menyorot
-      # backlog yang sebelumnya memang ada tapi tak terlihat.
       - name: Lint
         run: npm run lint
 

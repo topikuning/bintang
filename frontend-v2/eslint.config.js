@@ -36,27 +36,20 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
 
-      // --- Aturan React Compiler (eslint-plugin-react-hooks v7) ---
-      // v7 membawa aturan dari React Compiler. Berguna, tapi di repo ini
-      // langsung menghasilkan 22 error, jadi diturunkan ke `warn` supaya
-      // CI tidak terblokir sementara backlog-nya dicicil. Ratchet
-      // `--max-warnings` di package.json yang mencegah jumlahnya naik.
+      // CATATAN -- eslint tetap di v9, BUKAN v10.
       //
-      // `set-state-in-effect` (21x): setState sinkron di dalam useEffect
-      // memicu render berantai. Nyata, layak dibereskan, tapi tersebar
-      // di banyak halaman dan bukan pekerjaan yang pantas dikerjakan
-      // sesaat sebelum deploy.
-      "react-hooks/set-state-in-effect": "warn",
+      // Sempat dinaikkan ke eslint 10 + eslint-plugin-react-hooks v7
+      // (2026-08-30) untuk mendapat aturan React Compiler. Dibatalkan:
+      // eslint 10 membutuhkan ajv@6 sementara paket lain di pohon
+      // dependency membutuhkan ajv@8, dan npm menulis lockfile yang
+      // kemudian DITOLAK oleh `npm ci` sendiri ("lock file's ajv@6.15.0
+      // does not satisfy ajv@8.20.0"). CI jadi merah di langkah install
+      // sebelum sempat menjalankan apa pun.
       //
-      // `static-components` (1x): SATU-SATUNYA kemunculan di
-      // pages/AuditLog.tsx:330 sudah diperiksa manual dan merupakan
-      // FALSE POSITIVE -- `getEntityIcon()` mengembalikan komponen ikon
-      // dari lookup konstan (`ENTITY_OPTIONS[].icon` atau `FileText`),
-      // yang referensinya stabil antar render. Aturan ini tidak bisa
-      // membuktikan kestabilan itu, jadi ia melapor konservatif.
-      // JANGAN "perbaiki" dgn useMemo -- itu menambah kerumitan untuk
-      // masalah yang tidak ada.
-      "react-hooks/static-components": "warn",
+      // Yang hilang cuma peringatan tambahan; bug nyata yang ditemukan
+      // lint (hook dipanggil kondisional di ProjectsHubPage) tertangkap
+      // oleh `rules-of-hooks` yang sudah ada di v5. Coba lagi setelah
+      // eslint/ajv beres di upstream.
 
       // Aturan React Fast Refresh: komponen harus jadi satu-satunya
       // export dari berkasnya. Banyak berkas lama mengekspor helper di
