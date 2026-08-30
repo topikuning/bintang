@@ -160,25 +160,24 @@ async def _verify_webhook_signature(
     dengan secret kosong -- dan fungsi ini `return True` untuk secret
     kosong, jadi webhook terbuka untuk siapa pun.
 
-    Secret kosong tetap melewatkan verifikasi (mode dev), tapi di
-    APP_ENV=prod boot sudah ditolak lebih dulu oleh
-    `_guard_production_config()` kalau integrasi aktif tanpa secret.
+    Secret kosong = verifikasi DILEWATI, di environment mana pun.
     """
     secret = await get_setting(db, "WHATSAPP_WEBHOOK_SECRET")
     if not secret:
-        # Tanpa secret kita TIDAK BISA membuktikan request ini dari WAHA.
-        # Di prod itu berarti tolak: siapa pun di internet bisa mengirim
-        # perintah bot atas nama user yang sudah ter-link, dan lewat bot
-        # itu transaksi keuangan bisa dibuat.
+        # Keputusan operasional yang disengaja (2026-08-30), bukan
+        # kelalaian.
         #
-        # Di dev tetap dilewatkan supaya bisa dites tanpa setup HMAC.
-        if settings.is_prod:
-            logger.warning(
-                "whatsapp.webhook ditolak: WHATSAPP_WEBHOOK_SECRET kosong "
-                "di prod. Isi di Pengaturan > Integrasi, dan samakan dgn "
-                "WAHA_HMAC_KEY di sisi WAHA."
-            )
-            return False
+        # WAHA Core menyimpan konfigurasi session -- termasuk HMAC key --
+        # di MEMORI, sehingga kuncinya hilang tiap restart/reconnect
+        # session. Dalam praktik di deployment ini: tiap beberapa menit.
+        # Mewajibkan HMAC berarti webhook mati berkala tanpa sebab yang
+        # terlihat dari sisi Bintang, dan itu lebih merugikan daripada
+        # risiko yang ditutupnya.
+        #
+        # Aktifkan verifikasi dgn mengisi WHATSAPP_WEBHOOK_SECRET
+        # (Pengaturan > Integrasi) HANYA kalau WAHA sudah berjalan dgn
+        # penyimpanan persisten -- mis. WAHA Plus, atau WAHA Core dgn
+        # volume yang di-mount -- supaya kuncinya tidak hilang lagi.
         return True
     if not header:
         return False

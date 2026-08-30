@@ -257,14 +257,17 @@ masih melayani, jadi tidak ada downtime dan data tidak tersentuh.
 Penyebab tersering: `DATABASE_URL` belum memakai `+asyncpg`, atau
 kredensial Postgres berubah.
 
-**Deploy gagal: `REFUSE_BOOT: integrasi bot aktif di prod tapi secret
-webhook kosong`**
-Ini disengaja. Sebelum perubahan ini, webhook Telegram/WhatsApp bisa
-dipanggil siapa pun di internet — dan lewat bot, transaksi keuangan
-bisa dibuat. Isi secretnya di **Pengaturan → Integrasi** (atau lewat env
-`TELEGRAM_WEBHOOK_SECRET` / `WHATSAPP_WEBHOOK_SECRET`), lalu redeploy.
-Kalau memang tidak memakai bot, kosongkan `TELEGRAM_BOT_TOKEN` dan
-`WHATSAPP_BASE_URL`.
+**WhatsApp jalan sebentar lalu berhenti**
+Kalau `WHATSAPP_WEBHOOK_SECRET` diisi, WAHA harus menyertakan tanda
+tangan HMAC di tiap webhook — tapi **WAHA Core menyimpan kuncinya di
+memori** dan kehilangannya tiap restart/reconnect session. Akibatnya
+webhook mulai ditolak `401` beberapa menit setelah WAHA hidup, tanpa
+sebab yang terlihat dari sisi Bintang.
+
+Solusi paling praktis: **kosongkan `WHATSAPP_WEBHOOK_SECRET`**.
+Verifikasi dilewati dan webhook jalan terus. Isi lagi hanya kalau WAHA
+sudah punya penyimpanan persisten (WAHA Plus, atau WAHA Core dengan
+volume yang di-mount).
 
 **SPA muncul tapi semua data gagal dimuat**
 Cek `https://<domain>/health`. Kalau API sehat tapi UI tetap kosong,
