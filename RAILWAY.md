@@ -111,7 +111,18 @@ Catatan penting:
 ### 3e. Public domain
 
 1. Service aplikasi → **Settings** → **Networking** → **Generate Domain**.
-2. Port: `8000`.
+2. **Target port: `8000`.**
+
+> **PALING SERING SALAH DI SINI.** Kalau service ini sebelumnya
+> menjalankan frontend nginx, target port-nya masih tersimpan `80`.
+> Mengubah Root Directory TIDAK ikut mengubahnya. Gejalanya: 502
+> `connection refused` di semua path — **termasuk `/health`** — padahal
+> log deploy menunjukkan `[entrypoint] menjalankan uvicorn di port 8000`
+> dan tidak ada error sama sekali.
+>
+> Cara cepat memastikan: kalau `/health` ikut 502, itu bukan bug
+> aplikasi. Endpoint itu tidak menyentuh database maupun autentikasi,
+> jadi selama uvicorn hidup ia SELALU menjawab 200.
 3. Salin domainnya, lalu set `PUBLIC_BASE_URL` ke URL itu (dipakai untuk
    registrasi webhook Telegram/WAHA). Redeploy setelah mengisinya.
 
@@ -233,6 +244,12 @@ arahkan CNAME sesuai instruksi Railway. Setelah aktif, perbarui
 **Deploy gagal, log memuat `REFUSE_BOOT:`**
 Konfigurasi produksi ditolak dengan sengaja. Pesannya menyebutkan
 variabel mana yang bermasalah — perbaiki lalu redeploy.
+
+**502 `connection refused` di semua path (termasuk `/health`)**
+Railway merutekan ke port yang salah — bukan masalah kode. Setel target
+port domain ke `8000` (Settings → Networking). Lihat catatan di langkah
+3e; ini biasanya sisa konfigurasi dari service frontend nginx yang
+dulu memakai port 80.
 
 **Deploy gagal di `[bootstrap_db]`**
 Migrasi tidak bisa jalan. Baca error di bawah baris itu. Versi lama
