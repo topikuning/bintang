@@ -27,13 +27,12 @@ import logging
 import re
 import time
 from decimal import Decimal, InvalidOperation
-from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import httpx
 
-from app.core.config import settings
+from app.services.storage.paths import is_local_file_url, resolve_upload_path
 from app.services.ocr.adapter import OCRAdapter
 from app.services.ocr.schema import INVOICE_SCHEMA, INVOICE_SYSTEM_PROMPT
 
@@ -152,11 +151,9 @@ class MistralOCRAdapter(OCRAdapter):
     async def extract_invoice(self, file_url: str) -> dict[str, Any]:
         """Resolve URL/path lokal -> bytes -> ekstrak. Mendukung file lokal
         (/files/...) dan URL absolut (auto-konversi Google Drive share)."""
-        if file_url.startswith("/files/"):
-            rel = file_url[len("/files/") :]
-            p = Path(settings.UPLOAD_DIR) / rel
-            if not p.exists():
-                raise FileNotFoundError(f"local_file_not_found: {p}")
+        if is_local_file_url(file_url):
+            # Audit #S-01: lewat resolver bersama yg menolak traversal.
+            p = resolve_upload_path(file_url)
             content = p.read_bytes()
             media_type = _MEDIA_TYPE_BY_SUFFIX.get(p.suffix.lower(), "image/jpeg")
         else:

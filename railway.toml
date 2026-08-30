@@ -1,0 +1,23 @@
+# Konfigurasi Railway untuk service aplikasi Bintang (SPA + API).
+#
+# Root Directory service = ROOT REPO (bukan `backend/` atau
+# `frontend-v2/`). Dockerfile di root mem-build SPA lalu menyalinnya ke
+# dalam image backend, jadi satu service ini menyajikan keduanya.
+#
+# Service yang dibutuhkan di Railway sekarang cuma dua:
+#   1. Postgres  (plugin Railway)
+#   2. bintang   (service ini)
+#
+# Doc: https://docs.railway.com/reference/config-as-code
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Migrasi dijalankan di entrypoint sebelum uvicorn (audit #D-01), jadi
+# tidak ada startCommand di sini -- ENTRYPOINT image yang mengurusnya.
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

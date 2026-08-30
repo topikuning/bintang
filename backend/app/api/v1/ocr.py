@@ -1,6 +1,6 @@
+import logging
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -9,7 +9,6 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.deps import (
     ensure_project_access,
     get_current_user,
@@ -34,6 +33,18 @@ from app.models.models import (
 from app.services.audit import log, snapshot
 from app.services.ocr.adapter import get_ocr_adapter, list_available_engines
 from app.services.storage.local import ALLOWED_MIME, save_upload
+from app.services.storage.paths import (
+    UnsafeUploadPath,
+    is_local_file_url,
+    read_upload_bytes,
+    resolve_upload_path,
+)
+
+# NB: modul ini sudah mengimpor `log` dari app.services.audit (fungsi
+# audit trail). Logger diberi nama berbeda supaya tidak menimpanya --
+# sempat terjadi dan membuat SEMUA pemanggilan audit di berkas ini
+# gagal dgn "'Logger' object is not callable".
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -152,7 +163,9 @@ def _persist_extraction(
 async def extract(
     payload: ExtractIn,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    # Audit #S-08: endpoint ini menulis AIExtraction + memanggil API
+    # vision berbayar. Role EXECUTIVE (read-only) tidak boleh.
+    user: User = Depends(require_can_write),
 ) -> dict:
     """Ekstrak dokumen dari URL (eksternal atau path lokal /files/...).
 
@@ -173,14 +186,21 @@ async def extract(
     except (FileNotFoundError, ValueError) as e:
         raise HTTPException(400, f"fetch_failed: {e}") from e
     except httpx.HTTPError as e:
-        raise HTTPException(502, f"fetch_http_error: {e}") from e
+        # Audit #S-12: jangan teruskan pesan httpx mentah ke klien --
+        # bisa memuat URL, header, atau potongan respons upstream.
+        # Detail lengkapnya ke log server.
+        logger.warning("ocr.fetch_http_error url=%s err=%r", payload.file_url, e)
+        raise HTTPException(502, "fetch_http_error: gagal mengunduh berkas dari URL itu") from e
     try:
         result = await run_extraction(
             db, content=content, media_type=media_type,
             source_url=payload.file_url, engine=payload.engine,
         )
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(502, f"ocr_failed: {e}") from e
+        # Audit #S-12: pesan dari provider OCR bisa memuat potongan
+        # payload atau detail konfigurasi. Log lengkap, balas ringkas.
+        logger.exception("ocr.extract_failed url=%s", payload.file_url)
+        raise HTTPException(502, "ocr_failed: mesin OCR gagal memproses berkas") from e
     rec = _persist_extraction(
         entity=payload.entity, source_url=payload.file_url, result=result
     )
@@ -211,7 +231,8 @@ async def extract_upload(
     entity: str = Form("invoice"),
     engine: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    # Audit #S-08: menulis berkas ke storage -> butuh hak tulis.
+    user: User = Depends(require_can_write),
 ) -> dict:
     """Upload langsung gambar/PDF -> simpan ke storage -> jalankan OCR.
 
@@ -236,13 +257,10 @@ async def extract_upload(
     source_url = saved["url"]
 
     # Baca file balik utk byte path (storage sudah resize gambar besar).
-    from pathlib import Path
-
-    from app.core.config import settings
-
-    rel = source_url[len("/files/") :]
-    p = Path(settings.UPLOAD_DIR) / rel
-    content = p.read_bytes()
+    # Audit #S-01: source_url berasal dari save_upload kita sendiri, tapi
+    # tetap lewat resolver bersama supaya tidak ada jalur baca berkas
+    # yang melewati pemeriksaan containment.
+    content = read_upload_bytes(source_url)
     media_type = saved["mime_type"]
 
     # Pipeline shared (hash cache + preprocess + engine fallback).
@@ -253,7 +271,8 @@ async def extract_upload(
             source_url=source_url, engine=engine,
         )
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(502, f"ocr_failed: {e}") from e
+        logger.exception("ocr.extract_upload_failed file=%s", saved["file_name"])
+        raise HTTPException(502, "ocr_failed: mesin OCR gagal memproses berkas") from e
 
     rec = _persist_extraction(entity=entity, source_url=source_url, result=result)
     db.add(rec)
@@ -290,7 +309,8 @@ async def create_ocr_job(
     entity: str = Form("invoice"),
     engine: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    # Audit #S-08: menulis berkas ke storage -> butuh hak tulis.
+    user: User = Depends(require_can_write),
 ) -> dict:
     """Enqueue async OCR job. Return job_id immediately (HTTP 202).
 
@@ -349,6 +369,8 @@ async def _process_ocr_job(job_id: int) -> None:
     from app.services.audit import log as _audit_log
     from app.models.models import AuditAction
 
+    # Logger lokal. Di dalam fungsi ini `log` aman dipakai sbg logger
+    # karena fungsi audit di-impor dgn alias `_audit_log` di atas.
     log = logging.getLogger(__name__)
 
     async with SessionLocal() as bg_db:
@@ -360,9 +382,8 @@ async def _process_ocr_job(job_id: int) -> None:
         job.started_at = datetime.now(timezone.utc)
         await bg_db.commit()
         try:
-            # Resolve file path
-            rel = job.source_url[len("/files/"):]
-            p = Path(settings.UPLOAD_DIR) / rel
+            # Resolve file path (audit #S-01: lewat resolver bersama)
+            p = resolve_upload_path(job.source_url)
             content = p.read_bytes()
             # Mime guessing dari ext (cukup utk pipeline)
             ext = p.suffix.lower()
@@ -746,10 +767,12 @@ async def create_invoice_from_draft(
 
     # Auto-attach file OCR sebagai bukti -- cuma kalau source_url-nya
     # path lokal /files/... (artinya file ada di storage kita).
-    if rec.source_url and rec.source_url.startswith("/files/"):
-        rel = rec.source_url[len("/files/") :]
-        p = Path(settings.UPLOAD_DIR) / rel
-        if p.exists():
+    if is_local_file_url(rec.source_url):
+        try:
+            p = resolve_upload_path(rec.source_url)
+        except (UnsafeUploadPath, FileNotFoundError):
+            p = None
+        if p is not None:
             suffix = p.suffix.lower()
             mime_map = {
                 ".jpg": "image/jpeg", ".jpeg": "image/jpeg",

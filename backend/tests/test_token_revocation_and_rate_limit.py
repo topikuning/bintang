@@ -12,7 +12,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, Response
 
 from app.api.v1.auth import login, logout
 from app.core.deps import get_current_user
@@ -38,9 +38,11 @@ def _fake_request(ip: str = "127.0.0.1") -> Request:
     return Request(scope)
 
 
-class _FakeResp:
-    def __init__(self):
-        self.headers: dict[str, str] = {}
+# Audit #S-03: login sekarang memanggil response.set_cookie(), jadi stub
+# dict-only tidak cukup lagi. Response asli punya .headers DAN
+# .set_cookie, dan tetap ringan untuk dipakai di unit test.
+def _FakeResp() -> Response:
+    return Response()
 
 
 async def _seed_user(db, *, email="x@x", username=None, password="secret123"):
@@ -59,7 +61,7 @@ async def test_login_includes_iat_and_is_accepted(db):
     user = await _seed_user(db, email="a@x", password="pw123456")
     out = await login(
         request=_fake_request(),
-        response=_FakeResp(),  # type: ignore[arg-type]
+        response=_FakeResp(),
         form=_FakeForm("a@x", "pw123456"),
         db=db,
     )
@@ -83,7 +85,12 @@ async def test_logout_revokes_existing_token(db):
 
     # Logout -- set tokens_revoked_after = now (sedikit di depan iat)
     await asyncio.sleep(1.1)  # pastikan logout > iat
-    await logout(db=db, user=user)
+    logout_resp = Response()
+    await logout(response=logout_resp, db=db, user=user)
+    # Audit #S-03: logout juga harus membuang cookie berkas, kalau tidak
+    # tab yg sudah terbuka masih bisa memuat lampiran sampai cookie
+    # kedaluwarsa sendiri.
+    assert "bintang_files=" in logout_resp.headers.get("set-cookie", "")
     # Refresh user dr DB
     await db.refresh(user)
     assert user.tokens_revoked_after is not None
@@ -100,7 +107,7 @@ async def test_logout_does_not_kill_future_tokens(db):
     """Token baru di-issue SETELAH logout harus tetap valid (login ulang)."""
     login_limiter.reset("login:127.0.0.1")
     user = await _seed_user(db, email="c@x", password="pw123456")
-    await logout(db=db, user=user)
+    await logout(response=Response(), db=db, user=user)
     await asyncio.sleep(1.1)
     new_token = create_access_token(user.id, extra={"role": user.role.value})
     cu = await get_current_user(token=new_token, db=db)
@@ -150,7 +157,7 @@ async def test_login_rate_limit_kicks_in(db):
         with pytest.raises(HTTPException) as exc:
             await login(
                 request=_fake_request(test_ip),
-                response=_FakeResp(),  # type: ignore[arg-type]
+                response=_FakeResp(),
                 form=_FakeForm("d@x", "wrong"),
                 db=db,
             )
@@ -160,7 +167,7 @@ async def test_login_rate_limit_kicks_in(db):
     with pytest.raises(HTTPException) as exc6:
         await login(
             request=_fake_request(test_ip),
-            response=_FakeResp(),  # type: ignore[arg-type]
+            response=_FakeResp(),
             form=_FakeForm("d@x", "wrong"),
             db=db,
         )
@@ -181,7 +188,7 @@ async def test_successful_login_resets_limiter(db):
         with pytest.raises(HTTPException):
             await login(
                 request=_fake_request(test_ip),
-                response=_FakeResp(),  # type: ignore[arg-type]
+                response=_FakeResp(),
                 form=_FakeForm("e@x", "wrong"),
                 db=db,
             )
@@ -189,7 +196,7 @@ async def test_successful_login_resets_limiter(db):
     # Sukses login -- reset bucket
     out = await login(
         request=_fake_request(test_ip),
-        response=_FakeResp(),  # type: ignore[arg-type]
+        response=_FakeResp(),
         form=_FakeForm("e@x", "correct123"),
         db=db,
     )
@@ -200,7 +207,7 @@ async def test_successful_login_resets_limiter(db):
         with pytest.raises(HTTPException) as exc:
             await login(
                 request=_fake_request(test_ip),
-                response=_FakeResp(),  # type: ignore[arg-type]
+                response=_FakeResp(),
                 form=_FakeForm("e@x", "wrong"),
                 db=db,
             )
@@ -229,6 +236,6 @@ async def test_legacy_token_without_iat_still_works(db):
 
     # Bahkan setelah logout (set tokens_revoked_after), legacy token
     # tetap accepted -- design tradeoff utk smooth deploy
-    await logout(db=db, user=user)
+    await logout(response=Response(), db=db, user=user)
     cu2 = await get_current_user(token=token, db=db)
     assert cu2.id == user.id

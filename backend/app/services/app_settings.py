@@ -115,6 +115,15 @@ SETTING_REGISTRY: dict[str, dict[str, Any]] = {
         "label": "WAHA API Key",
         "hint": "Header X-Api-Key. Boleh kosong utk WAHA Core tanpa auth.",
     },
+    # Audit 2026-06-13 #S-04: dulu key ini HANYA bisa diisi lewat env,
+    # padahal seluruh config bot lain di-manage dari UI. Admin yg setup
+    # lewat UI berakhir dgn webhook tanpa verifikasi sama sekali.
+    "WHATSAPP_WEBHOOK_SECRET": {
+        "group": "whatsapp", "secret": True,
+        "label": "Webhook Secret (HMAC)",
+        "hint": "Samakan dgn WAHA_HMAC_KEY di sisi WAHA. Wajib diisi di "
+                "produksi -- tanpa ini webhook bisa dipanggil siapa pun.",
+    },
     # System
     "PUBLIC_BASE_URL": {
         "group": "system", "secret": False,

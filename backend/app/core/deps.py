@@ -14,12 +14,13 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=F
 CENTRAL_ROLES = (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN)
 
 
-async def get_current_user(
-    token: str | None = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db),
-) -> User:
-    if not token:
-        raise HTTPException(status_code=401, detail="not_authenticated")
+async def resolve_user_from_token(db: AsyncSession, token: str) -> User:
+    """Validasi JWT -> User aktif, termasuk cek revocation.
+
+    Dipisah dari `get_current_user` supaya penyaji berkas (`app/api/
+    files.py`) bisa memakai logika yang sama untuk token yang datang
+    dari cookie, bukan dari header Authorization -- audit #S-03.
+    """
     try:
         payload = decode_token(token)
     except ValueError:
@@ -46,6 +47,15 @@ async def get_current_user(
             if token_issued <= cutoff:
                 raise HTTPException(status_code=401, detail="token_revoked")
     return user
+
+
+async def get_current_user(
+    token: str | None = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    if not token:
+        raise HTTPException(status_code=401, detail="not_authenticated")
+    return await resolve_user_from_token(db, token)
 
 
 def require_superadmin(user: User = Depends(get_current_user)) -> User:

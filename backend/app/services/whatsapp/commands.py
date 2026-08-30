@@ -31,6 +31,8 @@ from app.models.models import (
     WhatsAppPendingCommand,
 )
 from app.services.budget import budget_status, project_totals
+from fastapi import HTTPException
+
 from app.services.storage.local import save_bytes
 from app.services.whatsapp import client as wa
 from app.services.whatsapp.linking import consume_code
@@ -535,12 +537,21 @@ async def handle_media(
 
     name = file_name or fname_hdr or f"whatsapp-{int(now.timestamp())}.jpg"
     final_mime = mime or ct or "image/jpeg"
-    meta = await save_bytes(
-        content,
-        original_name=name,
-        subdir=f"transactions/{pending.transaction_id}",
-        mime_hint=final_mime,
-    )
+    # Audit #S-05: lihat catatan yang sama di telegram/commands.py.
+    try:
+        meta = await save_bytes(
+            content,
+            original_name=name,
+            subdir=f"transactions/{pending.transaction_id}",
+            mime_hint=final_mime,
+        )
+    except HTTPException as e:
+        if e.status_code == 415:
+            return ("Jenis berkas itu tidak didukung. Kirim foto (JPG/PNG), "
+                    "PDF, atau video MP4.")
+        if e.status_code == 413:
+            return "Berkas terlalu besar. Maksimal 20 MB."
+        raise
     att = TransactionAttachment(
         transaction_id=pending.transaction_id,
         uploaded_by_id=user.id,

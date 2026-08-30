@@ -1,26 +1,55 @@
+# Dev/self-host stack Bintang.
+#
+# Sejak 2026-06-13 frontend dan backend jadi SATU image (lihat
+# ./Dockerfile): SPA di-build lalu disajikan FastAPI. Jadi service
+# `frontend` yang dulu ada di sini sudah tidak diperlukan -- dan
+# ALLOWED_ORIGINS tidak perlu diisi karena SPA & API satu origin.
+
 services:
-  backend:
-    build: ./backend
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: bintang
+      POSTGRES_PASSWORD: bintang
+      POSTGRES_DB: bintang
+    volumes:
+      - bintang-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bintang"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
     environment:
       APP_ENV: prod
+      # WAJIB diganti: boot ditolak kalau masih nilai default di prod.
       SECRET_KEY: ${SECRET_KEY:-please-change-me-32-characters-min}
+      # PENTING: default ini SAMA dgn compose sebelumnya (SQLite di
+      # volume /data). Jangan diubah tanpa migrasi data -- mengarahkan
+      # ke Postgres kosong membuat seluruh data lama seolah hilang.
+      # Untuk pindah ke Postgres, dump SQLite dulu, baru set:
+      #   DATABASE_URL: postgresql+asyncpg://bintang:bintang@db:5432/bintang
       DATABASE_URL: ${DATABASE_URL:-sqlite+aiosqlite:////data/bintang.db}
       UPLOAD_DIR: /data/uploads
-      ALLOWED_ORIGINS: http://localhost,http://localhost:8080
+      # Kosong = hanya same-origin. Isi hanya kalau ada klien eksternal.
+      ALLOWED_ORIGINS: ""
+      # docker-compose mengekspos port langsung tanpa proxy di depan,
+      # jadi X-Forwarded-For tidak boleh dipercaya sama sekali.
+      TRUSTED_PROXY_HOPS: "0"
     volumes:
       - bintang-data:/data
     ports:
       - "8000:8000"
-
-  frontend:
-    build:
-      context: ./frontend
-      args:
-        VITE_API_BASE_URL: /api/v1
+    # Postgres dinyalakan tapi TIDAK dipakai sampai DATABASE_URL
+    # diarahkan ke sana -- lihat catatan di atas.
     depends_on:
-      - backend
-    ports:
-      - "8080:80"
+      db:
+        condition: service_healthy
 
 volumes:
+  bintang-db:
   bintang-data:

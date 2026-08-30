@@ -1,8 +1,10 @@
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
@@ -10,6 +12,7 @@ from starlette.responses import Response as StarletteResponse
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import text
 
+from app.api.files import router as files_router
 from app.api.v1 import api_router
 from app.core.config import settings
 from app.db.base import Base
@@ -210,12 +213,12 @@ def _guard_production_config() -> None:
             )
         # Audit 2026-05-22 #H6: validate CORS allowed_origins di prod.
         # Wildcard '*' + localhost reference = misconfig dangerous.
+        #
+        # Update 2026-06-13 (deploy satu service): ALLOWED_ORIGINS KOSONG
+        # kini sah dan justru pilihan paling aman -- SPA disajikan dari
+        # origin yang sama dgn API, jadi tidak ada request lintas-origin
+        # yang perlu diizinkan. Isi hanya kalau ada klien eksternal.
         origins = [o.strip() for o in settings.allowed_origins_list]
-        if not origins:
-            raise RuntimeError(
-                "REFUSE_BOOT: ALLOWED_ORIGINS kosong di prod. Set ke "
-                "URL frontend eksplisit (mis. https://app.bintang.com)."
-            )
         if any(o == "*" for o in origins):
             raise RuntimeError(
                 "REFUSE_BOOT: ALLOWED_ORIGINS='*' tdk boleh di prod -- "
@@ -227,6 +230,37 @@ def _guard_production_config() -> None:
                 f"REFUSE_BOOT: ALLOWED_ORIGINS punya localhost/127.0.0.1 "
                 f"di prod ({bad}). Pakai URL prod yg sebenarnya."
             )
+
+
+async def _guard_webhook_secrets(db) -> None:
+    """Audit 2026-06-13 #S-04: di prod, integrasi bot yang AKTIF wajib
+    punya webhook secret.
+
+    Pemeriksaan ini harus terjadi setelah DB siap (nilai efektif ada di
+    app_settings, bukan cuma env), jadi ia dipanggil dari lifespan --
+    bukan dari `_guard_production_config()` yang jalan sebelum DB ada.
+
+    Boot ditolak, bukan sekadar warning: webhook tanpa verifikasi berarti
+    siapa pun di internet bisa mengirim perintah bot atas nama user yang
+    sudah ter-link.
+    """
+    if not settings.is_prod:
+        return
+    from app.services.app_settings import get_setting
+
+    problems: list[str] = []
+    if await get_setting(db, "TELEGRAM_BOT_TOKEN"):
+        if not await get_setting(db, "TELEGRAM_WEBHOOK_SECRET"):
+            problems.append("TELEGRAM_WEBHOOK_SECRET")
+    if await get_setting(db, "WHATSAPP_BASE_URL"):
+        if not await get_setting(db, "WHATSAPP_WEBHOOK_SECRET"):
+            problems.append("WHATSAPP_WEBHOOK_SECRET")
+    if problems:
+        raise RuntimeError(
+            "REFUSE_BOOT: integrasi bot aktif di prod tapi secret webhook "
+            f"kosong: {', '.join(problems)}. Isi lewat Pengaturan > "
+            "Integrasi, atau matikan integrasinya."
+        )
 
 
 @asynccontextmanager
@@ -271,6 +305,19 @@ async def lifespan(_app: FastAPI):
             print(f"[startup] engine dispose warning: {e}")
     Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
 
+    # Audit 2026-06-13 #S-07: rate limiter menyimpan state di memori
+    # proses. Begitu ada worker/replika kedua, batas login dan batas OCR
+    # terbagi diam-diam ke tiap proses -- 5 percobaan/menit jadi 5 x N.
+    # Deteksi konfigurasi multi-worker yang umum dan buat berisik.
+    _workers = os.getenv("WEB_CONCURRENCY") or os.getenv("UVICORN_WORKERS")
+    if _workers and _workers.isdigit() and int(_workers) > 1:
+        print(
+            f"[startup] PERINGATAN: {_workers} worker terdeteksi, tapi "
+            "rate limiter masih in-memory (app/core/rate_limit.py). Batas "
+            "login/OCR efektif terkalikan jumlah worker. Pindahkan ke "
+            "Redis sebelum menaikkan replika."
+        )
+
     # Warm app_settings cache (DB > env) supaya sync readers (telegram/
     # whatsapp/ocr clients) langsung dapat nilai effective.
     try:
@@ -279,6 +326,10 @@ async def lifespan(_app: FastAPI):
 
         async with SessionLocal() as _ssn:
             await bootstrap_cache(_ssn)
+            await _guard_webhook_secrets(_ssn)
+    except RuntimeError:
+        # REFUSE_BOOT dari _guard_webhook_secrets -- jangan ditelan.
+        raise
     except Exception as e:  # noqa: BLE001
         print(f"[startup] app_settings.bootstrap_cache warning: {e}")
         from app.services.app_settings import get_cached  # type: ignore
@@ -336,16 +387,61 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
     - Permissions-Policy: disable feature browser yg tdk kita pakai.
     - Strict-Transport-Security: HANYA di prod (HTTPS enforce 1 tahun).
       Dev tdk pakai (browser cache HSTS bisa lock dev http).
-    - Content-Security-Policy: SKIP utk sekarang -- butuh audit per-page
-      (inline scripts, image sources, dll). Tunda.
+    - Content-Security-Policy: DULU dilewati ("butuh audit per-page").
+      Sekarang bisa, karena SPA disajikan dari origin yang sama sehingga
+      seluruh sumber daya berasal dari `self`. Build Vite juga tidak
+      punya <script> inline (diverifikasi di dist/index.html), jadi
+      tidak perlu 'unsafe-inline' untuk skrip.
+
+      Dikirim sebagai **Report-Only** secara default. CSP yang salah
+      menghasilkan halaman putih tanpa pesan yang jelas, jadi jangan
+      langsung memaksakannya di aplikasi yang sedang dipakai. Alur yang
+      dimaksudkan:
+        1. Deploy dgn report-only, buka aplikasi, cek console browser.
+        2. Kalau tidak ada laporan pelanggaran, set CSP_ENFORCE=true.
+      Set `CSP_ENFORCE=true` untuk mengubahnya jadi menegakkan.
+
+      `style-src` memakai 'unsafe-inline' karena Radix/Recharts menaruh
+      gaya lewat atribut style. (React menulis gaya lewat CSSOM yang
+      sebenarnya tidak dibatasi CSP, tapi pustaka pihak ketiga tidak
+      dijamin begitu -- ini yang dilonggarkan lebih dulu kalau ada
+      laporan pelanggaran.)
+
+      /docs dan /redoc DIKECUALIKAN: Swagger UI memuat aset dari CDN
+      jsdelivr, dan melonggarkan policy global demi halaman dokumentasi
+      internal itu salah tukar.
     """
-    def __init__(self, app, *, is_prod: bool):
+
+    # Sumber daya SPA semuanya same-origin setelah penggabungan service.
+    _CSP = "; ".join([
+        "default-src 'self'",
+        "base-uri 'self'",
+        "object-src 'none'",
+        "frame-ancestors 'none'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:",
+        "font-src 'self'",
+        "connect-src 'self'",
+        "form-action 'self'",
+    ])
+
+    # Halaman yang sengaja tidak diberi CSP.
+    _CSP_EXEMPT = ("/docs", "/redoc", "/openapi.json")
+
+    def __init__(self, app, *, is_prod: bool, csp_enforce: bool = False):
         super().__init__(app)
         self._is_prod = is_prod
+        self._csp_header = (
+            "Content-Security-Policy" if csp_enforce
+            else "Content-Security-Policy-Report-Only"
+        )
 
     async def dispatch(self, request: StarletteRequest, call_next) -> StarletteResponse:
         response = await call_next(request)
         response.headers.setdefault("X-Frame-Options", "DENY")
+        if not request.url.path.startswith(self._CSP_EXEMPT):
+            response.headers.setdefault(self._csp_header, self._CSP)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault(
             "Referrer-Policy", "strict-origin-when-cross-origin"
@@ -366,16 +462,85 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(
     _SecurityHeadersMiddleware,
-    is_prod=settings.APP_ENV.lower() in ("prod", "production"),
+    is_prod=settings.is_prod,
+    csp_enforce=settings.CSP_ENFORCE,
 )
 
 upload_path = Path(settings.UPLOAD_DIR)
 upload_path.mkdir(parents=True, exist_ok=True)
-app.mount("/files", StaticFiles(directory=str(upload_path)), name="files")
 
 app.include_router(api_router, prefix="/api/v1")
+
+# Audit 2026-06-13 #S-03: `/files` DULU adalah StaticFiles mount tanpa
+# autentikasi -- seluruh bukti transaksi & lampiran invoice terbuka utk
+# siapa pun yg tahu URL-nya. Sekarang dilayani router yg memverifikasi
+# user lalu memanggil ensure_project_access. Prefix-nya sengaja sama
+# supaya URL yg sudah tersimpan di DB tetap bekerja.
+app.include_router(files_router)
 
 
 @app.get("/health", tags=["health"])
 async def health() -> dict[str, str]:
     return {"status": "ok", "app": settings.APP_NAME}
+
+
+# ---------------------------------------------------------------------------
+# Serving SPA (deploy satu service)
+# ---------------------------------------------------------------------------
+# Frontend & backend dijalankan dari satu container supaya Railway cukup
+# punya SATU service aplikasi (+ Postgres). Efek sampingnya: SPA dan API
+# berbagi origin, jadi CORS tidak lagi berperan di produksi.
+#
+# Urutan pendaftaran penting. Router API dan /files sudah terdaftar di
+# atas, jadi catch-all di bawah tidak akan pernah menelan rute mereka.
+_frontend_dist = Path(settings.FRONTEND_DIST)
+_frontend_index = _frontend_dist / "index.html"
+
+if _frontend_index.is_file():
+    # Aset ber-hash dari Vite: aman di-cache lama karena namanya berubah
+    # tiap build.
+    _assets_dir = _frontend_dist / "assets"
+    if _assets_dir.is_dir():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=str(_assets_dir)),
+            name="spa-assets",
+        )
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str) -> Response:
+        """Sajikan berkas statis kalau ada, selain itu index.html.
+
+        React Router memakai path asli (mis. /transactions/123), jadi
+        refresh di route mana pun harus mengembalikan index.html --
+        bukan 404.
+        """
+        # 404 asli untuk namespace API supaya kesalahan URL endpoint
+        # tidak balas HTML yang membingungkan saat debug.
+        if full_path.startswith(("api/", "files/")):
+            raise HTTPException(status_code=404, detail="not_found")
+
+        if full_path:
+            try:
+                candidate = (_frontend_dist / full_path).resolve()
+                if (
+                    candidate.is_file()
+                    and candidate.is_relative_to(_frontend_dist.resolve())
+                ):
+                    return FileResponse(candidate)
+            except (OSError, ValueError):
+                pass
+
+        # index.html tidak boleh di-cache: kalau proxy menyimpannya, user
+        # bisa dapat HTML lama yang menunjuk chunk hash yang sudah hilang
+        # setelah deploy -> "error loading chunk".
+        return FileResponse(
+            _frontend_index,
+            media_type="text/html",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
+else:
+    print(
+        f"[startup] FRONTEND_DIST tidak ditemukan di {_frontend_dist} -- "
+        "mode API-only (normal saat dev dgn `vite dev`)."
+    )

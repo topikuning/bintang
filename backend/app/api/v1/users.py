@@ -120,6 +120,15 @@ async def users_lookup(
     Invalid role -> abaikan (return semua).
 
     Return field minimal supaya tidak bocor info sensitif (phone/dll).
+
+    Audit 2026-06-13 #S-11 -- RISIKO YANG DITERIMA, bukan kelalaian:
+    endpoint ini membuka direktori nama+email seluruh staf ke setiap
+    user yang login. Itu disengaja. `email` ditampilkan di dua picker
+    (ProjectForm "pendana", TransactionForm "penerima dana") untuk
+    membedakan orang bernama sama; menghapusnya membuat kedua form
+    ambigu. Untuk alat internal dengan puluhan user, tradeoff-nya
+    dianggap sepadan. Kalau aplikasi dipakai lintas organisasi,
+    batasi hasil ke `q` yang tidak kosong dan tambahkan rate-limit.
     """
     stmt = select(User).where(User.deleted_at.is_(None), User.is_active.is_(True))
     if q:

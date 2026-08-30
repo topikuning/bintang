@@ -19,6 +19,25 @@ class Settings(BaseSettings):
 
     ALLOWED_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # Jumlah proxy tepercaya di depan aplikasi. Dipakai untuk membaca
+    # X-Forwarded-For dari KANAN saat menentukan IP klien (audit #S-06).
+    # Railway = 1 edge proxy. Set 0 kalau app diekspos langsung.
+    TRUSTED_PROXY_HOPS: int = 1
+
+    # Content-Security-Policy. Default False = header dikirim sebagai
+    # Report-Only (mencatat pelanggaran di console browser tanpa
+    # memblokir apa pun). Set True setelah memastikan console bersih --
+    # lihat _SecurityHeadersMiddleware di app/main.py.
+    CSP_ENFORCE: bool = False
+
+    # --- Serving frontend (deploy satu service) ---
+    # Direktori hasil build SPA (Vite `dist/`). Kalau ada, backend ikut
+    # menyajikan SPA di "/" sehingga frontend & backend jadi SATU service
+    # Railway -- dan karena jadi satu origin, CORS tidak lagi diperlukan.
+    # Kosong / direktori tidak ada = mode API-only (dev, `vite dev`
+    # terpisah dgn proxy).
+    FRONTEND_DIST: str = "/app/frontend_dist"
+
     # --- Telegram bot ---
     # Token dari @BotFather. KOSONG = integrasi off.
     TELEGRAM_BOT_TOKEN: str = ""
@@ -61,8 +80,9 @@ class Settings(BaseSettings):
     # API key WAHA (header X-Api-Key). Boleh kosong untuk WAHA Core tanpa auth.
     WHATSAPP_API_KEY: str = ""
     # Secret yang dipasang di WAHA -> webhook header X-Webhook-Hmac dipakai
-    # untuk verifikasi sumber. Boleh kosong (skip verifikasi) -- tidak disarankan
-    # di prod.
+    # untuk verifikasi sumber. Sejak audit #S-04 nilai ini dibaca lewat
+    # app_settings (DB > env) dan WAJIB terisi di APP_ENV=prod kalau
+    # integrasi WhatsApp aktif -- boot ditolak kalau kosong.
     WHATSAPP_WEBHOOK_SECRET: str = ""
 
     @property
@@ -72,6 +92,10 @@ class Settings(BaseSettings):
     @property
     def is_sqlite(self) -> bool:
         return self.DATABASE_URL.startswith("sqlite")
+
+    @property
+    def is_prod(self) -> bool:
+        return self.APP_ENV.lower() in ("prod", "production")
 
 
 @lru_cache
