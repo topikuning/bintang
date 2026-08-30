@@ -127,12 +127,40 @@ def test_stamp_basi_tidak_memicu_upgrade(tmp_path, monkeypatch):
     assert _current_revision(db) == _head_revision()
 
 
-def test_kolom_hilang_memicu_upgrade(tmp_path, monkeypatch):
-    """Kalau ada objek model yang BELUM ada di DB, jalurnya upgrade.
+def test_migrasi_sah_tetap_dijalankan(tmp_path, monkeypatch):
+    """Jalur NORMAL harus tetap `upgrade`, bukan stamp.
 
-    Menjaga agar perbaikan di atas tidak berubah jadi "selalu stamp",
-    yang akan membuat migrasi asli tidak pernah dijalankan.
+    Ini penjaga terpenting di berkas ini. Perbaikan crash loop mudah
+    tergelincir jadi "kalau schema kelihatan lengkap, stamp saja" --
+    dan begitu itu terjadi, setiap migrasi baru yang sah akan dilewati
+    diam-diam, yang jauh lebih berbahaya daripada bug aslinya.
+
+    `main()` karena itu SELALU mencoba `upgrade head` lebih dulu untuk DB
+    yang berisi, dan hanya jatuh ke rekonsiliasi+stamp kalau upgrade-nya
+    gagal SPESIFIK karena objek sudah ada.
     """
+    from app import bootstrap_db
+
+    # Galat yang menandakan "DB lahir sebelum Alembic".
+    assert bootstrap_db._already_exists_error(
+        Exception('column "kind" of relation "projects" already exists')
+    )
+    assert bootstrap_db._already_exists_error(
+        Exception("duplicate column name: kind")  # dialek SQLite
+    )
+
+    # Galat lain TIDAK boleh memicu fallback -- harus naik ke atas
+    # supaya deploy gagal keras alih-alih diam-diam mem-stamp.
+    assert not bootstrap_db._already_exists_error(
+        Exception("connection refused")
+    )
+    assert not bootstrap_db._already_exists_error(
+        Exception('relation "projects" does not exist')
+    )
+
+
+def test_kolom_hilang_terdeteksi(tmp_path, monkeypatch):
+    """`_schema_gap()` harus melaporkan objek model yang belum ada."""
     from app import bootstrap_db
 
     db = tmp_path / "kurang.db"

@@ -87,22 +87,26 @@ Set di service aplikasi:
 | `DATABASE_URL` | `postgresql+asyncpg://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/${{Postgres.PGDATABASE}}` |
 | `UPLOAD_DIR` | `/data/uploads` |
 | `TRUSTED_PROXY_HOPS` | `1` |
-| `ALLOWED_ORIGINS` | **kosongkan** |
+| `ALLOWED_ORIGINS` | **tidak perlu di-set** (default sudah kosong) |
 | `PUBLIC_BASE_URL` | isi setelah domain jadi (langkah 3e) |
 
 Catatan penting:
 
-- **`ALLOWED_ORIGINS` sengaja kosong.** SPA dan API satu origin, jadi
-  tidak ada request lintas-origin yang perlu diizinkan. Isi hanya kalau
-  ada klien eksternal dari domain lain.
+- **`ALLOWED_ORIGINS` sengaja kosong**, dan defaultnya memang sudah
+  kosong — jadi variabel ini tidak perlu ditambahkan sama sekali. SPA
+  dan API satu origin, tidak ada request lintas-origin yang perlu
+  diizinkan. Kalau environment lama masih membawa nilai berisi
+  `localhost`, entri itu diabaikan otomatis (dengan peringatan di log)
+  dan **tidak** menggagalkan boot.
 - **`TRUSTED_PROXY_HOPS=1`** karena Railway menaruh satu edge proxy di
   depan aplikasi. Nilai ini menentukan bagaimana `X-Forwarded-For`
   dibaca saat rate-limit login; kalau salah, batas login bisa dilewati
   dengan header palsu.
 - Aplikasi **menolak boot** di `APP_ENV=prod` kalau `SECRET_KEY` masih
-  default/terlalu pendek, `ALLOWED_ORIGINS` berisi `*` atau localhost,
-  atau integrasi bot aktif tanpa webhook secret. Pesannya diawali
-  `REFUSE_BOOT:` di deploy log.
+  default/terlalu pendek, `ALLOWED_ORIGINS` berisi `*`, atau integrasi
+  bot aktif tanpa webhook secret. Pesannya diawali `REFUSE_BOOT:` di
+  deploy log. (Entri `localhost` TIDAK menggagalkan boot — hanya
+  diabaikan.)
 
 ### 3e. Public domain
 

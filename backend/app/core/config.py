@@ -17,7 +17,17 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_MB: int = 20
 
-    ALLOWED_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+    # Default KOSONG = hanya same-origin.
+    #
+    # Sampai 2026-06-13 default-nya berisi localhost:5173, peninggalan
+    # saat frontend adalah service terpisah. Setelah SPA disajikan
+    # FastAPI dari origin yang sama, tidak ada request lintas-origin yang
+    # perlu diizinkan -- dan default lama itu justru membuat guard prod
+    # menolak boot di deploy yang tidak menyetel variabel ini sama sekali.
+    #
+    # Saat dev pun tidak perlu diisi: Vite mem-proxy /api dan /files ke
+    # backend, jadi browser hanya bicara ke satu origin.
+    ALLOWED_ORIGINS: str = ""
 
     # Jumlah proxy tepercaya di depan aplikasi. Dipakai untuk membaca
     # X-Forwarded-For dari KANAN saat menentukan IP klien (audit #S-06).
@@ -87,7 +97,30 @@ class Settings(BaseSettings):
 
     @property
     def allowed_origins_list(self) -> list[str]:
+        """Nilai mentah dari konfigurasi (belum disaring)."""
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def local_origins_in_prod(self) -> list[str]:
+        """Entri localhost yang akan dibuang saat APP_ENV=prod."""
+        if not self.is_prod:
+            return []
+        return [
+            o for o in self.allowed_origins_list
+            if "localhost" in o or "127.0.0.1" in o
+        ]
+
+    @property
+    def allowed_origins_effective(self) -> list[str]:
+        """Origin yang BENAR-BENAR dipasang ke CORSMiddleware.
+
+        Di prod, entri localhost dibuang. Ini disaring di sini -- bukan
+        di guard lifespan -- karena middleware dibangun saat import,
+        SEBELUM lifespan berjalan; menyaring di guard tidak akan
+        berpengaruh pada middleware yang sudah terlanjur dibuat.
+        """
+        dropped = set(self.local_origins_in_prod)
+        return [o for o in self.allowed_origins_list if o not in dropped]
 
     @property
     def is_sqlite(self) -> bool:

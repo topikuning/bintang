@@ -120,15 +120,36 @@ async def _schema_gap() -> tuple[bool, list[str]]:
     return is_empty, missing
 
 
-async def _create_all() -> None:
-    """Bangun seluruh tabel dari `Base.metadata` (khusus DB kosong)."""
+async def _reconcile_legacy_schema() -> None:
+    """Bawa schema DB lama ke keadaan mutakhir TANPA menjalankan migrasi.
+
+    Menjalankan tiga hal yang idempoten dan selama ini memang sudah
+    dipakai aplikasi (dulu di lifespan `main.py`):
+      - `create_all`        : tambah tabel yang belum ada
+      - `_sync_pg_columns`  : ADD COLUMN IF NOT EXISTS utk kolom baru
+      - `_sync_pg_enums`    : ALTER TYPE ... ADD VALUE IF NOT EXISTS
+
+    Kombinasi inilah yang menjaga schema produksi tetap benar selama
+    berbulan-bulan sebelum Alembic diaktifkan, jadi memakainya di sini
+    berarti kita bersandar pada jalur yang sudah terbukti di lingkungan
+    itu -- bukan menebak.
+
+    Tujuannya: setelah ini, `_schema_gap()` hampir pasti bersih,
+    sehingga kita bisa `stamp head` dgn aman alih-alih `upgrade` dari
+    revisi basi (yang akan menabrak DuplicateColumn -> crash loop).
+    """
     from app.db.base import Base
+    from app.db.schema_sync import _sync_pg_columns, _sync_pg_enums
     import app.models.models  # noqa: F401
 
     engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+        if not settings.is_sqlite:
+            async with engine.begin() as conn:
+                await _sync_pg_columns(conn)
+                await _sync_pg_enums(conn)
     finally:
         await engine.dispose()
 
@@ -140,49 +161,90 @@ def _alembic_config() -> Config:
     return cfg
 
 
+def _already_exists_error(exc: BaseException) -> bool:
+    """True kalau kegagalan upgrade disebabkan objek yang sudah ada.
+
+    Ini penanda khas DB yang lahir SEBELUM Alembic: schema-nya sudah
+    lebih maju daripada revisi yang tercatat, sehingga migrasi mencoba
+    membuat kolom/tabel yang sudah ada.
+    """
+    text = f"{type(exc).__name__}: {exc}".lower()
+    # Postgres/asyncpg : 'DuplicateColumnError', 'column ... already exists'
+    # SQLite           : 'duplicate column name: kind'
+    markers = (
+        "already exists",
+        "duplicatecolumn",
+        "duplicatetable",
+        "duplicateobject",
+        "duplicate column",
+        "duplicate table",
+        "duplicate key",
+    )
+    return any(m in text for m in markers)
+
+
 def main() -> int:
     cfg = _alembic_config()
 
-    is_empty, missing = asyncio.run(_schema_gap())
+    is_empty, _missing = asyncio.run(_schema_gap())
 
     if is_empty:
         # DB kosong -> bangun schema langsung dari model, lalu stamp.
         #
-        # Bukan `upgrade head`: rantai migrasi memuat langkah yang tidak
-        # bisa dijalankan SQLite (ALTER constraint di
-        # b7e2f4a8c9d1_financial_check_constraints), sehingga instalasi
-        # `docker compose` baru -- default-nya SQLite -- gagal boot.
-        # Di DB kosong tidak ada data yang perlu dimigrasi, jadi hasil
-        # create_all identik dgn menjalankan seluruh rantai, dan bekerja
-        # di SQLite maupun Postgres.
+        # Bukan `upgrade head`: rantai migrasi memuat ALTER constraint
+        # yang tidak didukung SQLite, sehingga instalasi `docker
+        # compose` baru (default SQLite) gagal boot. Di DB kosong tidak
+        # ada data yang perlu dimigrasi, jadi hasilnya identik.
         print("[bootstrap_db] DB kosong -- bangun schema dari model lalu stamp head.")
-        asyncio.run(_create_all())
+        asyncio.run(_reconcile_legacy_schema())
         command.stamp(cfg, "head")
-    elif not missing:
-        # Schema sudah lengkap sesuai model. Ini benar TERLEPAS dari apa
-        # yang tertulis di alembic_version -- termasuk saat stamp-nya
-        # basi (mis. tertulis f1a2b3c4d5e6 padahal create_all +
-        # _sync_pg_columns sudah membawa schema ke head). Meng-upgrade
-        # dari stamp basi akan menabrak DuplicateColumn/DuplicateTable
-        # dan mengunci deploy dalam crash loop -- persis yang terjadi
-        # pada deploy pertama 2026-08-30.
+        print("[bootstrap_db] schema up to date.")
+        return 0
+
+    # DB berisi. Jalur NORMAL tetap `upgrade head` -- itu yang membuat
+    # migrasi asli benar-benar dijalankan. Kita TIDAK boleh
+    # mem-blanket-stamp di sini: kalau nanti ada migrasi baru yang sah,
+    # blanket-stamp akan melewatinya diam-diam.
+    try:
+        print("[bootstrap_db] DB berisi -- upgrade ke head.")
+        command.upgrade(cfg, "head")
+    except Exception as e:  # noqa: BLE001
+        if not _already_exists_error(e):
+            raise
+
+        # Objek sudah ada -> DB ini lahir sebelum Alembic dan schema-nya
+        # lebih maju daripada alembic_version. Upgrade tadi berjalan
+        # dalam satu transaksi, jadi sudah ter-rollback penuh: DB tidak
+        # berubah dan aman untuk direkonsiliasi.
+        #
+        # Inilah keadaan yang mengunci deploy produksi dalam crash loop
+        # pada 2026-08-30 (alembic_version=f1a2b3c4d5e6, schema sudah
+        # setara head). Ditangani otomatis di sini supaya tidak pernah
+        # lagi butuh `alembic stamp head` manual.
         print(
-            "[bootstrap_db] Schema sudah lengkap sesuai model -- STAMP ke "
-            "head. Tidak ada DDL dan tidak ada data yang disentuh."
+            "[bootstrap_db] Upgrade menabrak objek yang sudah ada -- DB ini "
+            "lahir sebelum Alembic. Rekonsiliasi lalu stamp."
+        )
+        asyncio.run(_reconcile_legacy_schema())
+
+        _, missing = asyncio.run(_schema_gap())
+        if missing:
+            preview = ", ".join(missing[:10]) + ("..." if len(missing) > 10 else "")
+            raise RuntimeError(
+                f"schema masih kurang {len(missing)} objek setelah "
+                f"rekonsiliasi ({preview}). Perlu ditangani manual."
+            ) from e
+
+        print(
+            "[bootstrap_db] Schema lengkap sesuai model -- STAMP ke head. "
+            "Tidak ada data yang disentuh."
         )
         print(
             "[bootstrap_db] Data migration yang dilewati: "
             + ", ".join(_SKIPPED_DATA_MIGRATIONS)
-            + " (lihat catatan di app/bootstrap_db.py)."
+            + " (lihat catatan di berkas ini)."
         )
         command.stamp(cfg, "head")
-    else:
-        preview = ", ".join(missing[:10]) + ("..." if len(missing) > 10 else "")
-        print(
-            f"[bootstrap_db] {len(missing)} objek belum ada di DB "
-            f"({preview}) -- jalankan upgrade."
-        )
-        command.upgrade(cfg, "head")
 
     print("[bootstrap_db] schema up to date.")
     return 0
