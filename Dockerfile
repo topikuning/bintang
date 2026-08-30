@@ -37,7 +37,7 @@ RUN npm run build
 # -------------------------------------------------------------
 # Stage 2 -- runtime: Python + hasil build SPA
 # -------------------------------------------------------------
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 # Native deps WeasyPrint (render PDF PO & laporan).
 RUN apt-get update && apt-get install -y --no-install-recommends \
