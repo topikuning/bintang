@@ -56,11 +56,28 @@ def _guard_production_config() -> None:
                 "REFUSE_BOOT: ALLOWED_ORIGINS='*' tdk boleh di prod -- "
                 "credentials akan ter-expose ke origin manapun."
             )
-        bad = [o for o in origins if "localhost" in o or "127.0.0.1" in o]
-        if bad:
-            raise RuntimeError(
-                f"REFUSE_BOOT: ALLOWED_ORIGINS punya localhost/127.0.0.1 "
-                f"di prod ({bad}). Pakai URL prod yg sebenarnya."
+        # localhost di prod: DIBUANG (oleh allowed_origins_effective),
+        # bukan menolak boot.
+        #
+        # Sampai 2026-08-30 ini REFUSE_BOOT. Efeknya: deploy yang tidak
+        # menyetel ALLOWED_ORIGINS sama sekali -- sehingga memakai
+        # default lama berisi localhost:5173 -- mati total di startup,
+        # padahal yang dibutuhkan cuma mengabaikan entri itu.
+        #
+        # Setelah penggabungan service, entri localhost bukan lagi
+        # ancaman berarti: SPA satu origin dgn API, token dikirim lewat
+        # header Bearer (bukan cookie), dan cookie berkas
+        # ber-SameSite=Strict sehingga tidak pernah ikut pada request
+        # lintas-origin. Membuangnya sudah menghilangkan risikonya.
+        #
+        # Wildcard '*' TETAP menolak boot -- itu kesalahan konfigurasi
+        # yang benar-benar berbahaya, bukan sekadar sisa.
+        if settings.local_origins_in_prod:
+            print(
+                f"[startup] PERINGATAN: ALLOWED_ORIGINS memuat "
+                f"{settings.local_origins_in_prod} di prod -- entri itu "
+                f"DIABAIKAN. Kosongkan variabelnya kalau tidak ada klien "
+                f"eksternal."
             )
 
 
@@ -203,7 +220,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins_list,
+    allow_origins=settings.allowed_origins_effective,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
