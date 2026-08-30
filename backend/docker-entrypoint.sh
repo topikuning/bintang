@@ -10,10 +10,5 @@ set -e
 echo "[entrypoint] menyiapkan schema database..."
 python -m app.bootstrap_db
 
-PORT_USED="${PORT:-8000}"
-if [ -z "${PORT:-}" ]; then
-  echo "[entrypoint] PORT tidak di-set -- pakai default 8000."
-  echo "[entrypoint] Kalau platform merutekan ke port lain, hasilnya 502."
-fi
-echo "[entrypoint] menjalankan uvicorn di port ${PORT_USED}..."
-exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT_USED}"
+echo "[entrypoint] menjalankan uvicorn di port ${PORT:-8000}..."
+exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"

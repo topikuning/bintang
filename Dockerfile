@@ -70,20 +70,15 @@ COPY --from=frontend /build/dist ./frontend_dist
 COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# CATATAN: PORT sengaja TIDAK di-set di sini.
-#
-# Railway menyuntikkan PORT sendiri dan merutekan trafik ke port itu.
-# Kalau image ikut memanggang PORT=8000, nilai itu tetap terpakai pada
-# konfigurasi yang TIDAK menyuntikkan PORT -- sementara proxy Railway
-# menargetkan port lain, sehingga hasilnya 502 "connection refused"
-# tanpa ada satu pun error di log aplikasi (uvicorn tampak sehat, cuma
-# di port yang salah).
-#
-# Tanpa baris ini, entrypoint memakai ${PORT:-8000}: ikut Railway kalau
-# ada, jatuh ke 8000 (sesuai EXPOSE di bawah) kalau tidak.
+# PORT di-set eksplisit dan HARUS cocok dgn target port domain di
+# Railway (lihat RAILWAY.md langkah 3e). Sempat dipertimbangkan untuk
+# menghapus baris ini supaya PORT dari platform selalu menang -- tapi
+# deployment yang berjalan sekarang bersandar pada nilai ini, jadi
+# jangan diubah tanpa alasan kuat.
 ENV PYTHONUNBUFFERED=1 \
     UPLOAD_DIR=/data/uploads \
-    FRONTEND_DIST=/app/frontend_dist
+    FRONTEND_DIST=/app/frontend_dist \
+    PORT=8000
 RUN mkdir -p /data/uploads
 
 # CATATAN -- kenapa masih root:
