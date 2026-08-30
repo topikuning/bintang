@@ -81,17 +81,21 @@ def _guard_production_config() -> None:
             )
 
 
-async def _guard_webhook_secrets(db) -> None:
-    """Audit 2026-06-13 #S-04: di prod, integrasi bot yang AKTIF wajib
-    punya webhook secret.
+async def _warn_missing_webhook_secrets(db) -> None:
+    """Peringatkan kalau integrasi bot aktif di prod tanpa webhook secret.
 
-    Pemeriksaan ini harus terjadi setelah DB siap (nilai efektif ada di
-    app_settings, bukan cuma env), jadi ia dipanggil dari lifespan --
-    bukan dari `_guard_production_config()` yang jalan sebelum DB ada.
+    Audit 2026-06-13 #S-04 awalnya membuat kondisi ini REFUSE_BOOT.
+    Itu keliru dan terbukti di produksi 2026-08-30: seluruh aplikasi
+    keuangan mati hanya karena satu integrasi chat belum punya secret --
+    gejalanya 502 `connection refused` di semua path, yang sulit
+    dihubungkan ke penyebabnya.
 
-    Boot ditolak, bukan sekadar warning: webhook tanpa verifikasi berarti
-    siapa pun di internet bisa mengirim perintah bot atas nama user yang
-    sudah ter-link.
+    Sekarang aplikasinya tetap naik, dan yang gagal-tertutup adalah
+    webhook-nya saja: tanpa secret di prod, handler webhook menolak
+    SEMUA request (lihat `_verify_webhook_signature` di
+    api/v1/whatsapp.py dan pemeriksaan serupa di telegram.py). Jadi
+    keamanannya tetap terjaga -- tidak ada perintah bot yang bisa masuk
+    tanpa terverifikasi -- tanpa menjatuhkan aplikasi utama.
     """
     if not settings.is_prod:
         return
@@ -105,10 +109,11 @@ async def _guard_webhook_secrets(db) -> None:
         if not await get_setting(db, "WHATSAPP_WEBHOOK_SECRET"):
             problems.append("WHATSAPP_WEBHOOK_SECRET")
     if problems:
-        raise RuntimeError(
-            "REFUSE_BOOT: integrasi bot aktif di prod tapi secret webhook "
-            f"kosong: {', '.join(problems)}. Isi lewat Pengaturan > "
-            "Integrasi, atau matikan integrasinya."
+        print(
+            "[startup] PERINGATAN: integrasi bot aktif di prod tapi secret "
+            f"webhook kosong: {', '.join(problems)}. Webhook-nya akan "
+            "MENOLAK semua request sampai secret diisi (Pengaturan > "
+            "Integrasi). Aplikasi tetap berjalan normal."
         )
 
 
@@ -175,10 +180,7 @@ async def lifespan(_app: FastAPI):
 
         async with SessionLocal() as _ssn:
             await bootstrap_cache(_ssn)
-            await _guard_webhook_secrets(_ssn)
-    except RuntimeError:
-        # REFUSE_BOOT dari _guard_webhook_secrets -- jangan ditelan.
-        raise
+            await _warn_missing_webhook_secrets(_ssn)
     except Exception as e:  # noqa: BLE001
         print(f"[startup] app_settings.bootstrap_cache warning: {e}")
         from app.services.app_settings import get_cached  # type: ignore

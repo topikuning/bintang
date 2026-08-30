@@ -166,6 +166,19 @@ async def _verify_webhook_signature(
     """
     secret = await get_setting(db, "WHATSAPP_WEBHOOK_SECRET")
     if not secret:
+        # Tanpa secret kita TIDAK BISA membuktikan request ini dari WAHA.
+        # Di prod itu berarti tolak: siapa pun di internet bisa mengirim
+        # perintah bot atas nama user yang sudah ter-link, dan lewat bot
+        # itu transaksi keuangan bisa dibuat.
+        #
+        # Di dev tetap dilewatkan supaya bisa dites tanpa setup HMAC.
+        if settings.is_prod:
+            logger.warning(
+                "whatsapp.webhook ditolak: WHATSAPP_WEBHOOK_SECRET kosong "
+                "di prod. Isi di Pengaturan > Integrasi, dan samakan dgn "
+                "WAHA_HMAC_KEY di sisi WAHA."
+            )
+            return False
         return True
     if not header:
         return False

@@ -70,6 +70,11 @@ COPY --from=frontend /build/dist ./frontend_dist
 COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# PORT di-set eksplisit dan HARUS cocok dgn target port domain di
+# Railway (lihat RAILWAY.md langkah 3e). Sempat dipertimbangkan untuk
+# menghapus baris ini supaya PORT dari platform selalu menang -- tapi
+# deployment yang berjalan sekarang bersandar pada nilai ini, jadi
+# jangan diubah tanpa alasan kuat.
 ENV PYTHONUNBUFFERED=1 \
     UPLOAD_DIR=/data/uploads \
     FRONTEND_DIST=/app/frontend_dist \
