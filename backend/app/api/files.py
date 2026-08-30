@@ -69,9 +69,16 @@ FILE_COOKIE_NAME = "bintang_files"
 # sebagai halaman di origin kita (audit #S-05).
 INLINE_SAFE_MIME = {
     "image/jpeg",
+    # Varian non-standar yang dipakai sebagian klien; ada di
+    # ALLOWED_MIME storage, jadi harus ikut boleh inline.
+    "image/jpg",
     "image/png",
     "image/webp",
     "image/gif",
+    # Foto dari iPhone. Tidak semua browser bisa merendernya, tapi itu
+    # keputusan browser -- memaksanya jadi unduhan menjamin gagal.
+    "image/heic",
+    "image/heif",
     "application/pdf",
 }
 
@@ -89,31 +96,40 @@ async def _authenticate(request: Request, db: AsyncSession) -> User:
     return await resolve_user_from_token(db, token)
 
 
-async def _project_id_for(db: AsyncSession, url: str) -> int | None:
-    """project_id pemilik berkas, atau None kalau tidak terdaftar."""
-    row = (await db.execute(
-        select(Transaction.project_id)
-        .join(TransactionAttachment, TransactionAttachment.transaction_id == Transaction.id)
-        .where(TransactionAttachment.url == url)
-        .limit(1)
-    )).scalar_one_or_none()
-    if row is not None:
-        return row
+async def _attachment_meta(
+    db: AsyncSession, url: str
+) -> tuple[int | None, str | None]:
+    """`(project_id, mime_type)` untuk berkas ini, dari baris lampirannya.
 
-    row = (await db.execute(
-        select(Invoice.project_id)
+    `mime_type` diambil dari DB, BUKAN ditebak dari nama berkas.
+    Alasannya: upload lama menyimpan ekstensi dari nama kiriman user,
+    sehingga foto dari kamera yang tidak punya ekstensi tersimpan sbg
+    `.bin`. Menebak dari nama itu menghasilkan
+    `application/octet-stream` -> disajikan sbg unduhan -> gambar tidak
+    pernah tampil. Kolom `mime_type` sudah menyimpan nilai yang benar
+    sejak awal, jadi itu yang dipakai.
+
+    Mengembalikan `(None, None)` kalau berkas tidak terdaftar sbg
+    lampiran (mis. logo perusahaan, hasil OCR sementara).
+    """
+    for stmt in (
+        select(Transaction.project_id, TransactionAttachment.mime_type)
+        .join(TransactionAttachment,
+              TransactionAttachment.transaction_id == Transaction.id)
+        .where(TransactionAttachment.url == url).limit(1),
+
+        select(Invoice.project_id, InvoiceAttachment.mime_type)
         .join(InvoiceAttachment, InvoiceAttachment.invoice_id == Invoice.id)
-        .where(InvoiceAttachment.url == url)
-        .limit(1)
-    )).scalar_one_or_none()
-    if row is not None:
-        return row
+        .where(InvoiceAttachment.url == url).limit(1),
 
-    return (await db.execute(
-        select(ProjectAttachment.project_id)
-        .where(ProjectAttachment.url == url)
-        .limit(1)
-    )).scalar_one_or_none()
+        select(ProjectAttachment.project_id, ProjectAttachment.mime_type)
+        .where(ProjectAttachment.url == url).limit(1),
+    ):
+        row = (await db.execute(stmt)).first()
+        if row is not None:
+            return row[0], row[1]
+
+    return None, None
 
 
 @router.get("/files/{file_path:path}")
@@ -133,13 +149,19 @@ async def serve_upload(
         raise HTTPException(404, "not_found") from None
 
     url = FILES_PREFIX + file_path
-    project_id = await _project_id_for(db, url)
+    project_id, stored_mime = await _attachment_meta(db, url)
     if project_id is not None:
         # ensure_project_access sudah balas 404 (bukan 403) utk proyek
         # yang tidak boleh diketahui keberadaannya.
         await ensure_project_access(db, user, project_id)
 
-    mime = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+    # MIME tersimpan menang atas tebakan dari nama berkas -- lihat
+    # catatan di _attachment_meta().
+    mime = (
+        stored_mime
+        or mimetypes.guess_type(target.name)[0]
+        or "application/octet-stream"
+    )
     disposition = "inline" if mime in INLINE_SAFE_MIME else "attachment"
     return FileResponse(
         target,

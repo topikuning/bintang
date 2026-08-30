@@ -10,7 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 from starlette.responses import Response as StarletteResponse
 
-from app.api.files import router as files_router
+from app.api.files import FILE_COOKIE_NAME, router as files_router
 from app.api.v1 import api_router
 from app.core.config import settings
 from app.db.base import Base
@@ -328,6 +328,61 @@ app.include_router(api_router, prefix="/api/v1")
 # user lalu memanggil ensure_project_access. Prefix-nya sengaja sama
 # supaya URL yg sudah tersimpan di DB tetap bekerja.
 app.include_router(files_router)
+
+
+class _FileCookieMirrorMiddleware(BaseHTTPMiddleware):
+    """Pasang cookie berkas untuk sesi yang dibuat sebelum audit #S-03.
+
+    Cookie `bintang_files` dulu HANYA di-set saat login. Akibatnya semua
+    sesi yang sudah berjalan saat perubahan ini di-deploy tidak
+    memilikinya, dan setiap <img src="/files/..."> balas
+    `401 not_authenticated` -- lampiran tampak rusak sampai user
+    logout-login. Untuk aplikasi yang sedang dipakai, menyuruh semua
+    orang login ulang bukan jawaban yang layak.
+
+    Middleware ini mencerminkan token Bearer yang SUDAH dipegang klien
+    ke dalam cookie, hanya kalau cookienya belum ada. Tidak ada
+    kepercayaan baru yang diberikan: nilainya berasal dari klien, dan
+    `/files` tetap memvalidasi JWT-nya seperti biasa -- token sampah
+    tetap ditolak. Yang berubah cuma: token yang sama kini bisa dibawa
+    oleh tag <img>, yang tidak bisa mengirim header Authorization.
+    """
+
+    def __init__(self, app, *, secure: bool, max_age: int):
+        super().__init__(app)
+        self._secure = secure
+        self._max_age = max_age
+
+    async def dispatch(self, request: StarletteRequest, call_next) -> StarletteResponse:
+        response = await call_next(request)
+
+        if request.cookies.get(FILE_COOKIE_NAME):
+            return response  # sudah punya -- jangan kerja dua kali
+
+        header = request.headers.get("authorization") or ""
+        if not header.lower().startswith("bearer "):
+            return response
+        token = header[7:].strip()
+        if not token:
+            return response
+
+        response.set_cookie(
+            FILE_COOKIE_NAME,
+            token,
+            max_age=self._max_age,
+            httponly=True,
+            samesite="strict",
+            secure=self._secure,
+            path="/files",
+        )
+        return response
+
+
+app.add_middleware(
+    _FileCookieMirrorMiddleware,
+    secure=settings.is_prod,
+    max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+)
 
 
 @app.get("/health", tags=["health"])
