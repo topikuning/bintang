@@ -86,14 +86,14 @@ async def webhook(
     # SEMUA update sah justru ditolak 401.
     expected = await get_setting(db, "TELEGRAM_WEBHOOK_SECRET")
     if not expected:
-        # Lihat catatan yang sama di whatsapp.py: tanpa secret kita tidak
-        # bisa membuktikan asal request. Prod = tolak, dev = lewatkan.
-        if settings.is_prod:
-            logger.warning(
-                "telegram.webhook ditolak: TELEGRAM_WEBHOOK_SECRET kosong "
-                "di prod. Isi di Pengaturan > Integrasi."
-            )
-            raise HTTPException(401, "webhook_secret_not_configured")
+        # Secret kosong = verifikasi dilewati, konsisten dgn whatsapp.py.
+        #
+        # Catatan: berbeda dari WAHA, secret Telegram STABIL -- kita
+        # sendiri yang mendaftarkannya ke Telegram saat startup, dan
+        # Telegram mengirimkannya balik di tiap update. Jadi di sini
+        # mengisi TELEGRAM_WEBHOOK_SECRET tidak punya masalah
+        # operasional seperti WAHA, dan tetap disarankan.
+        pass
     else:
         provided = x_telegram_bot_api_secret_token or secret
         if not provided or not hmac.compare_digest(provided, expected):

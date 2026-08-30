@@ -90,12 +90,14 @@ async def _warn_missing_webhook_secrets(db) -> None:
     gejalanya 502 `connection refused` di semua path, yang sulit
     dihubungkan ke penyebabnya.
 
-    Sekarang aplikasinya tetap naik, dan yang gagal-tertutup adalah
-    webhook-nya saja: tanpa secret di prod, handler webhook menolak
-    SEMUA request (lihat `_verify_webhook_signature` di
-    api/v1/whatsapp.py dan pemeriksaan serupa di telegram.py). Jadi
-    keamanannya tetap terjaga -- tidak ada perintah bot yang bisa masuk
-    tanpa terverifikasi -- tanpa menjatuhkan aplikasi utama.
+    Sejak 2026-08-30 secret kosong berarti verifikasi DILEWATI, bukan
+    ditolak -- keputusan operasional yang disengaja karena WAHA Core
+    menyimpan HMAC key di memori dan kehilangannya tiap restart session
+    (lihat catatan di `_verify_webhook_signature`, api/v1/whatsapp.py).
+
+    Jadi fungsi ini murni informatif: ia mencatat integrasi mana yang
+    berjalan tanpa verifikasi, supaya keadaan itu terlihat di log dan
+    tidak terjadi tanpa disadari.
     """
     if not settings.is_prod:
         return
@@ -110,10 +112,11 @@ async def _warn_missing_webhook_secrets(db) -> None:
             problems.append("WHATSAPP_WEBHOOK_SECRET")
     if problems:
         print(
-            "[startup] PERINGATAN: integrasi bot aktif di prod tapi secret "
-            f"webhook kosong: {', '.join(problems)}. Webhook-nya akan "
-            "MENOLAK semua request sampai secret diisi (Pengaturan > "
-            "Integrasi). Aplikasi tetap berjalan normal."
+            "[startup] CATATAN: integrasi bot berjalan TANPA verifikasi "
+            f"webhook ({', '.join(problems)} kosong). Webhook tetap "
+            "menerima request. Untuk mengaktifkan verifikasi, isi "
+            "secretnya di Pengaturan > Integrasi -- untuk WhatsApp, "
+            "hanya kalau WAHA sudah punya penyimpanan persisten."
         )
 
 
