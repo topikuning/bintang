@@ -80,21 +80,55 @@ SENTINEL_TABLE = "users"
 _SKIPPED_DATA_MIGRATIONS = ("d4f8a2e7c1b5", "f1a2b3c4d5e6")
 
 
-async def _existing_tables() -> set[str]:
-    """Daftar tabel yang sudah ada di DB.
+async def _schema_gap() -> tuple[bool, list[str]]:
+    """Bandingkan schema hidup dgn `Base.metadata`.
 
-    HARUS memakai engine ASYNC. Sempat ditulis dgn `create_engine()` dan
-    URL yang di-strip jadi `postgresql://` -- itu bug: dialek sync
-    default SQLAlchemy untuk Postgres adalah psycopg2, dan psycopg2
-    TIDAK ada di dependency proyek ini (hanya asyncpg). Akibatnya
-    entrypoint gagal `ModuleNotFoundError: psycopg2` dan container tidak
-    pernah start. `app/alembic/env.py` juga memakai async engine, jadi
-    ini sekalian konsisten dengannya.
+    Return `(db_kosong, daftar_yang_kurang)`. `daftar_yang_kurang` berisi
+    "tabel" atau "tabel.kolom" yang ada di model tapi belum ada di DB.
+
+    HARUS memakai engine ASYNC -- dialek sync default SQLAlchemy untuk
+    Postgres adalah psycopg2, yang TIDAK ada di dependency proyek ini.
     """
+    from app.db.base import Base
+    import app.models.models  # noqa: F401  (registrasi seluruh tabel)
+
+    def _inspect(conn) -> tuple[set[str], dict[str, set[str]]]:
+        insp = inspect(conn)
+        names = set(insp.get_table_names())
+        cols = {t: {c["name"] for c in insp.get_columns(t)} for t in names}
+        return names, cols
+
     engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
     try:
         async with engine.connect() as conn:
-            return set(await conn.run_sync(lambda c: inspect(c).get_table_names()))
+            live_tables, live_cols = await conn.run_sync(_inspect)
+    finally:
+        await engine.dispose()
+
+    # alembic_version bukan bagian dari model -- abaikan saat menilai
+    # apakah DB "kosong".
+    is_empty = not (live_tables - {"alembic_version"})
+
+    missing: list[str] = []
+    for table in Base.metadata.sorted_tables:
+        if table.name not in live_tables:
+            missing.append(table.name)
+            continue
+        for col in table.columns:
+            if col.name not in live_cols[table.name]:
+                missing.append(f"{table.name}.{col.name}")
+    return is_empty, missing
+
+
+async def _create_all() -> None:
+    """Bangun seluruh tabel dari `Base.metadata` (khusus DB kosong)."""
+    from app.db.base import Base
+    import app.models.models  # noqa: F401
+
+    engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
     finally:
         await engine.dispose()
 
@@ -109,19 +143,32 @@ def _alembic_config() -> Config:
 def main() -> int:
     cfg = _alembic_config()
 
-    tables = asyncio.run(_existing_tables())
+    is_empty, missing = asyncio.run(_schema_gap())
 
-    has_schema = SENTINEL_TABLE in tables
-    has_stamp = "alembic_version" in tables
-
-    if not has_schema:
-        print("[bootstrap_db] DB kosong -- jalankan seluruh migrasi dari awal.")
-        command.upgrade(cfg, "head")
-    elif not has_stamp:
+    if is_empty:
+        # DB kosong -> bangun schema langsung dari model, lalu stamp.
+        #
+        # Bukan `upgrade head`: rantai migrasi memuat langkah yang tidak
+        # bisa dijalankan SQLite (ALTER constraint di
+        # b7e2f4a8c9d1_financial_check_constraints), sehingga instalasi
+        # `docker compose` baru -- default-nya SQLite -- gagal boot.
+        # Di DB kosong tidak ada data yang perlu dimigrasi, jadi hasil
+        # create_all identik dgn menjalankan seluruh rantai, dan bekerja
+        # di SQLite maupun Postgres.
+        print("[bootstrap_db] DB kosong -- bangun schema dari model lalu stamp head.")
+        asyncio.run(_create_all())
+        command.stamp(cfg, "head")
+    elif not missing:
+        # Schema sudah lengkap sesuai model. Ini benar TERLEPAS dari apa
+        # yang tertulis di alembic_version -- termasuk saat stamp-nya
+        # basi (mis. tertulis f1a2b3c4d5e6 padahal create_all +
+        # _sync_pg_columns sudah membawa schema ke head). Meng-upgrade
+        # dari stamp basi akan menabrak DuplicateColumn/DuplicateTable
+        # dan mengunci deploy dalam crash loop -- persis yang terjadi
+        # pada deploy pertama 2026-08-30.
         print(
-            "[bootstrap_db] DB berisi tapi belum dikelola Alembic (dibangun "
-            "create_all). Schema-nya sudah setara head, jadi kita STAMP -- "
-            "tidak ada DDL dan tidak ada data yang disentuh."
+            "[bootstrap_db] Schema sudah lengkap sesuai model -- STAMP ke "
+            "head. Tidak ada DDL dan tidak ada data yang disentuh."
         )
         print(
             "[bootstrap_db] Data migration yang dilewati: "
@@ -130,7 +177,11 @@ def main() -> int:
         )
         command.stamp(cfg, "head")
     else:
-        print("[bootstrap_db] DB sudah dikelola Alembic -- upgrade ke head.")
+        preview = ", ".join(missing[:10]) + ("..." if len(missing) > 10 else "")
+        print(
+            f"[bootstrap_db] {len(missing)} objek belum ada di DB "
+            f"({preview}) -- jalankan upgrade."
+        )
         command.upgrade(cfg, "head")
 
     print("[bootstrap_db] schema up to date.")
@@ -142,4 +193,11 @@ if __name__ == "__main__":
         sys.exit(main())
     except Exception as e:  # noqa: BLE001
         print(f"[bootstrap_db] GAGAL: {type(e).__name__}: {e}", file=sys.stderr)
+        if "already exists" in str(e) or "DuplicateColumn" in type(e).__name__:
+            print(
+                "[bootstrap_db] PETUNJUK: objek sudah ada, artinya schema "
+                "lebih maju daripada alembic_version. Sinkronkan sekali dgn:\n"
+                "    railway run alembic stamp head",
+                file=sys.stderr,
+            )
         sys.exit(1)
