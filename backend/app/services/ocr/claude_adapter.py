@@ -17,14 +17,13 @@ import base64
 import logging
 import re
 from decimal import Decimal, InvalidOperation
-from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import anthropic
 import httpx
 
-from app.core.config import settings
+from app.services.storage.paths import is_local_file_url, resolve_upload_path
 from app.services.ocr.adapter import OCRAdapter
 from app.services.ocr.schema import INVOICE_SCHEMA, INVOICE_SYSTEM_PROMPT
 
@@ -169,11 +168,9 @@ class ClaudeVisionOCRAdapter(OCRAdapter):
         """Resolve URL -> bytes -> ekstrak. Mendukung URL absolut, path lokal
         /files/..., dan auto-konversi Google Drive sharing URL ke direct DL.
         """
-        if file_url.startswith("/files/"):
-            rel = file_url[len("/files/") :]
-            p = Path(settings.UPLOAD_DIR) / rel
-            if not p.exists():
-                raise FileNotFoundError(f"local_file_not_found: {p}")
+        if is_local_file_url(file_url):
+            # Audit #S-01: lewat resolver bersama yg menolak traversal.
+            p = resolve_upload_path(file_url)
             content = p.read_bytes()
             media_type = _MEDIA_TYPE_BY_SUFFIX.get(p.suffix.lower(), "image/jpeg")
         else:

@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -21,7 +20,12 @@ import httpx
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.core.net_guard import BlockedURL, fetch_public_url
+from app.services.storage.paths import (
+    UnsafeUploadPath,
+    is_local_file_url,
+    resolve_upload_path,
+)
 from app.services.ocr.adapter import OCRAdapter, get_ocr_adapter
 from app.services.ocr.cache import file_hash, lookup as cache_lookup, store as cache_store
 from app.services.ocr.preprocess import preprocess_for_ocr
@@ -60,23 +64,33 @@ def _normalize_url(url: str) -> str:
 async def fetch_to_bytes(file_url: str) -> tuple[bytes, str]:
     """Resolve URL/local-path -> (bytes, media_type).
 
-    - /files/* path: read local upload.
-    - http(s)://: httpx download dgn follow_redirects.
+    - /files/* path: baca upload lokal, lewat resolver yang menolak
+      traversal keluar UPLOAD_DIR (audit #S-01).
+    - http(s)://: download dgn guard SSRF di tiap hop redirect
+      (audit #S-02).
     - GDrive share URL auto-normalize.
     """
-    if file_url.startswith("/files/"):
-        rel = file_url[len("/files/"):]
-        p = Path(settings.UPLOAD_DIR) / rel
-        if not p.exists():
-            raise FileNotFoundError(f"local_file_not_found: {p}")
+    if is_local_file_url(file_url):
+        # resolve_upload_path menolak `..`, path absolut, dan symlink yg
+        # menunjuk keluar UPLOAD_DIR -- dulu di sini cuma string slice.
+        try:
+            p = resolve_upload_path(file_url)
+        except UnsafeUploadPath as e:
+            raise ValueError(f"unsafe_path: {e}") from e
         content = p.read_bytes()
         media_type = _MEDIA_TYPE_BY_SUFFIX.get(p.suffix.lower(), "image/jpeg")
         return content, media_type
     normalized = _normalize_url(file_url)
     if normalized != file_url:
         log.info("ocr.pipeline.url_normalized %s -> %s", file_url, normalized)
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as hx:
-        r = await hx.get(normalized)
+    # follow_redirects=False disengaja: redirect diikuti manual oleh
+    # fetch_public_url supaya tiap Location ikut divalidasi. Tanpa itu,
+    # target bisa balas 302 ke alamat internal setelah lolos cek pertama.
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as hx:
+        try:
+            r = await fetch_public_url(hx, normalized)
+        except BlockedURL as e:
+            raise ValueError(f"url_blocked: {e}") from e
         r.raise_for_status()
         content = r.content
         media_type = (

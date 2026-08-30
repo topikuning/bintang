@@ -4,33 +4,49 @@ version = "0.1.0"
 description = "Bintang - Biaya, Investasi dan Tata Anggaran Gerak (Backend API)"
 readme = "README.md"
 requires-python = ">=3.13"
+# Audit 2026-06-13 #D-03: sebelumnya SEMUA dependency memakai `>=`
+# tanpa batas atas dan `uv.lock` masuk .gitignore -- dua build dari
+# commit yang sama bisa menghasilkan versi berbeda, dan selisihnya baru
+# ketahuan saat produksi gagal boot.
+#
+# Batas bawah = versi TERBARU per 2026-08-30 (diverifikasi ke PyPI);
+# batas atas = rilis mayor berikutnya, supaya perubahan breaking tidak
+# masuk diam-diam TAPI patch/minor tetap bisa lewat dependabot + CI.
+#
+# HATI-HATI saat mengubah: batas atas TIDAK BOLEH berada di bawah versi
+# terbaru. Percobaan pertama audit ini sempat menulis `fastapi<0.140`
+# (terbaru 0.141.1), `anthropic<1.0` (terbaru 1.2.0), dan `pytest<9.0`
+# (terbaru 9.1.1) -- itu justru mengunci proyek di versi lama dan
+# memblokir tiap PR dependabot. Untuk reproducibility penuh, jalankan `uv lock` SEKALI
+# lalu commit `uv.lock` (sudah tidak di-ignore) dan ganti perintah di
+# Dockerfile jadi `uv sync --frozen --no-dev`.
 dependencies = [
-  "fastapi>=0.136.1",
-  "uvicorn[standard]>=0.32.0",
-  "sqlalchemy[asyncio]>=2.0.49",
-  "aiosqlite>=0.20.0",
-  "asyncpg>=0.30.0",
-  "alembic>=1.13.0",
-  "pydantic>=2.13.3",
-  "pydantic-settings>=2.5.0",
-  "python-jose[cryptography]>=3.3.0",
-  "bcrypt>=4.2.0",
-  "python-multipart>=0.0.12",
-  "aiofiles>=24.1.0",
-  "Pillow>=11.0.0",
-  "openpyxl>=3.1.5",
-  "weasyprint>=63.0",
-  "jinja2>=3.1.4",
-  "httpx>=0.27.0",
-  "email-validator>=2.2.0",
-  "anthropic>=0.40.0",
+  "fastapi>=0.141.1,<1.0",
+  "uvicorn[standard]>=0.52.4,<1.0",
+  "sqlalchemy[asyncio]>=2.0.52,<2.1",
+  "aiosqlite>=0.22.1,<1.0",
+  "asyncpg>=0.31.0,<1.0",
+  "alembic>=1.19.1,<2.0",
+  "pydantic>=2.13.5,<3.0",
+  "pydantic-settings>=2.15.0,<3.0",
+  "python-jose[cryptography]>=3.5.0,<4.0",
+  "bcrypt>=5.0.0,<6.0",
+  "python-multipart>=0.0.32,<1.0",
+  "aiofiles>=25.1.0,<26.0",
+  "Pillow>=12.3.0,<13.0",
+  "openpyxl>=3.1.5,<4.0",
+  "weasyprint>=69.0,<70.0",
+  "jinja2>=3.1.6,<4.0",
+  "httpx>=0.28.1,<1.0",
+  "email-validator>=2.3.0,<3.0",
+  "anthropic>=1.2.0,<2.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8.3.0",
-  "pytest-asyncio>=0.24.0",
-  "ruff>=0.7.0",
+  "pytest>=9.1.1,<10.0",
+  "pytest-asyncio>=1.4.0,<2.0",
+  "ruff>=0.16.5,<1.0",
 ]
 
 [build-system]
@@ -49,3 +65,27 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+
+# Audit 2026-06-13 #D-02: ruff sudah lama ada di dependency dev tapi
+# tidak pernah dipanggil CI. Menyalakan set aturan default sekaligus
+# akan memerahkan CI oleh ~150 pelanggaran lama (mayoritas F401 import
+# tak terpakai) dan justru mendorong orang menambah `|| true` lagi.
+#
+# Jadi kita mulai dari set yang artinya "ini hampir pasti bug", bukan
+# "ini kurang rapi":
+#   E9  -- syntax / runtime error
+#   F63 -- perbandingan yang selalu salah (mis. `is` utk literal)
+#   F7  -- pernyataan salah tempat (break di luar loop, dll)
+#   F82 -- nama tak terdefinisi  <- penangkap bug impor paling penting
+#
+# LANGKAH BERIKUTNYA: tambahkan "F401" (import tak terpakai) setelah
+# backlog dibersihkan sekali dgn `ruff check --fix app tests`, lalu
+# naikkan lagi ke default ruff. Turunkan utangnya bertahap, seperti
+# ratchet `--max-warnings` di eslint frontend.
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
+
+[tool.ruff.lint.per-file-ignores]
+# Modul re-export: nama sengaja di-import utk dipakai modul lain.
+"app/models/__init__.py" = ["F401"]
+"app/api/v1/__init__.py" = ["F401"]

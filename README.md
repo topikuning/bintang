@@ -1,7 +1,7 @@
 # Bintang
 
 **Bintang — Biaya, Investasi dan Tata Anggaran Gerak.**
-Aplikasi web pencatatan & monitoring keuangan multi-proyek (mobile-first PWA).
+Aplikasi web pencatatan & monitoring keuangan multi-proyek, mobile-first.
 
 ## Fitur utama
 
@@ -14,13 +14,26 @@ Aplikasi web pencatatan & monitoring keuangan multi-proyek (mobile-first PWA).
 - Laporan: Cashflow, Transaksi, Invoice, Hutang/Piutang, Budget, PO, Audit log — **export PDF & XLSX**.
 - Audit log otomatis untuk semua perubahan data keuangan.
 - Soft delete, role-based access (Superadmin / Project Admin).
-- AI Invoice Extraction adapter (stub) yang siap di-swap ke Tesseract / Document AI / Claude Vision.
+- AI Invoice Extraction (Claude Vision / Mistral Document AI, bisa diatur dari UI).
 
-## Stack (April 2026, latest stable)
+## Stack
 
-- **Backend**: FastAPI 0.136, Python 3.13, SQLAlchemy 2.0.49 (async), Pydantic 2.13, WeasyPrint, openpyxl, JWT.
-- **Frontend**: React 19.2, Vite 8, TypeScript 6, Tailwind CSS 4.2, vite-plugin-pwa (Workbox 7), TanStack Query 5, React Router 7, Recharts.
+- **Backend**: FastAPI 0.136, Python 3.13, SQLAlchemy 2.0 (async), Pydantic 2, WeasyPrint, openpyxl, JWT.
+- **Frontend**: React 19, Vite 6, TypeScript 5.6, Tailwind CSS 4, TanStack Query 5 + Table 8, React Router 7, Radix UI, Recharts.
 - **DB**: SQLite (dev) / PostgreSQL 18 (prod).
+
+### Satu service, satu origin
+
+Sejak 2026-06-13 frontend dan backend **tidak lagi terpisah**. `Dockerfile`
+di root mem-build SPA lalu menyalinnya ke dalam image backend, dan FastAPI
+yang menyajikannya. Konsekuensinya:
+
+- Railway cukup **dua** service: Postgres + aplikasi ini.
+- SPA dan API satu origin, jadi CORS tidak lagi berperan (`ALLOWED_ORIGINS`
+  boleh kosong) dan `VITE_API_BASE_URL` tidak perlu diisi per-environment.
+- Lampiran di `/files/*` **wajib login** dan dicek akses proyeknya; tag
+  `<img>` tetap bekerja lewat cookie HttpOnly ber-scope `/files` yang
+  di-set saat login.
 
 ## Quick start (Docker)
 
@@ -29,22 +42,27 @@ cp .env.example .env
 docker compose build
 docker compose up -d
 
-# Pilih salah satu:
+# Migrasi dijalankan otomatis di entrypoint sebelum app start.
+# Lalu pilih salah satu seed:
 # A) clean install (1 admin + 12 kategori default, tanpa data demo)
-docker compose exec backend python -m app.seed_master
+docker compose exec app python -m app.seed_master
 # B) demo data lengkap (3 perusahaan, 5 proyek, 30+ transaksi, dst)
-docker compose exec backend python -m app.seed
+docker compose exec app python -m app.seed
 
-# Buka:
-# http://localhost:8080      (PWA)
-# http://localhost:8000/docs (Swagger)
+# Buka -- SPA dan API di port yang SAMA:
+# http://localhost:8000       (aplikasi)
+# http://localhost:8000/docs  (Swagger)
 ```
 
 ## Deploy ke Railway
 
-Lihat [`RAILWAY.md`](./RAILWAY.md) untuk panduan rinci (3 service: Postgres + Backend FastAPI + Frontend nginx, persistent volume untuk uploads).
+Lihat [`RAILWAY.md`](./RAILWAY.md) untuk panduan rinci — **2 service**: Postgres + aplikasi (SPA & API dalam satu image), dengan persistent volume untuk uploads.
 
 ## Quick start (lokal tanpa Docker)
+
+Saat dev, backend dan frontend tetap dijalankan terpisah supaya HMR Vite
+bekerja. Vite sudah punya proxy ke `/api` dan `/files`, jadi tidak perlu
+mengatur CORS.
 
 ### Backend
 
@@ -60,10 +78,17 @@ uvicorn app.main:app --reload --port 8000
 ### Frontend
 
 ```bash
-cd frontend
-pnpm install   # atau npm install
-pnpm dev
-# http://localhost:5173
+cd frontend-v2
+npm install
+npm run dev
+# http://localhost:5174
+```
+
+### Cek sebelum push
+
+```bash
+cd frontend-v2 && npm run typecheck && npm run lint && npm run test
+cd backend     && ruff check app tests && pytest -q
 ```
 
 ## Default credentials (dari seed)
@@ -82,23 +107,29 @@ Demo data: 3 perusahaan, 5 proyek (status sehat / waspada / overbudget / minus),
 
 ```
 bintang/
-├── backend/             # FastAPI + SQLAlchemy
+├── Dockerfile           # SPA + API jadi satu image (dipakai Railway)
+├── railway.toml         # service tunggal; Root Directory = root repo
+├── docker-compose.yml   # Postgres + app
+├── backend/
 │   └── app/
-│       ├── core/        # config, security, deps
+│       ├── core/        # config, security, deps, net_guard (guard SSRF)
 │       ├── db/          # base, session
-│       ├── models/      # all SQLAlchemy models
+│       ├── models/      # semua model SQLAlchemy
 │       ├── schemas/     # Pydantic
-│       ├── api/v1/      # endpoint routers
-│       └── services/    # audit, budget, invoice_status, pdf, excel, storage, ocr
-├── frontend/            # Vite + React + Tailwind 4 + PWA
+│       ├── api/
+│       │   ├── files.py # penyajian lampiran (auth + cek akses proyek)
+│       │   └── v1/      # endpoint routers
+│       ├── services/    # audit, budget, pdf, excel, storage, ocr, ai, bot
+│       ├── alembic/     # migrasi (dijalankan entrypoint saat start)
+│       └── bootstrap_db.py
+├── frontend-v2/         # Vite + React + Tailwind 4 (SPA aktif)
 │   └── src/
 │       ├── pages/       # halaman utama
-│       ├── components/  # UI primitives, AppShell, AttachmentUploader
-│       ├── lib/         # api client, utils
-│       ├── store/       # zustand auth store
-│       └── types/
-├── docker-compose.yml
-└── README.md
+│       ├── components/  # ui primitives, layout, domain
+│       ├── hooks/       # data hooks (TanStack Query)
+│       ├── lib/         # api client, format, utils
+│       └── store/       # zustand (auth, ui prefs)
+└── docs/
 ```
 
 ## API utama (selengkapnya di Swagger UI)
@@ -115,13 +146,24 @@ CRUD  /api/v1/invoices      (+ /issue /cancel /attachments)
 CRUD  /api/v1/purchase-orders (+ /issue /approve /cancel /pdf)
 GET   /api/v1/reports/{cashflow|transactions|invoices|debts|budget|purchase-orders|audit-logs}?format=pdf|xlsx
 GET   /api/v1/audit-logs
-POST  /api/v1/ocr/extract      # stub (future: real OCR/AI)
+POST  /api/v1/ocr/extract      # OCR via URL (guard SSRF + path traversal)
+POST  /api/v1/ocr/extract-upload
+GET   /files/{path}            # lampiran -- WAJIB login + cek akses proyek
 ```
+
+## Dokumentasi lain
+
+| Berkas | Isi |
+| --- | --- |
+| [`RAILWAY.md`](./RAILWAY.md) | Panduan deploy (2 service) + migrasi dari 3 service |
+| [`docs/pemutakhiran-tertunda.md`](./docs/pemutakhiran-tertunda.md) | Rilis mayor dependency yang sengaja ditunda, beserta risiko & cara verifikasinya |
+| [`backend/docs/migrations.md`](./backend/docs/migrations.md) | Alur migrasi Alembic (otomatis di entrypoint) |
+| [`docs/manual-penggunaan.md`](./docs/manual-penggunaan.md) | Manual pengguna |
+| [`docs/setup-whatsapp.md`](./docs/setup-whatsapp.md) | Setup integrasi WAHA |
 
 ## Roadmap
 
-- [ ] OCR provider beneran (Tesseract / Document AI / Claude Vision).
-- [ ] PWA offline draft transaksi (background sync).
+- [ ] PWA offline draft transaksi (background sync) -- v2 belum PWA.
 - [ ] Notifikasi (overdue invoice, transaksi besar belum verified).
 - [ ] Multi-currency dengan FX rate.
 - [ ] **Storage backend tambahan**:

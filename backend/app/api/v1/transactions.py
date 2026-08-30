@@ -1,4 +1,5 @@
 from datetime import date as date_type, datetime, timezone
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -355,7 +356,7 @@ def _validate_kind_invariants(
             )
 
 
-def _read_item_amount(i) -> "Decimal":
+def _read_item_amount(i) -> Decimal:
     """Read amount dr item -- support dict (model_dump output), Pydantic
     instance, atau ORM row. Defensif terhadap shape input."""
     from decimal import Decimal

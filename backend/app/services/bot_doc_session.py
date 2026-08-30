@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import user_project_ids
+from app.services._tz import is_expired
 from app.models.models import (
     BotPendingDocSession,
     Project,
@@ -169,7 +170,7 @@ async def load_active_session(
     )).scalar_one_or_none()
     if row is None:
         return None
-    if row.expires_at < datetime.now(timezone.utc):
+    if is_expired(row.expires_at):
         await db.delete(row)
         await db.flush()
         return None
@@ -210,7 +211,7 @@ def schedule_reminder(
                 session = await db.get(BotPendingDocSession, session_id)
                 if session is None:
                     return  # sudah confirmed/cancelled/replaced
-                if session.expires_at < datetime.now(timezone.utc):
+                if is_expired(session.expires_at):
                     return  # somehow already expired
                 entity = session.entity_type.lower()
                 if channel == "whatsapp":

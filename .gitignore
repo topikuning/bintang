@@ -12,10 +12,19 @@ node_modules/
 dist/
 .vite/
 *.log
-package-lock.json
+# package-lock.json SENGAJA di-commit (lihat catatan uv.lock di bawah)
 
 # uv
-uv.lock
+# Audit 2026-06-13 #D-03: uv.lock DULU di-ignore di sini, sementara
+# seluruh dependency memakai `>=` tanpa batas atas -- build tidak
+# reproducible. pyproject.toml sekarang punya batas atas, dan uv.lock
+# tidak lagi di-ignore.
+#
+# BELUM SELESAI: berkas uv.lock-nya sendiri belum dibuat (butuh `uv`
+# yang tidak tersedia saat perbaikan ini ditulis). Jalankan sekali:
+#     cd backend && uv lock && git add uv.lock
+# lalu ganti perintah install di Dockerfile jadi:
+#     uv sync --frozen --no-dev
 
 # DB / uploads
 *.db

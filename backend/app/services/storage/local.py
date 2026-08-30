@@ -9,16 +9,41 @@ from fastapi import HTTPException, UploadFile
 
 from app.core.config import settings
 
-ALLOWED_MIME = {
-    "image/jpeg",
-    "image/jpg",
-    "image/png",
-    "image/webp",
-    "image/gif",
-    "image/heic",
-    "image/heif",
-    "application/pdf",
+# Ekstensi kanonik per MIME. Audit 2026-06-13 #S-05: ekstensi berkas
+# TIDAK BOLEH diambil dari nama kiriman user -- lampiran bot dulu
+# memakai `Path(original_name).suffix`, sehingga dokumen bernama
+# "x.html" tersimpan sbg .html lalu disajikan sbg text/html di origin
+# API kita.
+#
+# Daftar MIME yang diizinkan DITURUNKAN dari tabel ini, bukan ditulis
+# terpisah. Kalau keduanya jadi dua daftar yang harus dijaga sinkron,
+# cepat atau lambat ada MIME yang lolos whitelist tapi tidak punya
+# ekstensi -> KeyError saat upload.
+_EXT_BY_MIME = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "image/heic": ".heic",
+    "image/heif": ".heif",
+    "application/pdf": ".pdf",
+    # Video hanya untuk lampiran bot -- lihat BOT_ALLOWED_MIME.
+    "video/mp4": ".mp4",
+    "video/quicktime": ".mov",
 }
+
+_VIDEO_MIME = {"video/mp4", "video/quicktime"}
+
+# Whitelist form web: gambar + PDF.
+ALLOWED_MIME = set(_EXT_BY_MIME) - _VIDEO_MIME
+
+# Lampiran dari bot (Telegram/WhatsApp) boleh sedikit lebih luas: video
+# pendek dipakai sbg bukti lapangan dan sudah didukung sebelum audit.
+# Aman karena `/files` menyajikan apa pun di luar INLINE_SAFE_MIME sbg
+# `Content-Disposition: attachment`, jadi tidak ada konten aktif yang
+# bisa dieksekusi di origin kita.
+BOT_ALLOWED_MIME = set(_EXT_BY_MIME)
 
 # Resize batas dimensi maksimal: cocok untuk bukti transaksi -- masih jelas
 # saat di-zoom tapi tidak boros space.
@@ -84,33 +109,43 @@ async def save_bytes(
     """Simpan bytes mentah ke uploads. Dipakai mis. oleh integrasi
     Telegram yang sudah pegang file dari Bot API.
 
-    Skema penyimpanan & optimasi gambar identik dengan save_upload.
-    """
-    base = Path(settings.UPLOAD_DIR) / subdir / datetime.utcnow().strftime("%Y/%m")
-    base.mkdir(parents=True, exist_ok=True)
+    Skema penyimpanan & optimasi gambar identik dengan save_upload --
+    termasuk whitelist MIME (audit #S-05).
 
-    suffix = Path(original_name or "").suffix.lower() or ".bin"
-    safe_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(6)}{suffix}"
-    target = base / safe_name
+    Raises:
+        HTTPException 415: `mime_hint` (atau tebakan dari ekstensi asal)
+            tidak ada di ALLOWED_MIME.
+        HTTPException 413: melebihi MAX_UPLOAD_MB.
+    """
+    # Tentukan MIME dulu -- ia yang menentukan ekstensi, bukan sebaliknya.
+    mime = (mime_hint or "").split(";")[0].strip().lower()
+    if not mime:
+        # Tidak ada hint (mis. foto Telegram tanpa nama) -> tebak dari
+        # ekstensi asal, tapi hasil tebakan tetap harus lolos whitelist.
+        guessed = Path(original_name or "").suffix.lower()
+        mime = {
+            ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".png": "image/png", ".webp": "image/webp",
+            ".gif": "image/gif", ".heic": "image/heic", ".heif": "image/heif",
+            ".pdf": "application/pdf",
+            ".mp4": "video/mp4", ".mov": "video/quicktime",
+        }.get(guessed, "")
+    if mime not in BOT_ALLOWED_MIME:
+        raise HTTPException(415, f"unsupported_media_type: {mime or '(tidak dikenal)'}")
 
     max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
     if len(content) > max_bytes:
         raise HTTPException(413, f"file_too_large_max_{settings.MAX_UPLOAD_MB}_mb")
+
+    base = Path(settings.UPLOAD_DIR) / subdir / datetime.utcnow().strftime("%Y/%m")
+    base.mkdir(parents=True, exist_ok=True)
+
+    suffix = _EXT_BY_MIME[mime]
+    safe_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(6)}{suffix}"
+    target = base / safe_name
+
     async with aiofiles.open(target, "wb") as out:
         await out.write(content)
-
-    mime = mime_hint
-    if mime is None:
-        if suffix in (".jpg", ".jpeg"):
-            mime = "image/jpeg"
-        elif suffix == ".png":
-            mime = "image/png"
-        elif suffix == ".webp":
-            mime = "image/webp"
-        elif suffix == ".pdf":
-            mime = "application/pdf"
-        else:
-            mime = "application/octet-stream"
 
     size = target.stat().st_size
     if mime.startswith("image/"):
@@ -131,7 +166,9 @@ async def save_upload(file: UploadFile, subdir: str) -> dict:
     base = Path(settings.UPLOAD_DIR) / subdir / datetime.utcnow().strftime("%Y/%m")
     base.mkdir(parents=True, exist_ok=True)
 
-    suffix = Path(file.filename or "").suffix.lower() or ".bin"
+    # Ekstensi dari MIME yg sudah lolos whitelist di atas, bukan dari
+    # nama kiriman user (audit #S-05).
+    suffix = _EXT_BY_MIME[file.content_type]
     safe_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(6)}{suffix}"
     target = base / safe_name
 

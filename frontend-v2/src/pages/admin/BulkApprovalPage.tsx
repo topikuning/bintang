@@ -831,7 +831,7 @@ function reportBulkResult(label: string, res: BulkResult) {
     )
   }
   if (res.skipped.length > 0) {
-    // eslint-disable-next-line no-console
+     
     console.warn(`Bulk ${label} skipped:`, res.skipped)
   }
 }

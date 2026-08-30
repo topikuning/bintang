@@ -25,11 +25,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.deps import get_current_user, require_superadmin
+from app.core.deps import get_current_user, require_admin, require_superadmin
 from app.core.rate_limit import telegram_link_limiter as _link_limiter
 from app.db.session import get_db
 from app.models.models import MessagingConfig, User
 from app.services import messaging
+from app.services.app_settings import get_setting
 from app.services.whatsapp import client as wa
 from app.services.whatsapp.commands import dispatch_command, handle_media
 from app.services.whatsapp.linking import LINK_TTL_MINUTES, issue_code
@@ -54,13 +55,17 @@ async def _handle_doc_session_reply(
 # ---------------------------------------------------------------------------
 
 @router.get("/health")
-async def health(db: AsyncSession = Depends(get_db)) -> dict:
+async def health(
+    db: AsyncSession = Depends(get_db),
+    # Audit 2026-06-13 #S-10: lihat catatan yang sama di telegram.py.
+    _admin: User = Depends(require_admin),
+) -> dict:
     cfg = await messaging.get_config(db)
     await db.commit()
     return {
         "configured": wa.is_enabled(),
         "enabled_toggle": cfg.whatsapp_enabled,
-        "webhook_secret_set": bool(settings.WHATSAPP_WEBHOOK_SECRET),
+        "webhook_secret_set": bool(await get_setting(db, "WHATSAPP_WEBHOOK_SECRET")),
         "base_url": settings.WHATSAPP_BASE_URL or None,
         "session": settings.WHATSAPP_SESSION,
     }
@@ -144,18 +149,28 @@ async def whatsapp_test(
 # Webhook receiver
 # ---------------------------------------------------------------------------
 
-def _verify_webhook_signature(raw_body: bytes, header: str | None) -> bool:
-    """WAHA mengirim signature HMAC-SHA512 di header `X-Webhook-Hmac` saat
-    `WAHA_HMAC_*` env diset di sisi WAHA. Kalau secret kita kosong, skip
-    verifikasi (mode dev). Kalau header juga kosong padahal kita set
-    secret -> tolak.
+async def _verify_webhook_signature(
+    db: AsyncSession, raw_body: bytes, header: str | None
+) -> bool:
+    """Verifikasi HMAC-SHA512 di header `X-Webhook-Hmac` dari WAHA.
+
+    Audit 2026-06-13 #S-04: secret sekarang dibaca lewat app_settings
+    (DB > env), bukan `settings.*` saja. Sebelumnya key ini tidak ada di
+    SETTING_REGISTRY sehingga admin yang setup lewat UI selalu berakhir
+    dengan secret kosong -- dan fungsi ini `return True` untuk secret
+    kosong, jadi webhook terbuka untuk siapa pun.
+
+    Secret kosong tetap melewatkan verifikasi (mode dev), tapi di
+    APP_ENV=prod boot sudah ditolak lebih dulu oleh
+    `_guard_production_config()` kalau integrasi aktif tanpa secret.
     """
-    if not settings.WHATSAPP_WEBHOOK_SECRET:
+    secret = await get_setting(db, "WHATSAPP_WEBHOOK_SECRET")
+    if not secret:
         return True
     if not header:
         return False
     digest = hmac.new(
-        settings.WHATSAPP_WEBHOOK_SECRET.encode("utf-8"),
+        secret.encode("utf-8"),
         raw_body,
         hashlib.sha512,
     ).hexdigest()
@@ -234,7 +249,7 @@ async def webhook(
         raise HTTPException(503, "whatsapp_disabled")
 
     raw = await request.body()
-    if not _verify_webhook_signature(raw, x_webhook_hmac):
+    if not await _verify_webhook_signature(db, raw, x_webhook_hmac):
         raise HTTPException(401, "bad_signature")
 
     try:

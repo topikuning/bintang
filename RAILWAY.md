@@ -1,294 +1,262 @@
 # Deploy Bintang ke Railway
 
-Panduan rinci deploy ke [Railway](https://railway.com) per **April 2026**.
-Stack: FastAPI + Vite/React PWA + PostgreSQL + Volume persistent untuk uploads.
+Panduan ini memakai **dua service**: PostgreSQL dan satu service aplikasi
+yang menyajikan SPA sekaligus API.
 
-> **Penting tentang seed**: kesalahan klasik adalah memakai `railway run python ...`.
-> Itu menjalankan command **secara LOKAL** dengan env vars Railway ter-inject —
-> bukan masuk ke container. Untuk seed kita pakai `railway ssh` (eksekusi di
-> dalam container yang sudah di-deploy). Lihat **Langkah 6**.
+> **Berubah sejak 2026-06-13.** Dulu ada tiga service (Postgres + backend
+> FastAPI + frontend nginx). Sekarang `Dockerfile` di root mem-build SPA
+> lalu menyalinnya ke dalam image backend, jadi frontend bukan lagi
+> service terpisah. Kalau project Railway Anda masih punya service
+> `bintang-frontend`, lihat [Migrasi dari 3 service](#migrasi-dari-3-service)
+> di bawah.
 
 ---
 
 ## 0. Yang dibutuhkan
 
-- Akun [railway.com](https://railway.com).
-- Repository di GitHub berisi project ini (branch `claude/multi-project-finance-app-Gn3rz` atau `main`).
-- **Railway CLI** (wajib untuk seed): `npm i -g @railway/cli` atau `brew install railway`.
-- Login CLI: `railway login`.
-
-Estimasi biaya: ~$5–15/bulan tergantung traffic. Trial $5 cukup untuk uji coba.
+- Akun Railway (Hobby plan sudah cukup).
+- Repo ini sudah ada di GitHub.
+- `SECRET_KEY` acak. Generate:
+  ```bash
+  python -c 'import secrets; print(secrets.token_urlsafe(48))'
+  ```
+  Nilai ini juga jadi kunci enkripsi untuk secret yang disimpan di DB
+  (API key OCR, token bot). **Menggantinya membuat semua secret
+  tersimpan tidak terbaca** dan harus diisi ulang lewat UI.
 
 ---
 
 ## 1. Bikin project di Railway
 
-1. Login → **New Project** → **Deploy from GitHub repo** → pilih repo Bintang.
-2. Railway akan stage 1 service. **Hapus dulu** karena kita atur sendiri 3 service di langkah-langkah berikut.
+1. Dashboard Railway → **New Project** → **Deploy from GitHub repo**.
+2. Pilih repo `bintang`.
+3. Railway akan membuat satu service otomatis — kita atur di langkah 3.
 
 ---
 
 ## 2. Tambahkan PostgreSQL
 
-1. Di canvas project, tekan **⌘K** (atau **Ctrl+K**) untuk Command Palette → **Database** → **PostgreSQL**.
-2. Tunggu sampai service Postgres aktif (status hijau).
-3. Klik service Postgres → tab **Variables** → catat `DATABASE_URL` Railway. Variable yang akan kita pakai sebagai reference di service backend:
-   - `${{Postgres.DATABASE_URL}}` — URL lengkap (perlu kita prefix `+asyncpg`).
+1. Di dalam project → **New** → **Database** → **Add PostgreSQL**.
+2. Railway menyediakan variabel `DATABASE_URL` di service Postgres.
+   Formatnya `postgresql://...`; aplikasi butuh driver async, jadi di
+   service aplikasi kita tulis ulang jadi `postgresql+asyncpg://...`
+   (lihat langkah 3c).
 
 ---
 
-## 3. Service Backend (FastAPI)
+## 3. Service aplikasi (SPA + API)
 
 ### 3a. Bikin service
-1. **⌘K** → **GitHub Repo** → pilih repo yang sama → **Add Service**.
-2. Setelah service ter-create, klik service-nya → tab **Settings**:
-   - **Service Name**: `bintang-backend`
-   - **Root Directory**: `backend`
-   - **Watch Paths** (opsional, agar redeploy hanya saat backend berubah):
-     ```
-     backend/**
-     ```
+
+1. **New** → **GitHub Repo** → pilih repo yang sama.
+2. Settings → **Root Directory**: kosongkan / isi `/`
+   — **root repo**, bukan `backend` dan bukan `frontend-v2`.
+   `Dockerfile` di root yang mem-build keduanya.
+3. Settings → **Watch Paths**: kosongkan (perubahan di backend maupun
+   frontend sama-sama harus memicu build ulang).
 
 ### 3b. Build & deploy
-File `backend/railway.toml` sudah disiapkan, jadi Railway otomatis tahu:
-- Builder: `DOCKERFILE`
-- Start command: `uvicorn ... --port $PORT`
-- Healthcheck: `/health`
 
-Tidak perlu set manual di UI.
+`railway.toml` di root sudah menetapkan builder Dockerfile dan
+healthcheck `/health`. Tidak ada `startCommand`: `ENTRYPOINT` image yang
+menjalankan migrasi lalu uvicorn.
+
+**Migrasi jalan otomatis.** `docker-entrypoint.sh` memanggil
+`python -m app.bootstrap_db` sebelum uvicorn. Kalau migrasi gagal,
+container berhenti dan deploy ditandai gagal — versi lama tetap
+melayani, bukannya naik dengan schema setengah jadi.
 
 ### 3c. Volume untuk uploads
-Volume **wajib di-mount sebelum deploy pertama** supaya direktori upload persist.
 
-**Via UI:**
-1. Klik service → **⌘K** dengan service ter-fokus → **Add Volume** (atau klik kanan service → **Add Volume**).
-2. **Mount Path**: `/data`
-3. Size: 5 GB awalnya (bisa di-resize live tanpa downtime nanti).
+Lampiran disimpan di filesystem. Tanpa volume, semuanya hilang tiap
+deploy.
 
-**Atau via CLI:**
-```bash
-railway link            # pilih project & service bintang-backend
-railway volume add
-# prompt: Mount Path → /data
-```
-
-Volume otomatis follow region service. Bintang menulis ke `/data/uploads`
-(sesuai env `UPLOAD_DIR=/data/uploads` di Dockerfile).
-
-> **Catatan**: data yang ditulis ke direktori volume saat **build time** TIDAK
-> akan persist — volume baru di-attach saat container start. Bintang
-> membuat folder `uploads/` saat startup, jadi aman.
+1. Service aplikasi → tab **Volumes** → **New Volume**.
+2. Mount Path: `/data`
+3. Ukuran awal 5 GB sudah cukup untuk puluhan ribu bukti transaksi
+   (gambar di-resize maksimal 2000px dan dikompres saat upload).
 
 ### 3d. Variabel lingkungan
 
-Tab **Variables** → **+ New Variable**:
+Set di service aplikasi:
 
-| Key | Value |
-|---|---|
+| Variabel | Nilai |
+| --- | --- |
 | `APP_ENV` | `prod` |
-| `SECRET_KEY` | string random ≥32 char |
-| `DATABASE_URL` | `postgresql+asyncpg://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/${{Postgres.PGDATABASE}}` |
+| `SECRET_KEY` | hasil generate di langkah 0 |
+| `DATABASE_URL` | `postgresql+asyncpg://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/${{Postgres.PGDATABASE}}` |
 | `UPLOAD_DIR` | `/data/uploads` |
-| `MAX_UPLOAD_MB` | `20` |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | `720` |
-| `ALLOWED_ORIGINS` | (isi nanti di Langkah 5 setelah frontend punya domain) |
+| `TRUSTED_PROXY_HOPS` | `1` |
+| `ALLOWED_ORIGINS` | **kosongkan** |
+| `PUBLIC_BASE_URL` | isi setelah domain jadi (langkah 3e) |
 
-Generate `SECRET_KEY` di terminal lokal:
-```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(48))"
-```
+Catatan penting:
 
-> **Kenapa harus `+asyncpg`**: SQLAlchemy 2 yang kita pakai mode async,
-> butuh driver `asyncpg`. Default `${{Postgres.DATABASE_URL}}` Railway
-> menghasilkan prefiks `postgresql://` yang sync (psycopg). Salah prefiks
-> = backend crash saat startup.
-
-> Railway juga auto-inject `PORT` ke service. Backend Bintang sudah
-> bind ke `${PORT}` (dari `railway.toml`).
+- **`ALLOWED_ORIGINS` sengaja kosong.** SPA dan API satu origin, jadi
+  tidak ada request lintas-origin yang perlu diizinkan. Isi hanya kalau
+  ada klien eksternal dari domain lain.
+- **`TRUSTED_PROXY_HOPS=1`** karena Railway menaruh satu edge proxy di
+  depan aplikasi. Nilai ini menentukan bagaimana `X-Forwarded-For`
+  dibaca saat rate-limit login; kalau salah, batas login bisa dilewati
+  dengan header palsu.
+- Aplikasi **menolak boot** di `APP_ENV=prod` kalau `SECRET_KEY` masih
+  default/terlalu pendek, `ALLOWED_ORIGINS` berisi `*` atau localhost,
+  atau integrasi bot aktif tanpa webhook secret. Pesannya diawali
+  `REFUSE_BOOT:` di deploy log.
 
 ### 3e. Public domain
-1. **Settings** → **Networking** → **Public Networking** → **Generate Domain**.
-2. Catat URL, mis: `https://bintang-backend-production.up.railway.app`.
-3. Cek health: buka `<url>/health` di browser → harus respond `{"status":"ok"}`.
+
+1. Service aplikasi → **Settings** → **Networking** → **Generate Domain**.
+2. Port: `8000`.
+3. Salin domainnya, lalu set `PUBLIC_BASE_URL` ke URL itu (dipakai untuk
+   registrasi webhook Telegram/WAHA). Redeploy setelah mengisinya.
+
+Domain ini menyajikan aplikasi **dan** API:
+
+- `https://<domain>/` → SPA
+- `https://<domain>/api/v1/...` → API
+- `https://<domain>/docs` → Swagger
 
 ---
 
-## 4. Service Frontend (Vite + nginx)
+## 4. Init schema + seed
 
-### 4a. Bikin service
-1. **⌘K** → **GitHub Repo** → pilih repo yang sama → **Add Service**.
-2. **Settings**:
-   - **Service Name**: `bintang-frontend`
-   - **Root Directory**: `frontend`
-   - **Watch Paths**: `frontend/**`
-
-### 4b. Build args
-Frontend perlu tahu URL backend di **build time** (Vite menyimpan env var
-ke bundle JS). Settings → **Build** → **Build Args** (atau tambahkan
-sebagai Variable kalau Railway memperlakukan build args sebagai env var
-saat build):
-
-| Key | Value |
-|---|---|
-| `VITE_API_BASE_URL` | `https://<backend-domain>/api/v1` (URL dari 3e) |
-
-> Setiap kali ubah `VITE_API_BASE_URL`, **klik Redeploy** secara manual.
-> Railway tidak rebuild otomatis hanya karena variable berubah.
-
-### 4c. Public domain
-**Settings → Networking → Generate Domain**. Catat URL, mis: `https://bintang-production.up.railway.app`.
-
----
-
-## 5. Update CORS di backend
-
-Kembali ke service `bintang-backend` → **Variables** → set:
-```
-ALLOWED_ORIGINS=https://bintang-production.up.railway.app
-```
-(persis, https + tanpa trailing slash; pisahkan koma kalau lebih dari satu domain).
-
-Save → backend auto-redeploy.
-
----
-
-## 6. Init schema + seed (yang gagal sebelumnya)
-
-Schema otomatis dibuat saat backend pertama kali start (lifespan event
-`Base.metadata.create_all`). Tapi kita masih perlu seed superadmin +
-kategori default.
-
-**JANGAN pakai `railway run`** — itu menjalankan command di mesin lokal Anda
-dengan env Railway ter-inject. Itulah penyebab error
-`No such file or directory (os error 2)`: command `python` atau path
-`app.seed_master` tidak ada di mesin lokal.
-
-**Pakai `railway ssh`** (eksekusi di dalam container yang sudah running):
+Schema sudah dibuat migrasi saat deploy pertama. Tinggal isi data awal:
 
 ```bash
 # 1. login & link project
 railway login
 railway link
-# pilih project, environment (production), dan service bintang-backend
+# pilih project, environment (production), dan service aplikasi
 
 # 2. eksekusi seed di dalam container
-railway ssh python -m app.seed_master
 # clean install: 1 superadmin + 12 kategori default
+railway run python -m app.seed_master
 
-# atau demo data lengkap:
-railway ssh python -m app.seed
+# atau demo data lengkap (3 perusahaan, 5 proyek, 30+ transaksi):
+railway run python -m app.seed
 ```
 
-> Catatan: `railway ssh` Railway tidak pakai protokol SSH biasa — pakai
-> websocket. Tetap aman untuk command interaktif maupun one-off.
-
-Alternatif via dashboard (hanya kalau CLI bermasalah):
-1. Klik service backend → kanan-atas ada ikon terminal **"Open Shell"**.
-2. Ketik: `python -m app.seed_master`.
-
-Setelah seed sukses → buka frontend → login `admin@bintang.me` / `admin123`
-→ **WAJIB ganti password** lewat menu Pengguna.
+Setelah seed sukses → buka domain → login `admin@bintang.me` / `admin123`.
+**Ganti password default itu sebelum dipakai sungguhan.**
 
 ---
 
-## 7. Verifikasi
+## 5. Verifikasi
 
-| Cek | URL / langkah |
-|---|---|
-| Backend live | `https://<backend-domain>/health` → `{"status":"ok"}` |
-| Swagger | `https://<backend-domain>/docs` |
-| Frontend | `https://<frontend-domain>` |
-| Login | `admin@bintang.me` / `admin123` |
-| Volume bekerja | upload bukti transaksi → reload halaman → preview tetap muncul |
-| Postgres connect | login & lihat halaman Beranda; data dashboard berarti DB OK |
+| Cek | Cara |
+| --- | --- |
+| Aplikasi hidup | buka `https://<domain>/` — SPA muncul |
+| API hidup | `https://<domain>/health` → `{"status":"ok"}` |
+| Migrasi jalan | deploy log memuat `[bootstrap_db] schema up to date.` |
+| Refresh route dalam | buka `https://<domain>/transactions` langsung — tidak 404 |
+| Lampiran terlindungi | buka URL `/files/...` di jendela penyamaran → **401**, bukan gambar |
+| Upload persist | upload bukti, redeploy, pastikan gambarnya masih ada |
+
+Cek lampiran itu penting: sebelum 2026-06-13, `/files/*` terbuka untuk
+siapa pun tanpa login. Kalau di jendela penyamaran gambarnya tetap
+muncul, berarti versi lama yang sedang jalan.
 
 ---
 
-## 8. Operasional
+## Migrasi dari 3 service
+
+Kalau project Railway Anda dibuat sebelum perubahan ini:
+
+1. Ubah **Root Directory** service backend dari `backend` menjadi `/`
+   (root repo), lalu redeploy. Sekarang ia menyajikan SPA juga.
+2. Pindahkan domain publik dari service frontend ke service ini
+   (atau generate domain baru dan perbarui bookmark/tautan).
+3. Hapus `ALLOWED_ORIGINS` dari variabel — tidak lagi diperlukan.
+4. Tambahkan `TRUSTED_PROXY_HOPS=1`.
+5. Kalau integrasi Telegram/WhatsApp aktif, pastikan webhook secret
+   terisi (Pengaturan → Integrasi), kalau tidak boot akan ditolak.
+6. Setelah service baru sehat, **hapus service `bintang-frontend`**.
+
+### Apa yang terjadi pada data Anda saat deploy pertama
+
+**Tidak ada.** Ini sudah diperiksa khusus:
+
+`bootstrap_db.py` mendeteksi DB yang selama ini dikelola `create_all`
+(punya tabel, tapi belum punya `alembic_version`) dan hanya melakukan
+**`stamp head`** — mencatat posisi versi. Tidak ada `CREATE`, `ALTER`,
+`DROP`, maupun `UPDATE` yang dijalankan.
+
+Itu memang yang benar: `create_all` membangun schema dari model saat
+ini, jadi struktur DB Anda sudah setara `head`. Kalau Alembic dipaksa
+melakukan `upgrade` dari baseline, setiap migrasi akan mencoba membuat
+kolom/tabel yang sudah ada dan deploy gagal di langkah pertama.
+
+Konsekuensinya, dua *data migration* dilewati secara sengaja —
+alasannya ditulis lengkap di `backend/app/bootstrap_db.py`. Ringkasnya:
+enkripsi rekening bank aman dilewati karena kolomnya membaca plaintext
+maupun ciphertext, dan merge tabel `funders` tidak relevan lagi.
+
+Mulai deploy berikutnya, Alembic jadi sumber kebenaran dan migrasi baru
+berjalan normal.
+
+---
+
+## Operasional
 
 ### Update kode
-Push ke branch yang di-track Railway = otomatis rebuild & redeploy.
-Watch Paths memastikan hanya service yang relevan yang ter-redeploy.
+
+Push ke `main` → Railway build & deploy otomatis. Migrasi jalan sendiri
+di entrypoint.
 
 ### Backup database
-Service Postgres → **Data** tab → **Backups** → **Create Backup** (Railway juga
-ada scheduled backup di plan Pro).
 
-Atau manual via CLI:
 ```bash
-railway link    # link ke service Postgres
-railway ssh "pg_dump $DATABASE_URL" > backup.sql
+railway run --service Postgres pg_dump -Fc > bintang-$(date +%F).dump
 ```
 
 ### Backup uploads
+
 ```bash
-railway link    # link ke service bintang-backend
-railway ssh "tar czf - /data/uploads" > uploads-backup.tgz
+railway run tar czf - /data/uploads > uploads-$(date +%F).tar.gz
 ```
 
-### Resize volume
-Settings → Volumes → ubah size. Live, tanpa downtime — filesystem
-auto-extend.
-
 ### Custom domain
-Settings → Networking → **Custom Domain** → tambah domain → ikuti
-instruksi DNS (CNAME ke target Railway).
+
+Service aplikasi → Settings → Networking → **Custom Domain**, lalu
+arahkan CNAME sesuai instruksi Railway. Setelah aktif, perbarui
+`PUBLIC_BASE_URL` dan daftarkan ulang webhook bot.
 
 ---
 
-## 9. Troubleshooting
+## Troubleshooting
 
-### `No such file or directory (os error 2)` saat seed
-Pakai `railway ssh python -m app.seed_master`, **bukan** `railway run`.
-Lihat Langkah 6.
+**Deploy gagal, log memuat `REFUSE_BOOT:`**
+Konfigurasi produksi ditolak dengan sengaja. Pesannya menyebutkan
+variabel mana yang bermasalah — perbaiki lalu redeploy.
 
-### Backend crash di startup, log: `connection refused` atau `module asyncpg not found`
-- Cek `DATABASE_URL` benar-benar pakai prefiks `postgresql+asyncpg://`.
-- Variabel ter-resolve atau masih literal? Cek **Service Variables → Resolved**.
+**Deploy gagal di `[bootstrap_db]`**
+Migrasi tidak bisa jalan. Baca error di bawah baris itu. Versi lama
+masih melayani, jadi tidak ada downtime dan data tidak tersentuh.
+Penyebab tersering: `DATABASE_URL` belum memakai `+asyncpg`, atau
+kredensial Postgres berubah.
 
-### Backend tidak respond / port salah
-- Cek log apakah uvicorn listen di `0.0.0.0:$PORT` (bukan 8000).
-- Pastikan `railway.toml` di-pickup (tab **Deployments** → klik latest → **Deploy Logs**).
+**Deploy gagal: `REFUSE_BOOT: integrasi bot aktif di prod tapi secret
+webhook kosong`**
+Ini disengaja. Sebelum perubahan ini, webhook Telegram/WhatsApp bisa
+dipanggil siapa pun di internet — dan lewat bot, transaksi keuangan
+bisa dibuat. Isi secretnya di **Pengaturan → Integrasi** (atau lewat env
+`TELEGRAM_WEBHOOK_SECRET` / `WHATSAPP_WEBHOOK_SECRET`), lalu redeploy.
+Kalau memang tidak memakai bot, kosongkan `TELEGRAM_BOT_TOKEN` dan
+`WHATSAPP_BASE_URL`.
 
-### Frontend bisa load tapi semua API gagal
-- Buka DevTools → Network → cek URL request. Harus mengarah ke domain backend, bukan `/api/v1` relatif.
-- Kalau salah, ubah `VITE_API_BASE_URL` di Variables → klik **Redeploy** manual.
+**SPA muncul tapi semua data gagal dimuat**
+Cek `https://<domain>/health`. Kalau API sehat tapi UI tetap kosong,
+biasanya build SPA memakai `VITE_API_BASE_URL` lama — di image gabungan
+nilainya di-hardcode ke `/api/v1`, jadi pastikan build memakai
+`Dockerfile` di root, bukan `frontend-v2` sebagai Root Directory.
 
-### CORS error di console browser
-- Pastikan `ALLOWED_ORIGINS` di backend sesuai dengan domain frontend persis (https + tanpa slash di akhir).
+**Lampiran tidak muncul (401 di tab Network)**
+Cookie `bintang_files` tidak terkirim. Cookie itu di-set saat login dan
+ber-scope path `/files`. Logout lalu login lagi. Kalau tetap gagal,
+pastikan diakses lewat HTTPS — di `APP_ENV=prod` cookie ber-flag
+`Secure`.
 
-### Upload `413 Request Entity Too Large`
-- Naikkan `MAX_UPLOAD_MB` di backend.
-- Railway proxy default support file besar; kalau butuh > 50 MB pertimbangkan storage external (S3/R2/Drive — lihat roadmap).
-
-### Volume kosong setelah redeploy
-- Pastikan mount path `/data` (bukan `/data/uploads` langsung).
-- Jangan tulis ke `/data` saat build time — hanya di runtime.
-
-### Healthcheck gagal terus
-- Buka backend domain `/health` di browser. Kalau 502 dari Railway, kemungkinan service belum listen di `$PORT`.
-- Buka **Deploy Logs** untuk lihat startup error.
-
----
-
-## 10. Setelah deploy live
-
-- [ ] Ganti password superadmin default.
-- [ ] Tambah Cloudflare di depan domain (rate-limit, WAF, cache statis).
-- [ ] Aktifkan scheduled backup Postgres.
-- [ ] Atur jadwal `tar` uploads ke storage external (cron via service kecil atau dari laptop).
-- [ ] Set `APP_ENV=prod` (sudah).
-- [ ] Audit log siapa-melakukan-apa via menu Lainnya → Audit Log.
-
-Kalau kena error spesifik: kirim 20 baris terakhir dari **Deploy Logs**
-service yang error, saya bantu diagnosis.
-
----
-
-## Sumber
-
-- [Railway Docs — Volumes](https://docs.railway.com/reference/volumes)
-- [Railway Docs — railway ssh](https://docs.railway.com/cli/ssh)
-- [Railway Docs — railway run](https://docs.railway.com/cli/run) (untuk eksekusi LOKAL dengan env Railway)
-- [Railway Docs — Monorepo](https://docs.railway.com/guides/monorepo)
-- [Railway Docs — Build Configuration](https://docs.railway.com/builds/build-configuration)
+**Upload hilang setelah deploy**
+Volume belum ter-mount di `/data`, atau `UPLOAD_DIR` tidak menunjuk ke
+sana. Cek langkah 3c.

@@ -1,0 +1,39 @@
+# Audit 2026-06-13 #D-04: sebelum ini tidak ada mekanisme apa pun yang
+# menyampaikan advisory keamanan upstream ke repo. Untuk aplikasi
+# keuangan dgn permukaan dependency sebesar ini (WeasyPrint, Pillow,
+# python-jose, asyncpg, React), itu titik buta yang mahal.
+#
+# Jadwal mingguan + batas PR terbuka supaya tidak membanjiri review.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Update patch/minor digabung jadi satu PR -- yang perlu dibaca
+      # satu per satu cuma yang major.
+      backend-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend-v2
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      frontend-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly

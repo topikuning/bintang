@@ -9,7 +9,7 @@ User lama yg tdk punya username harus tetap login via email.
 from __future__ import annotations
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 
@@ -43,9 +43,10 @@ def _req(ip: str = "127.0.0.1") -> Request:
     return Request(scope)
 
 
-class _Resp:
-    def __init__(self):
-        self.headers: dict[str, str] = {}
+# Audit #S-03: login memanggil response.set_cookie(), jadi butuh
+# Response asli -- stub dict-only tidak punya method itu.
+def _Resp() -> Response:
+    return Response()
 
 
 async def _do_login(db, username: str, password: str, ip: str = "127.0.0.1"):
@@ -53,7 +54,7 @@ async def _do_login(db, username: str, password: str, ip: str = "127.0.0.1"):
     login_limiter.reset(f"login:{ip}")
     return await login(
         request=_req(ip),
-        response=_Resp(),  # type: ignore[arg-type]
+        response=_Resp(),
         form=_form(username, password),
         db=db,
     )

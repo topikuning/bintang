@@ -46,15 +46,24 @@ def test_cors_prod_guard_rejects_localhost():
             _guard_production_config()
 
 
-def test_cors_prod_guard_rejects_empty():
+def test_cors_prod_guard_accepts_empty_after_single_service_merge():
+    """ALLOWED_ORIGINS kosong kini SAH -- dan justru paling aman.
+
+    Sebelum 2026-06-13, frontend adalah service Railway terpisah,
+    sehingga origin frontend WAJIB didaftarkan dan guard menolak boot
+    kalau kosong. Setelah SPA disajikan FastAPI dari origin yang sama,
+    tidak ada lagi request lintas-origin yang perlu diizinkan, jadi
+    kosong = "same-origin saja".
+
+    Wildcard dan localhost TETAP ditolak -- lihat test di bawah.
+    """
     from app.main import _guard_production_config
     from app.core.config import settings
 
     with patch.object(settings, "APP_ENV", "prod"), \
          patch.object(settings, "SECRET_KEY", "a" * 40), \
          patch.object(settings, "ALLOWED_ORIGINS", ""):
-        with pytest.raises(RuntimeError, match="ALLOWED_ORIGINS kosong"):
-            _guard_production_config()
+        _guard_production_config()  # tidak boleh raise
 
 
 def test_cors_prod_guard_accepts_valid():

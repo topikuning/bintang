@@ -32,12 +32,9 @@ async def extract_contract(
 
     if save_attachment:
         saved = await save_upload(file, subdir="contracts")
-        # Re-read content dari saved file
-        from pathlib import Path
-        from app.core.config import settings
-        rel = saved["url"][len("/files/"):]
-        p = Path(settings.UPLOAD_DIR) / rel
-        content = p.read_bytes()
+        # Re-read content dari saved file (audit #S-01: resolver bersama)
+        from app.services.storage.paths import read_upload_bytes
+        content = read_upload_bytes(saved["url"])
         media_type = saved["mime_type"]
         source_url = saved["url"]
     else:

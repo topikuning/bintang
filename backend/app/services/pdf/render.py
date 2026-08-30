@@ -8,7 +8,11 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from app.core.config import settings
+from app.services.storage.paths import (
+    UnsafeUploadPath,
+    is_local_file_url,
+    resolve_upload_path,
+)
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -53,11 +57,13 @@ def inline_image(url: str | None) -> str | None:
         return None
     if url.startswith(("http://", "https://", "data:")):
         return url
-    if not url.startswith("/files/"):
+    if not is_local_file_url(url):
         return url
-    rel = url[len("/files/"):]
-    p = Path(settings.UPLOAD_DIR) / rel
-    if not p.exists() or not p.is_file():
+    # Audit #S-01: logo_url tersimpan di DB dan bisa di-set admin, jadi
+    # tetap lewat resolver yang menolak path keluar UPLOAD_DIR.
+    try:
+        p = resolve_upload_path(url)
+    except (UnsafeUploadPath, FileNotFoundError):
         return None
     mime, _ = mimetypes.guess_type(p.name)
     if not mime or not mime.startswith("image/"):

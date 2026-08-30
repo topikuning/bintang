@@ -80,6 +80,27 @@ export function ProjectsHubPage() {
   const companiesQ = useCompanies()
   const filtersQ = useProjectFilters()
 
+  // Hook ini HARUS di atas early-return di bawah. Sebelum audit
+  // 2026-06-13 ia berada setelahnya: saat projectsQ.error muncul,
+  // komponen merender lebih sedikit hook daripada render sebelumnya dan
+  // React melempar "Rendered fewer hooks than expected". Ketahuan waktu
+  // ESLint (rules-of-hooks) akhirnya benar-benar dijalankan -- lihat
+  // #D-02.
+  //
+  // `projectsQ.data ?? []` juga dipindah KE DALAM useMemo: di luar, ia
+  // membuat array baru tiap render sehingga dependency-nya tidak pernah
+  // sama dan memo-nya tidak pernah kepakai.
+  const items = useMemo(() => {
+    let out = projectsQ.data ?? []
+    if (healthUrl) {
+      out = out.filter((p) => p.health === healthUrl)
+    }
+    if (budgetStatusUrl) {
+      out = out.filter((p) => p.budget?.status === budgetStatusUrl)
+    }
+    return out
+  }, [projectsQ.data, healthUrl, budgetStatusUrl])
+
   if (projectsQ.error) {
     return (
       <div className="p-3 sm:p-5 lg:p-6">
@@ -90,18 +111,6 @@ export function ProjectsHubPage() {
       </div>
     )
   }
-
-  const itemsRaw = projectsQ.data ?? []
-  const items = useMemo(() => {
-    let out = itemsRaw
-    if (healthUrl) {
-      out = out.filter((p) => p.health === healthUrl)
-    }
-    if (budgetStatusUrl) {
-      out = out.filter((p) => p.budget?.status === budgetStatusUrl)
-    }
-    return out
-  }, [itemsRaw, healthUrl, budgetStatusUrl])
 
   const drillDownLabel = (() => {
     if (healthUrl === "minus") return "Hanya proyek bersaldo minus"

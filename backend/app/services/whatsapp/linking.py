@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import User, WhatsAppLinkCode
+from app.services._tz import is_expired
 
 LINK_TTL_MINUTES = 10
 
@@ -45,7 +46,7 @@ async def consume_code(db: AsyncSession, code: str, chat_id: str) -> User | None
         return None
     if row.used_at is not None:
         return None
-    if row.expires_at < datetime.now(timezone.utc):
+    if is_expired(row.expires_at):
         return None
     user = await db.get(User, row.user_id)
     if not user or not user.is_active:

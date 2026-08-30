@@ -25,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.deps import require_admin
+from app.core.deps import ensure_project_access, require_admin
 from app.db.session import get_db
 from app.models.models import (
     AuditAction, Category, CategoryType, Invoice, InvoiceItem,
@@ -316,6 +316,13 @@ async def batch_categorize_project_invoices(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> BatchScanResp:
+    # Audit 2026-06-13 #S-09: endpoint ini dulu memakai payload.project_id
+    # apa adanya. CENTRAL_ADMIN karena itu bisa menyebut ID bucket
+    # Non-Proyek -- yang di seluruh endpoint lain dirahasiakan dari role
+    # selain SUPERADMIN (balas 404, bukan 403, supaya keberadaannya tidak
+    # bocor). ensure_project_access memulihkan aturan yang sama di sini.
+    await ensure_project_access(db, admin, payload.project_id)
+
     if payload.statuses:
         try:
             statuses = [InvoiceStatus(s) for s in payload.statuses]
@@ -538,6 +545,21 @@ async def apply_item_categories(
         select(InvoiceItem).where(InvoiceItem.id.in_(item_ids))
     )
     items_map = {it.id: it for it in res.scalars().all()}
+
+    # Audit 2026-06-13 #S-09: item ditarget lewat item_id polos, jadi
+    # batch bisa menjangkau invoice di proyek mana pun -- termasuk bucket
+    # Non-Proyek. Kumpulkan project_id unik lalu validasi sekali per
+    # proyek (bukan per item) supaya tetap satu query ringan.
+    if items_map:
+        project_ids = {
+            pid for (pid,) in (await db.execute(
+                select(Invoice.project_id).where(
+                    Invoice.id.in_({it.invoice_id for it in items_map.values()})
+                ).distinct()
+            )).all()
+        }
+        for pid in project_ids:
+            await ensure_project_access(db, admin, pid)
     by_invoice: dict[int, list[tuple[int, int | None, int]]] = defaultdict(list)
     success: list[int] = []
     skipped: list[dict] = []

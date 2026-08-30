@@ -1045,10 +1045,19 @@ frontend-v2/
 
 ### Phase 5 — Cutover
 
-- [ ] Build & deploy `frontend-v2/` ke staging URL
+- [x] Build & deploy `frontend-v2/` ke staging URL
 - [ ] User acceptance testing (minimal 3 hari real usage)
-- [ ] Update FastAPI static file serving / reverse proxy untuk switch
-- [ ] Decommission `frontend/` (rename ke `frontend-legacy/` simpan 30 hari)
+- [x] Update FastAPI static file serving / reverse proxy untuk switch
+      — **selesai 2026-06-13**: FastAPI menyajikan SPA langsung
+      (`app/main.py`, catch-all `spa_fallback`), nginx tidak lagi
+      dipakai, dan frontend bukan service Railway terpisah.
+- [x] Decommission `frontend/` — **selesai 2026-06-13**: dihapus
+      langsung, bukan di-rename. Isinya tetap ada di riwayat git
+      (commit terakhir yang menyentuhnya: `17949c4`, 2026-05-07), jadi
+      menyimpan salinan di working tree cuma menambah kebingungan
+      seperti yang sudah terjadi: `docker-compose.yml` dan `RAILWAY.md`
+      masih mem-build/mendokumentasikan frontend lama padahal CI sudah
+      lama pindah ke v2.
 
 ---
 

@@ -9,6 +9,7 @@ query string `?secret=` agar bisa dites dengan curl manual.
 """
 from __future__ import annotations
 
+import hmac
 import logging
 from datetime import datetime, timezone
 
@@ -16,12 +17,12 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_admin
 from app.core.rate_limit import telegram_link_limiter
 from app.db.session import get_db
 from app.models.models import TelegramLinkCode, User
 from app.services import messaging
+from app.services.app_settings import get_setting
 from app.services.telegram import client as tg
 from app.services.telegram.commands import dispatch_command, handle_photo
 from app.services.telegram.linking import LINK_TTL_MINUTES, issue_code
@@ -48,13 +49,19 @@ async def _handle_doc_session_reply(
 
 
 @router.get("/health")
-async def health(db: AsyncSession = Depends(get_db)) -> dict:
+async def health(
+    db: AsyncSession = Depends(get_db),
+    # Audit 2026-06-13 #S-10: respons ini membocorkan apakah webhook
+    # terverifikasi atau tidak -- persis info yang dipakai penyerang
+    # untuk memutuskan apakah #S-04 layak dicoba. Admin saja.
+    _admin: User = Depends(require_admin),
+) -> dict:
     cfg = await messaging.get_config(db)
     await db.commit()
     return {
         "configured": tg.is_enabled(),
         "enabled_toggle": cfg.telegram_enabled,
-        "webhook_secret_set": bool(settings.TELEGRAM_WEBHOOK_SECRET),
+        "webhook_secret_set": bool(await get_setting(db, "TELEGRAM_WEBHOOK_SECRET")),
     }
 
 
@@ -71,10 +78,15 @@ async def webhook(
     if not cfg.telegram_enabled:
         # toggle dimatikan admin: terima 200 supaya Telegram tidak retry
         return {"ok": True, "skipped": "telegram_disabled_via_toggle"}
-    expected = settings.TELEGRAM_WEBHOOK_SECRET
+    # Audit 2026-06-13 #S-04: baca lewat app_settings (DB > env), bukan
+    # `settings.*` (env saja). Webhook didaftarkan saat startup memakai
+    # nilai DB, jadi membandingkannya dgn env membuat secret yg diisi
+    # lewat UI tidak pernah berlaku -- dan kalau env berbeda dari DB,
+    # SEMUA update sah justru ditolak 401.
+    expected = await get_setting(db, "TELEGRAM_WEBHOOK_SECRET")
     if expected:
         provided = x_telegram_bot_api_secret_token or secret
-        if provided != expected:
+        if not provided or not hmac.compare_digest(provided, expected):
             raise HTTPException(401, "bad_secret")
 
     update = await request.json()

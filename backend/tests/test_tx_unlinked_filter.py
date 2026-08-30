@@ -96,15 +96,31 @@ async def test_unlinked_only_filter(db, override_db):
         r_all = await ac.get(
             "/api/v1/transactions?type=OUT", headers=_hdr(admin),
         )
-        # unlinked only: partial + unallocated = 2
+        # unlinked only: HANYA tx_partial.
         r_unlinked = await ac.get(
             "/api/v1/transactions?type=OUT&unlinked_only=true",
             headers=_hdr(admin),
         )
     assert r_all.json()["total"] == 3
     unlinked_body = r_unlinked.json()
-    assert unlinked_body["total"] == 2
     returned_ids = {it["id"] for it in unlinked_body["items"]}
+
+    # Dialokasi penuh (1000 dari 1000) -> tidak ada sisa.
     assert tx_full.id not in returned_ids
+
+    # Dialokasi sebagian (400 dari 1000) -> masih ada sisa 600, HARUS masuk.
     assert tx_partial.id in returned_ids
-    assert tx_unalloc.id in returned_ids
+
+    # tx_unalloc memang belum dialokasi sama sekali, TAPI kind-nya
+    # DIRECT_EXPENSE -- beban langsung tidak pernah dialokasikan ke
+    # invoice (bebannya tercatat in-place lewat items). Audit 2026-05-27
+    # sengaja mengecualikannya dari filter ini supaya counter dashboard
+    # "masih punya sisa belum dialokasi" tidak menghitung sesuatu yang
+    # secara desain memang tidak akan pernah dialokasikan.
+    #
+    # Test ini sempat lama gagal (mengharapkan 2) karena ditulis SEBELUM
+    # pengecualian itu ada dan tidak pernah diperbarui -- ketahuan saat
+    # test suite akhirnya dijalankan, 2026-08-30.
+    assert tx_unalloc.id not in returned_ids
+
+    assert unlinked_body["total"] == 1

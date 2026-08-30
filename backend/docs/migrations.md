@@ -32,10 +32,33 @@ DATABASE_URL="..." alembic revision --autogenerate -m "deskripsi_singkat"
 DATABASE_URL="..." alembic upgrade head
 ```
 
-## Workflow prod (Railway)
+## Workflow prod (Railway) — SUDAH OTOMATIS sejak 2026-06-13
 
-Jalankan migration SEBELUM app start. Update `startCommand` di
-`railway.toml`:
+Migrasi dijalankan `docker-entrypoint.sh` sebelum uvicorn, lewat
+`python -m app.bootstrap_db`. Tidak ada langkah manual.
+
+`bootstrap_db.py` menangani tiga keadaan:
+
+1. **DB kosong** -> `alembic upgrade head` (rantai penuh).
+2. **DB lama tanpa `alembic_version`** -> `alembic stamp head`, TANPA
+   DDL dan tanpa menyentuh data. Ini kasus DB produksi yang selama ini
+   dikelola `create_all`: strukturnya sudah setara head, jadi
+   meng-`upgrade` dari baseline justru gagal (DuplicateColumn /
+   DuplicateTable) di langkah pertama.
+3. **DB sudah ter-stamp** -> `alembic upgrade head` seperti biasa.
+
+Baca komentar di `app/bootstrap_db.py` untuk daftar data migration yang
+sengaja dilewati pada jalur (2) beserta alasannya.
+
+Kalau migrasi gagal, container exit non-zero -> deploy Railway ditandai
+gagal dan versi lama tetap melayani.
+
+<details>
+<summary>Cara lama (sudah tidak dipakai)</summary>
+
+Dulu instruksinya: update `startCommand` di `railway.toml` secara
+manual. Itu tidak pernah dikerjakan, sehingga selama berbulan-bulan
+20 migrasi ada di repo tapi tidak pernah jalan (audit 2026-06-13 #D-01).
 
 ```toml
 [deploy]
@@ -74,3 +97,18 @@ Strategi transisi:
    pure Alembic.
 3. Phase 3: hapus `_sync_pg_columns` setelah semua DB prod stamped &
    migrated ke clean state.
+
+</details>
+
+## Setelah menambah migrasi baru
+
+Tidak ada langkah deploy tambahan -- push ke `main` sudah cukup. Yang
+perlu diperhatikan hanya satu: `Base.metadata.create_all` MASIH
+dipanggil di `app/main.py` sebagai jaring pengaman. Urutannya aman
+(alembic jalan di entrypoint, sebelum app start), tapi artinya perubahan
+model TANPA migrasi tetap akan diam-diam terbentuk oleh `create_all` dan
+membuat DB melenceng dari riwayat Alembic.
+
+Jadi: **selalu buat migrasi untuk tiap perubahan model.** Rencana
+berikutnya adalah menghapus `create_all` sepenuhnya setelah satu-dua
+rilis berjalan lancar dengan Alembic.

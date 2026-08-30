@@ -174,7 +174,7 @@ export function InvoicesListPage() {
           toggle: toggleExpanded,
         },
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [projectMap, projectFilter, expandedIds],
   )
 

@@ -37,6 +37,8 @@ from app.models.models import (
     UserRole,
 )
 from app.services.budget import budget_status, project_totals
+from fastapi import HTTPException
+
 from app.services.storage.local import save_bytes
 from app.services.telegram import client as tg
 from app.services.telegram.linking import consume_code
@@ -648,12 +650,23 @@ async def handle_photo(
         # Foto Telegram biasanya tanpa ekstensi -> jpeg
         name = name + ".jpg"
         mime = "image/jpeg"
-    meta = await save_bytes(
-        content,
-        original_name=name,
-        subdir=f"transactions/{pending.transaction_id}",
-        mime_hint=mime,
-    )
+    # Audit #S-05: save_bytes sekarang menolak jenis berkas di luar
+    # whitelist. Balas ramah ketimbang melempar 415 ke Telegram (yang
+    # akan di-retry terus dan user tidak dapat penjelasan apa pun).
+    try:
+        meta = await save_bytes(
+            content,
+            original_name=name,
+            subdir=f"transactions/{pending.transaction_id}",
+            mime_hint=mime,
+        )
+    except HTTPException as e:
+        if e.status_code == 415:
+            return ("Jenis berkas itu tidak didukung. Kirim foto (JPG/PNG), "
+                    "PDF, atau video MP4.")
+        if e.status_code == 413:
+            return "Berkas terlalu besar. Maksimal 20 MB."
+        raise
     att = TransactionAttachment(
         transaction_id=pending.transaction_id,
         uploaded_by_id=user.id,

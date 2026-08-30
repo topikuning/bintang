@@ -7,10 +7,8 @@ httpx AsyncClient), tambah fixture tersendiri di file test masing-2.
 """
 from __future__ import annotations
 
-import asyncio
 from typing import AsyncGenerator
 
-import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -23,13 +21,16 @@ from app.db.base import Base
 import app.models.models  # noqa: F401
 
 
-# Tiap event loop scope = function (default) supaya fixture asyncio
-# tidak bocor antar test.
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
+# CATATAN 2026-08-30: fixture `event_loop` kustom DIHAPUS.
+#
+# pytest-asyncio menandai override `event_loop` sebagai deprecated di
+# 0.23 dan menghapus dukungannya di 1.0. Karena dependency backend tidak
+# pernah dikunci, CI sebenarnya sudah lama memakai pytest-asyncio 1.x --
+# fixture ini cuma jadi kode mati yang menyesatkan pembaca berikutnya.
+#
+# Dengan `asyncio_mode = "auto"` di pyproject.toml, tiap test async
+# otomatis dapat event loop baru per fungsi, yang persis perilaku yang
+# ingin dicapai komentar lama ("tidak bocor antar test").
 
 
 @pytest_asyncio.fixture

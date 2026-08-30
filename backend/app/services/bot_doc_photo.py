@@ -20,15 +20,20 @@ logger = logging.getLogger(__name__)
 
 
 # Pola command yg trigger OCR doc flow.
+# PENTING: kunci HARUS huruf kecil semua -- `parse_doc_cmd()` mem-lower()
+# perintah masuk sebelum melakukan lookup. Sampai 2026-08-30 dua kunci di
+# sini ditulis "/invoiceIn" dan "/invoiceOut" (kapital), sehingga kedua
+# alias itu TIDAK PERNAH bisa cocok. Ketahuan saat test suite akhirnya
+# dijalankan; test-nya sendiri sudah lama ada dan sudah lama gagal.
 _DOC_CMDS: dict[str, dict] = {
     "/po":          {"entity": "PO"},
     "/buatpo":      {"entity": "PO"},
     "/buat-po":     {"entity": "PO"},
     "/invoice":     {"entity": "INVOICE", "type": "IN"},
     "/invoice-in":  {"entity": "INVOICE", "type": "IN"},
-    "/invoiceIn":   {"entity": "INVOICE", "type": "IN"},
+    "/invoicein":   {"entity": "INVOICE", "type": "IN"},
     "/invoice-out": {"entity": "INVOICE", "type": "OUT"},
-    "/invoiceOut":  {"entity": "INVOICE", "type": "OUT"},
+    "/invoiceout":  {"entity": "INVOICE", "type": "OUT"},
     "/inv":         {"entity": "INVOICE", "type": "IN"},
 }
 
