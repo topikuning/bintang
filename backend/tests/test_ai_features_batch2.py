@@ -2,9 +2,10 @@
 
 Mock LLM/vision call utk hindari real API.
 """
+
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -28,25 +29,36 @@ from app.services.ai.features import anomaly, contract_extract
 
 
 async def _seed(db):
-    co = Company(name="C"); db.add(co); await db.flush()
-    p = Project(code="P1", name="P1", company_id=co.id,
-                status=ProjectStatus.AKTIF, kind=ProjectKind.REGULAR.value)
-    db.add(p); await db.flush()
-    u = User(email="u@x", name="U", password_hash=hash_password("x"),
-             role=UserRole.SUPERADMIN)
-    db.add(u); await db.flush()
+    co = Company(name="C")
+    db.add(co)
+    await db.flush()
+    p = Project(
+        code="P1",
+        name="P1",
+        company_id=co.id,
+        status=ProjectStatus.AKTIF,
+        kind=ProjectKind.REGULAR.value,
+    )
+    db.add(p)
+    await db.flush()
+    u = User(email="u@x", name="U", password_hash=hash_password("x"), role=UserRole.SUPERADMIN)
+    db.add(u)
+    await db.flush()
     return co, p, u
 
 
 # ---------- AI-5 anomaly ----------
+
 
 @pytest.mark.asyncio
 async def test_anomaly_empty_period(db):
     """Periode tanpa tx -> safe return."""
     co, p, u = await _seed(db)
     result = await anomaly.run(
-        db, user_id=u.id,
-        date_from=date(2026, 5, 1), date_to=date(2026, 5, 31),
+        db,
+        user_id=u.id,
+        date_from=date(2026, 5, 1),
+        date_to=date(2026, 5, 31),
     )
     assert result["flagged"] == []
     assert "Tdk ada transaksi" in result["summary"]
@@ -60,41 +72,62 @@ async def test_anomaly_flags_high_amount(db, monkeypatch):
     # Create 5 normal tx + 1 huge
     base = date(2026, 5, 22)
     for i in range(5):
-        db.add(Transaction(
-            project_id=p.id, tx_date=base, type=TxnType.OUT,
-            kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("100000"),
-            party_name=f"Vendor {i}",
-            payment_method=PaymentMethod.CASH, status=TxnStatus.VERIFIED,
-            created_by_id=u.id,
-        ))
+        db.add(
+            Transaction(
+                project_id=p.id,
+                tx_date=base,
+                type=TxnType.OUT,
+                kind=TxnKind.DIRECT_EXPENSE.value,
+                amount=Decimal("100000"),
+                party_name=f"Vendor {i}",
+                payment_method=PaymentMethod.CASH,
+                status=TxnStatus.VERIFIED,
+                created_by_id=u.id,
+            )
+        )
     big = Transaction(
-        project_id=p.id, tx_date=base, type=TxnType.OUT,
-        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("50000000"),
+        project_id=p.id,
+        tx_date=base,
+        type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE.value,
+        amount=Decimal("50000000"),
         party_name="Vendor Baru Misterius",
-        payment_method=PaymentMethod.CASH, status=TxnStatus.VERIFIED,
-        created_by_id=u.id, description="Pembelian besar",
+        payment_method=PaymentMethod.CASH,
+        status=TxnStatus.VERIFIED,
+        created_by_id=u.id,
+        description="Pembelian besar",
     )
-    db.add(big); await db.commit()
+    db.add(big)
+    await db.commit()
 
     big_id = big.id
 
     async def _fake_claude(**kw):
-        return ("", {
-            "flagged": [{
-                "tx_id": big_id, "severity": "high",
-                "anomaly_type": "vendor_baru_besar",
-                "reason": "Vendor baru, nominal 50% dari total periode.",
-            }],
-            "summary": "1 flag high severity.",
-        }, 500, 200)
+        return (
+            "",
+            {
+                "flagged": [
+                    {
+                        "tx_id": big_id,
+                        "severity": "high",
+                        "anomaly_type": "vendor_baru_besar",
+                        "reason": "Vendor baru, nominal 50% dari total periode.",
+                    }
+                ],
+                "summary": "1 flag high severity.",
+            },
+            500,
+            200,
+        )
 
     monkeypatch.setattr(llm, "_call_claude", _fake_claude)
-    monkeypatch.setattr(llm, "_resolve_model",
-                        lambda h: ("claude-sonnet-4-6", "claude"))
+    monkeypatch.setattr(llm, "_resolve_model", lambda h: ("claude-sonnet-4-6", "claude"))
 
     result = await anomaly.run(
-        db, user_id=u.id,
-        date_from=base, date_to=base,
+        db,
+        user_id=u.id,
+        date_from=base,
+        date_to=base,
     )
     assert len(result["flagged"]) == 1
     assert result["flagged"][0]["tx_id"] == big_id
@@ -106,36 +139,53 @@ async def test_anomaly_filters_invalid_tx_ids(db, monkeypatch):
     """LLM return tx_id yg tdk ada di period -> dibuang (validation)."""
     rate_limit.reset_all()
     co, p, u = await _seed(db)
-    db.add(Transaction(
-        project_id=p.id, tx_date=date(2026, 5, 1), type=TxnType.OUT,
-        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("100"),
-        payment_method=PaymentMethod.CASH, status=TxnStatus.VERIFIED,
-        created_by_id=u.id,
-    ))
+    db.add(
+        Transaction(
+            project_id=p.id,
+            tx_date=date(2026, 5, 1),
+            type=TxnType.OUT,
+            kind=TxnKind.DIRECT_EXPENSE.value,
+            amount=Decimal("100"),
+            payment_method=PaymentMethod.CASH,
+            status=TxnStatus.VERIFIED,
+            created_by_id=u.id,
+        )
+    )
     await db.commit()
 
     async def _fake_claude(**kw):
-        return ("", {
-            "flagged": [
-                {"tx_id": 999999, "severity": "high",  # invalid id
-                 "anomaly_type": "test", "reason": "halusinasi"},
-            ],
-            "summary": "test",
-        }, 100, 50)
+        return (
+            "",
+            {
+                "flagged": [
+                    {
+                        "tx_id": 999999,
+                        "severity": "high",  # invalid id
+                        "anomaly_type": "test",
+                        "reason": "halusinasi",
+                    },
+                ],
+                "summary": "test",
+            },
+            100,
+            50,
+        )
 
     monkeypatch.setattr(llm, "_call_claude", _fake_claude)
-    monkeypatch.setattr(llm, "_resolve_model",
-                        lambda h: ("claude-sonnet-4-6", "claude"))
+    monkeypatch.setattr(llm, "_resolve_model", lambda h: ("claude-sonnet-4-6", "claude"))
 
     result = await anomaly.run(
-        db, user_id=u.id,
-        date_from=date(2026, 5, 1), date_to=date(2026, 5, 31),
+        db,
+        user_id=u.id,
+        date_from=date(2026, 5, 1),
+        date_to=date(2026, 5, 31),
     )
     # 999999 di-filter out
     assert result["flagged"] == []
 
 
 # ---------- AI-7 contract extract (vision) ----------
+
 
 @pytest.mark.asyncio
 async def test_contract_extract_returns_schema(db, monkeypatch):
@@ -166,14 +216,15 @@ async def test_contract_extract_returns_schema(db, monkeypatch):
 
     # Mock vision.extract_from_image (anthropic SDK tdk ada di test env)
     async def _fake_extract(*args, **kwargs):
-        return {**fake_extraction, "_meta": {"model": "fake", "cached": False,
-                                              "cost_usd": "0.01"}}
+        return {**fake_extraction, "_meta": {"model": "fake", "cached": False, "cost_usd": "0.01"}}
 
     # Patch ke contract_extract module (krn import bound saat module load).
     monkeypatch.setattr(contract_extract, "extract_from_image", _fake_extract)
 
     result = await contract_extract.run(
-        db, user_id=u.id, content=b"fake-pdf-bytes",
+        db,
+        user_id=u.id,
+        content=b"fake-pdf-bytes",
         media_type="application/pdf",
     )
     assert result["doc_type"] == "kontrak"

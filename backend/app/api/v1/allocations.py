@@ -10,6 +10,7 @@ Routes:
 
 Semua disertai izin lewat `require_can_write` / `ensure_project_access`.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -31,8 +32,6 @@ from app.models.models import (
     InvoiceStatus,
     InvoiceType,
     Transaction,
-    TxnKind,
-    TxnStatus,
     TxnType,
     User,
 )
@@ -51,8 +50,6 @@ from app.services.allocation import (
     apply_allocations_to_invoice,
     apply_allocations_to_transaction,
     delete_allocation,
-    direction_compatible,
-    invoice_allocated,
     patch_allocation,
     transaction_allocated,
 )
@@ -62,6 +59,7 @@ router = APIRouter()
 
 
 # ---- Invoice side ---------------------------------------------------------
+
 
 @router.get(
     "/invoices/{iid}/allocatable-transactions",
@@ -116,13 +114,21 @@ async def list_allocatable_transactions(
         remaining = total - allocated
         if remaining <= 0 and not include_zero:
             continue
-        out.append(AllocatableTransactionRow(
-            id=t.id, tx_date=t.tx_date, type=t.type,
-            party_name=t.party_name, payment_method=t.payment_method,
-            reference_no=t.reference_no, description=t.description,
-            status=t.status,
-            total_amount=total, allocated_amount=allocated, remaining_amount=remaining,
-        ))
+        out.append(
+            AllocatableTransactionRow(
+                id=t.id,
+                tx_date=t.tx_date,
+                type=t.type,
+                party_name=t.party_name,
+                payment_method=t.payment_method,
+                reference_no=t.reference_no,
+                description=t.description,
+                status=t.status,
+                total_amount=total,
+                allocated_amount=allocated,
+                remaining_amount=remaining,
+            )
+        )
     return out
 
 
@@ -149,13 +155,22 @@ async def create_invoice_allocations(
         items.append((it.transaction_id, Decimal(it.requested_amount)))
 
     result = await apply_allocations_to_invoice(
-        db, invoice_id=iid, items=items, note=payload.note, user_id=user.id,
+        db,
+        invoice_id=iid,
+        items=items,
+        note=payload.note,
+        user_id=user.id,
     )
     await log(
-        db, user_id=user.id, entity="invoice_allocation", entity_id=iid,
+        db,
+        user_id=user.id,
+        entity="invoice_allocation",
+        entity_id=iid,
         action=AuditAction.CREATE,
-        after={"applied": [r.id for r in result["applied"]],
-               "total_applied": str(result["total_applied"])},
+        after={
+            "applied": [r.id for r in result["applied"]],
+            "total_applied": str(result["total_applied"]),
+        },
         note=payload.note,
     )
     await db.commit()
@@ -170,6 +185,7 @@ async def create_invoice_allocations(
 
 
 # ---- Transaction side ----------------------------------------------------
+
 
 @router.get(
     "/transactions/{tid}/allocatable-invoices",
@@ -217,12 +233,20 @@ async def list_allocatable_invoices(
         outstanding = total - paid
         if outstanding <= 0 and not include_zero:
             continue
-        out.append(AllocatableInvoiceRow(
-            id=i.id, number=i.number, invoice_date=i.invoice_date,
-            due_date=i.due_date, type=i.type, party_name=i.party_name,
-            status=i.status,
-            total_amount=total, paid_amount=paid, outstanding_amount=outstanding,
-        ))
+        out.append(
+            AllocatableInvoiceRow(
+                id=i.id,
+                number=i.number,
+                invoice_date=i.invoice_date,
+                due_date=i.due_date,
+                type=i.type,
+                party_name=i.party_name,
+                status=i.status,
+                total_amount=total,
+                paid_amount=paid,
+                outstanding_amount=outstanding,
+            )
+        )
     return out
 
 
@@ -248,13 +272,24 @@ async def create_transaction_allocations(
         items.append((it.invoice_id, Decimal(it.requested_amount)))
 
     results = await apply_allocations_to_transaction(
-        db, transaction_id=tid, items=items, note=payload.note, user_id=user.id,
+        db,
+        transaction_id=tid,
+        items=items,
+        note=payload.note,
+        user_id=user.id,
     )
     await log(
-        db, user_id=user.id, entity="transaction_allocation", entity_id=tid,
+        db,
+        user_id=user.id,
+        entity="transaction_allocation",
+        entity_id=tid,
         action=AuditAction.CREATE,
-        after={"results": [{"invoice_id": r["invoice_id"],
-                             "applied": str(r.get("applied", "0"))} for r in results]},
+        after={
+            "results": [
+                {"invoice_id": r["invoice_id"], "applied": str(r.get("applied", "0"))}
+                for r in results
+            ]
+        },
         note=payload.note,
     )
     await db.commit()
@@ -268,6 +303,7 @@ async def create_transaction_allocations(
 
 
 # ---- Allocation row level ------------------------------------------------
+
 
 @router.patch("/allocations/{aid}", response_model=AllocationOut)
 async def patch_allocation_row(
@@ -286,7 +322,10 @@ async def patch_allocation_row(
 
     updated = await patch_allocation(db, allocation_id=aid, new_amount=payload.allocated_amount)
     await log(
-        db, user_id=user.id, entity="invoice_allocation", entity_id=aid,
+        db,
+        user_id=user.id,
+        entity="invoice_allocation",
+        entity_id=aid,
         action=AuditAction.UPDATE,
         after={"allocated_amount": str(updated.allocated_amount)},
     )
@@ -309,7 +348,10 @@ async def delete_allocation_row(
     await ensure_project_access(db, user, inv.project_id)
     await delete_allocation(db, allocation_id=aid)
     await log(
-        db, user_id=user.id, entity="invoice_allocation", entity_id=aid,
+        db,
+        user_id=user.id,
+        entity="invoice_allocation",
+        entity_id=aid,
         action=AuditAction.DELETE,
     )
     await db.commit()

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useSearchParams } from "react-router"
 import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Plus, Search, Wallet, X } from "lucide-react"
 import { useTransaction, useTransactions, type TransactionListParams } from "@/hooks/useTransactions"
 import { useProjects } from "@/hooks/useProjects"

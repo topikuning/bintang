@@ -14,6 +14,7 @@ WAHA Core tanpa auth: header dilewati saja.
 
 Disabled (tidak dikonfigurasi) -> semua fungsi return None secara aman.
 """
+
 from __future__ import annotations
 
 import base64
@@ -98,9 +99,7 @@ async def send_text(chat_id: str, text: str) -> dict | None:
                 headers=_headers(),
             )
             if r.status_code >= 400:
-                logger.warning(
-                    "WAHA sendText %s body=%s", r.status_code, r.text[:500]
-                )
+                logger.warning("WAHA sendText %s body=%s", r.status_code, r.text[:500])
             r.raise_for_status()
             return r.json()
     except Exception as e:
@@ -127,9 +126,7 @@ async def send_image_url(chat_id: str, url: str, caption: str | None = None) -> 
                 headers=_headers(),
             )
             if r.status_code >= 400:
-                logger.warning(
-                    "WAHA sendImage %s body=%s", r.status_code, r.text[:500]
-                )
+                logger.warning("WAHA sendImage %s body=%s", r.status_code, r.text[:500])
             r.raise_for_status()
             return r.json()
     except Exception as e:
@@ -164,7 +161,9 @@ async def download_media(media_url: str) -> tuple[bytes, str | None] | None:
             if r.status_code >= 400:
                 logger.warning(
                     "WAHA download_media %s url=%s body=%s",
-                    r.status_code, url, r.text[:300],
+                    r.status_code,
+                    url,
+                    r.text[:300],
                 )
             r.raise_for_status()
             return r.content, r.headers.get("content-type")
@@ -203,7 +202,9 @@ async def download_message_media(message_id: str) -> tuple[bytes, str | None, st
                 if r.status_code >= 400:
                     logger.warning(
                         "WAHA GET %s -> %s body=%s",
-                        url, r.status_code, r.text[:300],
+                        url,
+                        r.status_code,
+                        r.text[:300],
                     )
                     continue
                 return _parse_download_response(r)
@@ -217,7 +218,9 @@ async def download_message_media(message_id: str) -> tuple[bytes, str | None, st
                 if r.status_code >= 400:
                     logger.warning(
                         "WAHA POST %s -> %s body=%s",
-                        url, r.status_code, r.text[:300],
+                        url,
+                        r.status_code,
+                        r.text[:300],
                     )
                     continue
                 return _parse_download_response(r)
@@ -340,9 +343,7 @@ async def set_webhook(url: str) -> bool:
                 headers=_headers(),
             )
             if r.status_code >= 400:
-                logger.warning(
-                    "WAHA setWebhook %s body=%s", r.status_code, r.text[:500]
-                )
+                logger.warning("WAHA setWebhook %s body=%s", r.status_code, r.text[:500])
                 return False
             return True
     except Exception as e:

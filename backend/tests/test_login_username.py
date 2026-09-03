@@ -6,14 +6,12 @@ Auth endpoint deteksi '@' di form.username:
 
 User lama yg tdk punya username harus tetap login via email.
 """
+
 from __future__ import annotations
 
 import pytest
-from fastapi import HTTPException, Response
+from fastapi import HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
-
-from fastapi import Request
 
 from app.api.v1.auth import login
 from app.core.rate_limit import login_limiter
@@ -29,7 +27,8 @@ async def _seed_user(db, *, email: str, password: str, username: str | None = No
         password_hash=hash_password(password),
         role=UserRole.PROJECT_ADMIN,
     )
-    db.add(u); await db.flush()
+    db.add(u)
+    await db.flush()
     return u
 
 

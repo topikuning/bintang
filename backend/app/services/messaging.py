@@ -11,6 +11,7 @@ Audience policy (sama di TG & WA, lihat docstring `_audience_for_tx`):
 Detil format pesan & transport ada di sub-paket `telegram/` dan
 `whatsapp/`. Modul ini hanya merangkai keduanya.
 """
+
 from __future__ import annotations
 
 import logging
@@ -30,8 +31,14 @@ from app.models.models import (
 from app.services.telegram import client as tg
 from app.services.telegram.notify import (
     notify_transaction_cancelled as tg_notify_cancelled,
+)
+from app.services.telegram.notify import (
     notify_transaction_rejected as tg_notify_rejected,
+)
+from app.services.telegram.notify import (
     notify_transaction_submitted as tg_notify_submitted,
+)
+from app.services.telegram.notify import (
     notify_transaction_verified as tg_notify_verified,
 )
 from app.services.whatsapp import client as wa
@@ -42,6 +49,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Config helpers
 # ---------------------------------------------------------------------------
+
 
 async def get_config(db: AsyncSession) -> MessagingConfig:
     """Ambil singleton config (id=1). Buat default kalau belum ada."""
@@ -71,6 +79,7 @@ async def whatsapp_active(db: AsyncSession) -> bool:
 # ---------------------------------------------------------------------------
 # WhatsApp audience + notifier
 # ---------------------------------------------------------------------------
+
 
 def _fmt_idr(n) -> str:
     n = float(n or 0)
@@ -128,9 +137,7 @@ async def _actor_name(db: AsyncSession, actor_id: int | None) -> str:
     return u.name if u else "-"
 
 
-async def _wa_notify_submitted(
-    db: AsyncSession, tx: Transaction, actor_id: int | None
-) -> None:
+async def _wa_notify_submitted(db: AsyncSession, tx: Transaction, actor_id: int | None) -> None:
     try:
         proj = await db.get(Project, tx.project_id)
         audience = await _wa_audience_for_tx(db, tx, exclude_user_id=actor_id)
@@ -152,9 +159,7 @@ async def _wa_notify_submitted(
         logger.exception("wa notify_transaction_submitted failed")
 
 
-async def _wa_notify_verified(
-    db: AsyncSession, tx: Transaction, actor_id: int | None
-) -> None:
+async def _wa_notify_verified(db: AsyncSession, tx: Transaction, actor_id: int | None) -> None:
     try:
         if actor_id is None:
             actor_id = tx.verified_by_id
@@ -178,9 +183,7 @@ async def _wa_notify_verified(
         logger.exception("wa notify_transaction_verified failed")
 
 
-async def _wa_notify_rejected(
-    db: AsyncSession, tx: Transaction, actor_id: int | None
-) -> None:
+async def _wa_notify_rejected(db: AsyncSession, tx: Transaction, actor_id: int | None) -> None:
     try:
         audience = await _wa_audience_for_tx(db, tx, exclude_user_id=actor_id)
         if not audience:
@@ -200,9 +203,7 @@ async def _wa_notify_rejected(
         logger.exception("wa notify_transaction_rejected failed")
 
 
-async def _wa_notify_cancelled(
-    db: AsyncSession, tx: Transaction, actor_id: int | None
-) -> None:
+async def _wa_notify_cancelled(db: AsyncSession, tx: Transaction, actor_id: int | None) -> None:
     try:
         audience = await _wa_audience_for_tx(db, tx, exclude_user_id=actor_id)
         if not audience:
@@ -226,8 +227,12 @@ async def _wa_notify_cancelled(
 # Public API: dipanggil dari endpoint transactions.py + chat_workflow.py
 # ---------------------------------------------------------------------------
 
+
 async def notify_transaction_submitted(
-    db: AsyncSession, tx: Transaction, *, actor_id: int | None = None,
+    db: AsyncSession,
+    tx: Transaction,
+    *,
+    actor_id: int | None = None,
 ) -> None:
     if await telegram_active(db):
         await tg_notify_submitted(db, tx, actor_id=actor_id)
@@ -236,7 +241,10 @@ async def notify_transaction_submitted(
 
 
 async def notify_transaction_verified(
-    db: AsyncSession, tx: Transaction, *, actor_id: int | None = None,
+    db: AsyncSession,
+    tx: Transaction,
+    *,
+    actor_id: int | None = None,
 ) -> None:
     if await telegram_active(db):
         await tg_notify_verified(db, tx, actor_id=actor_id)
@@ -245,7 +253,10 @@ async def notify_transaction_verified(
 
 
 async def notify_transaction_rejected(
-    db: AsyncSession, tx: Transaction, *, actor_id: int | None = None,
+    db: AsyncSession,
+    tx: Transaction,
+    *,
+    actor_id: int | None = None,
 ) -> None:
     if await telegram_active(db):
         await tg_notify_rejected(db, tx, actor_id=actor_id)
@@ -254,7 +265,10 @@ async def notify_transaction_rejected(
 
 
 async def notify_transaction_cancelled(
-    db: AsyncSession, tx: Transaction, *, actor_id: int | None = None,
+    db: AsyncSession,
+    tx: Transaction,
+    *,
+    actor_id: int | None = None,
 ) -> None:
     if await telegram_active(db):
         await tg_notify_cancelled(db, tx, actor_id=actor_id)

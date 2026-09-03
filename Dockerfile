@@ -22,17 +22,18 @@ FROM node:26-alpine AS frontend
 
 WORKDIR /build
 
-# Lockfile dulu supaya layer npm ci ter-cache selama dependency
+# Lockfile dulu supaya layer pnpm ter-cache selama dependency
 # tidak berubah.
-COPY frontend-v2/package.json frontend-v2/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+COPY frontend-v2/package.json frontend-v2/pnpm-lock.yaml ./
+RUN npm install --global pnpm@11.25.0 && \
+    pnpm install --frozen-lockfile
 
 COPY frontend-v2/ ./
 
 # Satu origin -> API selalu di path relatif. Di-hardcode di sini
 # supaya tidak ada env yang bisa salah isi saat deploy.
 ENV VITE_API_BASE_URL=/api/v1
-RUN npm run build
+RUN pnpm run build
 
 # -------------------------------------------------------------
 # Stage 2 -- runtime: Python + hasil build SPA
@@ -42,27 +43,30 @@ FROM python:3.14-slim
 # Native deps WeasyPrint (render PDF PO & laporan).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 libpangoft2-1.0-0 libcairo2 libgdk-pixbuf-2.0-0 \
-    libffi-dev libssl-dev shared-mime-info fonts-dejavu-core \
+    libffi-dev libssl-dev shared-mime-info fonts-dejavu-core gosu \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY backend/pyproject.toml backend/README.md backend/alembic.ini ./
-COPY backend/app ./app
+COPY backend/pyproject.toml backend/README.md backend/uv.lock backend/alembic.ini ./
 
 # Network resilience: retry kalau PyPI connection reset.
 ENV UV_HTTP_TIMEOUT=120 \
     UV_CONCURRENT_DOWNLOADS=8 \
     PIP_DEFAULT_TIMEOUT=120 \
     PIP_RETRIES=5
-RUN pip install --no-cache-dir uv && \
+RUN pip install --no-cache-dir uv==0.12.9 && \
     ok=0; \
     for i in 1 2 3 4 5; do \
-        if uv pip install --system --no-cache .; then ok=1; break; fi; \
-        echo "uv pip install failed (attempt $i/5), retrying in $((i*5))s..."; \
+        if uv export --frozen --no-dev --no-emit-project --output-file /tmp/requirements.txt && \
+           uv pip install --system --no-cache --requirement /tmp/requirements.txt; \
+        then ok=1; break; fi; \
+        echo "locked dependency install failed (attempt $i/5), retrying in $((i*5))s..."; \
         sleep $((i*5)); \
     done; \
     test "$ok" = "1"
+
+COPY backend/app ./app
 
 # SPA hasil stage 1. Path ini yang dibaca settings.FRONTEND_DIST.
 COPY --from=frontend /build/dist ./frontend_dist
@@ -79,23 +83,13 @@ ENV PYTHONUNBUFFERED=1 \
     UPLOAD_DIR=/data/uploads \
     FRONTEND_DIST=/app/frontend_dist \
     PORT=8000
-RUN mkdir -p /data/uploads
+RUN useradd --system --uid 10001 --home-dir /app --shell /usr/sbin/nologin bintang && \
+    mkdir -p /data/uploads && \
+    chown -R bintang:bintang /app /data/uploads
 
-# CATATAN -- kenapa masih root:
-#
-# Menjalankan container sebagai non-root itu benar secara prinsip, TAPI
-# volume Railway di /data sudah berisi lampiran milik root dari deploy
-# sebelumnya. `chown` saat BUILD tidak berpengaruh: volume di-mount saat
-# RUNTIME dan menimpa direktori hasil build. Efeknya user non-root tidak
-# bisa menulis ke /data/uploads -- semua upload akan gagal setelah
-# deploy, dan itu justru mengganggu produksi.
-#
-# Untuk pindah ke non-root nanti, butuh langkah eksplisit:
-#   1. tambahkan `gosu` (atau `su-exec`) di image;
-#   2. di entrypoint, saat masih root: `chown -R bintang /data`;
-#   3. lalu `exec gosu bintang uvicorn ...`.
-# Lakukan itu terpisah dari perubahan ini supaya kalau ada masalah
-# permission, penyebabnya jelas.
+# Entrypoint mulai sebagai root hanya untuk memperbaiki ownership volume
+# Railway lama, lalu langsung re-exec sebagai UID 10001 sebelum migrasi
+# dan uvicorn. Proses aplikasi tidak berjalan dengan hak root.
 
 EXPOSE 8000
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

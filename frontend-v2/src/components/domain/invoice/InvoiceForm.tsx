@@ -35,9 +35,9 @@ import { useBreakpoint } from "@/lib/breakpoint"
 
 const itemSchema = z.object({
   description: z.string().min(1, "Deskripsi wajib"),
-  quantity: z.number({ invalid_type_error: "Qty wajib angka" }).positive("Qty > 0"),
+  quantity: z.number({ error: "Qty wajib angka" }).positive("Qty > 0"),
   unit: z.string().nullable().optional(),
-  unit_price: z.number({ invalid_type_error: "Harga wajib angka" }).nonnegative(),
+  unit_price: z.number({ error: "Harga wajib angka" }).nonnegative(),
   // Audit 2026-05-24: per-item kategori.
   category_id: z.number().nullable().optional(),
 })

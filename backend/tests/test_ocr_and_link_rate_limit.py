@@ -3,6 +3,7 @@
 OCR: 20 calls/menit per user (LLM/vision API berbayar).
 Link-code: 5 calls/menit per user (cegah spam regenerate).
 """
+
 from __future__ import annotations
 
 import pytest
@@ -20,7 +21,8 @@ from app.models.models import User, UserRole
 
 async def _user(db, *, email="r@x"):
     u = User(email=email, name="R", password_hash=hash_password("x"), role=UserRole.PROJECT_ADMIN)
-    db.add(u); await db.flush()
+    db.add(u)
+    await db.flush()
     return u
 
 
@@ -39,10 +41,18 @@ async def test_ocr_rate_limiter_blocks(db, monkeypatch):
 
     async def _fake_run(db, *, content, media_type, source_url, engine):
         return {
-            "invoice_number": "I", "invoice_date": None, "vendor_name": "V",
-            "due_date": None, "subtotal": None, "tax": None, "total": "0",
-            "currency": "IDR", "items": [], "is_handwritten": False,
-            "notes": None, "confidence_score": "1.0",
+            "invoice_number": "I",
+            "invoice_date": None,
+            "vendor_name": "V",
+            "due_date": None,
+            "subtotal": None,
+            "tax": None,
+            "total": "0",
+            "currency": "IDR",
+            "items": [],
+            "is_handwritten": False,
+            "notes": None,
+            "confidence_score": "1.0",
             "raw_response": {"engine": "fake:test", "cached": False},
             "source_url": source_url,
         }
@@ -77,10 +87,18 @@ async def test_ocr_rate_limit_per_user_isolated(db, monkeypatch):
 
     async def _fake_run(db, *, content, media_type, source_url, engine):
         return {
-            "invoice_number": "I", "invoice_date": None, "vendor_name": "V",
-            "due_date": None, "subtotal": None, "tax": None, "total": "0",
-            "currency": "IDR", "items": [], "is_handwritten": False,
-            "notes": None, "confidence_score": "1.0",
+            "invoice_number": "I",
+            "invoice_date": None,
+            "vendor_name": "V",
+            "due_date": None,
+            "subtotal": None,
+            "tax": None,
+            "total": "0",
+            "currency": "IDR",
+            "items": [],
+            "is_handwritten": False,
+            "notes": None,
+            "confidence_score": "1.0",
             "raw_response": {"engine": "fake:test", "cached": False},
             "source_url": source_url,
         }
@@ -110,7 +128,6 @@ async def test_telegram_link_rate_limiter_blocks(db, monkeypatch):
 
     # Patch tg & messaging.get_config supaya boleh issue
     from app.api.v1 import telegram as tg_mod
-    from app.services.telegram import linking as link_mod
 
     monkeypatch.setattr(tg_mod.tg, "is_enabled", lambda: True)
 

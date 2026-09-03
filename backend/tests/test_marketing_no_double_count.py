@@ -6,6 +6,7 @@ Biaya Aktual (sum semua OUT), sekali di formula Marketing 15%.
 Fix: Category.is_marketing flag + breakdown function adjustment.
 Audit 2026-05-23.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -32,7 +33,8 @@ def test_breakdown_no_marketing_actual_uses_full_aktual():
     assert r["profit_now"] == pytest.approx(cair - 6000000000, rel=0.001)
     # Profit Proyeksi tetap pakai marketing reserve (budget) krn aktual=0
     assert r["profit_proj"] == pytest.approx(
-        cair - r["marketing_budget"] - 6500000000, rel=0.001,
+        cair - r["marketing_budget"] - 6500000000,
+        rel=0.001,
     )
 
 
@@ -57,7 +59,8 @@ def test_breakdown_marketing_actual_no_double_count():
     assert r["biaya_aktual_non_marketing"] == 5500000000
     # Variance: actual - budget = 500jt - (15% * cair)
     assert r["marketing_variance"] == pytest.approx(
-        500000000 - r["marketing_budget"], rel=0.001,
+        500000000 - r["marketing_budget"],
+        rel=0.001,
     )
 
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { ArrowDownLeft, ArrowUpRight, Info, Notebook, Plus, Wallet } from "lucide-react"
-import { Link } from "react-router-dom"
+import { Link } from "react-router"
 import {
   useTransaction,
   useTransactions,
@@ -52,7 +52,7 @@ export function NonProjectPage() {
   const [editTarget, setEditTarget] = useState<Transaction | null>(null)
 
   const companiesQuery = useNonProjectCompanies()
-  const companies = companiesQuery.data ?? []
+  const companies = useMemo(() => companiesQuery.data ?? [], [companiesQuery.data])
 
   // Auto-select company kalau cuma 1, atau pakai pertama by default.
   useEffect(() => {

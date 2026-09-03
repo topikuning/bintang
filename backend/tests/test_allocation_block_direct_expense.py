@@ -6,6 +6,7 @@ terhitung 2x: dari TX OUT amount + dari invoice yg dianggap "dibayar").
 
 Test invariant + 2 path: invoice-side & transaction-side allocation.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -40,25 +41,39 @@ def test_direct_expense_in_non_allocatable_kinds():
 
 
 async def _seed(db, kind: TxnKind):
-    co = Company(name="C"); db.add(co); await db.flush()
-    u = User(name="u", email="u@x", password_hash="x",
-             role=UserRole.PROJECT_ADMIN)
-    db.add(u); await db.flush()
+    co = Company(name="C")
+    db.add(co)
+    await db.flush()
+    u = User(name="u", email="u@x", password_hash="x", role=UserRole.PROJECT_ADMIN)
+    db.add(u)
+    await db.flush()
     p = Project(name="A", code="A", company_id=co.id)
-    db.add(p); await db.flush()
+    db.add(p)
+    await db.flush()
     inv = Invoice(
-        project_id=p.id, type=InvoiceType.IN, status=InvoiceStatus.ISSUED,
-        number="INV-DE", invoice_date=date.today(),
-        subtotal=Decimal("1000"), tax=Decimal("0"), total=Decimal("1000"),
+        project_id=p.id,
+        type=InvoiceType.IN,
+        status=InvoiceStatus.ISSUED,
+        number="INV-DE",
+        invoice_date=date.today(),
+        subtotal=Decimal("1000"),
+        tax=Decimal("0"),
+        total=Decimal("1000"),
         created_by_id=u.id,
     )
-    db.add(inv); await db.flush()
+    db.add(inv)
+    await db.flush()
     tx = Transaction(
-        project_id=p.id, type=TxnType.OUT, kind=kind,
-        amount=Decimal("500"), tx_date=date.today(),
-        status=TxnStatus.VERIFIED, created_by_id=u.id,
+        project_id=p.id,
+        type=TxnType.OUT,
+        kind=kind,
+        amount=Decimal("500"),
+        tx_date=date.today(),
+        status=TxnStatus.VERIFIED,
+        created_by_id=u.id,
     )
-    db.add(tx); await db.commit()
+    db.add(tx)
+    await db.commit()
     return inv, tx, u
 
 
@@ -67,9 +82,11 @@ async def test_direct_expense_blocked_invoice_side(db):
     inv, tx, u = await _seed(db, TxnKind.DIRECT_EXPENSE)
     with pytest.raises(HTTPException) as exc:
         await apply_allocations_to_invoice(
-            db, invoice_id=inv.id,
+            db,
+            invoice_id=inv.id,
             items=[(tx.id, Decimal("500"))],
-            note=None, user_id=u.id,
+            note=None,
+            user_id=u.id,
         )
     assert exc.value.status_code == 409
     assert "direct_expense_not_allocatable" in str(exc.value.detail)
@@ -80,9 +97,11 @@ async def test_direct_expense_blocked_transaction_side(db):
     inv, tx, u = await _seed(db, TxnKind.DIRECT_EXPENSE)
     with pytest.raises(HTTPException) as exc:
         await apply_allocations_to_transaction(
-            db, transaction_id=tx.id,
+            db,
+            transaction_id=tx.id,
             items=[(inv.id, Decimal("500"))],
-            note=None, user_id=u.id,
+            note=None,
+            user_id=u.id,
         )
     assert exc.value.status_code == 409
     assert "direct_expense_not_allocatable" in str(exc.value.detail)
@@ -93,9 +112,11 @@ async def test_invoice_payment_still_allowed(db):
     """Pastikan kind default tetap bisa dialokasikan."""
     inv, tx, u = await _seed(db, TxnKind.INVOICE_PAYMENT)
     result = await apply_allocations_to_invoice(
-        db, invoice_id=inv.id,
+        db,
+        invoice_id=inv.id,
         items=[(tx.id, Decimal("500"))],
-        note=None, user_id=u.id,
+        note=None,
+        user_id=u.id,
     )
     assert result is not None
     assert result["total_applied"] == Decimal("500.00")

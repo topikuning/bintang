@@ -1,4 +1,5 @@
-from datetime import date, date as date_type, datetime, timezone
+from datetime import UTC, date, datetime
+from datetime import date as date_type
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
@@ -41,14 +42,13 @@ from app.schemas.finance import (
     AttachmentOut,
     ExternalLinkIn,
     InvoiceCreate,
-    InvoiceItemIn,
     InvoiceItemOut,
     InvoiceOut,
     InvoicePayment,
     InvoiceUpdate,
 )
 from app.services.audit import log, snapshot
-from app.services.invoice_status import linked_amount, paid_amount, recompute_invoice_status
+from app.services.invoice_status import paid_amount, recompute_invoice_status
 from app.services.pdf.render import html_to_pdf_async, inline_image, render_html
 from app.services.storage.links import normalize_external_link
 from app.services.storage.local import save_upload
@@ -65,9 +65,7 @@ def _compute_totals(items: list[InvoiceItem], tax: Decimal) -> tuple[Decimal, De
     return subtotal, total
 
 
-async def _bulk_paid_amounts(
-    db: AsyncSession, invoice_ids: list[int]
-) -> dict[int, Decimal]:
+async def _bulk_paid_amounts(db: AsyncSession, invoice_ids: list[int]) -> dict[int, Decimal]:
     """1 query SUM(allocated_amount) GROUP BY invoice_id utk N invoice."""
     if not invoice_ids:
         return {}
@@ -194,6 +192,7 @@ async def list_invoices(
         stmt = stmt.where(Invoice.project_id.in_(project_id))
     if company_id:
         from app.models.models import Project as _P
+
         co_pids_subq = select(_P.id).where(_P.company_id == company_id).scalar_subquery()
         stmt = stmt.where(Invoice.project_id.in_(co_pids_subq))
     if type:
@@ -224,7 +223,8 @@ async def list_invoices(
     payments_map = await _bulk_payment_rows(db, inv_ids)
     out_items = [
         await _to_out(
-            db, i,
+            db,
+            i,
             paid_override=paid_map.get(i.id, Decimal("0")),
             payment_rows=payments_map.get(i.id, []),
         )
@@ -243,28 +243,34 @@ async def create_invoice(
     await ensure_project_access(db, user, payload.project_id)
     # Audit 2026-05-24 Phase 1: project-status guard.
     from app.services.project_guard import assert_project_open
+
     _, forced = await assert_project_open(
-        db, payload.project_id, user=user, force=force,
+        db,
+        payload.project_id,
+        user=user,
+        force=force,
     )
     # Cek dup nomor invoice -- harus unik global (legal: Faktur Pajak).
     # Cek SOFT-DELETE included supaya nomor yg pernah dipakai tdk recycled
     # (audit trail tetap stabil di laporan historis).
-    dup = (await db.execute(
-        select(Invoice).where(Invoice.number == payload.number)
-    )).scalar_one_or_none()
+    dup = (
+        await db.execute(select(Invoice).where(Invoice.number == payload.number))
+    ).scalar_one_or_none()
     if dup is not None:
         raise HTTPException(409, "invoice_number_already_used")
     data = payload.model_dump(exclude={"items"})
     inv = Invoice(**data, status=InvoiceStatus.DRAFT, created_by_id=user.id)
     for it in payload.items:
-        inv.items.append(InvoiceItem(
-            description=it.description,
-            quantity=it.quantity,
-            unit=it.unit,
-            unit_price=it.unit_price,
-            subtotal=Decimal(it.unit_price) * Decimal(it.quantity),
-            category_id=it.category_id,  # audit 2026-05-24
-        ))
+        inv.items.append(
+            InvoiceItem(
+                description=it.description,
+                quantity=it.quantity,
+                unit=it.unit,
+                unit_price=it.unit_price,
+                subtotal=Decimal(it.unit_price) * Decimal(it.quantity),
+                category_id=it.category_id,  # audit 2026-05-24
+            )
+        )
     sub, tot = _compute_totals(inv.items, inv.tax)
     inv.subtotal = sub
     inv.total = tot
@@ -277,13 +283,17 @@ async def create_invoice(
     except IntegrityError as e:
         await db.rollback()
         raise HTTPException(409, "invoice_number_already_used") from e
-    await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
-              action=AuditAction.CREATE, after=snapshot(inv),
-              note="FORCE bypass closed project" if forced else None)
-    await db.commit()
-    res = await db.execute(
-        select(Invoice).options(*_full_options()).where(Invoice.id == inv.id)
+    await log(
+        db,
+        user_id=user.id,
+        entity="invoice",
+        entity_id=inv.id,
+        action=AuditAction.CREATE,
+        after=snapshot(inv),
+        note="FORCE bypass closed project" if forced else None,
     )
+    await db.commit()
+    res = await db.execute(select(Invoice).options(*_full_options()).where(Invoice.id == inv.id))
     return await _to_out(db, res.scalar_one())
 
 
@@ -293,9 +303,7 @@ async def get_invoice(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> InvoiceOut:
-    res = await db.execute(
-        select(Invoice).options(*_full_options()).where(Invoice.id == iid)
-    )
+    res = await db.execute(select(Invoice).options(*_full_options()).where(Invoice.id == iid))
     inv = res.scalar_one_or_none()
     if not inv or inv.deleted_at is not None:
         raise HTTPException(404, "not_found")
@@ -310,9 +318,7 @@ async def update_invoice(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_can_write),
 ) -> InvoiceOut:
-    res = await db.execute(
-        select(Invoice).options(*_full_options()).where(Invoice.id == iid)
-    )
+    res = await db.execute(select(Invoice).options(*_full_options()).where(Invoice.id == iid))
     inv = res.scalar_one_or_none()
     if not inv or inv.deleted_at is not None:
         raise HTTPException(404, "not_found")
@@ -330,12 +336,14 @@ async def update_invoice(
                 "ulang di proyek benar.",
             )
         await ensure_project_access(db, user, payload.project_id)
-        target = (await db.execute(
-            select(Project).where(
-                Project.id == payload.project_id,
-                Project.deleted_at.is_(None),
+        target = (
+            await db.execute(
+                select(Project).where(
+                    Project.id == payload.project_id,
+                    Project.deleted_at.is_(None),
+                )
             )
-        )).scalar_one_or_none()
+        ).scalar_one_or_none()
         if target is None:
             raise HTTPException(400, "target_project_not_found")
     before = snapshot(inv)
@@ -347,11 +355,14 @@ async def update_invoice(
         inv.project_id = new_project_id
     # Cek dup kalau number diubah ke value baru.
     if "number" in data and data["number"] != inv.number:
-        clash = (await db.execute(
-            select(Invoice).where(
-                Invoice.number == data["number"], Invoice.id != inv.id,
+        clash = (
+            await db.execute(
+                select(Invoice).where(
+                    Invoice.number == data["number"],
+                    Invoice.id != inv.id,
+                )
             )
-        )).scalar_one_or_none()
+        ).scalar_one_or_none()
         if clash is not None:
             raise HTTPException(409, "invoice_number_already_used")
     items_data = data.pop("items", None)
@@ -361,10 +372,7 @@ async def update_invoice(
     # karena efek samping ke piutang/hutang aging report cukup besar.
     new_type = data.pop("type", None)
     if new_type is not None and new_type != inv.type:
-        if (
-            inv.status != InvoiceStatus.DRAFT
-            and user.role != UserRole.SUPERADMIN
-        ):
+        if inv.status != InvoiceStatus.DRAFT and user.role != UserRole.SUPERADMIN:
             raise HTTPException(
                 403,
                 f"type_change_after_{inv.status.value.lower()}_requires_superadmin",
@@ -391,14 +399,17 @@ async def update_invoice(
         inv.items[:] = []
         await db.flush()
         for it in items_data:
-            inv.items.append(InvoiceItem(
-                description=it["description"],
-                quantity=Decimal(str(it.get("quantity", 1))),
-                unit=it.get("unit"),
-                unit_price=Decimal(str(it.get("unit_price", 0))),
-                subtotal=Decimal(str(it.get("unit_price", 0))) * Decimal(str(it.get("quantity", 1))),
-                category_id=it.get("category_id"),  # audit 2026-05-24
-            ))
+            inv.items.append(
+                InvoiceItem(
+                    description=it["description"],
+                    quantity=Decimal(str(it.get("quantity", 1))),
+                    unit=it.get("unit"),
+                    unit_price=Decimal(str(it.get("unit_price", 0))),
+                    subtotal=Decimal(str(it.get("unit_price", 0)))
+                    * Decimal(str(it.get("quantity", 1))),
+                    category_id=it.get("category_id"),  # audit 2026-05-24
+                )
+            )
     if inv.items:
         # ada items -- subtotal selalu mengikuti item
         sub, tot = _compute_totals(inv.items, inv.tax)
@@ -416,15 +427,18 @@ async def update_invoice(
     # Fix: refresh kolom secara async-safe sebelum snapshot. attribute_names
     # dibatasi ke daftar kolom saja supaya relationships (items/attachments)
     # tidak ikut di-refetch.
-    await db.refresh(
-        inv, attribute_names=[c.name for c in Invoice.__table__.columns]
+    await db.refresh(inv, attribute_names=[c.name for c in Invoice.__table__.columns])
+    await log(
+        db,
+        user_id=user.id,
+        entity="invoice",
+        entity_id=inv.id,
+        action=AuditAction.UPDATE,
+        before=before,
+        after=snapshot(inv),
     )
-    await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
-              action=AuditAction.UPDATE, before=before, after=snapshot(inv))
     await db.commit()
-    res = await db.execute(
-        select(Invoice).options(*_full_options()).where(Invoice.id == inv.id)
-    )
+    res = await db.execute(select(Invoice).options(*_full_options()).where(Invoice.id == inv.id))
     return await _to_out(db, res.scalar_one())
 
 
@@ -444,9 +458,7 @@ async def bulk_issue_invoices(
         raise HTTPException(400, "ids_required")
     if len(ids) > 500:
         raise HTTPException(400, "max_500_per_batch")
-    res = await db.execute(
-        select(Invoice).options(*_full_options()).where(Invoice.id.in_(ids))
-    )
+    res = await db.execute(select(Invoice).options(*_full_options()).where(Invoice.id.in_(ids)))
     invs = {i.id: i for i in res.scalars().all()}
     success_ids: list[int] = []
     skipped: list[dict] = []
@@ -466,8 +478,12 @@ async def bulk_issue_invoices(
         inv.status = InvoiceStatus.ISSUED
         await recompute_invoice_status(db, inv)
         await log(
-            db, user_id=user.id, entity="invoice", entity_id=inv.id,
-            action=AuditAction.UPDATE, note="bulk issued",
+            db,
+            user_id=user.id,
+            entity="invoice",
+            entity_id=inv.id,
+            action=AuditAction.UPDATE,
+            note="bulk issued",
         )
         success_ids.append(iid)
     await db.commit()
@@ -502,9 +518,7 @@ async def bulk_mark_paid_invoices(
     if len(ids) > 500:
         raise HTTPException(400, "max_500_per_batch")
 
-    res = await db.execute(
-        select(Invoice).options(*_full_options()).where(Invoice.id.in_(ids))
-    )
+    res = await db.execute(select(Invoice).options(*_full_options()).where(Invoice.id.in_(ids)))
     invs = {i.id: i for i in res.scalars().all()}
 
     # Allocatable invoice states utk mark-paid (selain CANCELLED, PAID, DRAFT)
@@ -516,7 +530,7 @@ async def bulk_mark_paid_invoices(
 
     success_ids: list[int] = []
     skipped: list[dict] = []
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for iid in ids:
         inv = invs.get(iid)
@@ -558,8 +572,12 @@ async def bulk_mark_paid_invoices(
         db.add(new_tx)
         await db.flush()
         await log(
-            db, user_id=admin.id, entity="transaction", entity_id=new_tx.id,
-            action=AuditAction.CREATE, after=snapshot(new_tx),
+            db,
+            user_id=admin.id,
+            entity="transaction",
+            entity_id=new_tx.id,
+            action=AuditAction.CREATE,
+            after=snapshot(new_tx),
             note=f"Bulk mark_paid invoice {inv.number}",
         )
         await apply_allocations_to_invoice(
@@ -570,8 +588,12 @@ async def bulk_mark_paid_invoices(
             user_id=admin.id,
         )
         await log(
-            db, user_id=admin.id, entity="invoice", entity_id=inv.id,
-            action=AuditAction.UPDATE, note="bulk mark-paid",
+            db,
+            user_id=admin.id,
+            entity="invoice",
+            entity_id=inv.id,
+            action=AuditAction.UPDATE,
+            note="bulk mark-paid",
         )
         success_ids.append(iid)
 
@@ -610,14 +632,12 @@ async def bulk_delete_invoices(
 
     god = admin.role == UserRole.SUPERADMIN
 
-    res = await db.execute(
-        select(Invoice).where(Invoice.id.in_(ids))
-    )
+    res = await db.execute(select(Invoice).where(Invoice.id.in_(ids)))
     invs = {i.id: i for i in res.scalars().all()}
 
     success_ids: list[int] = []
     skipped: list[dict] = []
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
 
     for iid in ids:
         inv = invs.get(iid)
@@ -639,12 +659,12 @@ async def bulk_delete_invoices(
 
         inv.deleted_at = now
         await log(
-            db, user_id=admin.id, entity="invoice", entity_id=inv.id,
+            db,
+            user_id=admin.id,
+            entity="invoice",
+            entity_id=inv.id,
             action=AuditAction.DELETE,
-            note=(
-                f"bulk delete (god-mode, {alloc_count} alloc dilepas)"
-                if god else "bulk delete"
-            ),
+            note=(f"bulk delete (god-mode, {alloc_count} alloc dilepas)" if god else "bulk delete"),
         )
         success_ids.append(iid)
 
@@ -671,12 +691,16 @@ async def issue_invoice(
         raise HTTPException(409, "invalid_state")
     inv.status = InvoiceStatus.ISSUED
     await recompute_invoice_status(db, inv)
-    await log(db, user_id=user.id, entity="invoice", entity_id=inv.id,
-              action=AuditAction.UPDATE, note="issued")
-    await db.commit()
-    res = await db.execute(
-        select(Invoice).options(*_full_options()).where(Invoice.id == inv.id)
+    await log(
+        db,
+        user_id=user.id,
+        entity="invoice",
+        entity_id=inv.id,
+        action=AuditAction.UPDATE,
+        note="issued",
     )
+    await db.commit()
+    res = await db.execute(select(Invoice).options(*_full_options()).where(Invoice.id == inv.id))
     return await _to_out(db, res.scalar_one())
 
 
@@ -718,7 +742,7 @@ async def mark_invoice_paid(
     note_msg = None
     if outstanding > 0:
         tx_type = TxnType.OUT if inv.type == InvoiceType.IN else TxnType.IN
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         new_tx = Transaction(
             project_id=inv.project_id,
             tx_date=date.today(),
@@ -735,17 +759,24 @@ async def mark_invoice_paid(
         )
         db.add(new_tx)
         await db.flush()
-        await log(db, user_id=admin.id, entity="transaction", entity_id=new_tx.id,
-                  action=AuditAction.CREATE, after=snapshot(new_tx),
-                  note=f"Auto-create dari mark_paid invoice {inv.number}")
+        await log(
+            db,
+            user_id=admin.id,
+            entity="transaction",
+            entity_id=new_tx.id,
+            action=AuditAction.CREATE,
+            after=snapshot(new_tx),
+            note=f"Auto-create dari mark_paid invoice {inv.number}",
+        )
         # Buat allocation row sebesar outstanding (lewat service supaya
         # validasi & lock konsisten dengan endpoint /allocations).
         from app.services.allocation import apply_allocations_to_invoice
+
         await apply_allocations_to_invoice(
             db,
             invoice_id=inv.id,
             items=[(new_tx.id, outstanding)],
-            note=f"auto mark-paid",
+            note="auto mark-paid",
             user_id=admin.id,
         )
         note_msg = f"auto-create transaksi {tx_type.value} Rp{outstanding} untuk pelunasan"
@@ -753,12 +784,16 @@ async def mark_invoice_paid(
         # sudah lunas via alokasi sebelumnya; pastikan status PAID
         inv.status = InvoiceStatus.PAID
 
-    await log(db, user_id=admin.id, entity="invoice", entity_id=inv.id,
-              action=AuditAction.UPDATE, note=note_msg or "marked paid")
-    await db.commit()
-    res = await db.execute(
-        select(Invoice).options(*_full_options()).where(Invoice.id == inv.id)
+    await log(
+        db,
+        user_id=admin.id,
+        entity="invoice",
+        entity_id=inv.id,
+        action=AuditAction.UPDATE,
+        note=note_msg or "marked paid",
     )
+    await db.commit()
+    res = await db.execute(select(Invoice).options(*_full_options()).where(Invoice.id == inv.id))
     return await _to_out(db, res.scalar_one())
 
 
@@ -772,12 +807,9 @@ async def cancel_invoice(
     if not inv or inv.deleted_at is not None:
         raise HTTPException(404, "not_found")
     inv.status = InvoiceStatus.CANCELLED
-    await log(db, user_id=admin.id, entity="invoice", entity_id=inv.id,
-              action=AuditAction.CANCEL)
+    await log(db, user_id=admin.id, entity="invoice", entity_id=inv.id, action=AuditAction.CANCEL)
     await db.commit()
-    res = await db.execute(
-        select(Invoice).options(*_full_options()).where(Invoice.id == inv.id)
-    )
+    res = await db.execute(select(Invoice).options(*_full_options()).where(Invoice.id == inv.id))
     return await _to_out(db, res.scalar_one())
 
 
@@ -790,9 +822,8 @@ async def delete_invoice(
     inv = await db.get(Invoice, iid)
     if not inv or inv.deleted_at is not None:
         raise HTTPException(404, "not_found")
-    inv.deleted_at = datetime.utcnow()
-    await log(db, user_id=admin.id, entity="invoice", entity_id=inv.id,
-              action=AuditAction.DELETE)
+    inv.deleted_at = datetime.now(UTC)
+    await log(db, user_id=admin.id, entity="invoice", entity_id=inv.id, action=AuditAction.DELETE)
     await db.commit()
 
 
@@ -827,10 +858,16 @@ async def hard_delete_invoice(
 
     before = snapshot(inv)
     await db.delete(inv)  # cascade items + attachments
-    await log(db, user_id=god.id, entity="invoice", entity_id=iid,
-              action=AuditAction.DELETE, before=before,
-              note=f"HARD DELETE (god-mode), {len(allocs)} alokasi dihapus, "
-                   f"{len(txs)} legacy link di-unlink")
+    await log(
+        db,
+        user_id=god.id,
+        entity="invoice",
+        entity_id=iid,
+        action=AuditAction.DELETE,
+        before=before,
+        note=f"HARD DELETE (god-mode), {len(allocs)} alokasi dihapus, "
+        f"{len(txs)} legacy link di-unlink",
+    )
     await db.commit()
 
 
@@ -848,8 +885,14 @@ async def upload_invoice_attachment(
     meta = await save_upload(file, subdir=f"invoices/{inv.id}")
     att = InvoiceAttachment(invoice_id=inv.id, uploaded_by_id=user.id, **meta)
     db.add(att)
-    await log(db, user_id=user.id, entity="invoice_attachment", entity_id=inv.id,
-              action=AuditAction.CREATE, after={"file": meta["file_name"]})
+    await log(
+        db,
+        user_id=user.id,
+        entity="invoice_attachment",
+        entity_id=inv.id,
+        action=AuditAction.CREATE,
+        after={"file": meta["file_name"]},
+    )
     await db.commit()
     await db.refresh(att)
     return AttachmentOut.model_validate(att)
@@ -869,8 +912,14 @@ async def attach_invoice_link(
     meta = normalize_external_link(body.url, label=body.label, file_name=body.file_name)
     att = InvoiceAttachment(invoice_id=inv.id, uploaded_by_id=user.id, **meta)
     db.add(att)
-    await log(db, user_id=user.id, entity="invoice_attachment", entity_id=inv.id,
-              action=AuditAction.CREATE, after={"link": meta["file_name"], "url": meta["url"]})
+    await log(
+        db,
+        user_id=user.id,
+        entity="invoice_attachment",
+        entity_id=inv.id,
+        action=AuditAction.CREATE,
+        after={"link": meta["file_name"], "url": meta["url"]},
+    )
     await db.commit()
     await db.refresh(att)
     return AttachmentOut.model_validate(att)
@@ -878,13 +927,26 @@ async def attach_invoice_link(
 
 # --- Bahasa Indonesia "terbilang" (angka -> kata) ----------------------------
 
+
 def _terbilang(n: int) -> str:
     """Konversi bilangan bulat positif ke kata-kata Bahasa Indonesia."""
     n = int(abs(n))
     if n == 0:
         return "nol"
-    satuan = ["", "satu", "dua", "tiga", "empat", "lima",
-              "enam", "tujuh", "delapan", "sembilan", "sepuluh", "sebelas"]
+    satuan = [
+        "",
+        "satu",
+        "dua",
+        "tiga",
+        "empat",
+        "lima",
+        "enam",
+        "tujuh",
+        "delapan",
+        "sembilan",
+        "sepuluh",
+        "sebelas",
+    ]
 
     def _below_1000(x: int) -> str:
         if x < 12:
@@ -892,15 +954,11 @@ def _terbilang(n: int) -> str:
         if x < 20:
             return satuan[x - 10] + " belas"
         if x < 100:
-            return satuan[x // 10] + " puluh" + (
-                " " + satuan[x % 10] if x % 10 else ""
-            )
+            return satuan[x // 10] + " puluh" + (" " + satuan[x % 10] if x % 10 else "")
         if x < 200:
             return "seratus" + (" " + _below_1000(x - 100) if x > 100 else "")
         if x < 1000:
-            return satuan[x // 100] + " ratus" + (
-                " " + _below_1000(x % 100) if x % 100 else ""
-            )
+            return satuan[x // 100] + " ratus" + (" " + _below_1000(x % 100) if x % 100 else "")
         return ""  # tidak akan terjadi
 
     if n < 1000:
@@ -908,19 +966,23 @@ def _terbilang(n: int) -> str:
     if n < 2000:
         return "seribu" + (" " + _terbilang(n - 1000) if n > 1000 else "")
     if n < 1_000_000:
-        return _terbilang(n // 1000) + " ribu" + (
-            " " + _terbilang(n % 1000) if n % 1000 else ""
-        )
+        return _terbilang(n // 1000) + " ribu" + (" " + _terbilang(n % 1000) if n % 1000 else "")
     if n < 1_000_000_000:
-        return _terbilang(n // 1_000_000) + " juta" + (
-            " " + _terbilang(n % 1_000_000) if n % 1_000_000 else ""
+        return (
+            _terbilang(n // 1_000_000)
+            + " juta"
+            + (" " + _terbilang(n % 1_000_000) if n % 1_000_000 else "")
         )
     if n < 1_000_000_000_000:
-        return _terbilang(n // 1_000_000_000) + " miliar" + (
-            " " + _terbilang(n % 1_000_000_000) if n % 1_000_000_000 else ""
+        return (
+            _terbilang(n // 1_000_000_000)
+            + " miliar"
+            + (" " + _terbilang(n % 1_000_000_000) if n % 1_000_000_000 else "")
         )
-    return _terbilang(n // 1_000_000_000_000) + " triliun" + (
-        " " + _terbilang(n % 1_000_000_000_000) if n % 1_000_000_000_000 else ""
+    return (
+        _terbilang(n // 1_000_000_000_000)
+        + " triliun"
+        + (" " + _terbilang(n % 1_000_000_000_000) if n % 1_000_000_000_000 else "")
     )
 
 
@@ -942,9 +1004,7 @@ async def invoice_pdf(
       (default: company.director_name)
     - responsible_title: override jabatan (default: 'Direktur')
     """
-    res = await db.execute(
-        select(Invoice).options(*_full_options()).where(Invoice.id == iid)
-    )
+    res = await db.execute(select(Invoice).options(*_full_options()).where(Invoice.id == iid))
     inv = res.scalar_one_or_none()
     if not inv or inv.deleted_at is not None:
         raise HTTPException(404, "not_found")
@@ -952,30 +1012,33 @@ async def invoice_pdf(
 
     project = await db.get(Project, inv.project_id)
     company = await db.get(Company, project.company_id) if project else None
-    vendor = (
-        await db.get(VendorClient, inv.vendor_client_id)
-        if inv.vendor_client_id else None
-    )
+    vendor = await db.get(VendorClient, inv.vendor_client_id) if inv.vendor_client_id else None
     created_by = await db.get(User, inv.created_by_id) if inv.created_by_id else None
     paid = await paid_amount(db, inv.id)
     outstanding = max(Decimal(inv.total or 0) - paid, Decimal("0"))
 
-    base_css = (
-        Path(__file__).parent.parent.parent / "services/pdf/templates/_base.css"
-    ).read_text(encoding="utf-8")
+    base_css = (Path(__file__).parent.parent.parent / "services/pdf/templates/_base.css").read_text(
+        encoding="utf-8"
+    )
     logo_data = inline_image(company.logo_url) if company else None
     letterhead_data = inline_image(company.letterhead_url) if company else None
     html = render_html(
         "invoice.html",
-        invoice=inv, project=project, company=company,
-        vendor=vendor, created_by=created_by,
-        paid_amount=paid, outstanding=outstanding,
+        invoice=inv,
+        project=project,
+        company=company,
+        vendor=vendor,
+        created_by=created_by,
+        paid_amount=paid,
+        outstanding=outstanding,
         amount_in_words=_terbilang(int(Decimal(inv.total or 0))).capitalize(),
-        logo_data=logo_data, letterhead_data=letterhead_data,
+        logo_data=logo_data,
+        letterhead_data=letterhead_data,
         base_css=base_css,
         sig_show_creator=signatures in ("both", "creator"),
         sig_show_approver=signatures in ("both", "approver"),
-        sig_responsible_name=(responsible_name or "").strip() or (company.director_name if company else None),
+        sig_responsible_name=(responsible_name or "").strip()
+        or (company.director_name if company else None),
         sig_responsible_title=(responsible_title or "").strip() or "Direktur",
     )
     pdf = await html_to_pdf_async(html)

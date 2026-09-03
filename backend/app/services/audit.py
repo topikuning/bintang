@@ -45,10 +45,7 @@ def snapshot(obj: Any) -> dict[str, Any]:
         insp = sa_inspect(obj)
     except Exception:  # noqa: BLE001 -- defensive fallback
         # Bukan ORM object (mis. plain dataclass) -> fallback getattr.
-        return {
-            c.name: _serialize(getattr(obj, c.name, None))
-            for c in obj.__table__.columns
-        }
+        return {c.name: _serialize(getattr(obj, c.name, None)) for c in obj.__table__.columns}
     out: dict[str, Any] = {}
     for col in obj.__table__.columns:
         name = col.name

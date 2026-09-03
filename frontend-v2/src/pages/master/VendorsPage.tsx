@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useSearchParams } from "react-router"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Loader2, Pencil, Trash2 } from "lucide-react"
 import { z } from "zod"

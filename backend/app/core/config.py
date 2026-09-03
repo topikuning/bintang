@@ -1,5 +1,5 @@
 from functools import lru_cache
-from pydantic import Field
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,11 +34,9 @@ class Settings(BaseSettings):
     # Railway = 1 edge proxy. Set 0 kalau app diekspos langsung.
     TRUSTED_PROXY_HOPS: int = 1
 
-    # Content-Security-Policy. Default False = header dikirim sebagai
-    # Report-Only (mencatat pelanggaran di console browser tanpa
-    # memblokir apa pun). Set True setelah memastikan console bersih --
-    # lihat _SecurityHeadersMiddleware di app/main.py.
-    CSP_ENFORCE: bool = False
+    # Content-Security-Policy ditegakkan secara default. Set False hanya
+    # sementara untuk diagnosis agar header berubah menjadi Report-Only.
+    CSP_ENFORCE: bool = True
 
     # --- Serving frontend (deploy satu service) ---
     # Direktori hasil build SPA (Vite `dist/`). Kalau ada, backend ikut
@@ -90,9 +88,9 @@ class Settings(BaseSettings):
     # API key WAHA (header X-Api-Key). Boleh kosong untuk WAHA Core tanpa auth.
     WHATSAPP_API_KEY: str = ""
     # Secret yang dipasang di WAHA -> webhook header X-Webhook-Hmac dipakai
-    # untuk verifikasi sumber. Sejak audit #S-04 nilai ini dibaca lewat
-    # app_settings (DB > env) dan WAJIB terisi di APP_ENV=prod kalau
-    # integrasi WhatsApp aktif -- boot ditolak kalau kosong.
+    # untuk verifikasi sumber. Nilai dibaca lewat app_settings (DB > env).
+    # Saat ini boleh kosong karena keterbatasan persistensi WAHA Core;
+    # lihat catatan eksplisit di api/v1/whatsapp.py.
     WHATSAPP_WEBHOOK_SECRET: str = ""
 
     @property
@@ -105,10 +103,7 @@ class Settings(BaseSettings):
         """Entri localhost yang akan dibuang saat APP_ENV=prod."""
         if not self.is_prod:
             return []
-        return [
-            o for o in self.allowed_origins_list
-            if "localhost" in o or "127.0.0.1" in o
-        ]
+        return [o for o in self.allowed_origins_list if "localhost" in o or "127.0.0.1" in o]
 
     @property
     def allowed_origins_effective(self) -> list[str]:

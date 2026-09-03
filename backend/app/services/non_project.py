@@ -9,6 +9,7 @@ Konsep singkat:
 Modul ini menyediakan helper SQL utk inject klausa eligibility di
 query agregat (dashboard, laporan arus kas, dll).
 """
+
 from __future__ import annotations
 
 from sqlalchemy import and_, extract, false, or_, select

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import aiofiles
@@ -124,11 +124,16 @@ async def save_bytes(
         # ekstensi asal, tapi hasil tebakan tetap harus lolos whitelist.
         guessed = Path(original_name or "").suffix.lower()
         mime = {
-            ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-            ".png": "image/png", ".webp": "image/webp",
-            ".gif": "image/gif", ".heic": "image/heic", ".heif": "image/heif",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".webp": "image/webp",
+            ".gif": "image/gif",
+            ".heic": "image/heic",
+            ".heif": "image/heif",
             ".pdf": "application/pdf",
-            ".mp4": "video/mp4", ".mov": "video/quicktime",
+            ".mp4": "video/mp4",
+            ".mov": "video/quicktime",
         }.get(guessed, "")
     if mime not in BOT_ALLOWED_MIME:
         raise HTTPException(415, f"unsupported_media_type: {mime or '(tidak dikenal)'}")
@@ -137,11 +142,11 @@ async def save_bytes(
     if len(content) > max_bytes:
         raise HTTPException(413, f"file_too_large_max_{settings.MAX_UPLOAD_MB}_mb")
 
-    base = Path(settings.UPLOAD_DIR) / subdir / datetime.utcnow().strftime("%Y/%m")
+    base = Path(settings.UPLOAD_DIR) / subdir / datetime.now(UTC).strftime("%Y/%m")
     base.mkdir(parents=True, exist_ok=True)
 
     suffix = _EXT_BY_MIME[mime]
-    safe_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(6)}{suffix}"
+    safe_name = f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(6)}{suffix}"
     target = base / safe_name
 
     async with aiofiles.open(target, "wb") as out:
@@ -163,13 +168,13 @@ async def save_bytes(
 async def save_upload(file: UploadFile, subdir: str) -> dict:
     if file.content_type not in ALLOWED_MIME:
         raise HTTPException(415, f"unsupported_media_type: {file.content_type}")
-    base = Path(settings.UPLOAD_DIR) / subdir / datetime.utcnow().strftime("%Y/%m")
+    base = Path(settings.UPLOAD_DIR) / subdir / datetime.now(UTC).strftime("%Y/%m")
     base.mkdir(parents=True, exist_ok=True)
 
     # Ekstensi dari MIME yg sudah lolos whitelist di atas, bukan dari
     # nama kiriman user (audit #S-05).
     suffix = _EXT_BY_MIME[file.content_type]
-    safe_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(6)}{suffix}"
+    safe_name = f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(6)}{suffix}"
     target = base / safe_name
 
     max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024

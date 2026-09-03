@@ -32,17 +32,17 @@ Migration assume:
 Revision ID: f1a2b3c4d5e6
 Revises: d05180aff149
 """
-from typing import Sequence, Union
 
-from alembic import op
-import sqlalchemy as sa
 import secrets
+from collections.abc import Sequence
 
+import sqlalchemy as sa
+from alembic import op
 
-revision: str = 'f1a2b3c4d5e6'
-down_revision: Union[str, Sequence[str], None] = 'd05180aff149'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "f1a2b3c4d5e6"
+down_revision: str | Sequence[str] | None = "d05180aff149"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def _hash_random_password() -> str:
@@ -55,6 +55,7 @@ def _hash_random_password() -> str:
     app/core/security.py utk pattern yg konsisten dgn app runtime.
     """
     import bcrypt
+
     raw = secrets.token_urlsafe(32).encode("utf-8")
     return bcrypt.hashpw(raw, bcrypt.gensalt()).decode("utf-8")
 
@@ -131,44 +132,78 @@ def upgrade() -> None:
         )
 
     # 3. Drop tables (project_funders dulu krn FK)
-    with op.batch_alter_table('project_funders', schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f('ix_project_funders_funder_id'))
-        batch_op.drop_index(batch_op.f('ix_project_funders_project_id'))
-    op.drop_table('project_funders')
+    with op.batch_alter_table("project_funders", schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f("ix_project_funders_funder_id"))
+        batch_op.drop_index(batch_op.f("ix_project_funders_project_id"))
+    op.drop_table("project_funders")
 
-    with op.batch_alter_table('funders', schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f('ix_funders_name'))
-    op.drop_table('funders')
+    with op.batch_alter_table("funders", schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f("ix_funders_name"))
+    op.drop_table("funders")
 
 
 def downgrade() -> None:
     """Re-create tables. Data tidak di-restore (user EXECUTIVE bekas
     funder tetap ada -- aman, tidak destruktif terbalik)."""
     op.create_table(
-        'funders',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('name', sa.String(length=200), nullable=False),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
-        sa.PrimaryKeyConstraint('id', name=op.f('pk_funders')),
+        "funders",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("name", sa.String(length=200), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_funders")),
     )
-    with op.batch_alter_table('funders', schema=None) as batch_op:
-        batch_op.create_index(batch_op.f('ix_funders_name'), ['name'], unique=True)
+    with op.batch_alter_table("funders", schema=None) as batch_op:
+        batch_op.create_index(batch_op.f("ix_funders_name"), ["name"], unique=True)
 
     op.create_table(
-        'project_funders',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('project_id', sa.Integer(), nullable=False),
-        sa.Column('funder_id', sa.Integer(), nullable=False),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(['funder_id'], ['funders.id'], name=op.f('fk_project_funders_funder_id_funders'), ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['project_id'], ['projects.id'], name=op.f('fk_project_funders_project_id_projects'), ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('id', name=op.f('pk_project_funders')),
-        sa.UniqueConstraint('project_id', 'funder_id', name=op.f('uq_project_funder')),
+        "project_funders",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("project_id", sa.Integer(), nullable=False),
+        sa.Column("funder_id", sa.Integer(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["funder_id"],
+            ["funders.id"],
+            name=op.f("fk_project_funders_funder_id_funders"),
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["project_id"],
+            ["projects.id"],
+            name=op.f("fk_project_funders_project_id_projects"),
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_project_funders")),
+        sa.UniqueConstraint("project_id", "funder_id", name=op.f("uq_project_funder")),
     )
-    with op.batch_alter_table('project_funders', schema=None) as batch_op:
-        batch_op.create_index(batch_op.f('ix_project_funders_funder_id'), ['funder_id'], unique=False)
-        batch_op.create_index(batch_op.f('ix_project_funders_project_id'), ['project_id'], unique=False)
+    with op.batch_alter_table("project_funders", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_project_funders_funder_id"), ["funder_id"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_project_funders_project_id"), ["project_id"], unique=False
+        )

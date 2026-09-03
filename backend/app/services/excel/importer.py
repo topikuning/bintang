@@ -9,10 +9,11 @@ so each unique value becomes one record with its line items.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from openpyxl import Workbook, load_workbook
 from sqlalchemy import func, select
@@ -101,19 +102,39 @@ def _parse_enum(value: Any, enum_cls, field_name: str):
         raise ValueError(f"{field_name} wajib diisi")
     s = str(value).strip().upper()
     aliases = {
-        "MASUK": "IN", "IN": "IN", "INCOME": "IN",
-        "KELUAR": "OUT", "OUT": "OUT", "EXPENSE": "OUT",
-        "VENDOR": "VENDOR", "CLIENT": "CLIENT", "BOTH": "BOTH",
-        "AKTIF": "AKTIF", "ACTIVE": "AKTIF",
-        "SELESAI": "SELESAI", "DONE": "SELESAI",
-        "DITAHAN": "DITAHAN", "ON_HOLD": "DITAHAN", "HOLD": "DITAHAN",
-        "DIBATALKAN": "DIBATALKAN", "CANCELLED": "DIBATALKAN",
-        "CASH": "CASH", "TUNAI": "CASH",
-        "TRANSFER": "TRANSFER", "TF": "TRANSFER",
-        "QRIS": "QRIS", "GIRO": "GIRO", "OTHER": "OTHER", "LAINNYA": "OTHER",
-        "COMPANY": "COMPANY", "PERUSAHAAN": "COMPANY",
-        "PERSONAL": "PERSONAL", "EMPLOYEE": "EMPLOYEE", "KARYAWAN": "EMPLOYEE",
-        "INTERNAL": "INTERNAL", "OPERASIONAL": "INTERNAL",
+        "MASUK": "IN",
+        "IN": "IN",
+        "INCOME": "IN",
+        "KELUAR": "OUT",
+        "OUT": "OUT",
+        "EXPENSE": "OUT",
+        "VENDOR": "VENDOR",
+        "CLIENT": "CLIENT",
+        "BOTH": "BOTH",
+        "AKTIF": "AKTIF",
+        "ACTIVE": "AKTIF",
+        "SELESAI": "SELESAI",
+        "DONE": "SELESAI",
+        "DITAHAN": "DITAHAN",
+        "ON_HOLD": "DITAHAN",
+        "HOLD": "DITAHAN",
+        "DIBATALKAN": "DIBATALKAN",
+        "CANCELLED": "DIBATALKAN",
+        "CASH": "CASH",
+        "TUNAI": "CASH",
+        "TRANSFER": "TRANSFER",
+        "TF": "TRANSFER",
+        "QRIS": "QRIS",
+        "GIRO": "GIRO",
+        "OTHER": "OTHER",
+        "LAINNYA": "OTHER",
+        "COMPANY": "COMPANY",
+        "PERUSAHAAN": "COMPANY",
+        "PERSONAL": "PERSONAL",
+        "EMPLOYEE": "EMPLOYEE",
+        "KARYAWAN": "EMPLOYEE",
+        "INTERNAL": "INTERNAL",
+        "OPERASIONAL": "INTERNAL",
     }
     s = aliases.get(s, s)
     try:
@@ -151,6 +172,7 @@ def build_template(headers: list[str], example: list[Any] | None = None) -> byte
             ws.append(example)
         for i, h in enumerate(headers, 1):
             from openpyxl.utils import get_column_letter
+
             ws.column_dimensions[get_column_letter(i)].width = max(14, min(40, len(str(h)) + 4))
     buf = BytesIO()
     wb.save(buf)
@@ -346,23 +368,33 @@ async def import_projects(rows, db, user, *, commit, dup_action):
                     if status is not None:
                         existing.status = status
                     if doc_meta:
-                        db.add(ProjectAttachment(
-                            project_id=existing.id, label=doc_label,
-                            uploaded_by_id=user.id, **doc_meta,
-                        ))
+                        db.add(
+                            ProjectAttachment(
+                                project_id=existing.id,
+                                label=doc_label,
+                                uploaded_by_id=user.id,
+                                **doc_meta,
+                            )
+                        )
                 dupes.append({"code": code, "name": name, "action": dup_action})
                 continue
             if commit:
                 p = Project(
-                    code=code, status=status or ProjectStatus.AKTIF, **data,
+                    code=code,
+                    status=status or ProjectStatus.AKTIF,
+                    **data,
                 )
                 db.add(p)
                 if doc_meta:
                     await db.flush()
-                    db.add(ProjectAttachment(
-                        project_id=p.id, label=doc_label,
-                        uploaded_by_id=user.id, **doc_meta,
-                    ))
+                    db.add(
+                        ProjectAttachment(
+                            project_id=p.id,
+                            label=doc_label,
+                            uploaded_by_id=user.id,
+                            **doc_meta,
+                        )
+                    )
             new.append({"code": code, "name": name})
         except Exception as e:
             errors.append({"row": i, "message": str(e), "raw": r})
@@ -434,34 +466,51 @@ async def import_transactions(rows, db, user, *, commit, dup_action):
                         f"Transaksi {project_code} {tx_date} Rp{amount} ref={reference_no} sudah ada"
                     )
                 # 'update' tidak didukung untuk transaksi -> diperlakukan sebagai 'skip'
-                dupes.append({
-                    "project": project_code, "tx_date": tx_date.isoformat(),
-                    "amount": str(amount), "reference_no": reference_no,
-                    "action": "skipped",
-                })
+                dupes.append(
+                    {
+                        "project": project_code,
+                        "tx_date": tx_date.isoformat(),
+                        "amount": str(amount),
+                        "reference_no": reference_no,
+                        "action": "skipped",
+                    }
+                )
                 continue
 
             if commit:
                 tx = Transaction(
                     project_id=project.id,
-                    tx_date=tx_date, type=ttype,
-                    category_id=cat_id, amount=amount,
-                    party_type=party_type, party_name=_str(r.get("party_name")),
+                    tx_date=tx_date,
+                    type=ttype,
+                    category_id=cat_id,
+                    amount=amount,
+                    party_type=party_type,
+                    party_name=_str(r.get("party_name")),
                     vendor_client_id=vc_id,
-                    payment_method=method, reference_no=reference_no,
+                    payment_method=method,
+                    reference_no=reference_no,
                     description=_str(r.get("description")),
-                    status=TxnStatus.DRAFT, created_by_id=user.id,
+                    status=TxnStatus.DRAFT,
+                    created_by_id=user.id,
                 )
                 db.add(tx)
                 if att_meta:
                     await db.flush()
-                    db.add(TransactionAttachment(
-                        transaction_id=tx.id, uploaded_by_id=user.id, **att_meta,
-                    ))
-            new.append({
-                "project": project_code, "tx_date": tx_date.isoformat(),
-                "type": ttype.value, "amount": str(amount),
-            })
+                    db.add(
+                        TransactionAttachment(
+                            transaction_id=tx.id,
+                            uploaded_by_id=user.id,
+                            **att_meta,
+                        )
+                    )
+            new.append(
+                {
+                    "project": project_code,
+                    "tx_date": tx_date.isoformat(),
+                    "type": ttype.value,
+                    "amount": str(amount),
+                }
+            )
         except Exception as e:
             errors.append({"row": i, "message": str(e), "raw": r})
     return new, dupes, errors
@@ -506,11 +555,15 @@ async def import_invoices(rows, db, user, *, commit, dup_action):
                     continue
                 qty = _parse_decimal(r.get("item_quantity") or 1)
                 price = _parse_decimal(r.get("item_unit_price") or 0)
-                items_data.append(dict(
-                    description=desc, quantity=qty,
-                    unit=_str(r.get("item_unit")),
-                    unit_price=price, subtotal=price * qty,
-                ))
+                items_data.append(
+                    dict(
+                        description=desc,
+                        quantity=qty,
+                        unit=_str(r.get("item_unit")),
+                        unit_price=price,
+                        subtotal=price * qty,
+                    )
+                )
             subtotal = sum((it["subtotal"] for it in items_data), Decimal("0"))
             total = subtotal + tax
             att_url = _str(first.get("attachment_url")) or _str(first.get("bukti_url"))
@@ -522,15 +575,17 @@ async def import_invoices(rows, db, user, *, commit, dup_action):
                 except Exception as e:
                     raise ValueError(f"attachment_url tidak valid: {e}")
 
-            existing = (await db.execute(
-                select(Invoice)
-                .options(selectinload(Invoice.items))
-                .where(
-                    Invoice.project_id == project.id,
-                    Invoice.number == num,
-                    Invoice.deleted_at.is_(None),
+            existing = (
+                await db.execute(
+                    select(Invoice)
+                    .options(selectinload(Invoice.items))
+                    .where(
+                        Invoice.project_id == project.id,
+                        Invoice.number == num,
+                        Invoice.deleted_at.is_(None),
+                    )
                 )
-            )).scalar_one_or_none()
+            ).scalar_one_or_none()
             if existing:
                 if dup_action == "error":
                     raise ValueError(f"Invoice '{num}' di proyek {project_code} sudah ada")
@@ -550,19 +605,28 @@ async def import_invoices(rows, db, user, *, commit, dup_action):
                     for d in items_data:
                         existing.items.append(InvoiceItem(**d))
                     if att_meta:
-                        db.add(InvoiceAttachment(
-                            invoice_id=existing.id, uploaded_by_id=user.id, **att_meta,
-                        ))
+                        db.add(
+                            InvoiceAttachment(
+                                invoice_id=existing.id,
+                                uploaded_by_id=user.id,
+                                **att_meta,
+                            )
+                        )
                 dupes.append({"number": num, "project": project_code, "action": dup_action})
                 continue
 
             if commit:
                 inv = Invoice(
-                    number=num, project_id=project.id, type=itype,
-                    invoice_date=inv_date, due_date=due,
+                    number=num,
+                    project_id=project.id,
+                    type=itype,
+                    invoice_date=inv_date,
+                    due_date=due,
                     vendor_client_id=vc_id,
                     party_name=_str(first.get("party_name")),
-                    subtotal=subtotal, tax=tax, total=total,
+                    subtotal=subtotal,
+                    tax=tax,
+                    total=total,
                     status=InvoiceStatus.DRAFT,
                     notes=_str(first.get("notes")),
                     created_by_id=user.id,
@@ -572,13 +636,16 @@ async def import_invoices(rows, db, user, *, commit, dup_action):
                 db.add(inv)
                 if att_meta:
                     await db.flush()
-                    db.add(InvoiceAttachment(
-                        invoice_id=inv.id, uploaded_by_id=user.id, **att_meta,
-                    ))
+                    db.add(
+                        InvoiceAttachment(
+                            invoice_id=inv.id,
+                            uploaded_by_id=user.id,
+                            **att_meta,
+                        )
+                    )
             new.append({"number": num, "items": len(items_data), "total": str(total)})
         except Exception as e:
-            errors.append({"row": first_row_num, "message": str(e),
-                           "raw": {"number": num}})
+            errors.append({"row": first_row_num, "message": str(e), "raw": {"number": num}})
     return new, dupes, errors
 
 
@@ -591,7 +658,9 @@ async def import_purchase_orders(rows, db, user, *, commit, dup_action):
     for i, r in enumerate(rows, start=2):
         ref = _str(r.get("_po_ref"))
         if not ref:
-            errors.append({"row": i, "message": "_po_ref wajib (untuk grouping item PO yang sama)", "raw": r})
+            errors.append(
+                {"row": i, "message": "_po_ref wajib (untuk grouping item PO yang sama)", "raw": r}
+            )
             continue
         groups.setdefault(ref, []).append((i, r))
 
@@ -625,26 +694,32 @@ async def import_purchase_orders(rows, db, user, *, commit, dup_action):
                     continue
                 qty = _parse_decimal(r.get("item_quantity") or 1)
                 price = _parse_decimal(r.get("item_unit_price") or 0)
-                items_data.append(dict(
-                    description=desc, quantity=qty,
-                    unit=_str(r.get("item_unit")),
-                    unit_price=price, subtotal=price * qty,
-                ))
+                items_data.append(
+                    dict(
+                        description=desc,
+                        quantity=qty,
+                        unit=_str(r.get("item_unit")),
+                        unit_price=price,
+                        subtotal=price * qty,
+                    )
+                )
             subtotal = sum((it["subtotal"] for it in items_data), Decimal("0"))
             total = subtotal + tax - discount
 
             explicit_number = _str(first.get("number"))
             existing = None
             if explicit_number:
-                existing = (await db.execute(
-                    select(PurchaseOrder)
-                    .options(selectinload(PurchaseOrder.items))
-                    .where(
-                        PurchaseOrder.project_id == project.id,
-                        PurchaseOrder.number == explicit_number,
-                        PurchaseOrder.deleted_at.is_(None),
+                existing = (
+                    await db.execute(
+                        select(PurchaseOrder)
+                        .options(selectinload(PurchaseOrder.items))
+                        .where(
+                            PurchaseOrder.project_id == project.id,
+                            PurchaseOrder.number == explicit_number,
+                            PurchaseOrder.deleted_at.is_(None),
+                        )
                     )
-                )).scalar_one_or_none()
+                ).scalar_one_or_none()
 
             if existing:
                 if dup_action == "error":
@@ -658,7 +733,9 @@ async def import_purchase_orders(rows, db, user, *, commit, dup_action):
                     existing.discount = discount
                     existing.subtotal = subtotal
                     existing.total = total
-                    existing.payment_terms = _str(first.get("payment_terms")) or existing.payment_terms
+                    existing.payment_terms = (
+                        _str(first.get("payment_terms")) or existing.payment_terms
+                    )
                     existing.notes = _str(first.get("notes")) or existing.notes
                     existing.items.clear()
                     await db.flush()
@@ -673,18 +750,29 @@ async def import_purchase_orders(rows, db, user, *, commit, dup_action):
                     number = explicit_number
                 else:
                     prefix = f"PO/{po_date.year}/{po_date.month:02d}/{project.code.upper()}/"
-                    count_q = (await db.execute(
-                        select(func.count()).select_from(PurchaseOrder).where(
-                            PurchaseOrder.company_id == company.id,
-                            PurchaseOrder.number.like(f"{prefix}%"),
+                    count_q = (
+                        await db.execute(
+                            select(func.count())
+                            .select_from(PurchaseOrder)
+                            .where(
+                                PurchaseOrder.company_id == company.id,
+                                PurchaseOrder.number.like(f"{prefix}%"),
+                            )
                         )
-                    )).scalar_one()
+                    ).scalar_one()
                     number = f"{prefix}{count_q + 1:04d}"
                 po = PurchaseOrder(
-                    number=number, project_id=project.id, company_id=company.id,
-                    vendor_client_id=vc_id, vendor_name=_str(first.get("vendor_name")),
-                    po_date=po_date, needed_date=needed,
-                    subtotal=subtotal, tax=tax, discount=discount, total=total,
+                    number=number,
+                    project_id=project.id,
+                    company_id=company.id,
+                    vendor_client_id=vc_id,
+                    vendor_name=_str(first.get("vendor_name")),
+                    po_date=po_date,
+                    needed_date=needed,
+                    subtotal=subtotal,
+                    tax=tax,
+                    discount=discount,
+                    total=total,
                     payment_terms=_str(first.get("payment_terms")),
                     notes=_str(first.get("notes")),
                     status=POStatus.DRAFT,
@@ -709,9 +797,15 @@ SCHEMAS: dict[str, dict[str, Any]] = {
     "companies": {
         "label": "Perusahaan",
         "headers": ["name", "address", "npwp", "phone", "email", "director_name", "bank_account"],
-        "example": ["PT Contoh Sejahtera", "Jl. Demo No. 1", "01.234.567.8-091.000",
-                    "021-1234567", "info@contoh.co.id", "Direktur Utama",
-                    "BCA 123-456-789"],
+        "example": [
+            "PT Contoh Sejahtera",
+            "Jl. Demo No. 1",
+            "01.234.567.8-091.000",
+            "021-1234567",
+            "info@contoh.co.id",
+            "Direktur Utama",
+            "BCA 123-456-789",
+        ],
         "handler": import_companies,
     },
     "categories": {
@@ -723,23 +817,54 @@ SCHEMAS: dict[str, dict[str, Any]] = {
     "vendors-clients": {
         "label": "Vendor / Client",
         "headers": ["name", "type", "contact", "phone", "email", "npwp", "address", "bank_account"],
-        "example": ["Toko Bangunan Sentosa", "VENDOR", "Pak Joko", "021-555-1111",
-                    "joko@sentosa.co.id", "", "", "BCA 222-333-444"],
+        "example": [
+            "Toko Bangunan Sentosa",
+            "VENDOR",
+            "Pak Joko",
+            "021-555-1111",
+            "joko@sentosa.co.id",
+            "",
+            "",
+            "BCA 222-333-444",
+        ],
         "handler": import_vendors_clients,
     },
     "projects": {
         "label": "Proyek",
-        "headers": ["code", "name", "location", "company_name", "pic_email",
-                    "start_date", "end_date", "status",
-                    "project_value", "budget_amount",
-                    "currency", "overbudget_tolerance_pct", "notes",
-                    "document_url", "document_label"],
-        "example": ["PRJ-DEMO", "Proyek Demo", "Jakarta",
-                    "PT Contoh Sejahtera", "budi@bintang.me",
-                    "2026-04-01", "2026-12-31", "AKTIF",
-                    357000000, 250000000,
-                    "IDR", 5, "Catatan demo",
-                    "https://drive.google.com/file/d/abc123/view", "Kontrak"],
+        "headers": [
+            "code",
+            "name",
+            "location",
+            "company_name",
+            "pic_email",
+            "start_date",
+            "end_date",
+            "status",
+            "project_value",
+            "budget_amount",
+            "currency",
+            "overbudget_tolerance_pct",
+            "notes",
+            "document_url",
+            "document_label",
+        ],
+        "example": [
+            "PRJ-DEMO",
+            "Proyek Demo",
+            "Jakarta",
+            "PT Contoh Sejahtera",
+            "budi@bintang.me",
+            "2026-04-01",
+            "2026-12-31",
+            "AKTIF",
+            357000000,
+            250000000,
+            "IDR",
+            5,
+            "Catatan demo",
+            "https://drive.google.com/file/d/abc123/view",
+            "Kontrak",
+        ],
         "note": (
             "project_value = nilai kontrak/SPK. budget_amount = target pengeluaran. "
             "Kalau budget_amount dikosongkan, otomatis dihitung 70% dari project_value. "
@@ -750,14 +875,36 @@ SCHEMAS: dict[str, dict[str, Any]] = {
     },
     "transactions": {
         "label": "Transaksi",
-        "headers": ["project_code", "tx_date", "type", "category_name", "amount",
-                    "party_name", "party_type", "vendor_client_name",
-                    "payment_method", "reference_no", "description",
-                    "attachment_url", "attachment_label"],
-        "example": ["PRJ-001", "2026-04-15", "OUT", "Material Bangunan", 5500000,
-                    "Toko Bangunan Sentosa", "COMPANY", "Toko Bangunan Sentosa",
-                    "TRANSFER", "TRF-2026-001", "Pembelian semen 50 sak",
-                    "https://drive.google.com/file/d/xyz789/view", "Bukti TF BCA"],
+        "headers": [
+            "project_code",
+            "tx_date",
+            "type",
+            "category_name",
+            "amount",
+            "party_name",
+            "party_type",
+            "vendor_client_name",
+            "payment_method",
+            "reference_no",
+            "description",
+            "attachment_url",
+            "attachment_label",
+        ],
+        "example": [
+            "PRJ-001",
+            "2026-04-15",
+            "OUT",
+            "Material Bangunan",
+            5500000,
+            "Toko Bangunan Sentosa",
+            "COMPANY",
+            "Toko Bangunan Sentosa",
+            "TRANSFER",
+            "TRF-2026-001",
+            "Pembelian semen 50 sak",
+            "https://drive.google.com/file/d/xyz789/view",
+            "Bukti TF BCA",
+        ],
         "note": (
             "attachment_url opsional -- isi URL bukti (mis. Google Drive yg sudah di-share) "
             "untuk auto-attach sebagai bukti transaksi. attachment_label = nama dokumen "
@@ -767,14 +914,40 @@ SCHEMAS: dict[str, dict[str, Any]] = {
     },
     "invoices": {
         "label": "Invoice",
-        "headers": ["number", "project_code", "type", "invoice_date", "due_date",
-                    "vendor_client_name", "party_name", "tax", "notes",
-                    "item_description", "item_quantity", "item_unit", "item_unit_price",
-                    "attachment_url", "attachment_label"],
-        "example": ["INV/2026/04/PRJ-001/0099", "PRJ-001", "OUT", "2026-04-20",
-                    "2026-05-20", "PT Klien Sukses Makmur", "PT Klien Sukses Makmur",
-                    11000000, "Termin demo", "Pekerjaan struktur", 1, "lot", 100000000,
-                    "https://drive.google.com/file/d/inv001/view", "Scan invoice"],
+        "headers": [
+            "number",
+            "project_code",
+            "type",
+            "invoice_date",
+            "due_date",
+            "vendor_client_name",
+            "party_name",
+            "tax",
+            "notes",
+            "item_description",
+            "item_quantity",
+            "item_unit",
+            "item_unit_price",
+            "attachment_url",
+            "attachment_label",
+        ],
+        "example": [
+            "INV/2026/04/PRJ-001/0099",
+            "PRJ-001",
+            "OUT",
+            "2026-04-20",
+            "2026-05-20",
+            "PT Klien Sukses Makmur",
+            "PT Klien Sukses Makmur",
+            11000000,
+            "Termin demo",
+            "Pekerjaan struktur",
+            1,
+            "lot",
+            100000000,
+            "https://drive.google.com/file/d/inv001/view",
+            "Scan invoice",
+        ],
         "handler": import_invoices,
         "note": (
             "Untuk invoice dengan banyak item: ulang baris dengan number yang sama, isi "
@@ -784,14 +957,40 @@ SCHEMAS: dict[str, dict[str, Any]] = {
     },
     "purchase-orders": {
         "label": "Purchase Order",
-        "headers": ["_po_ref", "project_code", "company_name", "vendor_client_name",
-                    "vendor_name", "po_date", "needed_date", "tax", "discount",
-                    "payment_terms", "notes",
-                    "item_description", "item_quantity", "item_unit", "item_unit_price"],
-        "example": ["PO-1", "PRJ-001", "PT Bintang Karya Abadi",
-                    "CV Mitra Beton Pratama", "CV Mitra Beton Pratama",
-                    "2026-04-15", "2026-04-25", 0, 0, "NET 30", "",
-                    "Beton K-300 ready mix", 50, "m3", 400000],
+        "headers": [
+            "_po_ref",
+            "project_code",
+            "company_name",
+            "vendor_client_name",
+            "vendor_name",
+            "po_date",
+            "needed_date",
+            "tax",
+            "discount",
+            "payment_terms",
+            "notes",
+            "item_description",
+            "item_quantity",
+            "item_unit",
+            "item_unit_price",
+        ],
+        "example": [
+            "PO-1",
+            "PRJ-001",
+            "PT Bintang Karya Abadi",
+            "CV Mitra Beton Pratama",
+            "CV Mitra Beton Pratama",
+            "2026-04-15",
+            "2026-04-25",
+            0,
+            0,
+            "NET 30",
+            "",
+            "Beton K-300 ready mix",
+            50,
+            "m3",
+            400000,
+        ],
         "handler": import_purchase_orders,
         "note": "Pakai _po_ref unik per PO. Tambah baris dengan _po_ref sama untuk item lain.",
     },

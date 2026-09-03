@@ -6,7 +6,6 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-
 # Pola: angka Indonesia formatted (mis. "1.234.567" atau "1.234.567,89")
 # ATAU angka biasa "1234567" / "1234567.89". Bisa ada tanda minus '-' atau '−'.
 # Tolerant terhadap NBSP/spasi normal -- kadang ada di output _fmt_idr.
@@ -117,10 +116,7 @@ def build_xlsx(
     if subtitle:
         ws.append([subtitle])
     if filters:
-        ws.append([
-            "Filter: "
-            + " | ".join(f"{k}: {v}" for k, v in filters.items())
-        ])
+        ws.append(["Filter: " + " | ".join(f"{k}: {v}" for k, v in filters.items())])
     ws.append([])
     header_row_idx = ws.max_row + 1
     ws.append(headers)

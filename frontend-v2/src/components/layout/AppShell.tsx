@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Outlet } from "react-router-dom"
+import { Outlet } from "react-router"
 import { Sidebar } from "./Sidebar"
 import { NavRail } from "./NavRail"
 import { BottomNav } from "./BottomNav"
@@ -33,16 +33,18 @@ export function AppShell() {
   })
 
   return (
-    <div className="flex min-h-[100dvh] bg-surface-muted">
+    <div className="flex min-h-[100dvh] bg-transparent">
       <Sidebar />
       <NavRail />
 
-      <div className="flex flex-1 flex-col min-w-0">
+      <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onCommandPaletteOpen={() => setPaletteOpen(true)} />
 
         {/* Main content. Padding bottom utk mobile bottom nav (56px + safe). */}
-        <main className="flex-1 overflow-x-hidden pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">
-          <Outlet />
+        <main className="app-content flex-1 overflow-x-hidden pb-[calc(76px+env(safe-area-inset-bottom))] md:pb-0">
+          <div className="mx-auto min-h-full w-full max-w-[1680px]">
+            <Outlet />
+          </div>
         </main>
       </div>
 

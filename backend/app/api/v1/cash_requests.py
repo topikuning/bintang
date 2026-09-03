@@ -9,9 +9,11 @@ Setelah APPROVED, tx CASH_ADVANCE-nya berdiri sendiri di flow Transaksi
 existing (verify/cancel/settle lewat endpoint /transactions). Pengajuan
 ter-link via cash_requests.disbursement_tx_id.
 """
+
 from __future__ import annotations
 
-from datetime import date as date_type, datetime
+from datetime import UTC, datetime
+from datetime import date as date_type
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -62,7 +64,9 @@ async def _next_cr_number(db: AsyncSession, when: date_type) -> str:
     """Format: CR/YYYY/MM/####. Global sequential per bulan."""
     prefix = f"CR/{when.year}/{when.month:02d}/"
     res = await db.execute(
-        select(func.count()).select_from(CashRequest).where(
+        select(func.count())
+        .select_from(CashRequest)
+        .where(
             CashRequest.number.like(f"{prefix}%"),
         )
     )
@@ -111,26 +115,17 @@ async def _to_out(
         rejecter = user_map.get(cr.rejected_by_id) if cr.rejected_by_id else None
     else:
         requester = await db.get(User, cr.requester_id)
-        recipient = (
-            await db.get(User, cr.recipient_user_id)
-            if cr.recipient_user_id else None
-        )
-        approver = (
-            await db.get(User, cr.approved_by_id)
-            if cr.approved_by_id else None
-        )
-        rejecter = (
-            await db.get(User, cr.rejected_by_id)
-            if cr.rejected_by_id else None
-        )
+        recipient = await db.get(User, cr.recipient_user_id) if cr.recipient_user_id else None
+        approver = await db.get(User, cr.approved_by_id) if cr.approved_by_id else None
+        rejecter = await db.get(User, cr.rejected_by_id) if cr.rejected_by_id else None
     # Items + category names
     if cat_map is None:
         cat_ids = [it.category_id for it in cr.items if it.category_id]
         cat_map = {}
         if cat_ids:
-            rows = (await db.execute(
-                select(Category.id, Category.name).where(Category.id.in_(cat_ids))
-            )).all()
+            rows = (
+                await db.execute(select(Category.id, Category.name).where(Category.id.in_(cat_ids)))
+            ).all()
             cat_map = {cid: name for cid, name in rows}
     items_out = [
         CashRequestItemOut(
@@ -239,19 +234,25 @@ async def list_cash_requests(
                 if it.category_id:
                     cat_ids.add(it.category_id)
 
-        proj_rows = (await db.execute(
-            select(Project).where(Project.id.in_(project_ids))
-        )).scalars().all()
+        proj_rows = (
+            (await db.execute(select(Project).where(Project.id.in_(project_ids)))).scalars().all()
+        )
         project_map = {p.id: p for p in proj_rows}
 
-        user_rows = (await db.execute(
-            select(User).where(User.id.in_(user_ids))
-        )).scalars().all() if user_ids else []
+        user_rows = (
+            (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars().all()
+            if user_ids
+            else []
+        )
         user_map = {u.id: u for u in user_rows}
 
-        cat_rows = (await db.execute(
-            select(Category.id, Category.name).where(Category.id.in_(cat_ids))
-        )).all() if cat_ids else []
+        cat_rows = (
+            (
+                await db.execute(select(Category.id, Category.name).where(Category.id.in_(cat_ids)))
+            ).all()
+            if cat_ids
+            else []
+        )
         cat_map = {cid: name for cid, name in cat_rows}
     else:
         project_map = {}
@@ -297,19 +298,27 @@ async def create_cash_request(
     db.add(cr)
     await db.flush()
     for it_in in payload.items:
-        db.add(CashRequestItem(
-            request_id=cr.id,
-            category_id=it_in.category_id,
-            description=it_in.description.strip(),
-            quantity=it_in.quantity,
-            unit_price=it_in.unit_price,
-            amount=it_in.amount,
-        ))
+        db.add(
+            CashRequestItem(
+                request_id=cr.id,
+                category_id=it_in.category_id,
+                description=it_in.description.strip(),
+                quantity=it_in.quantity,
+                unit_price=it_in.unit_price,
+                amount=it_in.amount,
+            )
+        )
     await db.flush()
     # Refresh kolom server-default supaya snapshot tdk lazy-load.
     await db.refresh(cr, attribute_names=[c.name for c in CashRequest.__table__.columns])
-    await log(db, user_id=user.id, entity="cash_request", entity_id=cr.id,
-              action=AuditAction.CREATE, after=snapshot(cr))
+    await log(
+        db,
+        user_id=user.id,
+        entity="cash_request",
+        entity_id=cr.id,
+        action=AuditAction.CREATE,
+        after=snapshot(cr),
+    )
     await db.commit()
     cr_full = await _fetch_with_relations(db, cr.id)
     assert cr_full is not None
@@ -343,6 +352,7 @@ async def update_cash_request(
     await ensure_project_access(db, user, cr.project_id)
     # Hanya requester atau admin yg boleh edit.
     from app.core.deps import CENTRAL_ROLES
+
     if cr.requester_id != user.id and user.role not in CENTRAL_ROLES:
         raise HTTPException(403, "not_requester_or_admin")
     # Hanya PENDING yg boleh diubah -- setelah APPROVED, edit lewat tx
@@ -379,19 +389,28 @@ async def update_cash_request(
             for it_in in new_items
         ]
         for it_in in items_in:
-            db.add(CashRequestItem(
-                request_id=cr.id,
-                category_id=it_in.category_id,
-                description=it_in.description.strip(),
-                quantity=it_in.quantity,
-                unit_price=it_in.unit_price,
-                amount=it_in.amount,
-            ))
+            db.add(
+                CashRequestItem(
+                    request_id=cr.id,
+                    category_id=it_in.category_id,
+                    description=it_in.description.strip(),
+                    quantity=it_in.quantity,
+                    unit_price=it_in.unit_price,
+                    amount=it_in.amount,
+                )
+            )
         cr.total_amount = _items_total(items_in)
 
     await db.flush()
-    await log(db, user_id=user.id, entity="cash_request", entity_id=cr.id,
-              action=AuditAction.UPDATE, before=before, after=snapshot(cr))
+    await log(
+        db,
+        user_id=user.id,
+        entity="cash_request",
+        entity_id=cr.id,
+        action=AuditAction.UPDATE,
+        before=before,
+        after=snapshot(cr),
+    )
     await db.commit()
     cr_full = await _fetch_with_relations(db, cr.id)
     assert cr_full is not None
@@ -409,6 +428,7 @@ async def delete_cash_request(
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, user, cr.project_id)
     from app.core.deps import CENTRAL_ROLES
+
     if cr.requester_id != user.id and user.role not in CENTRAL_ROLES:
         raise HTTPException(403, "not_requester_or_admin")
     # Hanya PENDING. APPROVED -> harus cancel dulu (yg juga akan
@@ -416,9 +436,15 @@ async def delete_cash_request(
     if cr.status != CashRequestStatus.PENDING.value:
         raise HTTPException(400, "only_pending_can_be_deleted")
     before = snapshot(cr)
-    cr.deleted_at = datetime.utcnow()
-    await log(db, user_id=user.id, entity="cash_request", entity_id=cr.id,
-              action=AuditAction.DELETE, before=before)
+    cr.deleted_at = datetime.now(UTC)
+    await log(
+        db,
+        user_id=user.id,
+        entity="cash_request",
+        entity_id=cr.id,
+        action=AuditAction.DELETE,
+        before=before,
+    )
     await db.commit()
 
 
@@ -466,12 +492,19 @@ async def approve_cash_request(
 
     cr.status = CashRequestStatus.APPROVED.value
     cr.approved_by_id = admin.id
-    cr.approved_at = datetime.utcnow()
+    cr.approved_at = datetime.now(UTC)
     cr.disbursement_tx_id = tx.id
 
     await db.flush()
-    await log(db, user_id=admin.id, entity="cash_request", entity_id=cr.id,
-              action=AuditAction.UPDATE, before=before, after=snapshot(cr))
+    await log(
+        db,
+        user_id=admin.id,
+        entity="cash_request",
+        entity_id=cr.id,
+        action=AuditAction.UPDATE,
+        before=before,
+        after=snapshot(cr),
+    )
     await db.commit()
     cr_full = await _fetch_with_relations(db, cr.id)
     assert cr_full is not None
@@ -493,11 +526,18 @@ async def reject_cash_request(
     before = snapshot(cr)
     cr.status = CashRequestStatus.REJECTED.value
     cr.rejected_by_id = admin.id
-    cr.rejected_at = datetime.utcnow()
+    cr.rejected_at = datetime.now(UTC)
     cr.rejection_reason = payload.reason.strip()
     await db.flush()
-    await log(db, user_id=admin.id, entity="cash_request", entity_id=cr.id,
-              action=AuditAction.UPDATE, before=before, after=snapshot(cr))
+    await log(
+        db,
+        user_id=admin.id,
+        entity="cash_request",
+        entity_id=cr.id,
+        action=AuditAction.UPDATE,
+        before=before,
+        after=snapshot(cr),
+    )
     await db.commit()
     cr_full = await _fetch_with_relations(db, cr.id)
     assert cr_full is not None
@@ -516,6 +556,7 @@ async def cancel_cash_request(
     if not cr:
         raise HTTPException(404, "not_found")
     from app.core.deps import CENTRAL_ROLES
+
     if cr.requester_id != user.id and user.role not in CENTRAL_ROLES:
         raise HTTPException(403, "not_requester_or_admin")
     if cr.status != CashRequestStatus.PENDING.value:
@@ -526,8 +567,15 @@ async def cancel_cash_request(
     if payload.reason:
         cr.rejection_reason = payload.reason.strip()
     await db.flush()
-    await log(db, user_id=user.id, entity="cash_request", entity_id=cr.id,
-              action=AuditAction.UPDATE, before=before, after=snapshot(cr))
+    await log(
+        db,
+        user_id=user.id,
+        entity="cash_request",
+        entity_id=cr.id,
+        action=AuditAction.UPDATE,
+        before=before,
+        after=snapshot(cr),
+    )
     await db.commit()
     cr_full = await _fetch_with_relations(db, cr.id)
     assert cr_full is not None

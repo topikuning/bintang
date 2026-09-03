@@ -34,35 +34,21 @@ export default tseslint.config(
       "react-refresh": reactRefresh,
     },
     rules: {
-      ...reactHooks.configs.recommended.rules,
-
-      // CATATAN -- eslint tetap di v9, BUKAN v10.
-      //
-      // Sempat dinaikkan ke eslint 10 + eslint-plugin-react-hooks v7
-      // (2026-08-30) untuk mendapat aturan React Compiler. Dibatalkan:
-      // eslint 10 membutuhkan ajv@6 sementara paket lain di pohon
-      // dependency membutuhkan ajv@8, dan npm menulis lockfile yang
-      // kemudian DITOLAK oleh `npm ci` sendiri ("lock file's ajv@6.15.0
-      // does not satisfy ajv@8.20.0"). CI jadi merah di langkah install
-      // sebelum sempat menjalankan apa pun.
-      //
-      // Yang hilang cuma peringatan tambahan; bug nyata yang ditemukan
-      // lint (hook dipanggil kondisional di ProjectsHubPage) tertangkap
-      // oleh `rules-of-hooks` yang sudah ada di v5. Coba lagi setelah
-      // eslint/ajv beres di upstream.
+      // Core correctness rules. React Compiler-specific rules are omitted
+      // because this app does not enable the compiler; enabling them would
+      // flag valid state synchronization and third-party form/table APIs.
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "error",
 
       // Aturan React Fast Refresh: komponen harus jadi satu-satunya
       // export dari berkasnya. Banyak berkas lama mengekspor helper di
       // samping komponen -- peringatan, bukan error, supaya tidak
       // memblokir CI sebelum sempat dirapikan.
-      "react-refresh/only-export-components": [
-        "warn",
-        { allowConstantExport: true },
-      ],
+      "react-refresh/only-export-components": "error",
 
       // `any` masih dipakai di beberapa jembatan tipe API. Turunkan ke
       // warn dulu; naikkan ke error setelah types/api.ts lengkap.
-      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-explicit-any": "error",
 
       // Argumen tak terpakai berawalan `_` adalah konvensi sengaja di
       // repo ini (mis. `_admin: User = Depends(...)` di sisi backend,
@@ -75,6 +61,20 @@ export default tseslint.config(
           caughtErrorsIgnorePattern: "^_",
         },
       ],
+    },
+  },
+  {
+    files: [
+      "src/components/layout/nav-config.tsx",
+      "src/components/ui/sonner.tsx",
+      "src/components/domain/project/ProjectForm.tsx",
+      "src/components/forms/ScanButton.tsx",
+      "src/routes.tsx",
+    ],
+    rules: {
+      // These modules intentionally export route/config/helper values next
+      // to their owning component; none of those values hold React state.
+      "react-refresh/only-export-components": "off",
     },
   },
 )

@@ -15,10 +15,10 @@ Akses:
 - GET endpoints: CENTRAL_ADMIN, SUPERADMIN (lihat list/setting)
 - PUT setting: SUPERADMIN saja (audit-sensitive)
 """
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
@@ -26,10 +26,7 @@ from sqlalchemy import extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import (
-    get_current_user,
-    require_admin,
     require_superadmin,
-    user_project_ids,
 )
 from app.db.session import get_db
 from app.models.models import (
@@ -88,10 +85,14 @@ async def list_non_project_companies(
     """
     # Load semua company beserta NP project (lazy auto-create kalau hilang).
     companies = (
-        await db.execute(
-            select(Company).where(Company.deleted_at.is_(None)).order_by(Company.name)
+        (
+            await db.execute(
+                select(Company).where(Company.deleted_at.is_(None)).order_by(Company.name)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     out: list[NonProjectCompanyEntry] = []
     dirty = False
     for c in companies:
@@ -109,9 +110,7 @@ async def list_non_project_companies(
             # Safety: auto-create kalau hilang (mis. company baru pasca migrasi)
             pid = await get_or_create_non_project(db, c.id)
             dirty = True
-            proj = (
-                await db.execute(select(Project).where(Project.id == pid))
-            ).scalar_one()
+            proj = (await db.execute(select(Project).where(Project.id == pid))).scalar_one()
         out.append(
             NonProjectCompanyEntry(
                 company_id=c.id,
@@ -150,12 +149,16 @@ async def list_year_settings(
 
     # Ambil semua setting yg sudah ada
     settings_rows = (
-        await db.execute(
-            select(NonProjectYearSetting).where(
-                NonProjectYearSetting.company_id.in_(company_ids)
+        (
+            await db.execute(
+                select(NonProjectYearSetting).where(
+                    NonProjectYearSetting.company_id.in_(company_ids)
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     settings_map: dict[tuple[int, int], NonProjectYearSetting] = {
         (s.company_id, s.year): s for s in settings_rows
     }
@@ -198,9 +201,7 @@ async def list_year_settings(
     editor_ids = {s.updated_by_id for s in settings_rows if s.updated_by_id}
     editor_map = {}
     if editor_ids:
-        editors = (
-            await db.execute(select(User).where(User.id.in_(editor_ids)))
-        ).scalars().all()
+        editors = (await db.execute(select(User).where(User.id.in_(editor_ids)))).scalars().all()
         editor_map = {u.id: (u.name or u.email) for u in editors}
 
     # Gabungkan: union of keys from settings + detected

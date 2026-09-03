@@ -1,10 +1,10 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_admin, require_superadmin
+from app.core.deps import get_current_user, require_admin
 from app.db.session import get_db
 from app.models.models import AuditAction, User, VendorClient
 from app.schemas.common import Page
@@ -31,7 +31,9 @@ async def list_vc(
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     stmt = stmt.order_by(VendorClient.name).offset((page - 1) * size).limit(size)
     items = (await db.execute(stmt)).scalars().all()
-    return Page(items=[VendorClientOut.model_validate(c) for c in items], total=total, page=page, size=size)
+    return Page(
+        items=[VendorClientOut.model_validate(c) for c in items], total=total, page=page, size=size
+    )
 
 
 @router.post("", response_model=VendorClientOut, status_code=201)
@@ -43,8 +45,14 @@ async def create_vc(
     c = VendorClient(**payload.model_dump())
     db.add(c)
     await db.flush()
-    await log(db, user_id=admin.id, entity="vendor_client", entity_id=c.id,
-              action=AuditAction.CREATE, after=snapshot(c))
+    await log(
+        db,
+        user_id=admin.id,
+        entity="vendor_client",
+        entity_id=c.id,
+        action=AuditAction.CREATE,
+        after=snapshot(c),
+    )
     await db.commit()
     await db.refresh(c)
     return VendorClientOut.model_validate(c)
@@ -63,8 +71,15 @@ async def update_vc(
     before = snapshot(c)
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(c, k, v)
-    await log(db, user_id=admin.id, entity="vendor_client", entity_id=c.id,
-              action=AuditAction.UPDATE, before=before, after=snapshot(c))
+    await log(
+        db,
+        user_id=admin.id,
+        entity="vendor_client",
+        entity_id=c.id,
+        action=AuditAction.UPDATE,
+        before=before,
+        after=snapshot(c),
+    )
     await db.commit()
     await db.refresh(c)
     return VendorClientOut.model_validate(c)
@@ -80,7 +95,13 @@ async def delete_vc(
     if not c or c.deleted_at is not None:
         raise HTTPException(404, "not_found")
     before = snapshot(c)
-    c.deleted_at = datetime.utcnow()
-    await log(db, user_id=admin.id, entity="vendor_client", entity_id=c.id,
-              action=AuditAction.DELETE, before=before)
+    c.deleted_at = datetime.now(UTC)
+    await log(
+        db,
+        user_id=admin.id,
+        entity="vendor_client",
+        entity_id=c.id,
+        action=AuditAction.DELETE,
+        before=before,
+    )
     await db.commit()

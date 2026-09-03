@@ -9,10 +9,10 @@ Flow:
 
 Admin only (CENTRAL_ADMIN / SUPERADMIN).
 """
+
 from __future__ import annotations
 
 from datetime import date as date_type
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -45,7 +45,8 @@ async def scan_miscategorized(
 ) -> dict:
     try:
         result = await run_audit(
-            db, user_id=admin.id,
+            db,
+            user_id=admin.id,
             project_id=payload.project_id,
             date_from=payload.date_from,
             date_to=payload.date_to,
@@ -72,6 +73,7 @@ class ApplyIn(BaseModel):
 
     Admin biasa kirim subset dari hasil scan yg sudah dia review.
     """
+
     items: list[ApplyItem]
 
 
@@ -88,12 +90,15 @@ async def apply_recategorization(
     # Validate category IDs ada
     cat_ids = {it.new_category_id for it in payload.items}
     valid_cats = {
-        c for (c,) in (await db.execute(
-            select(Category.id).where(
-                Category.id.in_(cat_ids),
-                Category.deleted_at.is_(None),
+        c
+        for (c,) in (
+            await db.execute(
+                select(Category.id).where(
+                    Category.id.in_(cat_ids),
+                    Category.deleted_at.is_(None),
+                )
             )
-        )).all()
+        ).all()
     }
     invalid = cat_ids - valid_cats
     if invalid:
@@ -102,9 +107,7 @@ async def apply_recategorization(
     tx_ids = [it.tx_id for it in payload.items]
     new_cat_by_tx = {it.tx_id: it.new_category_id for it in payload.items}
 
-    res = await db.execute(
-        select(Transaction).where(Transaction.id.in_(tx_ids))
-    )
+    res = await db.execute(select(Transaction).where(Transaction.id.in_(tx_ids)))
     txs = {t.id: t for t in res.scalars().all()}
 
     success: list[int] = []
@@ -121,8 +124,13 @@ async def apply_recategorization(
         before = snapshot(t)
         t.category_id = new_cat
         await log(
-            db, user_id=admin.id, entity="transaction", entity_id=t.id,
-            action=AuditAction.UPDATE, before=before, after=snapshot(t),
+            db,
+            user_id=admin.id,
+            entity="transaction",
+            entity_id=t.id,
+            action=AuditAction.UPDATE,
+            before=before,
+            after=snapshot(t),
             note="AI audit recategorization",
         )
         success.append(tid)

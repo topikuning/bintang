@@ -1,7 +1,7 @@
 import { useState } from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import { ExternalLink, FolderKanban, Pencil, Trash2 } from "lucide-react"
-import { Link as RouterLink } from "react-router-dom"
+import { Link as RouterLink } from "react-router"
 import { useProjects } from "@/hooks/useProjects"
 import { useDeleteProject } from "@/hooks/useProjectMutations"
 import { useCompanies } from "@/hooks/useCompanies"

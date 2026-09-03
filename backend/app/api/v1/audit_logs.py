@@ -52,18 +52,20 @@ async def list_audit_logs(
     # Sebelumnya bocor: CENTRAL_ADMIN bisa lihat entity_id + snapshot
     # tx/invoice/PO milik NP project lewat list audit.
     if user.role != UserRole.SUPERADMIN:
-        np_pid_subq = select(Project.id).where(
-            Project.kind == ProjectKind.NON_PROJECT.value
-        ).scalar_subquery()
-        np_tx_ids = select(Transaction.id).where(
-            Transaction.project_id.in_(np_pid_subq)
-        ).scalar_subquery()
-        np_inv_ids = select(Invoice.id).where(
-            Invoice.project_id.in_(np_pid_subq)
-        ).scalar_subquery()
-        np_po_ids = select(PurchaseOrder.id).where(
-            PurchaseOrder.project_id.in_(np_pid_subq)
-        ).scalar_subquery()
+        np_pid_subq = (
+            select(Project.id)
+            .where(Project.kind == ProjectKind.NON_PROJECT.value)
+            .scalar_subquery()
+        )
+        np_tx_ids = (
+            select(Transaction.id).where(Transaction.project_id.in_(np_pid_subq)).scalar_subquery()
+        )
+        np_inv_ids = select(Invoice.id).where(Invoice.project_id.in_(np_pid_subq)).scalar_subquery()
+        np_po_ids = (
+            select(PurchaseOrder.id)
+            .where(PurchaseOrder.project_id.in_(np_pid_subq))
+            .scalar_subquery()
+        )
         stmt = stmt.where(
             ~(
                 ((AuditLog.entity == "project") & AuditLog.entity_id.in_(np_pid_subq))

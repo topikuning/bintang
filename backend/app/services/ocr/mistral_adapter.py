@@ -32,9 +32,9 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 
-from app.services.storage.paths import is_local_file_url, resolve_upload_path
 from app.services.ocr.adapter import OCRAdapter
 from app.services.ocr.schema import INVOICE_SCHEMA, INVOICE_SYSTEM_PROMPT
+from app.services.storage.paths import is_local_file_url, resolve_upload_path
 
 log = logging.getLogger(__name__)
 
@@ -121,23 +121,15 @@ class MistralOCRAdapter(OCRAdapter):
                 }
             r.raise_for_status()
             data = r.json()
-            ids = [
-                m.get("id") for m in (data.get("data") or [])
-                if isinstance(m, dict)
-            ]
-            has_model = self._model in ids or any(
-                (m or "").startswith("mistral-ocr") for m in ids
-            )
+            ids = [m.get("id") for m in (data.get("data") or []) if isinstance(m, dict)]
+            has_model = self._model in ids or any((m or "").startswith("mistral-ocr") for m in ids)
             return {
                 "ok": True,
                 "model": self._model,
                 "latency_ms": latency,
                 "models_available": len(ids),
                 "ocr_model_listed": has_model,
-                "hint": (
-                    None if has_model
-                    else f"Model '{self._model}' tidak terdeteksi di list."
-                ),
+                "hint": (None if has_model else f"Model '{self._model}' tidak terdeteksi di list."),
             }
         except httpx.TimeoutException:
             return {
@@ -160,32 +152,20 @@ class MistralOCRAdapter(OCRAdapter):
             normalized = _normalize_url(file_url)
             if normalized != file_url:
                 log.info("ocr.mistral.url_normalized %s -> %s", file_url, normalized)
-            async with httpx.AsyncClient(
-                timeout=30.0, follow_redirects=True
-            ) as hx:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as hx:
                 r = await hx.get(normalized)
                 r.raise_for_status()
                 content = r.content
-                media_type = (
-                    r.headers.get("content-type", "").split(";")[0].strip()
-                    or "image/jpeg"
-                )
+                media_type = r.headers.get("content-type", "").split(";")[0].strip() or "image/jpeg"
                 if media_type == "text/html":
                     raise ValueError(
                         "url_returned_html: URL mengembalikan halaman web. "
                         "Untuk Google Drive: pakai link 'View'; Dropbox: "
                         "ganti '?dl=0' jadi '?dl=1'."
                     )
-                if not (
-                    media_type.startswith("image/")
-                    or media_type == "application/pdf"
-                ):
-                    raise ValueError(
-                        f"unsupported_media_type: {media_type}"
-                    )
-        return await self.extract_from_bytes(
-            content, media_type, source_url=file_url
-        )
+                if not (media_type.startswith("image/") or media_type == "application/pdf"):
+                    raise ValueError(f"unsupported_media_type: {media_type}")
+        return await self.extract_from_bytes(content, media_type, source_url=file_url)
 
     async def extract_from_bytes(
         self,
@@ -236,9 +216,7 @@ class MistralOCRAdapter(OCRAdapter):
             r = await self._client.post(_MISTRAL_OCR_URL, json=payload)
         except httpx.TimeoutException as e:
             log.error("ocr.mistral.timeout after %ss", _MISTRAL_TIMEOUT)
-            raise RuntimeError(
-                f"mistral_timeout_{int(_MISTRAL_TIMEOUT)}s: API tdk respond."
-            ) from e
+            raise RuntimeError(f"mistral_timeout_{int(_MISTRAL_TIMEOUT)}s: API tdk respond.") from e
         except httpx.HTTPError as e:
             log.error("ocr.mistral.http_error: %s", e)
             raise RuntimeError(f"mistral_http_error: {e}") from e
@@ -254,19 +232,17 @@ class MistralOCRAdapter(OCRAdapter):
         if r.status_code >= 500:
             log.error(
                 "ocr.mistral.server_error status=%s body=%s",
-                r.status_code, r.text[:300],
+                r.status_code,
+                r.text[:300],
             )
-            raise RuntimeError(
-                f"mistral_server_error_{r.status_code}: API down"
-            )
+            raise RuntimeError(f"mistral_server_error_{r.status_code}: API down")
         if r.status_code >= 400:
             log.error(
                 "ocr.mistral.bad_request status=%s body=%s",
-                r.status_code, r.text[:500],
+                r.status_code,
+                r.text[:500],
             )
-            raise RuntimeError(
-                f"mistral_bad_request_{r.status_code}: {r.text[:200]}"
-            )
+            raise RuntimeError(f"mistral_bad_request_{r.status_code}: {r.text[:200]}")
         data = r.json()
 
         # Response shape (Mistral OCR v1):
@@ -283,18 +259,14 @@ class MistralOCRAdapter(OCRAdapter):
                 try:
                     ann = json.loads(ann_raw)
                 except json.JSONDecodeError:
-                    log.warning(
-                        "ocr.mistral.annotation_not_json -- fallback empty"
-                    )
+                    log.warning("ocr.mistral.annotation_not_json -- fallback empty")
                     ann = {}
             elif isinstance(ann_raw, dict):
                 ann = ann_raw
 
         # Concat semua page markdown utk debug + audit trail (truncate)
         pages = data.get("pages") or []
-        all_md = "\n\n---\n\n".join(
-            (p.get("markdown") or "")[:2000] for p in pages
-        )[:8000]
+        all_md = "\n\n---\n\n".join((p.get("markdown") or "")[:2000] for p in pages)[:8000]
 
         log.info(
             "ocr.mistral.done pages=%d items=%d latency_ms=%d",
@@ -315,8 +287,7 @@ class MistralOCRAdapter(OCRAdapter):
             "items": ann.get("items") or [],
             "is_handwritten": bool(ann.get("is_handwritten", False)),
             "notes": ann.get("notes") or None,
-            "confidence_score": _to_decimal(ann.get("confidence_score"))
-            or Decimal("0"),
+            "confidence_score": _to_decimal(ann.get("confidence_score")) or Decimal("0"),
             "field_confidences": ann.get("field_confidences") or {},
             "raw_response": {
                 "engine": f"mistral:{self._model}",

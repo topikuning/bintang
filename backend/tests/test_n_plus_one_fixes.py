@@ -5,6 +5,7 @@ Tujuan: verify hasil endpoint setelah refactor TETAP sama secara
 semantik. Performance benefit tdk di-assert di sini (butuh query
 counter); cuma correctness output.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -31,11 +32,13 @@ from app.models.models import (
 
 async def _seed_super(db):
     u = User(
-        email="super@x", name="Super",
+        email="super@x",
+        name="Super",
         password_hash=hash_password("x"),
         role=UserRole.SUPERADMIN,
     )
-    db.add(u); await db.flush()
+    db.add(u)
+    await db.flush()
     return u
 
 
@@ -46,47 +49,95 @@ async def test_cash_requests_list_returns_hydrated_fields(db):
     ke-populate utk multi-row.
     """
     user = await _seed_super(db)
-    co = Company(name="C"); db.add(co); await db.flush()
-    p1 = Project(code="P1", name="Proyek Satu", company_id=co.id, status=ProjectStatus.AKTIF, kind=ProjectKind.REGULAR.value)
-    p2 = Project(code="P2", name="Proyek Dua", company_id=co.id, status=ProjectStatus.AKTIF, kind=ProjectKind.REGULAR.value)
-    db.add_all([p1, p2]); await db.flush()
+    co = Company(name="C")
+    db.add(co)
+    await db.flush()
+    p1 = Project(
+        code="P1",
+        name="Proyek Satu",
+        company_id=co.id,
+        status=ProjectStatus.AKTIF,
+        kind=ProjectKind.REGULAR.value,
+    )
+    p2 = Project(
+        code="P2",
+        name="Proyek Dua",
+        company_id=co.id,
+        status=ProjectStatus.AKTIF,
+        kind=ProjectKind.REGULAR.value,
+    )
+    db.add_all([p1, p2])
+    await db.flush()
     from app.models.models import CategoryType
+
     cat = Category(name="Material", type=CategoryType.OUT)
-    db.add(cat); await db.flush()
+    db.add(cat)
+    await db.flush()
 
     approver = User(email="ap@x", name="Approver", password_hash="x", role=UserRole.CENTRAL_ADMIN)
-    db.add(approver); await db.flush()
+    db.add(approver)
+    await db.flush()
 
     # 3 cash requests di 2 project, dgn berbagai relationship
     cr1 = CashRequest(
-        number="CR-001", project_id=p1.id, requester_id=user.id,
-        request_date=date(2026, 5, 22), title="Beli kabel",
-        total_amount=Decimal("100"), status=CashRequestStatus.PENDING,
+        number="CR-001",
+        project_id=p1.id,
+        requester_id=user.id,
+        request_date=date(2026, 5, 22),
+        title="Beli kabel",
+        total_amount=Decimal("100"),
+        status=CashRequestStatus.PENDING,
     )
     cr2 = CashRequest(
-        number="CR-002", project_id=p2.id, requester_id=user.id,
-        request_date=date(2026, 5, 22), title="Beli paku",
-        total_amount=Decimal("50"), status=CashRequestStatus.APPROVED,
+        number="CR-002",
+        project_id=p2.id,
+        requester_id=user.id,
+        request_date=date(2026, 5, 22),
+        title="Beli paku",
+        total_amount=Decimal("50"),
+        status=CashRequestStatus.APPROVED,
         approved_by_id=approver.id,
     )
     cr3 = CashRequest(
-        number="CR-003", project_id=p1.id, requester_id=user.id,
-        request_date=date(2026, 5, 22), title="Lain",
-        total_amount=Decimal("75"), status=CashRequestStatus.PENDING,
+        number="CR-003",
+        project_id=p1.id,
+        requester_id=user.id,
+        request_date=date(2026, 5, 22),
+        title="Lain",
+        total_amount=Decimal("75"),
+        status=CashRequestStatus.PENDING,
     )
-    db.add_all([cr1, cr2, cr3]); await db.flush()
-    db.add_all([
-        CashRequestItem(request_id=cr1.id, category_id=cat.id, description="kabel 10m", amount=Decimal("100")),
-        CashRequestItem(request_id=cr2.id, category_id=cat.id, description="paku", amount=Decimal("50")),
-        CashRequestItem(request_id=cr3.id, description="lain-lain no category", amount=Decimal("75")),
-    ])
+    db.add_all([cr1, cr2, cr3])
+    await db.flush()
+    db.add_all(
+        [
+            CashRequestItem(
+                request_id=cr1.id,
+                category_id=cat.id,
+                description="kabel 10m",
+                amount=Decimal("100"),
+            ),
+            CashRequestItem(
+                request_id=cr2.id, category_id=cat.id, description="paku", amount=Decimal("50")
+            ),
+            CashRequestItem(
+                request_id=cr3.id, description="lain-lain no category", amount=Decimal("75")
+            ),
+        ]
+    )
     await db.commit()
 
     result = await list_cash_requests(
-        status=None, project_id=None, requester_id=None,
-        date_from=None, date_to=None, q=None,
-        page=1, size=50,
-        db=db, user=user,
+        status=None,
+        project_id=None,
+        requester_id=None,
+        date_from=None,
+        date_to=None,
+        q=None,
+        page=1,
+        size=50,
+        db=db,
+        user=user,
     )
     assert result.total == 3
     by_num = {r.number: r for r in result.items}
@@ -112,38 +163,78 @@ async def test_projects_stats_bulk_aggregate(db):
     """3 GROUP BY query (in_map, out_map, inv_open_map) gantikan
     3 query per project. Verify output identik."""
     user = await _seed_super(db)
-    co = Company(name="C"); db.add(co); await db.flush()
-    p1 = Project(code="P1", name="P1", company_id=co.id, status=ProjectStatus.AKTIF, kind=ProjectKind.REGULAR.value, budget_amount=Decimal("1000"))
-    p2 = Project(code="P2", name="P2", company_id=co.id, status=ProjectStatus.AKTIF, kind=ProjectKind.REGULAR.value, budget_amount=Decimal("500"))
-    db.add_all([p1, p2]); await db.flush()
+    co = Company(name="C")
+    db.add(co)
+    await db.flush()
+    p1 = Project(
+        code="P1",
+        name="P1",
+        company_id=co.id,
+        status=ProjectStatus.AKTIF,
+        kind=ProjectKind.REGULAR.value,
+        budget_amount=Decimal("1000"),
+    )
+    p2 = Project(
+        code="P2",
+        name="P2",
+        company_id=co.id,
+        status=ProjectStatus.AKTIF,
+        kind=ProjectKind.REGULAR.value,
+        budget_amount=Decimal("500"),
+    )
+    db.add_all([p1, p2])
+    await db.flush()
 
     from app.models.models import PaymentMethod, Transaction, TxnKind, TxnStatus, TxnType
+
     # P1: 1 IN 300, 1 OUT 200
-    db.add(Transaction(
-        project_id=p1.id, tx_date=date(2026, 5, 22), type=TxnType.IN,
-        kind=TxnKind.INVOICE_PAYMENT.value, amount=Decimal("300"),
-        payment_method=PaymentMethod.TRANSFER, status=TxnStatus.VERIFIED,
-        created_by_id=user.id,
-    ))
-    db.add(Transaction(
-        project_id=p1.id, tx_date=date(2026, 5, 22), type=TxnType.OUT,
-        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("200"),
-        payment_method=PaymentMethod.CASH, status=TxnStatus.VERIFIED,
-        created_by_id=user.id,
-    ))
+    db.add(
+        Transaction(
+            project_id=p1.id,
+            tx_date=date(2026, 5, 22),
+            type=TxnType.IN,
+            kind=TxnKind.INVOICE_PAYMENT.value,
+            amount=Decimal("300"),
+            payment_method=PaymentMethod.TRANSFER,
+            status=TxnStatus.VERIFIED,
+            created_by_id=user.id,
+        )
+    )
+    db.add(
+        Transaction(
+            project_id=p1.id,
+            tx_date=date(2026, 5, 22),
+            type=TxnType.OUT,
+            kind=TxnKind.DIRECT_EXPENSE.value,
+            amount=Decimal("200"),
+            payment_method=PaymentMethod.CASH,
+            status=TxnStatus.VERIFIED,
+            created_by_id=user.id,
+        )
+    )
     # P2: 1 OUT 100
-    db.add(Transaction(
-        project_id=p2.id, tx_date=date(2026, 5, 22), type=TxnType.OUT,
-        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("100"),
-        payment_method=PaymentMethod.CASH, status=TxnStatus.VERIFIED,
-        created_by_id=user.id,
-    ))
+    db.add(
+        Transaction(
+            project_id=p2.id,
+            tx_date=date(2026, 5, 22),
+            type=TxnType.OUT,
+            kind=TxnKind.DIRECT_EXPENSE.value,
+            amount=Decimal("100"),
+            payment_method=PaymentMethod.CASH,
+            status=TxnStatus.VERIFIED,
+            created_by_id=user.id,
+        )
+    )
     await db.commit()
 
     rows = await list_projects_with_stats(
-        status=None, q=None,
-        location=None, client_name=None, funder_id=None,
-        db=db, user=user,
+        status=None,
+        q=None,
+        location=None,
+        client_name=None,
+        funder_id=None,
+        db=db,
+        user=user,
     )
     by_code = {r["code"]: r for r in rows}
     assert by_code["P1"]["total_in"] == 300.0

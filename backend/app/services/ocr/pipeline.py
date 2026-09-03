@@ -9,6 +9,7 @@ Caller pattern:
     )
     # result keys: extracted data + raw_response.cached (bool) + .engine
 """
+
 from __future__ import annotations
 
 import logging
@@ -17,18 +18,19 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import httpx
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.net_guard import BlockedURL, fetch_public_url
+from app.services.ocr.adapter import OCRAdapter, get_ocr_adapter
+from app.services.ocr.cache import file_hash
+from app.services.ocr.cache import lookup as cache_lookup
+from app.services.ocr.cache import store as cache_store
+from app.services.ocr.preprocess import preprocess_for_ocr
 from app.services.storage.paths import (
     UnsafeUploadPath,
     is_local_file_url,
     resolve_upload_path,
 )
-from app.services.ocr.adapter import OCRAdapter, get_ocr_adapter
-from app.services.ocr.cache import file_hash, lookup as cache_lookup, store as cache_store
-from app.services.ocr.preprocess import preprocess_for_ocr
 
 log = logging.getLogger(__name__)
 
@@ -93,10 +95,7 @@ async def fetch_to_bytes(file_url: str) -> tuple[bytes, str]:
             raise ValueError(f"url_blocked: {e}") from e
         r.raise_for_status()
         content = r.content
-        media_type = (
-            r.headers.get("content-type", "").split(";")[0].strip()
-            or "image/jpeg"
-        )
+        media_type = r.headers.get("content-type", "").split(";")[0].strip() or "image/jpeg"
     if media_type == "text/html":
         raise ValueError(
             "url_returned_html: URL mengembalikan halaman web, bukan file. "
@@ -118,13 +117,13 @@ async def _call_adapter(
     untuk adapter lama yg tdk override extract_from_bytes."""
     try:
         return await adapter.extract_from_bytes(
-            content, media_type, source_url=source_url,
+            content,
+            media_type,
+            source_url=source_url,
         )
     except NotImplementedError:
         if not source_url:
-            raise RuntimeError(
-                "adapter_no_bytes_support: pakai engine claude (support bytes)"
-            )
+            raise RuntimeError("adapter_no_bytes_support: pakai engine claude (support bytes)")
         return await adapter.extract_invoice(source_url)
 
 
@@ -183,9 +182,11 @@ async def run_extraction(
     # tesseract_result None = tdk eligible / disabled -> lanjut ke LLM.
     result: dict[str, Any] | None = None
     from app.services.app_settings import get_cached as _get_setting
+
     if _get_setting("OCR_TESSERACT_ENABLED") == "true":
         try:
             from app.services.ocr import tesseract_engine
+
             tres = tesseract_engine.try_extract(processed_content, processed_media)
             if tres is not None:
                 tres["source_url"] = source_url
@@ -203,6 +204,7 @@ async def run_extraction(
         model_override: str | None = None
         try:
             from app.services.ai.feature_settings import get_effective
+
             cfg = await get_effective(db, "ocr_invoice")
             if primary_engine is None and cfg.provider:
                 primary_engine = cfg.provider
@@ -215,6 +217,7 @@ async def run_extraction(
         # Prompt override-able via Prompt AI menu.
         try:
             from app.services.ai.prompt_registry import get_prompt
+
             p = await get_prompt(db, "ocr_invoice")
             sys_prompt = p.system
             # Audit 2026-06-02: user context (mis. "invoice terkait
@@ -238,7 +241,8 @@ async def run_extraction(
     # Default OFF: hormati engine user. Aktifkan dgn app_setting
     # OCR_FALLBACK_ENABLED=true kalau mau cost-vs-akurasi balance.
     from app.services.app_settings import get_cached as _setting
-    fallback_enabled = (_setting("OCR_FALLBACK_ENABLED") == "true")
+
+    fallback_enabled = _setting("OCR_FALLBACK_ENABLED") == "true"
     raw_eng = (result.get("raw_response", {}).get("engine") or "").lower()
     confidence = float(result.get("confidence_score") or 0)
     if (
@@ -249,12 +253,14 @@ async def run_extraction(
     ):
         log.info(
             "ocr.pipeline.fallback mistral -> claude (confidence=%.2f<%.2f)",
-            confidence, _FALLBACK_CONFIDENCE_THRESHOLD,
+            confidence,
+            _FALLBACK_CONFIDENCE_THRESHOLD,
         )
         try:
             claude_adapter = get_ocr_adapter("claude")
             try:
                 from app.services.ai.prompt_registry import get_prompt
+
                 p = await get_prompt(db, "ocr_invoice")
                 sys_prompt = p.system
                 if user_context:
@@ -268,7 +274,10 @@ async def run_extraction(
             except Exception:  # noqa: BLE001
                 pass
             claude_result = await _call_adapter(
-                claude_adapter, processed_content, processed_media, source_url,
+                claude_adapter,
+                processed_content,
+                processed_media,
+                source_url,
             )
             claude_raw = dict(claude_result.get("raw_response") or {})
             claude_raw["fallback_from"] = raw_eng
@@ -283,12 +292,9 @@ async def run_extraction(
             result["raw_response"] = raw
 
     # 6. Store ke cache (best-effort). Sertakan engine final yg dipakai.
-    final_engine = (result.get("raw_response", {}).get("engine") or "unknown")
+    final_engine = result.get("raw_response", {}).get("engine") or "unknown"
     # Decimal di extracted_data harus di-stringify utk JSON.
-    serializable = {
-        k: (str(v) if hasattr(v, "is_finite") else v)
-        for k, v in result.items()
-    }
+    serializable = {k: (str(v) if hasattr(v, "is_finite") else v) for k, v in result.items()}
     try:
         await cache_store(
             db,
@@ -306,8 +312,10 @@ async def run_extraction(
     # result supaya FE bisa suggest existing vendor (cegah duplikat).
     try:
         from app.services.ocr.vendor_match import match_vendor
+
         result["vendor_match"] = await match_vendor(
-            db, result.get("vendor_name"),
+            db,
+            result.get("vendor_name"),
         )
     except Exception as e:  # noqa: BLE001
         log.warning("ocr.pipeline.vendor_match_failed: %s", e)

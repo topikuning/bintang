@@ -65,10 +65,7 @@ async def init() -> None:
             print("• Superadmin sudah ada, dilewati.")
 
         # 2. Kategori master
-        existing_cats = {
-            c.name
-            for c in (await db.execute(select(Category))).scalars().all()
-        }
+        existing_cats = {c.name for c in (await db.execute(select(Category))).scalars().all()}
         added = 0
         for name, desc in DEFAULT_CATEGORIES_IN:
             if name in existing_cats:

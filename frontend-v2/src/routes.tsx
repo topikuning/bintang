@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react"
-import { createBrowserRouter, Navigate, useParams } from "react-router-dom"
+import { createBrowserRouter, Navigate, useParams } from "react-router"
 import { AppShell } from "@/components/layout/AppShell"
 import { RequireAuth } from "@/components/auth/RequireAuth"
 import { LoginPage } from "@/pages/Login"

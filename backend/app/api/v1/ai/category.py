@@ -1,4 +1,5 @@
 """Endpoint AI-1: smart category suggest."""
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,12 +18,14 @@ class SuggestCategoryIn(BaseModel):
 
     Audit 2026-05-24: tambah project_id supaya AI tau konteks proyek
     + bisa scope history vendor per-proyek kalau diset."""
+
     description: str | None = Field(None, max_length=500)
     party_name: str | None = Field(None, max_length=200)
     amount: str | float | int | None = None
     kind: str | None = Field(None, max_length=40)
-    direction: str | None = Field(None, pattern="^(IN|OUT)$",
-                                  description="Filter kategori berdasar arah kas.")
+    direction: str | None = Field(
+        None, pattern="^(IN|OUT)$", description="Filter kategori berdasar arah kas."
+    )
     project_id: int | None = None
 
 
@@ -43,7 +46,8 @@ async def suggest_category(
     """
     try:
         result = await run_category(
-            db, user_id=user.id,
+            db,
+            user_id=user.id,
             description=payload.description,
             party_name=payload.party_name,
             amount=payload.amount,

@@ -1,4 +1,5 @@
 """Endpoint AI-6: chat-style report query (template router, safe)."""
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -1,4 +1,3 @@
-import path from "node:path"
 import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
 
@@ -6,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "src"),
+      "@": new URL("./src", import.meta.url).pathname,
     },
   },
   server: {
@@ -39,22 +38,14 @@ export default defineConfig({
         //  - 'react-vendor' utk react+dom+router (selalu di-load).
         // Sisanya (lucide, axios, RHF, zustand, sonner, dll) ikut
         // chunk default berdasar import graph -- tidak terlalu besar.
-        manualChunks: {
-          recharts: ["recharts"],
-          tanstack: [
-            "@tanstack/react-query",
-            "@tanstack/react-table",
-          ],
-          radix: [
-            "@radix-ui/react-dialog",
-            "@radix-ui/react-dropdown-menu",
-            "@radix-ui/react-label",
-            "@radix-ui/react-popover",
-            "@radix-ui/react-separator",
-            "@radix-ui/react-slot",
-            "@radix-ui/react-tooltip",
-          ],
-          "react-vendor": ["react", "react-dom", "react-router-dom"],
+        manualChunks(id) {
+          if (id.includes("/recharts/") || id.includes("/recharts@")) return "recharts"
+          if (id.includes("/@tanstack/") || id.includes("/@tanstack+")) return "tanstack"
+          if (id.includes("/@radix-ui/") || id.includes("/@radix-ui+")) return "radix"
+          if (/[\\/]node_modules[\\/](react|react-dom|react-router)([\\/]|@)/.test(id)) {
+            return "react-vendor"
+          }
+          return undefined
         },
       },
     },

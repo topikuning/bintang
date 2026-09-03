@@ -6,12 +6,12 @@ butuh shared store (Redis). Cocok utk Railway single instance.
 Implementation: sliding window per key (mis. IP). Tdk pakai library
 eksternal supaya tdk nambah dep.
 """
+
 from __future__ import annotations
 
 from collections import deque
-from time import monotonic
 from threading import Lock
-from typing import Deque
+from time import monotonic
 
 
 class RateLimiter:
@@ -23,7 +23,7 @@ class RateLimiter:
     def __init__(self, *, max_calls: int, period_seconds: float):
         self.max_calls = max_calls
         self.period = period_seconds
-        self._buckets: dict[str, Deque[float]] = {}
+        self._buckets: dict[str, deque[float]] = {}
         self._lock = Lock()
 
     def check(self, key: str) -> tuple[bool, float]:

@@ -2,6 +2,7 @@
 
 Aggregate router dari per-feature modules.
 """
+
 from fastapi import APIRouter
 
 from . import (
@@ -22,7 +23,8 @@ router.include_router(category.router)
 router.include_router(categorize_items.router)
 router.include_router(category_audit.router, prefix="/category-audit")
 router.include_router(
-    batch_invoice_categorize.router, prefix="/batch-invoice-categorize",
+    batch_invoice_categorize.router,
+    prefix="/batch-invoice-categorize",
 )
 router.include_router(po_cover.router)
 router.include_router(cash_request_justify.router)

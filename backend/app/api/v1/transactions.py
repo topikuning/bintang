@@ -1,8 +1,9 @@
-from datetime import date as date_type, datetime, timezone
+from datetime import UTC, datetime
+from datetime import date as date_type
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -105,6 +106,7 @@ def _serialize(
     Kalau relationship belum loaded, fallback ke list kosong (safe).
     """
     from decimal import Decimal as _D
+
     from sqlalchemy import inspect as _sa_inspect
     from sqlalchemy.orm.base import LoaderCallableStatus as _LCS
 
@@ -138,6 +140,7 @@ def _serialize(
     items_rel = _safe_rel("items")
     if items_rel:
         from app.schemas.finance import TransactionItemOut
+
         out.items = [TransactionItemOut.model_validate(i) for i in items_rel]
     out.allocations = allocs or []
     allocated = sum((a.allocated_amount for a in (allocs or [])), start=_D("0"))
@@ -161,6 +164,7 @@ async def _serialize_with_allocs(db: AsyncSession, t: Transaction) -> Transactio
     refs = (await _build_allocation_refs(db, [t.id])).get(t.id, [])
     # Lazy-load: items + settlement (kalau ada). Resolve recipient_user.name.
     from sqlalchemy.orm import selectinload as _sl
+
     res = await db.execute(
         select(Transaction)
         .options(
@@ -213,9 +217,9 @@ async def list_transactions(
         raise HTTPException(403, "non_project_superadmin_only")
     # Sub-query daftar project_id yg kind=NON_PROJECT (biasanya cuma 1
     # per company). Pakai utk include/exclude di filter tx.
-    np_pids_subq = select(Project.id).where(
-        Project.kind == ProjectKind.NON_PROJECT.value
-    ).scalar_subquery()
+    np_pids_subq = (
+        select(Project.id).where(Project.kind == ProjectKind.NON_PROJECT.value).scalar_subquery()
+    )
     if non_project is True:
         stmt = stmt.where(Transaction.project_id.in_(np_pids_subq))
     else:
@@ -233,6 +237,7 @@ async def list_transactions(
     if company_id:
         # Filter via Project.company_id. Subquery: project IDs di company tsb.
         from app.models.models import Project as _P
+
         co_pids_subq = select(_P.id).where(_P.company_id == company_id).scalar_subquery()
         stmt = stmt.where(Transaction.project_id.in_(co_pids_subq))
     if type:
@@ -263,11 +268,13 @@ async def list_transactions(
         # Status DRAFT/SUBMITTED/VERIFIED only (CANCELLED tdk dihitung
         # outstanding). Audit 2026-05-24 -- match dashboard counter.
         from sqlalchemy import select as _sel
+
         alloc_sub = (
             _sel(
                 InvoiceAllocation.transaction_id.label("txn_id"),
                 func.coalesce(
-                    func.sum(InvoiceAllocation.allocated_amount), 0,
+                    func.sum(InvoiceAllocation.allocated_amount),
+                    0,
                 ).label("alloc_sum"),
             )
             .where(InvoiceAllocation.deleted_at.is_(None))
@@ -278,12 +285,17 @@ async def list_transactions(
         # dialokasikan ke invoice (beban tercatat in-place via items), jadi
         # tdk masuk filter "belum dialokasi".
         stmt = stmt.outerjoin(
-            alloc_sub, alloc_sub.c.txn_id == Transaction.id,
+            alloc_sub,
+            alloc_sub.c.txn_id == Transaction.id,
         ).where(
             Transaction.type == TxnType.OUT,
-            Transaction.status.in_([
-                TxnStatus.DRAFT, TxnStatus.SUBMITTED, TxnStatus.VERIFIED,
-            ]),
+            Transaction.status.in_(
+                [
+                    TxnStatus.DRAFT,
+                    TxnStatus.SUBMITTED,
+                    TxnStatus.VERIFIED,
+                ]
+            ),
             Transaction.kind != TxnKind.DIRECT_EXPENSE.value,
             (Transaction.amount - func.coalesce(alloc_sub.c.alloc_sum, 0)) > 0,
         )
@@ -302,7 +314,9 @@ async def list_transactions(
     refs_by_id = await _build_allocation_refs(db, [t.id for t in items])
     return Page(
         items=[_serialize(t, refs_by_id.get(t.id, [])) for t in items],
-        total=total, page=page, size=size,
+        total=total,
+        page=page,
+        size=size,
     )
 
 
@@ -316,6 +330,7 @@ def _validate_kind_invariants(
 ) -> None:
     """Cek aturan akunting per kind. Raise HTTPException(400) kalau melanggar."""
     from decimal import Decimal as _D
+
     # CASH_ADVANCE: hanya OUT + recipient wajib + items kosong (settlement nanti)
     if kind == TxnKind.CASH_ADVANCE:
         if tx_type != TxnType.OUT:
@@ -345,9 +360,7 @@ def _validate_kind_invariants(
         # items bisa berbentuk: list[TransactionItemIn] (Pydantic dr payload),
         # list[dict] (dr model_dump), atau list[TransactionItem] (ORM dr t.items).
         # Support semua via _read_item_amount.
-        total = sum(
-            (_read_item_amount(i) for i in items), start=_D("0")
-        )
+        total = sum((_read_item_amount(i) for i in items), start=_D("0"))
         if total != _D(amount or 0):
             raise HTTPException(
                 400,
@@ -360,6 +373,7 @@ def _read_item_amount(i) -> Decimal:
     """Read amount dr item -- support dict (model_dump output), Pydantic
     instance, atau ORM row. Defensif terhadap shape input."""
     from decimal import Decimal
+
     if isinstance(i, dict):
         return Decimal(str(i.get("amount") or 0))
     val = getattr(i, "amount", None)
@@ -384,12 +398,19 @@ async def create_transaction(
     # Audit 2026-05-24 Phase 1: block create di proyek SELESAI / DIBATALKAN.
     # SUPERADMIN bypass dgn ?force=true (audit log tagging).
     from app.services.project_guard import assert_project_open
+
     _, forced = await assert_project_open(
-        db, payload.project_id, user=user, force=force,
+        db,
+        payload.project_id,
+        user=user,
+        force=force,
     )
     _validate_kind_invariants(
-        payload, tx_type=payload.type, kind=payload.kind,
-        amount=payload.amount, items=payload.items,
+        payload,
+        tx_type=payload.type,
+        kind=payload.kind,
+        amount=payload.amount,
+        items=payload.items,
     )
     # Validate recipient_user_id exist kalau diisi
     if payload.recipient_user_id:
@@ -402,22 +423,28 @@ async def create_transaction(
     await db.flush()
     # Bikin items (DIRECT_EXPENSE) -- mirror payload list
     for it in payload.items:
-        db.add(TransactionItem(
-            transaction_id=t.id,
-            category_id=it.category_id,
-            description=it.description,
-            amount=it.amount,
-        ))
+        db.add(
+            TransactionItem(
+                transaction_id=t.id,
+                category_id=it.category_id,
+                description=it.description,
+                amount=it.amount,
+            )
+        )
     if t.invoice_id:
         inv = await db.get(Invoice, t.invoice_id)
         if inv:
             await recompute_invoice_status(db, inv)
-    await db.refresh(
-        t, attribute_names=[c.name for c in Transaction.__table__.columns]
+    await db.refresh(t, attribute_names=[c.name for c in Transaction.__table__.columns])
+    await log(
+        db,
+        user_id=user.id,
+        entity="transaction",
+        entity_id=t.id,
+        action=AuditAction.CREATE,
+        after=snapshot(t),
+        note="FORCE bypass closed project" if forced else None,
     )
-    await log(db, user_id=user.id, entity="transaction", entity_id=t.id,
-              action=AuditAction.CREATE, after=snapshot(t),
-              note="FORCE bypass closed project" if forced else None)
     await db.commit()
     return await _serialize_with_allocs(db, t)
 
@@ -429,7 +456,13 @@ async def get_transaction(
     user: User = Depends(get_current_user),
 ) -> TransactionOut:
     res = await db.execute(
-        select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == tid)
+        select(Transaction)
+        .options(
+            selectinload(Transaction.attachments),
+            selectinload(Transaction.items),
+            selectinload(Transaction.settlement),
+        )
+        .where(Transaction.id == tid)
     )
     t = res.scalar_one_or_none()
     if not t or t.deleted_at is not None:
@@ -496,11 +529,13 @@ async def update_transaction(
     # akunting tdk inkonsisten dgn settlement.
     # SUPERADMIN god-mode bypass (audit 2026-05-23 user req).
     if t.kind == TxnKind.CASH_ADVANCE and not is_god:
-        settlement = (await db.execute(
-            select(CashAdvanceSettlement).where(
-                CashAdvanceSettlement.cash_advance_tx_id == t.id
+        settlement = (
+            await db.execute(
+                select(CashAdvanceSettlement).where(
+                    CashAdvanceSettlement.cash_advance_tx_id == t.id
+                )
             )
-        )).scalar_one_or_none()
+        ).scalar_one_or_none()
         if settlement:
             raise HTTPException(
                 409,
@@ -523,12 +558,16 @@ async def update_transaction(
     #   ada allocation akan rusak data akunting -- block dgn 409.
     if new_kind is not None and new_kind != t.kind:
         # Cek alokasi invoice (invoice_id langsung atau InvoiceAllocation row)
-        alloc_exists = (await db.execute(
-            select(InvoiceAllocation.id).where(
-                InvoiceAllocation.transaction_id == t.id,
-                InvoiceAllocation.deleted_at.is_(None),
-            ).limit(1)
-        )).scalar_one_or_none() is not None
+        alloc_exists = (
+            await db.execute(
+                select(InvoiceAllocation.id)
+                .where(
+                    InvoiceAllocation.transaction_id == t.id,
+                    InvoiceAllocation.deleted_at.is_(None),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none() is not None
         if alloc_exists or t.invoice_id:
             raise HTTPException(
                 409,
@@ -545,7 +584,7 @@ async def update_transaction(
         if new_kind != TxnKind.DIRECT_EXPENSE:
             # Drop items lama (akan di-handle kalau bukan DIRECT_EXPENSE)
             if items_payload is None:
-                items_payload = []   # force clear
+                items_payload = []  # force clear
         # Set kind baru
         data["kind"] = new_kind
 
@@ -556,8 +595,11 @@ async def update_transaction(
         items_check = items_payload if items_payload is not None else (t.items or [])
         # Pakai payload utk recipient check, tapi kind dr effective
         _validate_kind_invariants(
-            payload, tx_type=t.type, kind=effective_kind,
-            amount=new_amount, items=items_check,
+            payload,
+            tx_type=t.type,
+            kind=effective_kind,
+            amount=new_amount,
+            items=items_check,
         )
     if payload.recipient_user_id:
         ru = await db.get(User, payload.recipient_user_id)
@@ -575,18 +617,27 @@ async def update_transaction(
             # items_payload bisa list[dict] (dr model_dump) atau
             # list[TransactionItemIn] (Pydantic, kalau caller belum
             # model_dump). Helper _get_item_field handle dua-duanya.
-            db.add(TransactionItem(
-                transaction_id=t.id,
-                category_id=_get_item_field(it, "category_id"),
-                description=_get_item_field(it, "description") or "",
-                amount=_get_item_field(it, "amount") or 0,
-            ))
+            db.add(
+                TransactionItem(
+                    transaction_id=t.id,
+                    category_id=_get_item_field(it, "category_id"),
+                    description=_get_item_field(it, "description") or "",
+                    amount=_get_item_field(it, "amount") or 0,
+                )
+            )
     if t.invoice_id:
         inv = await db.get(Invoice, t.invoice_id)
         if inv:
             await recompute_invoice_status(db, inv)
-    await log(db, user_id=user.id, entity="transaction", entity_id=t.id,
-              action=AuditAction.UPDATE, before=before, after=snapshot(t))
+    await log(
+        db,
+        user_id=user.id,
+        entity="transaction",
+        entity_id=t.id,
+        action=AuditAction.UPDATE,
+        before=before,
+        after=snapshot(t),
+    )
     await db.commit()
     return await _serialize_with_allocs(db, t)
 
@@ -630,7 +681,7 @@ async def bulk_verify_transactions(
 
     success_ids: list[int] = []
     skipped: list[dict] = []
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for tid in ids:
         t = txs.get(tid)
@@ -649,8 +700,13 @@ async def bulk_verify_transactions(
             if inv:
                 await recompute_invoice_status(db, inv)
         await log(
-            db, user_id=admin.id, entity="transaction", entity_id=t.id,
-            action=AuditAction.VERIFY, before=before, after=snapshot(t),
+            db,
+            user_id=admin.id,
+            entity="transaction",
+            entity_id=t.id,
+            action=AuditAction.VERIFY,
+            before=before,
+            after=snapshot(t),
             note="bulk verify",
         )
         success_ids.append(tid)
@@ -660,6 +716,7 @@ async def bulk_verify_transactions(
     # Notif dilakukan post-commit (best-effort). Tdk block kalau gagal.
     try:
         from app.services.messaging import notify_transaction_verified
+
         for tid in success_ids:
             t = txs.get(tid)
             if t:
@@ -700,14 +757,12 @@ async def bulk_delete_transactions(
 
     god = admin.role == UserRole.SUPERADMIN
 
-    res = await db.execute(
-        select(Transaction).where(Transaction.id.in_(ids))
-    )
+    res = await db.execute(select(Transaction).where(Transaction.id.in_(ids)))
     txs = {t.id: t for t in res.scalars().all()}
 
     success_ids: list[int] = []
     skipped: list[dict] = []
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     affected_inv_ids: set[int] = set()
 
     for tid in ids:
@@ -737,8 +792,12 @@ async def bulk_delete_transactions(
 
         t.deleted_at = now
         await log(
-            db, user_id=admin.id, entity="transaction", entity_id=t.id,
-            action=AuditAction.DELETE, before=before,
+            db,
+            user_id=admin.id,
+            entity="transaction",
+            entity_id=t.id,
+            action=AuditAction.DELETE,
+            before=before,
             note="bulk delete (god-mode)" if god else "bulk delete",
         )
         success_ids.append(tid)
@@ -772,15 +831,29 @@ async def submit_transaction(
         raise HTTPException(409, "invalid_state")
     before = snapshot(t)
     t.status = TxnStatus.SUBMITTED
-    await log(db, user_id=user.id, entity="transaction", entity_id=t.id,
-              action=AuditAction.UPDATE, before=before, after=snapshot(t),
-              note="submitted")
+    await log(
+        db,
+        user_id=user.id,
+        entity="transaction",
+        entity_id=t.id,
+        action=AuditAction.UPDATE,
+        before=before,
+        after=snapshot(t),
+        note="submitted",
+    )
     await db.commit()
     # Notif multi-channel (Telegram + WhatsApp), best-effort.
     from app.services.messaging import notify_transaction_submitted
+
     await notify_transaction_submitted(db, t, actor_id=user.id)
     res = await db.execute(
-        select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == t.id)
+        select(Transaction)
+        .options(
+            selectinload(Transaction.attachments),
+            selectinload(Transaction.items),
+            selectinload(Transaction.settlement),
+        )
+        .where(Transaction.id == t.id)
     )
     return await _serialize_with_allocs(db, res.scalar_one())
 
@@ -799,18 +872,32 @@ async def verify_transaction(
     before = snapshot(t)
     t.status = TxnStatus.VERIFIED
     t.verified_by_id = admin.id
-    t.verified_at = datetime.now(timezone.utc)
+    t.verified_at = datetime.now(UTC)
     if t.invoice_id:
         inv = await db.get(Invoice, t.invoice_id)
         if inv:
             await recompute_invoice_status(db, inv)
-    await log(db, user_id=admin.id, entity="transaction", entity_id=t.id,
-              action=AuditAction.VERIFY, before=before, after=snapshot(t))
+    await log(
+        db,
+        user_id=admin.id,
+        entity="transaction",
+        entity_id=t.id,
+        action=AuditAction.VERIFY,
+        before=before,
+        after=snapshot(t),
+    )
     await db.commit()
     from app.services.messaging import notify_transaction_verified
+
     await notify_transaction_verified(db, t, actor_id=admin.id)
     res = await db.execute(
-        select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == t.id)
+        select(Transaction)
+        .options(
+            selectinload(Transaction.attachments),
+            selectinload(Transaction.items),
+            selectinload(Transaction.settlement),
+        )
+        .where(Transaction.id == t.id)
     )
     return await _serialize_with_allocs(db, res.scalar_one())
 
@@ -830,13 +917,28 @@ async def reject_transaction(
     before = snapshot(t)
     t.status = TxnStatus.REJECTED
     t.cancel_reason = body.reason
-    await log(db, user_id=admin.id, entity="transaction", entity_id=t.id,
-              action=AuditAction.UPDATE, before=before, after=snapshot(t), note="rejected")
+    await log(
+        db,
+        user_id=admin.id,
+        entity="transaction",
+        entity_id=t.id,
+        action=AuditAction.UPDATE,
+        before=before,
+        after=snapshot(t),
+        note="rejected",
+    )
     await db.commit()
     from app.services.messaging import notify_transaction_rejected
+
     await notify_transaction_rejected(db, t, actor_id=admin.id)
     res = await db.execute(
-        select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == t.id)
+        select(Transaction)
+        .options(
+            selectinload(Transaction.attachments),
+            selectinload(Transaction.items),
+            selectinload(Transaction.settlement),
+        )
+        .where(Transaction.id == t.id)
     )
     return await _serialize_with_allocs(db, res.scalar_one())
 
@@ -864,25 +966,44 @@ async def cancel_transaction(
     # Q5 decision). CR tdk kembali ke PENDING -- kalau perlu pengajuan
     # ulang, requester buat CR baru. Konsistensi: cegah data drift
     # 'CR=APPROVED tapi disbursement_tx=CANCELLED'.
-    cr_linked = (await db.execute(
-        select(CashRequest).where(CashRequest.disbursement_tx_id == t.id)
-    )).scalar_one_or_none()
+    cr_linked = (
+        await db.execute(select(CashRequest).where(CashRequest.disbursement_tx_id == t.id))
+    ).scalar_one_or_none()
     if cr_linked is not None and cr_linked.status == CashRequestStatus.APPROVED.value:
         cr_before = snapshot(cr_linked)
         cr_linked.status = CashRequestStatus.DISBURSEMENT_CANCELLED.value
         await log(
-            db, user_id=admin.id, entity="cash_request",
-            entity_id=cr_linked.id, action=AuditAction.UPDATE,
-            before=cr_before, after=snapshot(cr_linked),
+            db,
+            user_id=admin.id,
+            entity="cash_request",
+            entity_id=cr_linked.id,
+            action=AuditAction.UPDATE,
+            before=cr_before,
+            after=snapshot(cr_linked),
             note=f"Auto-update: tx pencairan #{t.id} di-cancel ({body.reason})",
         )
-    await log(db, user_id=admin.id, entity="transaction", entity_id=t.id,
-              action=AuditAction.CANCEL, before=before, after=snapshot(t), note=body.reason)
+    await log(
+        db,
+        user_id=admin.id,
+        entity="transaction",
+        entity_id=t.id,
+        action=AuditAction.CANCEL,
+        before=before,
+        after=snapshot(t),
+        note=body.reason,
+    )
     await db.commit()
     from app.services.messaging import notify_transaction_cancelled
+
     await notify_transaction_cancelled(db, t, actor_id=admin.id)
     res = await db.execute(
-        select(Transaction).options(selectinload(Transaction.attachments), selectinload(Transaction.items), selectinload(Transaction.settlement)).where(Transaction.id == t.id)
+        select(Transaction)
+        .options(
+            selectinload(Transaction.attachments),
+            selectinload(Transaction.items),
+            selectinload(Transaction.settlement),
+        )
+        .where(Transaction.id == t.id)
     )
     return await _serialize_with_allocs(db, res.scalar_one())
 
@@ -899,9 +1020,15 @@ async def delete_transaction(
     if t.status == TxnStatus.VERIFIED:
         raise HTTPException(409, "verified_must_be_cancelled")
     before = snapshot(t)
-    t.deleted_at = datetime.utcnow()
-    await log(db, user_id=admin.id, entity="transaction", entity_id=t.id,
-              action=AuditAction.DELETE, before=before)
+    t.deleted_at = datetime.now(UTC)
+    await log(
+        db,
+        user_id=admin.id,
+        entity="transaction",
+        entity_id=t.id,
+        action=AuditAction.DELETE,
+        before=before,
+    )
     await db.commit()
 
 
@@ -930,9 +1057,15 @@ async def hard_delete_transaction(
 
     inv_id_legacy = t.invoice_id
     await db.delete(t)  # cascade attachments via cascade="all,delete-orphan"
-    await log(db, user_id=god.id, entity="transaction", entity_id=tid,
-              action=AuditAction.DELETE, before=before,
-              note=f"HARD DELETE (god-mode), {len(affected_inv_ids)} invoice direcompute")
+    await log(
+        db,
+        user_id=god.id,
+        entity="transaction",
+        entity_id=tid,
+        action=AuditAction.DELETE,
+        before=before,
+        note=f"HARD DELETE (god-mode), {len(affected_inv_ids)} invoice direcompute",
+    )
     for iid in affected_inv_ids:
         inv = await db.get(Invoice, iid)
         if inv:
@@ -961,17 +1094,26 @@ async def upload_attachment(
     # tetap lengkap. Append-only, tdk overwrite/delete data existing.
     # Punya lampiran + VERIFIED -> tetap locked (cegah modifikasi bukti).
     if t.status == TxnStatus.VERIFIED and user.role != UserRole.SUPERADMIN:
-        existing = (await db.execute(
-            select(func.count(TransactionAttachment.id))
-            .where(TransactionAttachment.transaction_id == t.id)
-        )).scalar_one() or 0
+        existing = (
+            await db.execute(
+                select(func.count(TransactionAttachment.id)).where(
+                    TransactionAttachment.transaction_id == t.id
+                )
+            )
+        ).scalar_one() or 0
         if existing > 0:
             raise HTTPException(409, "verified_locked")
     meta = await save_upload(file, subdir=f"transactions/{t.id}")
     att = TransactionAttachment(transaction_id=t.id, uploaded_by_id=user.id, **meta)
     db.add(att)
-    await log(db, user_id=user.id, entity="transaction_attachment", entity_id=t.id,
-              action=AuditAction.CREATE, after={"file": meta["file_name"], "url": meta["url"]})
+    await log(
+        db,
+        user_id=user.id,
+        entity="transaction_attachment",
+        entity_id=t.id,
+        action=AuditAction.CREATE,
+        after={"file": meta["file_name"], "url": meta["url"]},
+    )
     await db.commit()
     await db.refresh(att)
     return AttachmentOut.model_validate(att)
@@ -994,17 +1136,26 @@ async def attach_external_link(
     # sama sekali -- admin biasa boleh upload bukti supaya audit trail
     # tetap lengkap. Punya lampiran + VERIFIED -> tetap locked.
     if t.status == TxnStatus.VERIFIED and user.role != UserRole.SUPERADMIN:
-        existing = (await db.execute(
-            select(func.count(TransactionAttachment.id))
-            .where(TransactionAttachment.transaction_id == t.id)
-        )).scalar_one() or 0
+        existing = (
+            await db.execute(
+                select(func.count(TransactionAttachment.id)).where(
+                    TransactionAttachment.transaction_id == t.id
+                )
+            )
+        ).scalar_one() or 0
         if existing > 0:
             raise HTTPException(409, "verified_locked")
     meta = normalize_external_link(body.url, label=body.label, file_name=body.file_name)
     att = TransactionAttachment(transaction_id=t.id, uploaded_by_id=user.id, **meta)
     db.add(att)
-    await log(db, user_id=user.id, entity="transaction_attachment", entity_id=t.id,
-              action=AuditAction.CREATE, after={"link": meta["file_name"], "url": meta["url"]})
+    await log(
+        db,
+        user_id=user.id,
+        entity="transaction_attachment",
+        entity_id=t.id,
+        action=AuditAction.CREATE,
+        after={"link": meta["file_name"], "url": meta["url"]},
+    )
     await db.commit()
     await db.refresh(att)
     return AttachmentOut.model_validate(att)
@@ -1012,7 +1163,8 @@ async def attach_external_link(
 
 @router.delete("/{tid}/attachments/{aid}", status_code=204)
 async def delete_attachment(
-    tid: int, aid: int,
+    tid: int,
+    aid: int,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_can_write),
 ) -> None:
@@ -1030,8 +1182,14 @@ async def delete_attachment(
     if not att or att.transaction_id != tid:
         raise HTTPException(404, "not_found")
     await db.delete(att)
-    await log(db, user_id=user.id, entity="transaction_attachment", entity_id=tid,
-              action=AuditAction.DELETE, before={"file": att.file_name})
+    await log(
+        db,
+        user_id=user.id,
+        entity="transaction_attachment",
+        entity_id=tid,
+        action=AuditAction.DELETE,
+        before={"file": att.file_name},
+    )
     await db.commit()
 
 
@@ -1058,6 +1216,7 @@ async def settle_cash_advance(
     """
     from datetime import datetime as _dt
     from decimal import Decimal as _D
+
     # Audit 2026-05-22 #H8: cegah race condition concurrent settle req.
     # Lock baris transaction-nya dgn SELECT ... FOR UPDATE supaya dua
     # request paralel ter-serialize (req kedua tunggu req pertama commit,
@@ -1077,11 +1236,11 @@ async def settle_cash_advance(
         raise HTTPException(400, "not_cash_advance: tx ini bukan uang muka")
     # Cek sudah ada settlement -- sekarang aman thd race krn row tx
     # ter-lock.
-    existing = (await db.execute(
-        select(CashAdvanceSettlement).where(
-            CashAdvanceSettlement.cash_advance_tx_id == tid
+    existing = (
+        await db.execute(
+            select(CashAdvanceSettlement).where(CashAdvanceSettlement.cash_advance_tx_id == tid)
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if existing:
         raise HTTPException(409, "already_settled")
     if not payload.items:
@@ -1106,7 +1265,8 @@ async def settle_cash_advance(
         topup = Transaction(
             project_id=t.project_id,
             tx_date=(payload.settled_at or _dt.utcnow()).date()
-                if payload.settled_at else _dt.utcnow().date(),
+            if payload.settled_at
+            else _dt.utcnow().date(),
             type=TxnType.OUT,
             kind=TxnKind.DIRECT_EXPENSE,
             amount=topup_amount,
@@ -1119,12 +1279,14 @@ async def settle_cash_advance(
         await db.flush()
         # Single item utk topup tx (kategori = item terbesar)
         biggest = max(payload.items, key=lambda i: _D(i.amount))
-        db.add(TransactionItem(
-            transaction_id=topup.id,
-            category_id=biggest.category_id,
-            description=f"Selisih pertanggungjawaban: {biggest.description}",
-            amount=topup_amount,
-        ))
+        db.add(
+            TransactionItem(
+                transaction_id=topup.id,
+                category_id=biggest.category_id,
+                description=f"Selisih pertanggungjawaban: {biggest.description}",
+                amount=topup_amount,
+            )
+        )
         topup_tx_id = topup.id
 
     settlement = CashAdvanceSettlement(
@@ -1160,8 +1322,7 @@ async def settle_cash_advance(
         # bayar invoice proyek lain. Validate semua invoice di proyek
         # yg sama dgn advance tx.
         wrong_project = [
-            inv_id for inv_id, inv in invoice_map.items()
-            if inv.project_id != t.project_id
+            inv_id for inv_id, inv in invoice_map.items() if inv.project_id != t.project_id
         ]
         if wrong_project:
             raise HTTPException(
@@ -1184,19 +1345,24 @@ async def settle_cash_advance(
         # Kalau item ini bayar invoice, bikin InvoiceAllocation dari tx
         # CASH_ADVANCE asli ke invoice. Recompute invoice status nanti.
         if it.invoice_id:
-            db.add(InvoiceAllocation(
-                invoice_id=it.invoice_id,
-                transaction_id=tid,
-                allocated_amount=_D(it.amount),
-                note=f"Settlement dana ops #{settlement.id} -- {it.description}",
-                created_by_id=user.id,
-            ))
+            db.add(
+                InvoiceAllocation(
+                    invoice_id=it.invoice_id,
+                    transaction_id=tid,
+                    allocated_amount=_D(it.amount),
+                    note=f"Settlement dana ops #{settlement.id} -- {it.description}",
+                    created_by_id=user.id,
+                )
+            )
     # Recompute status semua invoice yg ke-allocate
     for inv in invoice_map.values():
         await recompute_invoice_status(db, inv)
     await log(
-        db, user_id=user.id, entity="cash_advance_settlement",
-        entity_id=settlement.id, action=AuditAction.CREATE,
+        db,
+        user_id=user.id,
+        entity="cash_advance_settlement",
+        entity_id=settlement.id,
+        action=AuditAction.CREATE,
         after={
             "cash_advance_tx_id": tid,
             "items_count": len(payload.items),
@@ -1219,9 +1385,7 @@ async def settle_cash_advance(
     # Resolve invoice_number per item utk display FE
     inv_ids = sorted({i.invoice_id for i in s.items if i.invoice_id})
     if inv_ids:
-        inv_res = await db.execute(
-            select(Invoice).where(Invoice.id.in_(inv_ids))
-        )
+        inv_res = await db.execute(select(Invoice).where(Invoice.id.in_(inv_ids)))
         inv_num_map = {inv.id: inv.number for inv in inv_res.scalars().all()}
         for oi in out.items:
             if oi.invoice_id:
@@ -1246,11 +1410,11 @@ async def delete_cash_advance_settlement(
         raise HTTPException(404, "not_found")
     if t.kind != TxnKind.CASH_ADVANCE:
         raise HTTPException(400, "not_cash_advance")
-    settlement = (await db.execute(
-        select(CashAdvanceSettlement).where(
-            CashAdvanceSettlement.cash_advance_tx_id == tid
+    settlement = (
+        await db.execute(
+            select(CashAdvanceSettlement).where(CashAdvanceSettlement.cash_advance_tx_id == tid)
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if not settlement:
         raise HTTPException(404, "settlement_not_found")
     # VERIFIED dilarang kecuali superadmin (audit lock)
@@ -1277,12 +1441,12 @@ async def delete_cash_advance_settlement(
                 )
             )
             for alloc in res.scalars().all():
-                alloc.deleted_at = datetime.utcnow()
+                alloc.deleted_at = datetime.now(UTC)
     # Top-up tx kalau ada -- soft delete
     if settlement.topup_tx_id:
         topup = await db.get(Transaction, settlement.topup_tx_id)
         if topup and topup.deleted_at is None:
-            topup.deleted_at = datetime.utcnow()
+            topup.deleted_at = datetime.now(UTC)
     settlement_id_log = settlement.id
     await db.delete(settlement)
     # Recompute status invoice yg di-affect
@@ -1291,8 +1455,11 @@ async def delete_cash_advance_settlement(
         if inv:
             await recompute_invoice_status(db, inv)
     await log(
-        db, user_id=user.id, entity="cash_advance_settlement",
-        entity_id=settlement_id_log, action=AuditAction.DELETE,
+        db,
+        user_id=user.id,
+        entity="cash_advance_settlement",
+        entity_id=settlement_id_log,
+        action=AuditAction.DELETE,
         before={"cash_advance_tx_id": tid, "invoices_affected": list(inv_ids_touched)},
     )
     await db.commit()
@@ -1306,6 +1473,7 @@ async def list_outstanding_cash_advances(
     """List tx kind=CASH_ADVANCE yg BELUM di-settle (outstanding).
     Hormat scoping user."""
     from app.core.deps import user_project_ids
+
     pids = await user_project_ids(db, user)
     stmt = (
         select(Transaction)
@@ -1335,20 +1503,23 @@ async def list_outstanding_cash_advances(
                 u = await db.get(User, t.recipient_user_id)
                 user_cache[t.recipient_user_id] = u.name if u else "?"
             recipient = user_cache[t.recipient_user_id]
-        out.append({
-            "id": t.id,
-            "tx_date": t.tx_date.isoformat(),
-            "project_id": t.project_id,
-            "amount": str(t.amount),
-            "recipient_user_id": t.recipient_user_id,
-            "recipient_name": t.recipient_name,
-            "recipient_display": recipient,
-            "description": t.description,
-            "status": t.status.value,
-            "created_by_id": t.created_by_id,
-            "age_days": (datetime.utcnow().date() - t.tx_date).days
-                if hasattr(t.tx_date, "year") else 0,
-        })
+        out.append(
+            {
+                "id": t.id,
+                "tx_date": t.tx_date.isoformat(),
+                "project_id": t.project_id,
+                "amount": str(t.amount),
+                "recipient_user_id": t.recipient_user_id,
+                "recipient_name": t.recipient_name,
+                "recipient_display": recipient,
+                "description": t.description,
+                "status": t.status.value,
+                "created_by_id": t.created_by_id,
+                "age_days": (datetime.now(UTC).date() - t.tx_date).days
+                if hasattr(t.tx_date, "year")
+                else 0,
+            }
+        )
     return out
 
 
@@ -1363,14 +1534,14 @@ async def cash_advance_balances(
     Outstanding = sum(advance.amount) - sum(settled items + returned).
     """
     from decimal import Decimal as _D
+
     from app.core.deps import user_project_ids
+
     pids = await user_project_ids(db, user)
     stmt = (
         select(Transaction)
         .options(
-            selectinload(Transaction.settlement).selectinload(
-                CashAdvanceSettlement.items
-            ),
+            selectinload(Transaction.settlement).selectinload(CashAdvanceSettlement.items),
         )
         .where(
             Transaction.deleted_at.is_(None),
@@ -1388,7 +1559,8 @@ async def cash_advance_balances(
     user_names: dict[int, str] = {}
     for t in txs:
         key = (
-            ("u", t.recipient_user_id) if t.recipient_user_id
+            ("u", t.recipient_user_id)
+            if t.recipient_user_id
             else ("n", (t.recipient_name or "").lower().strip())
         )
         if key not in groups:
@@ -1419,15 +1591,17 @@ async def cash_advance_balances(
     rows: list[CashAdvanceBalanceRow] = []
     for g in groups.values():
         outstanding = g["advance_total"] - g["settled_total"]
-        rows.append(CashAdvanceBalanceRow(
-            recipient_user_id=g["recipient_user_id"],
-            recipient_name=g["recipient_name"],
-            advance_total=g["advance_total"],
-            settled_total=g["settled_total"],
-            outstanding=outstanding,
-            advance_count=g["advance_count"],
-            unsettled_count=g["unsettled_count"],
-        ))
+        rows.append(
+            CashAdvanceBalanceRow(
+                recipient_user_id=g["recipient_user_id"],
+                recipient_name=g["recipient_name"],
+                advance_total=g["advance_total"],
+                settled_total=g["settled_total"],
+                outstanding=outstanding,
+                advance_count=g["advance_count"],
+                unsettled_count=g["unsettled_count"],
+            )
+        )
     # Sort: outstanding terbesar dulu
     rows.sort(key=lambda r: -r.outstanding)
     return rows

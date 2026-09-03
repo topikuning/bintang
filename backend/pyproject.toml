@@ -9,7 +9,7 @@ requires-python = ">=3.13"
 # commit yang sama bisa menghasilkan versi berbeda, dan selisihnya baru
 # ketahuan saat produksi gagal boot.
 #
-# Batas bawah = versi TERBARU per 2026-08-30 (diverifikasi ke PyPI);
+# Batas bawah = versi TERBARU per 2026-09-04 (diverifikasi ke PyPI);
 # batas atas = rilis mayor berikutnya, supaya perubahan breaking tidak
 # masuk diam-diam TAPI patch/minor tetap bisa lewat dependabot + CI.
 #
@@ -66,26 +66,22 @@ testpaths = ["tests"]
 line-length = 100
 target-version = "py313"
 
-# Audit 2026-06-13 #D-02: ruff sudah lama ada di dependency dev tapi
-# tidak pernah dipanggil CI. Menyalakan set aturan default sekaligus
-# akan memerahkan CI oleh ~150 pelanggaran lama (mayoritas F401 import
-# tak terpakai) dan justru mendorong orang menambah `|| true` lagi.
-#
-# Jadi kita mulai dari set yang artinya "ini hampir pasti bug", bukan
-# "ini kurang rapi":
-#   E9  -- syntax / runtime error
-#   F63 -- perbandingan yang selalu salah (mis. `is` utk literal)
-#   F7  -- pernyataan salah tempat (break di luar loop, dll)
-#   F82 -- nama tak terdefinisi  <- penangkap bug impor paling penting
-#
-# LANGKAH BERIKUTNYA: tambahkan "F401" (import tak terpakai) setelah
-# backlog dibersihkan sekali dgn `ruff check --fix app tests`, lalu
-# naikkan lagi ke default ruff. Turunkan utangnya bertahap, seperti
-# ratchet `--max-warnings` di eslint frontend.
+# CI menegakkan error Python, semua Pyflakes, urutan import, dan
+# modernisasi sintaks sesuai Python minimum proyek. Aturan kompleksitas
+# dan panjang baris tetap dievaluasi terpisah agar tidak menyamarkan
+# temuan correctness dengan preferensi gaya.
 [tool.ruff.lint]
-select = ["E9", "F63", "F7", "F82"]
+select = ["E4", "E7", "E9", "F", "I", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 # Modul re-export: nama sengaja di-import utk dipakai modul lain.
 "app/models/__init__.py" = ["F401"]
 "app/api/v1/__init__.py" = ["F401"]
+# Model dipecah menjadi beberapa fragmen yang dieksekusi oleh models.py;
+# simbol lintas-fragmen memang disediakan lewat namespace gabungan itu.
+"app/models/_auth.py" = ["F405"]
+"app/models/_finance.py" = ["F405"]
+"app/models/_refs.py" = ["F405"]
+"app/models/_workflows.py" = ["F405"]
+# Compatibility facade intentionally re-exports this helper for callers/tests.
+"app/services/bot_po_assistant.py" = ["F401"]

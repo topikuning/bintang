@@ -14,15 +14,16 @@ lagi. Harus dokumentasi & migration plan kalau key rotation.
 
 Audit 2026-05-22 #C3.
 """
+
 from __future__ import annotations
 
 import base64
 import hashlib
 
 from cryptography.fernet import Fernet, InvalidToken
+from sqlalchemy.types import String, TypeDecorator
 
 from app.core.config import settings
-
 
 _PREFIX = "enc:v1:"
 
@@ -54,7 +55,7 @@ def decrypt_field(value: str | None) -> str | None:
         return None
     if not value.startswith(_PREFIX):
         return value  # legacy plain text, pass-through
-    token = value[len(_PREFIX):]
+    token = value[len(_PREFIX) :]
     try:
         return _fernet().decrypt(token.encode("ascii")).decode("utf-8")
     except InvalidToken:
@@ -71,7 +72,6 @@ def is_encrypted(value: str | None) -> bool:
 # ---------- SQLAlchemy TypeDecorator ----------
 # Transparent encrypt/decrypt at ORM layer. Pakai sbg pengganti
 # String(N) di mapped_column.
-from sqlalchemy.types import String, TypeDecorator
 
 
 class EncryptedString(TypeDecorator):
@@ -83,6 +83,7 @@ class EncryptedString(TypeDecorator):
     Length default 500 -- cukup utk plaintext sampai ~120 char (Fernet
     ciphertext + base64 ~ 3x plaintext + 7-char prefix).
     """
+
     impl = String
     cache_ok = True
 

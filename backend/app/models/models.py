@@ -12,8 +12,9 @@ Submodul:
 - _workflows.py: CashRequest*, CashAdvanceSettlement*, AIExtraction,
   AppSetting, RoleMenuPolicy
 """
-from ._enums import *  # noqa: F401, F403
+
 from ._auth import *  # noqa: F401, F403
-from ._refs import *  # noqa: F401, F403
+from ._enums import *  # noqa: F401, F403
 from ._finance import *  # noqa: F401, F403
+from ._refs import *  # noqa: F401, F403
 from ._workflows import *  # noqa: F401, F403

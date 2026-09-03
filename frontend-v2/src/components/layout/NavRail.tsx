@@ -1,8 +1,9 @@
-import { NavLink } from "react-router-dom"
+import { NavLink } from "react-router"
 import * as Tooltip from "@radix-ui/react-tooltip"
 import { cn } from "@/lib/utils"
 import { useMenuConfig } from "@/hooks/useMenuConfig"
 import { TABLET_NAV, filterNavItems } from "./nav-config"
+import { BrandMark } from "./BrandMark"
 
 export function NavRail() {
   const cfgQ = useMenuConfig()
@@ -10,14 +11,12 @@ export function NavRail() {
   const items = filterNavItems(TABLET_NAV, allowed)
   return (
     <Tooltip.Provider delayDuration={300}>
-      <aside className="hidden md:flex lg:hidden w-14 shrink-0 flex-col border-r bg-surface sticky top-0 h-[100dvh] self-start">
-        <div className="flex h-14 items-center justify-center border-b shrink-0">
-          <div className="flex h-7 w-7 items-center justify-center rounded bg-brand-500 text-white font-bold text-[13px]">
-            B
-          </div>
+      <aside className="sticky top-0 hidden h-[100dvh] w-[68px] shrink-0 self-start flex-col border-r border-white/5 bg-[var(--app-nav)] md:flex lg:hidden">
+        <div className="flex h-[72px] shrink-0 items-center justify-center border-b border-white/8">
+          <BrandMark compact />
         </div>
-        <nav className="flex-1 overflow-y-auto py-2 min-h-0">
-          <ul className="flex flex-col items-center gap-1">
+        <nav className="min-h-0 flex-1 overflow-y-auto py-3">
+          <ul className="flex flex-col items-center gap-1.5">
             {items.map((item) => (
               <li key={item.to}>
                 <Tooltip.Root>
@@ -27,10 +26,10 @@ export function NavRail() {
                       end={item.to === "/dashboard"}
                       className={({ isActive }) =>
                         cn(
-                          "flex h-10 w-10 items-center justify-center rounded transition-colors",
+                          "flex h-11 w-11 items-center justify-center rounded-xl transition-colors",
                           isActive
-                            ? "bg-brand-50 text-brand-700"
-                            : "text-ink-600 hover:bg-ink-100 hover:text-ink-900",
+                            ? "bg-brand-500 text-white shadow-lg shadow-brand-900/30"
+                            : "text-slate-400 hover:bg-white/[0.07] hover:text-white",
                         )
                       }
                     >
@@ -42,7 +41,7 @@ export function NavRail() {
                     <Tooltip.Content
                       side="right"
                       sideOffset={8}
-                      className="z-50 rounded bg-ink-900 px-2 py-1 text-[12px] text-white shadow-lg"
+                      className="z-50 rounded-lg border border-white/10 bg-ink-900 px-2.5 py-1.5 text-[12px] text-white shadow-xl"
                     >
                       {item.label}
                     </Tooltip.Content>

@@ -1,30 +1,23 @@
-import { NavLink } from "react-router-dom"
+import { NavLink } from "react-router"
 import { cn } from "@/lib/utils"
 import { useMenuConfig } from "@/hooks/useMenuConfig"
 import { DESKTOP_NAV, filterNavGroups } from "./nav-config"
+import { BrandMark } from "./BrandMark"
 
 export function Sidebar() {
   const cfgQ = useMenuConfig()
   const allowed = cfgQ.data ? new Set(cfgQ.data.menu_ids) : undefined
   const groups = filterNavGroups(DESKTOP_NAV, allowed)
   return (
-    <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r bg-surface sticky top-0 h-[100dvh] self-start">
-      <div className="flex h-14 items-center gap-2 px-5 border-b shrink-0">
-        <div className="flex h-7 w-7 items-center justify-center rounded bg-brand-500 text-white font-bold text-[13px]">
-          B
-        </div>
-        <div className="flex flex-col leading-tight">
-          <span className="text-sm font-bold">Bintang</span>
-          <span className="text-[10px] uppercase tracking-wider text-ink-500">
-            Finance & Project
-          </span>
-        </div>
+    <aside className="sticky top-0 hidden h-[100dvh] w-[264px] shrink-0 self-start flex-col border-r border-white/5 bg-[var(--app-nav)] text-white lg:flex">
+      <div className="flex h-[72px] shrink-0 items-center border-b border-white/8 px-5">
+        <BrandMark inverse />
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 py-3 min-h-0">
+      <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-5">
         {groups.map((group) => (
-          <div key={group.label} className="mb-4">
-            <div className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+          <div key={group.label} className="mb-5">
+            <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
               {group.label}
             </div>
             <ul className="flex flex-col gap-0.5">
@@ -35,14 +28,14 @@ export function Sidebar() {
                     end={item.to === "/dashboard"}
                     className={({ isActive }) =>
                       cn(
-                        "flex h-9 items-center gap-2.5 rounded px-3 text-sm transition-colors",
+                        "group relative flex h-10 items-center gap-3 rounded-lg px-3 text-[13px] transition-colors",
                         isActive
-                          ? "bg-brand-50 text-brand-700 font-semibold"
-                          : "text-ink-700 hover:bg-ink-100 hover:text-ink-900",
+                          ? "bg-white/[0.09] font-semibold text-white shadow-[inset_3px_0_0_0] shadow-brand-400"
+                          : "text-slate-400 hover:bg-white/[0.05] hover:text-white",
                       )
                     }
                   >
-                    <item.icon className="h-4 w-4" />
+                    <item.icon className="h-[18px] w-[18px]" />
                     <span>{item.label}</span>
                   </NavLink>
                 </li>
@@ -52,8 +45,8 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t p-3 text-[11px] text-ink-500 shrink-0">
-        Bintang v2.0 · {new Date().getFullYear()}
+      <div className="shrink-0 border-t border-white/8 px-5 py-4 text-[10px] tracking-wide text-slate-500">
+        BINTANG · {new Date().getFullYear()}
       </div>
     </aside>
   )

@@ -36,7 +36,7 @@ def is_local_file_url(url: str | None) -> bool:
 
 def to_relative(url: str) -> str:
     """Buang prefix `/files/` dari URL. Terima juga path relatif polos."""
-    return url[len(FILES_PREFIX):] if url.startswith(FILES_PREFIX) else url
+    return url[len(FILES_PREFIX) :] if url.startswith(FILES_PREFIX) else url
 
 
 def resolve_upload_path(url_or_rel: str, *, must_exist: bool = True) -> Path:

@@ -17,7 +17,7 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react"
-import { Link } from "react-router-dom"
+import { Link } from "react-router"
 import { useGlobalDashboard } from "@/hooks/useDashboard"
 import { useCompanies } from "@/hooks/useCompanies"
 import { useDebouncedValue } from "@/hooks/useDebouncedValue"

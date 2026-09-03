@@ -2,18 +2,19 @@
 
 Audit 2026-05-23 AI foundation.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
 
 import pytest
 
-from app.services.ai import cache, rate_limit, audit, llm
+from app.models.models import AICallLog
+from app.services.ai import audit, cache, llm, rate_limit
 from app.services.ai.pricing import estimate_cost
-from app.models.models import AICache, AICallLog
-
 
 # ---------- Pricing ----------
+
 
 def test_estimate_cost_known_model():
     # claude-haiku-4-5: $1/1M input + $5/1M output
@@ -33,6 +34,7 @@ def test_estimate_cost_zero_tokens():
 
 # ---------- Cache ----------
 
+
 @pytest.mark.asyncio
 async def test_cache_lookup_miss(db):
     assert await cache.lookup(db, namespace="test", key="missing") is None
@@ -41,8 +43,11 @@ async def test_cache_lookup_miss(db):
 @pytest.mark.asyncio
 async def test_cache_store_and_hit(db):
     await cache.store(
-        db, namespace="chat:test", key="abc123",
-        value={"result": "ok"}, source_info={"model": "x"},
+        db,
+        namespace="chat:test",
+        key="abc123",
+        value={"result": "ok"},
+        source_info={"model": "x"},
     )
     await db.commit()
     hit = await cache.lookup(db, namespace="chat:test", key="abc123")
@@ -78,6 +83,7 @@ def test_cache_make_key_deterministic():
 
 # ---------- Rate limit ----------
 
+
 def test_get_limiter_singleton():
     rate_limit.reset_all()
     a = rate_limit.get_limiter("feat:test", max_calls=5, period_seconds=10.0)
@@ -102,15 +108,24 @@ def test_get_limiter_check_blocks():
 
 # ---------- Audit ----------
 
+
 @pytest.mark.asyncio
 async def test_log_call_inserts_row(db):
     await audit.log_call(
-        db, user_id=None, feature="test", model="claude-haiku-4-5",
-        input_tokens=100, output_tokens=50, cost_usd="0.0007",
-        latency_ms=1234, cached=False, success=True,
+        db,
+        user_id=None,
+        feature="test",
+        model="claude-haiku-4-5",
+        input_tokens=100,
+        output_tokens=50,
+        cost_usd="0.0007",
+        latency_ms=1234,
+        cached=False,
+        success=True,
     )
     await db.commit()
     from sqlalchemy import select
+
     rows = (await db.execute(select(AICallLog))).scalars().all()
     assert len(rows) == 1
     r = rows[0]
@@ -120,6 +135,7 @@ async def test_log_call_inserts_row(db):
 
 
 # ---------- LLM client (mock provider) ----------
+
 
 @pytest.mark.asyncio
 async def test_chat_with_mocked_claude(db, monkeypatch):
@@ -133,8 +149,11 @@ async def test_chat_with_mocked_claude(db, monkeypatch):
     monkeypatch.setattr(llm, "_resolve_model", lambda hint: ("claude-haiku-4-5", "claude"))
 
     resp = await llm.chat(
-        db, user_id=1, feature="chat:test",
-        prompt="Halo", system="Kamu friendly",
+        db,
+        user_id=1,
+        feature="chat:test",
+        prompt="Halo",
+        system="Kamu friendly",
         cache_ttl_days=1,
     )
     await db.commit()
@@ -147,8 +166,11 @@ async def test_chat_with_mocked_claude(db, monkeypatch):
 
     # Second call -> cache hit
     resp2 = await llm.chat(
-        db, user_id=1, feature="chat:test",
-        prompt="Halo", system="Kamu friendly",
+        db,
+        user_id=1,
+        feature="chat:test",
+        prompt="Halo",
+        system="Kamu friendly",
         cache_ttl_days=1,
     )
     assert resp2.cached is True
@@ -159,6 +181,7 @@ async def test_chat_with_mocked_claude(db, monkeypatch):
 async def test_chat_structured_via_json_schema(db, monkeypatch):
     """json_schema -> hasil structured ke-populate."""
     rate_limit.reset_all()
+
     async def _fake_claude(**kw):
         return ("", {"category_id": 5, "reason": "match"}, 30, 15)
 
@@ -166,8 +189,11 @@ async def test_chat_structured_via_json_schema(db, monkeypatch):
     monkeypatch.setattr(llm, "_resolve_model", lambda hint: ("claude-haiku-4-5", "claude"))
 
     resp = await llm.chat(
-        db, user_id=1, feature="chat:json",
-        prompt="Pilih kategori", json_schema={"type": "object"},
+        db,
+        user_id=1,
+        feature="chat:json",
+        prompt="Pilih kategori",
+        json_schema={"type": "object"},
         cache_ttl_days=0,  # disable cache utk test
     )
     assert resp.structured == {"category_id": 5, "reason": "match"}
@@ -177,20 +203,30 @@ async def test_chat_structured_via_json_schema(db, monkeypatch):
 async def test_chat_rate_limit(db, monkeypatch):
     """Spam exceeds limit -> ai_rate_limited."""
     rate_limit.reset_all()
+
     async def _fake_claude(**kw):
         return ("ok", None, 1, 1)
+
     monkeypatch.setattr(llm, "_call_claude", _fake_claude)
     monkeypatch.setattr(llm, "_resolve_model", lambda hint: ("claude-haiku-4-5", "claude"))
 
     for i in range(3):
         await llm.chat(
-            db, user_id=42, feature="chat:rl",
-            prompt=f"call {i}", cache_ttl_days=0,
-            rate_limit_max=3, rate_limit_period=60.0,
+            db,
+            user_id=42,
+            feature="chat:rl",
+            prompt=f"call {i}",
+            cache_ttl_days=0,
+            rate_limit_max=3,
+            rate_limit_period=60.0,
         )
     with pytest.raises(RuntimeError, match="ai_rate_limited"):
         await llm.chat(
-            db, user_id=42, feature="chat:rl",
-            prompt="call extra", cache_ttl_days=0,
-            rate_limit_max=3, rate_limit_period=60.0,
+            db,
+            user_id=42,
+            feature="chat:rl",
+            prompt="call extra",
+            cache_ttl_days=0,
+            rate_limit_max=3,
+            rate_limit_period=60.0,
         )

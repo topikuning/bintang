@@ -59,11 +59,12 @@ export function MasterPageShell<T>({
 
   return (
     <>
-      <div className="flex flex-col gap-4 p-3 sm:p-5 lg:p-6">
+      <div className="flex flex-col gap-5 p-4 sm:p-6 lg:p-8">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold text-ink-900 sm:text-2xl">{title}</h1>
-            <p className="text-[13px] text-ink-500 mt-0.5">{description}</p>
+            <div className="mb-2 h-1 w-10 rounded-full bg-brand-500" />
+            <h1 className="text-2xl font-bold text-ink-900 sm:text-3xl">{title}</h1>
+            <p className="mt-1 max-w-2xl text-[13px] text-ink-500">{description}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {headerExtra}
@@ -80,7 +81,7 @@ export function MasterPageShell<T>({
           </div>
         </div>
 
-        <div className="rounded-md bg-surface md:bg-transparent">
+        <div className="rounded-xl bg-surface md:bg-transparent">
           <AdaptiveDataView
             data={items}
             isLoading={isLoading}

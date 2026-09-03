@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { Link, useSearchParams } from "react-router-dom"
+import { Link, useSearchParams } from "react-router"
 import { AlertTriangle, Building2, ClipboardList, FolderKanban, Plus, Search, X } from "lucide-react"
 import {
   useProjectFilters,

@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom"
+import { NavLink } from "react-router"
 import { cn } from "@/lib/utils"
 import { useMenuConfig } from "@/hooks/useMenuConfig"
 import { MOBILE_BOTTOM_NAV, filterNavItems } from "./nav-config"
@@ -8,8 +8,8 @@ export function BottomNav() {
   const allowed = cfgQ.data ? new Set(cfgQ.data.menu_ids) : undefined
   const items = filterNavItems(MOBILE_BOTTOM_NAV, allowed)
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t bg-surface pb-safe">
-      <ul className="flex">
+    <nav className="fixed inset-x-3 bottom-3 z-30 rounded-2xl border border-white/10 bg-[var(--app-nav)] p-1.5 shadow-[0_18px_50px_rgb(15_23_42/0.35)] pb-safe md:hidden">
+      <ul className="flex gap-0.5">
         {items.map((item) => (
           <li key={item.to} className="flex-1">
             <NavLink
@@ -17,10 +17,10 @@ export function BottomNav() {
               end={item.to === "/dashboard"}
               className={({ isActive }) =>
                 cn(
-                  "flex h-14 flex-col items-center justify-center gap-0.5 text-[11px] transition-colors",
+                  "flex h-14 flex-col items-center justify-center gap-1 rounded-xl text-[10px] transition-colors",
                   isActive
-                    ? "text-brand-600 font-semibold"
-                    : "text-ink-500 hover:text-ink-700 active:bg-ink-100",
+                    ? "bg-brand-500 font-semibold text-white shadow-lg shadow-brand-950/30"
+                    : "text-slate-400 hover:bg-white/[0.06] hover:text-white",
                 )
               }
             >

@@ -7,7 +7,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-  type TooltipProps,
+  type TooltipContentProps,
 } from "recharts"
 import type { MonthlyCashflowPoint } from "@/types/dashboard"
 import { fmtCompact, fmtIDR } from "@/lib/format"
@@ -30,7 +30,7 @@ function formatMonth(ym: string): string {
   return `${label} ${String(y).slice(2)}`
 }
 
-function CustomTooltip({ active, payload, label }: TooltipProps<number, string>) {
+function CustomTooltip({ active, payload, label }: TooltipContentProps) {
   if (!active || !payload || payload.length === 0) return null
   const inVal = (payload.find((p) => p.dataKey === "in")?.value ?? 0) as number
   const outVal = (payload.find((p) => p.dataKey === "out")?.value ?? 0) as number
@@ -96,7 +96,7 @@ export function CashflowChart({ data, height = 280, compact }: CashflowChartProp
             width={compact ? 50 : 70}
           />
           <Tooltip
-            content={<CustomTooltip />}
+            content={(props) => <CustomTooltip {...props} />}
             cursor={{ fill: "rgba(10, 93, 194, 0.04)" }}
           />
           {!compact && (

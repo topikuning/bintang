@@ -1,4 +1,5 @@
 """AI prompt registry + override endpoints. Audit 2026-05-24."""
+
 from __future__ import annotations
 
 import pytest
@@ -18,27 +19,35 @@ from app.services.ai.prompt_registry import (
 
 async def _seed_admin(db, role=UserRole.SUPERADMIN, email="s@x"):
     u = User(
-        email=email, name="X", password_hash=hash_password("x"),
-        role=role, scope_all_projects=True,
+        email=email,
+        name="X",
+        password_hash=hash_password("x"),
+        role=role,
+        scope_all_projects=True,
     )
-    db.add(u); await db.flush()
+    db.add(u)
+    await db.flush()
     return u
 
 
 def _hdr(user):
-    return {"Authorization": f"Bearer {create_access_token(user.id, extra={'role': user.role.value})}"}
+    return {
+        "Authorization": f"Bearer {create_access_token(user.id, extra={'role': user.role.value})}"
+    }
 
 
 @pytest.fixture
 def override_db(db):
     async def _gen():
         yield db
+
     app.dependency_overrides[get_db] = _gen
     yield
     app.dependency_overrides.pop(get_db, None)
 
 
 # ---------- Registry helpers ----------
+
 
 def test_extract_placeholders_basic():
     assert extract_placeholders("hello {a} world {b}") == {"a", "b"}
@@ -60,12 +69,14 @@ def test_all_feature_defaults_self_valid():
     for spec in FEATURES.values():
         if spec.user_template_default:
             errs = validate_template(
-                spec.user_template_default, spec.user_placeholders,
+                spec.user_template_default,
+                spec.user_placeholders,
             )
             assert not errs, f"{spec.key}: {errs}"
         if spec.system_placeholders:
             errs = validate_template(
-                spec.system_default, spec.system_placeholders,
+                spec.system_default,
+                spec.system_placeholders,
             )
             assert not errs, f"{spec.key} system: {errs}"
 
@@ -82,10 +93,14 @@ async def test_get_prompt_returns_default(db):
 @pytest.mark.asyncio
 async def test_get_prompt_uses_override(db):
     admin = await _seed_admin(db)
-    db.add(AIPromptOverride(
-        feature_key="category", field="system",
-        content="CUSTOM SYS {x}", updated_by_id=admin.id,
-    ))
+    db.add(
+        AIPromptOverride(
+            feature_key="category",
+            field="system",
+            content="CUSTOM SYS {x}",
+            updated_by_id=admin.id,
+        )
+    )
     await db.commit()
     p = await get_prompt(db, "category")
     assert p.system == "CUSTOM SYS {x}"
@@ -96,6 +111,7 @@ async def test_get_prompt_uses_override(db):
 
 
 # ---------- HTTP endpoints ----------
+
 
 @pytest.mark.asyncio
 async def test_list_prompts_superadmin(db, override_db):
@@ -127,8 +143,7 @@ async def test_upsert_prompt_valid(db, override_db):
     admin = await _seed_admin(db)
     transport = ASGITransport(app=app)
     new_content = (
-        "Konteks transaksi:\n{ctx}\n\nPilihan kategori:\n{cats}\n\n"
-        "PILIH BENAR (customized)."
+        "Konteks transaksi:\n{ctx}\n\nPilihan kategori:\n{cats}\n\nPILIH BENAR (customized)."
     )
     async with AsyncClient(transport=transport, base_url="http://t") as ac:
         r = await ac.put(
@@ -161,10 +176,14 @@ async def test_upsert_prompt_missing_placeholder_rejected(db, override_db):
 @pytest.mark.asyncio
 async def test_reset_prompt(db, override_db):
     admin = await _seed_admin(db)
-    db.add(AIPromptOverride(
-        feature_key="category", field="system",
-        content="CUSTOM", updated_by_id=admin.id,
-    ))
+    db.add(
+        AIPromptOverride(
+            feature_key="category",
+            field="system",
+            content="CUSTOM",
+            updated_by_id=admin.id,
+        )
+    )
     await db.commit()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as ac:

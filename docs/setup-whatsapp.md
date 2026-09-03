@@ -61,7 +61,7 @@ Pilih salah satu opsi. **Railway template paling cepat untuk MVP**.
    | `WHATSAPP_API_KEY` | (random, mis. `openssl rand -hex 24`) | Wajib di prod. Backend kirim header `X-Api-Key`. |
    | `WHATSAPP_HOOK_URL` | `https://api.bintang.example.com/api/v1/whatsapp/webhook` | URL webhook backend Bintang. |
    | `WHATSAPP_HOOK_EVENTS` | `message,message.any,session.status` | Event yg dibutuhkan. |
-   | `WAHA_HMAC_KEY` | (random, mis. `openssl rand -hex 32`) | Untuk signature webhook. **Catat nilainya** — masuk ke env Bintang juga (`WHATSAPP_WEBHOOK_SECRET`). |
+   | `WAHA_HMAC_KEY` | (opsional; random) | Signature webhook. WAHA Core dapat kehilangan key ini saat session restart; baca catatan batasan di bawah. |
 
 4. Setelah deploy, generate domain publik (Settings → Networking →
    Generate Domain). Catat URL-nya, mis. `https://waha-prod.up.railway.app`.
@@ -125,10 +125,11 @@ WHATSAPP_API_KEY=<sama dengan yg di WAHA>
 WHATSAPP_WEBHOOK_SECRET=<sama dengan WAHA_HMAC_KEY di WAHA>
 ```
 
-> **`WHATSAPP_WEBHOOK_SECRET`**: ini env var, **bukan** disetel via UI
-> (alasan keamanan). Wajib match dengan `WAHA_HMAC_KEY` di WAHA, atau
-> webhook akan ditolak (401). Boleh kosong untuk dev, tapi jangan di
-> prod.
+> **`WHATSAPP_WEBHOOK_SECRET`** dapat disetel lewat UI atau env (nilai DB
+> menang). Jika diisi, nilainya wajib sama dengan `WAHA_HMAC_KEY` atau
+> webhook ditolak (401). Untuk WAHA Core saat ini boleh kosong karena key
+> HMAC tidak persisten pada sebagian siklus restart session; dalam keadaan
+> itu verifikasi webhook memang dilewati dan peringatan dicatat saat startup.
 
 ---
 
@@ -191,7 +192,9 @@ curl -X PUT https://waha-prod.up.railway.app/api/sessions/default \
 
 > **HMAC**: kalau `hmac.key` diset di WAHA, WAHA akan tanda-tangani
 > setiap webhook dengan `X-Webhook-Hmac` header (SHA-512). Backend
-> Bintang verifikasi pakai `WHATSAPP_WEBHOOK_SECRET`. Wajib match.
+> Bintang memverifikasi dengan `WHATSAPP_WEBHOOK_SECRET` bila nilainya
+> diisi. Keduanya wajib match. Jika dikosongkan, verifikasi dilewati sesuai
+> batasan WAHA Core yang dijelaskan pada langkah konfigurasi backend.
 
 ---
 
@@ -233,7 +236,7 @@ perintah. Kalau tidak reply:
 
 - Cek log backend: `app.api.v1.whatsapp` — webhook masuk?
 - Cek WAHA log: webhook delivery success?
-- Cek `WHATSAPP_WEBHOOK_SECRET` match dengan `WAHA_HMAC_KEY`.
+- Jika verifikasi diaktifkan, cek `WHATSAPP_WEBHOOK_SECRET` match dengan `WAHA_HMAC_KEY`.
 
 ---
 
@@ -271,7 +274,7 @@ Berguna untuk on-boarding cepat tanpa user perlu kirim apa-apa.
 | Gejala | Kemungkinan penyebab | Fix |
 |---|---|---|
 | `waha_reachable: false` di health | URL salah / WAHA mati / firewall | Cek `WHATSAPP_BASE_URL` (tanpa trailing slash), curl WAHA dari server backend, cek port |
-| Webhook 401 ke backend | `WHATSAPP_WEBHOOK_SECRET` mismatch dengan `WAHA_HMAC_KEY` | Set keduanya sama, restart kedua service |
+| Webhook 401 ke backend | Verifikasi aktif tetapi `WHATSAPP_WEBHOOK_SECRET` mismatch dengan `WAHA_HMAC_KEY` | Set keduanya sama, restart kedua service |
 | Bot tidak reply `/help` | User belum link, atau `whatsapp_chat_id` belum di-set | Cek tabel `users` row → field `whatsapp_chat_id` |
 | Pesan kirim sukses tapi tidak sampai | Nomor format salah, atau receiver tidak punya WhatsApp | Pastikan format `<msisdn>@c.us` (no `+`, no `-`) |
 | Sesi WORKING → FAILED tiba-tiba | WhatsApp logout dari Linked Devices, atau WAHA crash | Klik **Restart Session** di UI, scan QR ulang kalau perlu |
@@ -307,7 +310,7 @@ Kalau semua macet, urut langkah ini:
 | `WHATSAPP_BASE_URL` | ya (di UI/env) | `""` | URL WAHA, tanpa trailing slash. Boleh dipindah lewat UI tanpa redeploy. |
 | `WHATSAPP_SESSION` | tidak | `"default"` | Nama session WAHA. Pakai > 1 kalau Plus. |
 | `WHATSAPP_API_KEY` | rekomendasi | `""` | Header `X-Api-Key`. Wajib kalau WAHA pakai auth. |
-| `WHATSAPP_WEBHOOK_SECRET` | rekomendasi | `""` | Match `WAHA_HMAC_KEY`. Wajib di prod. |
+| `WHATSAPP_WEBHOOK_SECRET` | opsional saat ini | `""` | Match `WAHA_HMAC_KEY` bila diaktifkan; kosong berarti verifikasi dilewati dan startup memberi peringatan. |
 
 ### Env var WAHA (sisi server WAHA)
 

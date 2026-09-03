@@ -4,9 +4,9 @@ Bantu user nulis justifikasi pengajuan dana dari list items. Mengubah
 input minimal ("beli paku, semen, kabel") jadi paragraph profesional
 yg memuaskan approver.
 """
+
 from __future__ import annotations
 
-from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
@@ -34,18 +34,18 @@ async def run(
     disimpan).
     """
     if cash_request_id:
-        cr = (await db.execute(
-            select(CashRequest)
-            .options(selectinload(CashRequest.items))
-            .where(CashRequest.id == cash_request_id,
-                   CashRequest.deleted_at.is_(None))
-        )).scalar_one_or_none()
+        cr = (
+            await db.execute(
+                select(CashRequest)
+                .options(selectinload(CashRequest.items))
+                .where(CashRequest.id == cash_request_id, CashRequest.deleted_at.is_(None))
+            )
+        ).scalar_one_or_none()
         if cr is None:
             raise ValueError("cash_request_not_found")
         project = await db.get(Project, cr.project_id)
         items = [
-            {"description": it.description, "amount": str(it.amount)}
-            for it in (cr.items or [])
+            {"description": it.description, "amount": str(it.amount)} for it in (cr.items or [])
         ]
         title = cr.title
     else:
@@ -57,8 +57,7 @@ async def run(
         raise ValueError("no_items: minimal 1 item")
 
     items_str = "\n".join(
-        f"- {it.get('description', '?')} (Rp {it.get('amount', '?')})"
-        for it in items[:15]
+        f"- {it.get('description', '?')} (Rp {it.get('amount', '?')})" for it in items[:15]
     )
     # Audit 2026-05-24: pakai prompt registry (admin override-able).
     p = await get_prompt(db, "cash_justify")
@@ -71,8 +70,11 @@ async def run(
     )
 
     resp = await chat(
-        db, user_id=user_id, feature="ai:cash_justify",
-        system=p.system, prompt=prompt,
+        db,
+        user_id=user_id,
+        feature="ai:cash_justify",
+        system=p.system,
+        prompt=prompt,
         feature_key="cash_justify",
     )
     return {

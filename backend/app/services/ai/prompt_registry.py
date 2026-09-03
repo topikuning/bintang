@@ -15,6 +15,7 @@ Caller pattern:
 Saat admin save override, placeholder di template di-validate harus
 match daftar `placeholders` (superset di default tdk boleh hilang).
 """
+
 from __future__ import annotations
 
 import re
@@ -69,14 +70,14 @@ FEATURES: dict[str, FeatureSpec] = {
             "2. Kalau history tdk ada / kosong, pilih kategori dgn "
             "nama/scope paling relevan ke deskripsi.\n"
             "3. Kalau ragu antara 2 kategori, pilih yg lebih spesifik "
-            "(mis. \"Beton\" lebih spesifik dari \"Material Bangunan\").\n"
+            '(mis. "Beton" lebih spesifik dari "Material Bangunan").\n'
             "4. Kalau TIDAK ADA kategori yg cocok sama sekali, set "
             "category_id=null dan jelaskan di reason.\n"
             "5. confidence: 0-1. 0.9+ kalau yakin (history mendukung), "
             "0.6-0.85 kalau plausible (deskripsi cocok tp blm ada history), "
             "<0.6 kalau ragu.\n"
             "6. reason: 1-2 kalimat. WAJIB refer ke history kalau ada "
-            "(mis. \"vendor ini 18 dari 20 tx terakhir masuk kategori X\").\n"
+            '(mis. "vendor ini 18 dari 20 tx terakhir masuk kategori X").\n'
             "7. alternatives: kalau confidence < 0.85, kasih 1-2 kandidat "
             "alternatif (max 2). Skip kalau yakin."
         ),
@@ -100,11 +101,11 @@ FEATURES: dict[str, FeatureSpec] = {
             "Tugas: review list transaksi yang sudah di-prefilter sbg "
             "KANDIDAT anomali, lalu kasih verdict per item.\n\n"
             "Untuk setiap kandidat, klasifikasikan:\n"
-            "- severity: \"high\" (urgent investigasi) / \"medium\" "
-            "(worth review) / \"low\" (false positive likely).\n"
-            "- anomaly_type: \"vendor_baru_besar\" / \"amount_outlier\" / "
-            "\"kategori_tdk_biasa\" / \"duplikat_suspicious\" / "
-            "\"waktu_aneh\" / \"lainnya\".\n"
+            '- severity: "high" (urgent investigasi) / "medium" '
+            '(worth review) / "low" (false positive likely).\n'
+            '- anomaly_type: "vendor_baru_besar" / "amount_outlier" / '
+            '"kategori_tdk_biasa" / "duplikat_suspicious" / '
+            '"waktu_aneh" / "lainnya".\n'
             "- reason: 1-2 kalimat penjelasan dlm Bahasa Indonesia kenapa flag.\n\n"
             "Aturan:\n"
             "1. Jangan flag false positive jelas (mis. vendor baru tapi "
@@ -127,9 +128,15 @@ FEATURES: dict[str, FeatureSpec] = {
             "Plus summary 1-2 kalimat."
         ),
         user_placeholders=(
-            "date_from", "date_to", "proj_label", "total_tx",
-            "total_amount", "avg_amount", "n_historical",
-            "n_candidates", "candidates",
+            "date_from",
+            "date_to",
+            "proj_label",
+            "total_tx",
+            "total_amount",
+            "avg_amount",
+            "n_historical",
+            "n_candidates",
+            "candidates",
         ),
     ),
     "po_cover": FeatureSpec(
@@ -151,7 +158,7 @@ FEATURES: dict[str, FeatureSpec] = {
             "nilai. Sebut tanggal pengiriman/penyelesaian kalau ada.\n"
             "4. Penutup: instruksi follow-up (konfirmasi, kontak PIC, dll) "
             "+ salam.\n"
-            "5. JANGAN sebut \"AI generated\" atau tanda kutip lain yg "
+            '5. JANGAN sebut "AI generated" atau tanda kutip lain yg '
             "tdk profesional.\n"
             "6. Output: HANYA isi surat, tanpa header/kop (perusahaan "
             "punya kop sendiri). Tanpa tanda tangan.\n"
@@ -169,8 +176,14 @@ FEATURES: dict[str, FeatureSpec] = {
             "Tulis surat pengantar profesional."
         ),
         user_placeholders=(
-            "po_number", "po_date", "vendor", "project",
-            "company", "total", "tone", "items",
+            "po_number",
+            "po_date",
+            "vendor",
+            "project",
+            "company",
+            "total",
+            "tone",
+            "items",
         ),
     ),
     "cash_justify": FeatureSpec(
@@ -189,8 +202,8 @@ FEATURES: dict[str, FeatureSpec] = {
             "1. 1 paragraf saja (3-5 kalimat).\n"
             "2. Hubungkan item-item ke konteks proyek (tahap pekerjaan "
             "yg sedang berlangsung).\n"
-            "3. Sebutkan urgency/timing kalau relevan (mis. \"dibutuhkan "
-            "minggu ini\").\n"
+            '3. Sebutkan urgency/timing kalau relevan (mis. "dibutuhkan '
+            'minggu ini").\n'
             "4. Hindari hyperbole. Jangan over-promise hasil.\n"
             "5. Tdk perlu salam pembuka/penutup -- ini field notes, "
             "bukan surat.\n"
@@ -224,8 +237,8 @@ FEATURES: dict[str, FeatureSpec] = {
             "2. doc_number: nomor dokumen apa adanya. Empty string kalau tdk ada.\n"
             "3. doc_date: tanggal pembuatan/penandatanganan, YYYY-MM-DD. "
             "Empty kalau tdk ada.\n"
-            "4. parties: SEMUA pihak yang terlibat. role bisa \"Pihak "
-            "Pertama\"/\"Pihak Kedua\"/\"Kontraktor\"/\"Klien\"/dst.\n"
+            '4. parties: SEMUA pihak yang terlibat. role bisa "Pihak '
+            'Pertama"/"Pihak Kedua"/"Kontraktor"/"Klien"/dst.\n'
             "5. contract_value: total nilai kontrak (Rupiah). 0 kalau "
             "tdk ada/bukan kontrak nilai.\n"
             "6. start_date / end_date: jangka waktu pelaksanaan. Empty "
@@ -234,7 +247,7 @@ FEATURES: dict[str, FeatureSpec] = {
             "dikerjakan / dikirim).\n"
             "8. key_clauses: pasal-pasal PENTING saja (pembayaran, denda, "
             "jangka waktu, force majeure, BAST). Max 8 pasal. Title = "
-            "\"Pasal X JUDUL\". Summary 1 kalimat per pasal.\n"
+            '"Pasal X JUDUL". Summary 1 kalimat per pasal.\n'
             "9. key_dates: tanggal-tanggal kunci selain doc_date/start/end "
             "(mis. tanggal BAST, milestone, tanggal jatuh tempo). Max 10.\n"
             "10. notes: catatan kalau ada bagian sulit dibaca/blur/terpotong. "
@@ -263,9 +276,9 @@ FEATURES: dict[str, FeatureSpec] = {
             "Template tersedia:\n{TEMPLATES}\n\n"
             "Aturan:\n"
             "1. Pilih 1 template paling cocok. Kalau pertanyaan tdk match "
-            "template apapun, set template=\"none\" dan jelaskan di reason.\n"
-            "2. Tanggal: convert \"bulan lalu\" / \"minggu ini\" / "
-            "\"Q1 2026\" ke YYYY-MM-DD format. Hari ini = {TODAY}. Kalau "
+            'template apapun, set template="none" dan jelaskan di reason.\n'
+            '2. Tanggal: convert "bulan lalu" / "minggu ini" / '
+            '"Q1 2026" ke YYYY-MM-DD format. Hari ini = {TODAY}. Kalau '
             "ambigu, kosongkan (semua periode).\n"
             "3. project_id: kalau user sebut nama proyek, set null -- "
             "backend akan ignore (UI akan tampil all). User pakai filter "
@@ -366,9 +379,9 @@ FEATURES: dict[str, FeatureSpec] = {
             "interpretasi, pilih yang masuk akal di konteks dokumen "
             "keuangan dan turunkan confidence_score.\n"
             "2. Angka rupiah: hilangkan separator titik/koma/spasi -> "
-            "number polos. \"Rp 1.250.000\" -> 1250000. \"Rp 1,250.50\" -> 1250.5.\n"
-            "3. Tanggal: konversi ke YYYY-MM-DD. \"12 April 2026\" -> "
-            "\"2026-04-12\". Kalau ambigu, pakai string kosong.\n"
+            'number polos. "Rp 1.250.000" -> 1250000. "Rp 1,250.50" -> 1250.5.\n'
+            '3. Tanggal: konversi ke YYYY-MM-DD. "12 April 2026" -> '
+            '"2026-04-12". Kalau ambigu, pakai string kosong.\n'
             "4. Items: WAJIB ekstrak SETIAP baris item yang terlihat -- "
             "jangan skip walau pricing tidak tertulis. Description selalu wajib.\n"
             "5. is_handwritten=true kalau ada SATU pun bagian tulisan tangan.\n"
@@ -398,8 +411,8 @@ FEATURES: dict[str, FeatureSpec] = {
             "paragraf executive (3-5 kalimat) Bahasa Indonesia "
             "formal-santai. Owner butuh insight cepat tanpa baca detail.\n\n"
             "Aturan:\n"
-            "1. Mulai dgn highlight terbesar (mis. \"Hari ini fokus "
-            "belanja material besar Rp X\").\n"
+            '1. Mulai dgn highlight terbesar (mis. "Hari ini fokus '
+            'belanja material besar Rp X").\n'
             "2. Sebut angka penting: total in, total out, # transaksi.\n"
             "3. Kalau ada anomaly/perhatian (overdue invoice, vendor "
             "baru besar, dll), highlight dgn 1 kalimat.\n"
@@ -439,13 +452,13 @@ FEATURES: dict[str, FeatureSpec] = {
             "   - unit: satuan (lonjor/lembar/zak/pcs/m/m2/m3/kg/dll), null "
             "kalau tdk disebut.\n"
             "   - unit_price: harga satuan (number), null kalau tdk disebut. "
-            "JANGAN tebak harga. Format harga: \"@ 95000\" / \"@95k\" / "
-            "\"harga 95000\".\n"
+            'JANGAN tebak harga. Format harga: "@ 95000" / "@95k" / '
+            '"harga 95000".\n'
             "2. project_hint: kode/nama proyek yg user sebut (string), null "
-            "kalau tdk ada. Contoh: \"BMJ1\", \"Rekonstruksi Pucuk\". "
+            'kalau tdk ada. Contoh: "BMJ1", "Rekonstruksi Pucuk". '
             "Resolver akan match.\n"
             "3. vendor_hint: nama vendor/supplier yg user sebut, null kalau "
-            "tdk ada. Contoh: \"PT Sumber Besi\", \"Toko Jaya\".\n"
+            'tdk ada. Contoh: "PT Sumber Besi", "Toko Jaya".\n'
             "4. notes: catatan tambahan kalau user sebut (string), null "
             "kalau tdk ada.\n\n"
             "5. KALAU input ambigu (cuma 1 baris tanpa qty, atau tdk ada "
@@ -494,8 +507,9 @@ def validate_template(content: str, required: tuple[str, ...]) -> list[str]:
     missing = set(required) - found
     if missing:
         errors.append(
-            "Placeholder hilang: " + ", ".join(sorted(missing)) +
-            ". Tanpa ini, feature akan error saat runtime."
+            "Placeholder hilang: "
+            + ", ".join(sorted(missing))
+            + ". Tanpa ini, feature akan error saat runtime."
         )
     return errors
 
@@ -514,12 +528,16 @@ async def get_prompt(db: AsyncSession, feature_key: str) -> ResolvedPrompt:
     if spec is None:
         raise KeyError(f"Unknown feature: {feature_key}")
     overrides = {
-        r.field: r.content for r in
-        (await db.execute(
-            select(AIPromptOverride).where(
-                AIPromptOverride.feature_key == feature_key,
+        r.field: r.content
+        for r in (
+            await db.execute(
+                select(AIPromptOverride).where(
+                    AIPromptOverride.feature_key == feature_key,
+                )
             )
-        )).scalars().all()
+        )
+        .scalars()
+        .all()
     }
     sys_o = overrides.get("system")
     usr_o = overrides.get("user_template")

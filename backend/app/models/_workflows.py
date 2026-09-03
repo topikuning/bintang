@@ -4,6 +4,7 @@ Audit 2026-05-22 #M1: split dari models.py (1072 baris). Class-class
 di sini bisa pakai string forward-ref ("OtherClass") utk relationship
 ke modul lain -- SQLAlchemy resolve via Base.registry.
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -28,7 +29,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
-from app.services.field_crypto import EncryptedString
 
 from ._enums import *  # noqa: F401, F403
 
@@ -41,6 +41,7 @@ class CashAdvanceSettlement(TimestampMixin, Base):
     Kalau total items > advance amount -> auto-create top-up tx
     (kind=DIRECT_EXPENSE, parent_advance_tx_id = advance).
     """
+
     __tablename__ = "cash_advance_settlements"
     __table_args__ = (
         # Nominal kembali ke kas tdk boleh negatif (zero OK = tdk ada sisa).
@@ -53,27 +54,25 @@ class CashAdvanceSettlement(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     cash_advance_tx_id: Mapped[int] = mapped_column(
         ForeignKey("transactions.id", ondelete="CASCADE"),
-        unique=True, nullable=False, index=True,
+        unique=True,
+        nullable=False,
+        index=True,
     )
-    settled_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    settled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     settled_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     # Sisa yg dikembalikan ke kas (kalau pakai < advance). Tdk negatif.
     returned_to_kas: Mapped[Decimal] = mapped_column(
         Numeric(18, 2), nullable=False, default=Decimal("0")
     )
     # Top-up tx kalau overpay (sum items > advance). Auto-created by API.
-    topup_tx_id: Mapped[int | None] = mapped_column(
-        ForeignKey("transactions.id"), nullable=True
-    )
+    topup_tx_id: Mapped[int | None] = mapped_column(ForeignKey("transactions.id"), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    cash_advance: Mapped["Transaction"] = relationship(
+    cash_advance: Mapped[Transaction] = relationship(
         back_populates="settlement",
         foreign_keys=[cash_advance_tx_id],
     )
-    items: Mapped[list["CashAdvanceSettlementItem"]] = relationship(
+    items: Mapped[list[CashAdvanceSettlementItem]] = relationship(
         back_populates="settlement",
         cascade="all,delete-orphan",
         order_by="CashAdvanceSettlementItem.id",
@@ -83,6 +82,7 @@ class CashAdvanceSettlement(TimestampMixin, Base):
 class CashAdvanceSettlementItem(TimestampMixin, Base):
     """Rincian penggunaan uang muka. 1 item = 1 baris pertanggungjawaban
     (kategori + deskripsi + amount + opsional URL struk)."""
+
     __tablename__ = "cash_advance_settlement_items"
     __table_args__ = (
         CheckConstraint(
@@ -94,11 +94,10 @@ class CashAdvanceSettlementItem(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     settlement_id: Mapped[int] = mapped_column(
         ForeignKey("cash_advance_settlements.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        nullable=False,
+        index=True,
     )
-    category_id: Mapped[int | None] = mapped_column(
-        ForeignKey("categories.id"), nullable=True
-    )
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
     description: Mapped[str] = mapped_column(String(300), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     receipt_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -107,12 +106,9 @@ class CashAdvanceSettlementItem(TimestampMixin, Base):
     # dari tx CASH_ADVANCE asli ke invoice ini utk amount item.
     # Tetap simpan di settlement_item supaya jelas mana item yg invoice-payment
     # vs beban langsung. category_id boleh diisi atau tidak (informasi tambahan).
-    invoice_id: Mapped[int | None] = mapped_column(
-        ForeignKey("invoices.id"), nullable=True
-    )
+    invoice_id: Mapped[int | None] = mapped_column(ForeignKey("invoices.id"), nullable=True)
 
     settlement: Mapped[CashAdvanceSettlement] = relationship(back_populates="items")
-
 
 
 class CashRequest(TimestampMixin, Base):
@@ -132,6 +128,7 @@ class CashRequest(TimestampMixin, Base):
          dana ditransfer -> VERIFIED, masuk saldo.
       5. Pertanggungjawaban pakai CashAdvanceSettlement existing.
     """
+
     __tablename__ = "cash_requests"
     __table_args__ = (
         Index("ix_cash_requests_project_status", "project_id", "status"),
@@ -149,20 +146,14 @@ class CashRequest(TimestampMixin, Base):
     # Format: CR/YYYY/MM/#### (sequential per bulan, global).
     number: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
 
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id"), nullable=False, index=True
-    )
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
 
     # Yang mengajukan.
-    requester_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id"), nullable=False, index=True
-    )
+    requester_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     # Calon penerima dana (kalau berbeda dari requester). Saat APPROVED,
     # ini jadi recipient_user_id di tx CASH_ADVANCE. Null -> default ke
     # requester.
-    recipient_user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id"), nullable=True
-    )
+    recipient_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     request_date: Mapped[date] = mapped_column(Date, nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -179,18 +170,10 @@ class CashRequest(TimestampMixin, Base):
         String(20), nullable=False, default=CashRequestStatus.PENDING.value, index=True
     )
 
-    approved_by_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id"), nullable=True
-    )
-    approved_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    rejected_by_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id"), nullable=True
-    )
-    rejected_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    approved_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejected_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Link ke tx CASH_ADVANCE yg auto-created saat APPROVED. SET NULL
@@ -198,14 +181,13 @@ class CashRequest(TimestampMixin, Base):
     # 1 pengajuan = 1 tx pencairan.
     disbursement_tx_id: Mapped[int | None] = mapped_column(
         ForeignKey("transactions.id", ondelete="SET NULL"),
-        nullable=True, unique=True,
+        nullable=True,
+        unique=True,
     )
 
-    deleted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    items: Mapped[list["CashRequestItem"]] = relationship(
+    items: Mapped[list[CashRequestItem]] = relationship(
         back_populates="request",
         cascade="all,delete-orphan",
         order_by="CashRequestItem.id",
@@ -217,6 +199,7 @@ class CashRequestItem(TimestampMixin, Base):
     1 item = 1 baris (kategori + deskripsi + qty/harga atau amount langsung).
     Total request = SUM(items.amount).
     """
+
     __tablename__ = "cash_request_items"
     __table_args__ = (
         CheckConstraint(
@@ -228,29 +211,30 @@ class CashRequestItem(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     request_id: Mapped[int] = mapped_column(
         ForeignKey("cash_requests.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        nullable=False,
+        index=True,
     )
-    category_id: Mapped[int | None] = mapped_column(
-        ForeignKey("categories.id"), nullable=True
-    )
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
     description: Mapped[str] = mapped_column(String(300), nullable=False)
     # Qty & unit_price opsional -- user boleh isi amount langsung.
-    quantity: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 3), nullable=True
-    )
-    unit_price: Mapped[Decimal | None] = mapped_column(
-        Numeric(18, 2), nullable=True
-    )
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    unit_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
 
     request: Mapped[CashRequest] = relationship(back_populates="items")
-
 
 
 class AIExtraction(TimestampMixin, Base):
     __tablename__ = "ai_extractions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # Pemilik upload. Nullable hanya untuk data legacy/bot yang dibuat
+    # sebelum ownership berkas dicatat; entry legacy hanya dapat dibuka admin.
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
     entity: Mapped[str] = mapped_column(String(40), default="invoice")  # invoice / po
     entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -277,12 +261,16 @@ class OCRCache(TimestampMixin, Base):
     TTL: 30 hari (cleanup via cron / pre-insert). Setelah TTL, miss ->
     re-extract & overwrite.
     """
+
     __tablename__ = "ocr_cache"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # SHA256 hex (64 char). Indexed unique utk fast lookup.
     file_hash: Mapped[str] = mapped_column(
-        String(64), unique=True, nullable=False, index=True,
+        String(64),
+        unique=True,
+        nullable=False,
+        index=True,
     )
     # Engine yg generate hasil ini (mis. "claude:claude-haiku-4-5",
     # "mistral:mistral-ocr-latest"). Informational only.
@@ -296,7 +284,8 @@ class OCRCache(TimestampMixin, Base):
     # Statistik hit utk monitoring efektivitas cache.
     hits: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_hit_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
 
 
@@ -316,10 +305,9 @@ class AICache(TimestampMixin, Base):
     Cache existing `ocr_cache` table tetap utk OCR (data lama).
     Tabel ini fresh, generic.
     """
+
     __tablename__ = "ai_cache"
-    __table_args__ = (
-        UniqueConstraint("namespace", "cache_key", name="uq_ai_cache_ns_key"),
-    )
+    __table_args__ = (UniqueConstraint("namespace", "cache_key", name="uq_ai_cache_ns_key"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     namespace: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
@@ -330,7 +318,8 @@ class AICache(TimestampMixin, Base):
     source_info: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     hits: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_hit_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
 
 
@@ -347,11 +336,14 @@ class AICallLog(TimestampMixin, Base):
     Tdk simpan full request/response (privacy + storage). Hanya
     metadata: feature, model, tokens, cost, latency, cached, success.
     """
+
     __tablename__ = "ai_call_logs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id"), nullable=True, index=True,
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
     )
     # Feature ID -- e.g. "ocr:invoice", "chat:category", "chat:po-cover".
     feature: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
@@ -377,6 +369,7 @@ class OCRJob(TimestampMixin, Base):
     State machine: PENDING -> PROCESSING -> DONE/FAILED.
     Poll via GET /ocr/jobs/{id} atau stream via SSE /ocr/jobs/{id}/stream.
     """
+
     __tablename__ = "ocr_jobs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -386,7 +379,10 @@ class OCRJob(TimestampMixin, Base):
     file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     engine_requested: Mapped[str | None] = mapped_column(String(40), nullable=True)
     status: Mapped[OCRJobStatus] = mapped_column(
-        Enum(OCRJobStatus), default=OCRJobStatus.PENDING, nullable=False, index=True,
+        Enum(OCRJobStatus),
+        default=OCRJobStatus.PENDING,
+        nullable=False,
+        index=True,
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -404,6 +400,7 @@ class AppSetting(TimestampMixin, Base):
     Convention key: UPPER_SNAKE_CASE (sama dgn env var lama). group_key
     utk grouping di UI (ocr/telegram/whatsapp/system).
     """
+
     __tablename__ = "app_settings"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -418,17 +415,15 @@ class AppSetting(TimestampMixin, Base):
     updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
-
 class RoleMenuPolicy(TimestampMixin, Base):
     """Toggle off menu utk role tertentu. Default: semua menu visible
     untuk semua role -- baris di tabel ini menandakan menu yg DI-HIDE.
 
     SUPERADMIN selalu lihat semua (tdk berlaku policy).
     """
+
     __tablename__ = "role_menu_policies"
-    __table_args__ = (
-        UniqueConstraint("role", "menu_id", name="uq_role_menu"),
-    )
+    __table_args__ = (UniqueConstraint("role", "menu_id", name="uq_role_menu"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), nullable=False, index=True)
@@ -445,13 +440,15 @@ class AIPromptOverride(Base):
 
     field: 'system' atau 'user_template'.
     """
+
     __tablename__ = "ai_prompt_overrides"
 
     feature_key: Mapped[str] = mapped_column(String(64), primary_key=True)
     field: Mapped[str] = mapped_column(String(32), primary_key=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     updated_by_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id"), nullable=True,
+        ForeignKey("users.id"),
+        nullable=True,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -467,6 +464,7 @@ class AIFeatureSettings(Base):
     Override default code per fitur: provider, model, max_tokens,
     web_search, budget bulanan, dst. Field NULL = pakai default.
     """
+
     __tablename__ = "ai_feature_settings"
 
     feature_key: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -477,10 +475,12 @@ class AIFeatureSettings(Base):
     rate_limit_per_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
     web_search_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     monthly_budget_usd: Mapped[Decimal | None] = mapped_column(
-        Numeric(10, 4), nullable=True,
+        Numeric(10, 4),
+        nullable=True,
     )
     updated_by_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id"), nullable=True,
+        ForeignKey("users.id"),
+        nullable=True,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

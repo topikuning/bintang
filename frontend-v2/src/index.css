@@ -1,178 +1,161 @@
 @import "tailwindcss";
 
-/* ============================================================
-   Bintang Design Tokens
-   - Brand: navy biru profesional (target audience: direksi/PPK)
-   - Status: 4 warna saja (success/warning/danger/info)
-   - Netral: surface + ink scale
-   - Typography: Inter (UI) + JetBrains Mono (numerik)
-   ============================================================ */
-
+/* Bintang financial workspace — one token system for every screen. */
 @theme {
-  /* Brand */
-  --color-brand-50:  #f0f7ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-200: #bfdbfe;
-  --color-brand-300: #93c5fd;
-  --color-brand-400: #3b82f6;
-  --color-brand-500: #0a5dc2;
-  --color-brand-600: #054a9e;
-  --color-brand-700: #063a7a;
-  --color-brand-800: #042c5c;
-  --color-brand-900: #022554;
-
-  /* Status — sukses */
-  --color-success-50:  #f0fdf4;
-  --color-success-100: #dcfce7;
-  --color-success-500: #16a34a;
-  --color-success-600: #15803d;
-  --color-success-700: #166534;
-
-  /* Status — warning */
-  --color-warning-50:  #fffbeb;
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
+  --color-success-50: #ecfdf5;
+  --color-success-100: #d1fae5;
+  --color-success-500: #10b981;
+  --color-success-600: #059669;
+  --color-success-700: #047857;
+  --color-warning-50: #fffbeb;
   --color-warning-100: #fef3c7;
-  --color-warning-500: #d97706;
-  --color-warning-600: #b45309;
-  --color-warning-700: #92400e;
-
-  /* Status — danger */
-  --color-danger-50:  #fef2f2;
-  --color-danger-100: #fee2e2;
-  --color-danger-500: #dc2626;
-  --color-danger-600: #b91c1c;
-  --color-danger-700: #991b1b;
-
-  /* Status — info */
-  --color-info-50:  #eff6ff;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+  --color-danger-50: #fff1f2;
+  --color-danger-100: #ffe4e6;
+  --color-danger-500: #f43f5e;
+  --color-danger-600: #e11d48;
+  --color-danger-700: #be123c;
+  --color-info-50: #eff6ff;
   --color-info-100: #dbeafe;
-  --color-info-500: #2563eb;
-  --color-info-600: #1d4ed8;
-  --color-info-700: #1e40af;
-
-  /* Netral (ink) */
-  --color-ink-50:  #fafafa;
-  --color-ink-100: #f5f5f5;
-  --color-ink-200: #e5e5e5;
-  --color-ink-300: #d4d4d4;
-  --color-ink-400: #a3a3a3;
-  --color-ink-500: #737373;
-  --color-ink-600: #525252;
-  --color-ink-700: #404040;
-  --color-ink-800: #262626;
-  --color-ink-900: #0a0a0a;
-
-  /* Surface */
-  --color-surface:        #ffffff;
-  --color-surface-muted:  #fafafa;
-  --color-surface-sunken: #f4f4f5;
-
-  /* Border */
-  --color-border:         #e5e5e5;
-  --color-border-strong:  #d4d4d4;
-
-  /* Typography */
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
-
-  /* Breakpoints (override Tailwind default supaya match design system) */
+  --color-info-500: #3b82f6;
+  --color-info-600: #2563eb;
+  --color-info-700: #1d4ed8;
+  --color-ink-50: #f8fafc;
+  --color-ink-100: #f1f5f9;
+  --color-ink-200: #e2e8f0;
+  --color-ink-300: #cbd5e1;
+  --color-ink-400: #94a3b8;
+  --color-ink-500: #64748b;
+  --color-ink-600: #475569;
+  --color-ink-700: #334155;
+  --color-ink-800: #1e293b;
+  --color-ink-900: #0f172a;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8fafc;
+  --color-surface-sunken: #f1f5f9;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  --font-sans: "Inter", "Aptos", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace;
   --breakpoint-sm: 480px;
   --breakpoint-md: 768px;
   --breakpoint-lg: 1024px;
   --breakpoint-xl: 1280px;
   --breakpoint-2xl: 1536px;
-
-  /* Radius — konservatif (finance app) */
-  --radius-sm: 4px;
-  --radius:    6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
 }
 
-/* ============================================================
-   Globals
-   ============================================================ */
-
-* {
-  border-color: var(--color-border);
+:root {
+  color-scheme: light;
+  font-synthesis: none;
+  --app-nav: #0b1220;
+  --app-nav-raised: #111c30;
+  --app-canvas: #f4f6fa;
+  --app-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 10px 30px rgb(15 23 42 / 0.05);
+  --app-shadow-raised: 0 20px 60px rgb(15 23 42 / 0.16);
 }
 
-html, body, #root {
-  height: 100%;
-}
-
+* { border-color: var(--color-border); }
+html, body, #root { min-height: 100%; }
+html { background: var(--app-canvas); }
 body {
   margin: 0;
+  min-width: 320px;
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
   color: var(--color-ink-900);
-  background: var(--color-surface-muted);
+  background: radial-gradient(circle at 82% -15%, rgb(99 102 241 / 0.09), transparent 28rem), var(--app-canvas);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
-
-/* Tabular numerics utk semua angka di app keuangan */
+::selection { color: #fff; background: var(--color-brand-600); }
+button, input, select, textarea { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
 .font-mono, [data-num], table.data-grid td.num, td.num, th.num {
   font-feature-settings: "tnum" 1, "lnum" 1;
   font-variant-numeric: tabular-nums lining-nums;
 }
 
-/* Scrollbar yg lebih tipis utk app dense */
+/* Shared page rhythm upgrades every route, including legacy domain screens. */
+.app-content > * { width: 100%; }
+.app-content > :is(div, section):first-child { margin-inline: auto; }
+.app-content h1 {
+  font-size: clamp(1.5rem, 1.2rem + 0.8vw, 2rem);
+  line-height: 1.15;
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+.app-content h2, .app-content h3 { letter-spacing: -0.015em; }
+.app-content [class*="flex flex-col gap-4 p-3"] {
+  gap: 1.25rem;
+  padding: 1rem;
+}
+.app-content [class*="rounded-md border bg-surface"] {
+  border-color: rgb(255 255 255 / 0.85);
+  border-radius: var(--radius-md);
+  box-shadow: var(--app-shadow);
+  outline: 1px solid rgb(226 232 240 / 0.7);
+}
+.app-content [class*="rounded-md border bg-surface-muted"] { border-radius: var(--radius-md); }
+.app-content [class*="rounded-md border"] { border-radius: var(--radius-md); }
+.app-content :is(.bg-surface.border, .border.bg-surface) { box-shadow: var(--app-shadow); }
+.app-content :is(table, [data-num]) { font-variant-numeric: tabular-nums lining-nums; }
+
+@media (min-width: 480px) {
+  .app-content [class*="flex flex-col gap-4 p-3"] { padding: 1.5rem; }
+}
+@media (min-width: 1024px) {
+  .app-content [class*="flex flex-col gap-4 p-3"] { padding: 2rem; }
+}
+
 @media (pointer: fine) {
+  * { scrollbar-width: thin; scrollbar-color: var(--color-ink-300) transparent; }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--color-ink-300); border-radius: 5px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--color-ink-400); }
+  ::-webkit-scrollbar-thumb { background: var(--color-ink-300); border: 3px solid transparent; border-radius: 99px; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--color-ink-400); }
 }
-
-/* Touch target minimum 44x44 utk mobile */
 @media (pointer: coarse) {
-  button, a[role="button"], [role="tab"] {
-    min-height: 44px;
-  }
+  button, a[role="button"], [role="tab"] { min-height: 44px; }
 }
-
-/* Safe area helpers (untuk perangkat dgn notch / gesture bar) */
-@utility pb-safe {
-  padding-bottom: env(safe-area-inset-bottom);
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+  button, a, input, select, textarea { transition-duration: 160ms; }
 }
-@utility pt-safe {
-  padding-top: env(safe-area-inset-top);
-}
-@utility pl-safe {
-  padding-left: env(safe-area-inset-left);
-}
-@utility pr-safe {
-  padding-right: env(safe-area-inset-right);
-}
-
-/* Focus ring konsisten */
-*:focus-visible {
-  outline: 2px solid var(--color-brand-500);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-/* iOS Safari quirk: input[type="date"] / time / datetime-local punya
-   intrinsic width yg lebih kecil dari container bahkan dengan w-full.
-   Force display:block + width:100% supaya konsisten dgn input lain
-   (terlihat di form invoice 'Tanggal Invoice' lebih sempit dari
-   'Jatuh Tempo' di sebelahnya). */
-input[type="date"],
-input[type="time"],
-input[type="datetime-local"],
-input[type="month"],
-input[type="week"] {
+@utility pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+@utility pt-safe { padding-top: env(safe-area-inset-top); }
+@utility pl-safe { padding-left: env(safe-area-inset-left); }
+@utility pr-safe { padding-right: env(safe-area-inset-right); }
+*:focus-visible { outline: 2px solid var(--color-brand-500); outline-offset: 2px; border-radius: 6px; }
+input[type="date"], input[type="time"], input[type="datetime-local"], input[type="month"], input[type="week"] {
   -webkit-appearance: none;
   appearance: none;
   display: block;
   width: 100%;
-  min-height: 40px;
-  font-family: inherit;  /* native pakai system font, override ke Inter */
+  min-height: 42px;
+  font-family: inherit;
 }
-/* Spacer kanan utk picker indicator (calendar icon) di Chrome/Safari */
 input[type="date"]::-webkit-calendar-picker-indicator,
-input[type="time"]::-webkit-calendar-picker-indicator {
-  margin-left: auto;
+input[type="time"]::-webkit-calendar-picker-indicator { margin-left: auto; }
+@media print {
+  body { background: #fff; }
+  .app-content :is(.bg-surface.border, .border.bg-surface) { box-shadow: none; }
 }

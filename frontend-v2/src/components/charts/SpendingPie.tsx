@@ -4,7 +4,7 @@ import {
   PieChart,
   ResponsiveContainer,
   Tooltip,
-  type TooltipProps,
+  type TooltipContentProps,
 } from "recharts"
 import { fmtIDR } from "@/lib/format"
 
@@ -34,7 +34,7 @@ const COLORS = [
   "#737373", // ink-500 utk "Lainnya"
 ]
 
-function CustomTooltip({ active, payload }: TooltipProps<number, string>) {
+function CustomTooltip({ active, payload }: TooltipContentProps) {
   if (!active || !payload || !payload.length) return null
   const item = payload[0]
   if (!item) return null
@@ -84,7 +84,7 @@ export function SpendingPie({ data, height = 200, topN = 5 }: SpendingPieProps) 
               <Cell key={i} fill={COLORS[i % COLORS.length]} />
             ))}
           </Pie>
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={(props) => <CustomTooltip {...props} />} />
         </PieChart>
       </ResponsiveContainer>
     </div>

@@ -7,9 +7,8 @@ Verifikasi:
 - Extract context dr "konteks:/catatan:/keterangan: ..." keyword
 - Fallback: sisa teks setelah hints jadi context
 """
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from app.models.models import InvoiceType
 from app.services.bot_doc_photo import parse_doc_cmd
@@ -55,9 +54,7 @@ def test_extract_vendor_hint():
 
 
 def test_explicit_context_keyword_konteks():
-    spec = parse_doc_cmd(
-        "/invoice proyek BMJ1 konteks: pembelian material besi tulangan"
-    )
+    spec = parse_doc_cmd("/invoice proyek BMJ1 konteks: pembelian material besi tulangan")
     assert spec.project_hint == "BMJ1"
     assert spec.context == "pembelian material besi tulangan"
     # Backward-compat alias.
@@ -83,9 +80,7 @@ def test_fallback_context_without_keyword():
 
 def test_multiline_context():
     """Caption multi-baris dgn keyword di akhir."""
-    spec = parse_doc_cmd(
-        "/invoice\nproyek BMJ1\nkonteks: invoice utk pengadaan besi & wiremesh"
-    )
+    spec = parse_doc_cmd("/invoice\nproyek BMJ1\nkonteks: invoice utk pengadaan besi & wiremesh")
     assert spec.project_hint == "BMJ1"
     assert "besi" in spec.context.lower()
 

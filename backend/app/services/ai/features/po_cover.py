@@ -3,15 +3,14 @@
 Generate cover letter / surat pengantar profesional utk PO yang dikirim
 ke vendor. Style formal Indonesia.
 """
-from __future__ import annotations
 
-from decimal import Decimal
+from __future__ import annotations
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.models import Company, POItem, Project, PurchaseOrder
+from app.models.models import Company, Project, PurchaseOrder
 from app.services.ai import chat
 from app.services.ai.prompt_registry import get_prompt
 
@@ -24,11 +23,13 @@ async def run(
     tone: str = "formal",
 ) -> dict:
     """Generate cover letter utk PO."""
-    po = (await db.execute(
-        select(PurchaseOrder)
-        .options(selectinload(PurchaseOrder.items))
-        .where(PurchaseOrder.id == po_id, PurchaseOrder.deleted_at.is_(None))
-    )).scalar_one_or_none()
+    po = (
+        await db.execute(
+            select(PurchaseOrder)
+            .options(selectinload(PurchaseOrder.items))
+            .where(PurchaseOrder.id == po_id, PurchaseOrder.deleted_at.is_(None))
+        )
+    ).scalar_one_or_none()
     if po is None:
         raise ValueError("po_not_found")
     project = await db.get(Project, po.project_id)
@@ -42,9 +43,7 @@ async def run(
     if extra_items > 0:
         items_str += f"\n- (dan {extra_items} item lainnya)"
 
-    proj_label = (
-        f"{project.name} ({project.code})" if project else "-"
-    )
+    proj_label = f"{project.name} ({project.code})" if project else "-"
     # Audit 2026-05-24: pakai prompt registry (admin override-able).
     p = await get_prompt(db, "po_cover")
     prompt = p.user_template.format(
@@ -59,8 +58,11 @@ async def run(
     )
 
     resp = await chat(
-        db, user_id=user_id, feature="ai:po_cover",
-        system=p.system, prompt=prompt,
+        db,
+        user_id=user_id,
+        feature="ai:po_cover",
+        system=p.system,
+        prompt=prompt,
         feature_key="po_cover",
     )
     return {

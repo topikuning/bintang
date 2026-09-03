@@ -1,7 +1,8 @@
 """Bulk approve/verify TX, PO, Invoice. Audit 2026-05-23 user req."""
+
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -20,7 +21,6 @@ from app.models.models import (
     InvoiceStatus,
     InvoiceType,
     PaymentMethod,
-    POItem,
     POStatus,
     Project,
     ProjectKind,
@@ -36,59 +36,88 @@ from app.models.models import (
 
 
 async def _seed(db):
-    co = Company(name="C"); db.add(co); await db.flush()
+    co = Company(name="C")
+    db.add(co)
+    await db.flush()
     p = Project(
-        code="P", name="P", company_id=co.id,
-        status=ProjectStatus.AKTIF, kind=ProjectKind.REGULAR.value,
+        code="P",
+        name="P",
+        company_id=co.id,
+        status=ProjectStatus.AKTIF,
+        kind=ProjectKind.REGULAR.value,
     )
-    db.add(p); await db.flush()
+    db.add(p)
+    await db.flush()
     admin = User(
-        email="a@x", name="A", password_hash=hash_password("x"),
-        role=UserRole.SUPERADMIN, scope_all_projects=True,
+        email="a@x",
+        name="A",
+        password_hash=hash_password("x"),
+        role=UserRole.SUPERADMIN,
+        scope_all_projects=True,
     )
-    db.add(admin); await db.flush()
+    db.add(admin)
+    await db.flush()
     return co, p, admin
 
 
 async def _seed_central_admin(db):
     """Seed central_admin (non-superadmin) utk test path strict (non god)."""
     u = User(
-        email="c@x", name="C", password_hash=hash_password("x"),
-        role=UserRole.CENTRAL_ADMIN, scope_all_projects=True,
+        email="c@x",
+        name="C",
+        password_hash=hash_password("x"),
+        role=UserRole.CENTRAL_ADMIN,
+        scope_all_projects=True,
     )
-    db.add(u); await db.flush()
+    db.add(u)
+    await db.flush()
     return u
 
 
 # ---------- TX bulk verify ----------
+
 
 @pytest.mark.asyncio
 async def test_bulk_verify_tx_mixed_states(db):
     co, p, admin = await _seed(db)
     # 3 tx: 1 SUBMITTED (eligible), 1 DRAFT (eligible), 1 VERIFIED (skip)
     t1 = Transaction(
-        project_id=p.id, tx_date=date(2026, 5, 22), type=TxnType.OUT,
-        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("100"),
-        payment_method=PaymentMethod.CASH, status=TxnStatus.SUBMITTED,
+        project_id=p.id,
+        tx_date=date(2026, 5, 22),
+        type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE.value,
+        amount=Decimal("100"),
+        payment_method=PaymentMethod.CASH,
+        status=TxnStatus.SUBMITTED,
         created_by_id=admin.id,
     )
     t2 = Transaction(
-        project_id=p.id, tx_date=date(2026, 5, 22), type=TxnType.OUT,
-        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("200"),
-        payment_method=PaymentMethod.CASH, status=TxnStatus.DRAFT,
+        project_id=p.id,
+        tx_date=date(2026, 5, 22),
+        type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE.value,
+        amount=Decimal("200"),
+        payment_method=PaymentMethod.CASH,
+        status=TxnStatus.DRAFT,
         created_by_id=admin.id,
     )
     t3 = Transaction(
-        project_id=p.id, tx_date=date(2026, 5, 22), type=TxnType.OUT,
-        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("300"),
-        payment_method=PaymentMethod.CASH, status=TxnStatus.VERIFIED,
+        project_id=p.id,
+        tx_date=date(2026, 5, 22),
+        type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE.value,
+        amount=Decimal("300"),
+        payment_method=PaymentMethod.CASH,
+        status=TxnStatus.VERIFIED,
         created_by_id=admin.id,
     )
-    db.add_all([t1, t2, t3]); await db.commit()
+    db.add_all([t1, t2, t3])
+    await db.commit()
 
     result = await bulk_verify_transactions(
         payload={"ids": [t1.id, t2.id, t3.id, 99999]},
-        db=db, admin=admin,
+        db=db,
+        admin=admin,
     )
     assert result["total_requested"] == 4
     assert result["success_count"] == 2
@@ -111,54 +140,78 @@ async def test_bulk_verify_tx_max_batch(db):
     co, p, admin = await _seed(db)
     with pytest.raises(HTTPException) as exc:
         await bulk_verify_transactions(
-            payload={"ids": list(range(1, 502))}, db=db, admin=admin,
+            payload={"ids": list(range(1, 502))},
+            db=db,
+            admin=admin,
         )
     assert exc.value.status_code == 400
 
 
 # ---------- PO bulk ----------
 
+
 @pytest.mark.asyncio
 async def test_bulk_issue_po(db):
     co, p, admin = await _seed(db)
     po1 = PurchaseOrder(
-        number="PO/1", project_id=p.id, company_id=co.id,
-        po_date=date(2026, 5, 22), total=Decimal("100"),
-        status=POStatus.DRAFT, created_by_id=admin.id,
+        number="PO/1",
+        project_id=p.id,
+        company_id=co.id,
+        po_date=date(2026, 5, 22),
+        total=Decimal("100"),
+        status=POStatus.DRAFT,
+        created_by_id=admin.id,
     )
     po2 = PurchaseOrder(
-        number="PO/2", project_id=p.id, company_id=co.id,
-        po_date=date(2026, 5, 22), total=Decimal("200"),
-        status=POStatus.ISSUED, created_by_id=admin.id,  # already issued, skip
+        number="PO/2",
+        project_id=p.id,
+        company_id=co.id,
+        po_date=date(2026, 5, 22),
+        total=Decimal("200"),
+        status=POStatus.ISSUED,
+        created_by_id=admin.id,  # already issued, skip
     )
-    db.add_all([po1, po2]); await db.commit()
+    db.add_all([po1, po2])
+    await db.commit()
 
     result = await bulk_issue_pos(
-        payload={"ids": [po1.id, po2.id]}, db=db, user=admin,
+        payload={"ids": [po1.id, po2.id]},
+        db=db,
+        user=admin,
     )
     assert result["success_count"] == 1
     assert result["success"] == [po1.id]
-    assert any(s["id"] == po2.id and "ISSUED" in s["reason"]
-               for s in result["skipped"])
+    assert any(s["id"] == po2.id and "ISSUED" in s["reason"] for s in result["skipped"])
 
 
 @pytest.mark.asyncio
 async def test_bulk_approve_po(db):
     co, p, admin = await _seed(db)
     po1 = PurchaseOrder(
-        number="PO/A", project_id=p.id, company_id=co.id,
-        po_date=date(2026, 5, 22), total=Decimal("100"),
-        status=POStatus.ISSUED, created_by_id=admin.id,
+        number="PO/A",
+        project_id=p.id,
+        company_id=co.id,
+        po_date=date(2026, 5, 22),
+        total=Decimal("100"),
+        status=POStatus.ISSUED,
+        created_by_id=admin.id,
     )
     po2 = PurchaseOrder(
-        number="PO/B", project_id=p.id, company_id=co.id,
-        po_date=date(2026, 5, 22), total=Decimal("200"),
-        status=POStatus.APPROVED, created_by_id=admin.id,  # already, skip
+        number="PO/B",
+        project_id=p.id,
+        company_id=co.id,
+        po_date=date(2026, 5, 22),
+        total=Decimal("200"),
+        status=POStatus.APPROVED,
+        created_by_id=admin.id,  # already, skip
     )
-    db.add_all([po1, po2]); await db.commit()
+    db.add_all([po1, po2])
+    await db.commit()
 
     result = await bulk_approve_pos(
-        payload={"ids": [po1.id, po2.id]}, db=db, admin=admin,
+        payload={"ids": [po1.id, po2.id]},
+        db=db,
+        admin=admin,
     )
     assert result["success_count"] == 1
     assert result["success"] == [po1.id]
@@ -169,23 +222,35 @@ async def test_bulk_approve_po(db):
 
 # ---------- Invoice bulk ----------
 
+
 @pytest.mark.asyncio
 async def test_bulk_issue_invoice(db):
     co, p, admin = await _seed(db)
     inv1 = Invoice(
-        number="INV/1", project_id=p.id, type=InvoiceType.IN,
-        invoice_date=date(2026, 5, 22), total=Decimal("100"),
-        status=InvoiceStatus.DRAFT, created_by_id=admin.id,
+        number="INV/1",
+        project_id=p.id,
+        type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 22),
+        total=Decimal("100"),
+        status=InvoiceStatus.DRAFT,
+        created_by_id=admin.id,
     )
     inv2 = Invoice(
-        number="INV/2", project_id=p.id, type=InvoiceType.IN,
-        invoice_date=date(2026, 5, 22), total=Decimal("200"),
-        status=InvoiceStatus.ISSUED, created_by_id=admin.id,  # skip
+        number="INV/2",
+        project_id=p.id,
+        type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 22),
+        total=Decimal("200"),
+        status=InvoiceStatus.ISSUED,
+        created_by_id=admin.id,  # skip
     )
-    db.add_all([inv1, inv2]); await db.commit()
+    db.add_all([inv1, inv2])
+    await db.commit()
 
     result = await bulk_issue_invoices(
-        payload={"ids": [inv1.id, inv2.id]}, db=db, user=admin,
+        payload={"ids": [inv1.id, inv2.id]},
+        db=db,
+        user=admin,
     )
     assert result["success_count"] == 1
     assert result["success"] == [inv1.id]
@@ -204,14 +269,21 @@ async def test_mark_paid_after_bulk_issue(db):
 
     co, p, admin = await _seed(db)
     inv = Invoice(
-        number="INV/MP", project_id=p.id, type=InvoiceType.IN,
-        invoice_date=date(2026, 5, 24), total=Decimal("500"),
-        status=InvoiceStatus.DRAFT, created_by_id=admin.id,
+        number="INV/MP",
+        project_id=p.id,
+        type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 24),
+        total=Decimal("500"),
+        status=InvoiceStatus.DRAFT,
+        created_by_id=admin.id,
     )
-    db.add(inv); await db.commit()
+    db.add(inv)
+    await db.commit()
     # Simulate import -> bulk-issue
     await bulk_issue_invoices(
-        payload={"ids": [inv.id]}, db=db, user=admin,
+        payload={"ids": [inv.id]},
+        db=db,
+        user=admin,
     )
     await db.refresh(inv)
     assert inv.status == InvoiceStatus.ISSUED
@@ -227,25 +299,39 @@ async def test_bulk_mark_paid_invoices(db):
     co, p, admin = await _seed(db)
     # 3 invoice: 1 ISSUED (eligible), 1 PAID (skip), 1 DRAFT (skip)
     inv1 = Invoice(
-        number="INV/B1", project_id=p.id, type=InvoiceType.IN,
-        invoice_date=date(2026, 5, 24), total=Decimal("100"),
-        status=InvoiceStatus.ISSUED, created_by_id=admin.id,
+        number="INV/B1",
+        project_id=p.id,
+        type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 24),
+        total=Decimal("100"),
+        status=InvoiceStatus.ISSUED,
+        created_by_id=admin.id,
     )
     inv2 = Invoice(
-        number="INV/B2", project_id=p.id, type=InvoiceType.IN,
-        invoice_date=date(2026, 5, 24), total=Decimal("200"),
-        status=InvoiceStatus.PAID, created_by_id=admin.id,
+        number="INV/B2",
+        project_id=p.id,
+        type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 24),
+        total=Decimal("200"),
+        status=InvoiceStatus.PAID,
+        created_by_id=admin.id,
     )
     inv3 = Invoice(
-        number="INV/B3", project_id=p.id, type=InvoiceType.IN,
-        invoice_date=date(2026, 5, 24), total=Decimal("300"),
-        status=InvoiceStatus.DRAFT, created_by_id=admin.id,
+        number="INV/B3",
+        project_id=p.id,
+        type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 24),
+        total=Decimal("300"),
+        status=InvoiceStatus.DRAFT,
+        created_by_id=admin.id,
     )
-    db.add_all([inv1, inv2, inv3]); await db.commit()
+    db.add_all([inv1, inv2, inv3])
+    await db.commit()
 
     result = await bulk_mark_paid_invoices(
         payload={"ids": [inv1.id, inv2.id, inv3.id]},
-        db=db, admin=admin,
+        db=db,
+        admin=admin,
     )
     assert result["total_requested"] == 3
     assert result["success_count"] == 1
@@ -263,6 +349,7 @@ async def test_bulk_mark_paid_invoices(db):
 # CENTRAL_ADMIN strict (status guard); SUPERADMIN god-mode (bypass +
 # cascade cleanup) -- mirror single-delete vs single /hard endpoint.
 
+
 @pytest.mark.asyncio
 async def test_bulk_delete_tx_central_admin_skip_verified(db):
     from app.api.v1.transactions import bulk_delete_transactions
@@ -270,29 +357,40 @@ async def test_bulk_delete_tx_central_admin_skip_verified(db):
     co, p, admin = await _seed(db)
     central = await _seed_central_admin(db)
     t_draft = Transaction(
-        project_id=p.id, tx_date=date(2026, 5, 24), type=TxnType.OUT,
-        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("100"),
-        payment_method=PaymentMethod.CASH, status=TxnStatus.DRAFT,
+        project_id=p.id,
+        tx_date=date(2026, 5, 24),
+        type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE.value,
+        amount=Decimal("100"),
+        payment_method=PaymentMethod.CASH,
+        status=TxnStatus.DRAFT,
         created_by_id=admin.id,
     )
     t_verified = Transaction(
-        project_id=p.id, tx_date=date(2026, 5, 24), type=TxnType.OUT,
-        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("200"),
-        payment_method=PaymentMethod.CASH, status=TxnStatus.VERIFIED,
+        project_id=p.id,
+        tx_date=date(2026, 5, 24),
+        type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE.value,
+        amount=Decimal("200"),
+        payment_method=PaymentMethod.CASH,
+        status=TxnStatus.VERIFIED,
         created_by_id=admin.id,
     )
-    db.add_all([t_draft, t_verified]); await db.commit()
+    db.add_all([t_draft, t_verified])
+    await db.commit()
 
     result = await bulk_delete_transactions(
         payload={"ids": [t_draft.id, t_verified.id]},
-        db=db, admin=central,
+        db=db,
+        admin=central,
     )
     assert result["success_count"] == 1
     assert result["success"] == [t_draft.id]
     reasons = {s["id"]: s["reason"] for s in result["skipped"]}
     assert reasons[t_verified.id] == "verified_must_be_cancelled"
 
-    await db.refresh(t_draft); await db.refresh(t_verified)
+    await db.refresh(t_draft)
+    await db.refresh(t_verified)
     assert t_draft.deleted_at is not None
     assert t_verified.deleted_at is None
 
@@ -305,26 +403,39 @@ async def test_bulk_delete_tx_god_mode_bypass_verified(db):
 
     co, p, admin = await _seed(db)
     inv = Invoice(
-        number="INV/G1", project_id=p.id, type=InvoiceType.IN,
-        invoice_date=date(2026, 5, 24), total=Decimal("500"),
-        status=InvoiceStatus.PAID, created_by_id=admin.id,
-    )
-    t_verified = Transaction(
-        project_id=p.id, tx_date=date(2026, 5, 24), type=TxnType.OUT,
-        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("500"),
-        payment_method=PaymentMethod.CASH, status=TxnStatus.VERIFIED,
+        number="INV/G1",
+        project_id=p.id,
+        type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 24),
+        total=Decimal("500"),
+        status=InvoiceStatus.PAID,
         created_by_id=admin.id,
     )
-    db.add_all([inv, t_verified]); await db.flush()
-    alloc = InvoiceAllocation(
-        transaction_id=t_verified.id, invoice_id=inv.id,
-        allocated_amount=Decimal("500"), created_by_id=admin.id,
+    t_verified = Transaction(
+        project_id=p.id,
+        tx_date=date(2026, 5, 24),
+        type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE.value,
+        amount=Decimal("500"),
+        payment_method=PaymentMethod.CASH,
+        status=TxnStatus.VERIFIED,
+        created_by_id=admin.id,
     )
-    db.add(alloc); await db.commit()
+    db.add_all([inv, t_verified])
+    await db.flush()
+    alloc = InvoiceAllocation(
+        transaction_id=t_verified.id,
+        invoice_id=inv.id,
+        allocated_amount=Decimal("500"),
+        created_by_id=admin.id,
+    )
+    db.add(alloc)
+    await db.commit()
 
     result = await bulk_delete_transactions(
         payload={"ids": [t_verified.id]},
-        db=db, admin=admin,  # SUPERADMIN
+        db=db,
+        admin=admin,  # SUPERADMIN
     )
     assert result["success_count"] == 1
 
@@ -343,20 +454,30 @@ async def test_bulk_delete_po_central_admin_skip_issued(db):
     co, p, admin = await _seed(db)
     central = await _seed_central_admin(db)
     po_draft = PurchaseOrder(
-        number="PO/D1", project_id=p.id, company_id=co.id,
-        po_date=date(2026, 5, 24), total=Decimal("100"),
-        status=POStatus.DRAFT, created_by_id=admin.id,
+        number="PO/D1",
+        project_id=p.id,
+        company_id=co.id,
+        po_date=date(2026, 5, 24),
+        total=Decimal("100"),
+        status=POStatus.DRAFT,
+        created_by_id=admin.id,
     )
     po_issued = PurchaseOrder(
-        number="PO/I1", project_id=p.id, company_id=co.id,
-        po_date=date(2026, 5, 24), total=Decimal("200"),
-        status=POStatus.ISSUED, created_by_id=admin.id,
+        number="PO/I1",
+        project_id=p.id,
+        company_id=co.id,
+        po_date=date(2026, 5, 24),
+        total=Decimal("200"),
+        status=POStatus.ISSUED,
+        created_by_id=admin.id,
     )
-    db.add_all([po_draft, po_issued]); await db.commit()
+    db.add_all([po_draft, po_issued])
+    await db.commit()
 
     result = await bulk_delete_pos(
         payload={"ids": [po_draft.id, po_issued.id]},
-        db=db, admin=central,
+        db=db,
+        admin=central,
     )
     assert result["success_count"] == 1
     assert result["success"] == [po_draft.id]
@@ -371,25 +492,39 @@ async def test_bulk_delete_po_god_mode_unlink_tx(db):
 
     co, p, admin = await _seed(db)
     po = PurchaseOrder(
-        number="PO/GOD1", project_id=p.id, company_id=co.id,
-        po_date=date(2026, 5, 24), total=Decimal("500"),
-        status=POStatus.APPROVED, created_by_id=admin.id,
+        number="PO/GOD1",
+        project_id=p.id,
+        company_id=co.id,
+        po_date=date(2026, 5, 24),
+        total=Decimal("500"),
+        status=POStatus.APPROVED,
+        created_by_id=admin.id,
     )
-    db.add(po); await db.flush()
+    db.add(po)
+    await db.flush()
     t = Transaction(
-        project_id=p.id, tx_date=date(2026, 5, 24), type=TxnType.OUT,
-        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("500"),
-        payment_method=PaymentMethod.CASH, status=TxnStatus.DRAFT,
-        created_by_id=admin.id, purchase_order_id=po.id,
+        project_id=p.id,
+        tx_date=date(2026, 5, 24),
+        type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE.value,
+        amount=Decimal("500"),
+        payment_method=PaymentMethod.CASH,
+        status=TxnStatus.DRAFT,
+        created_by_id=admin.id,
+        purchase_order_id=po.id,
     )
-    db.add(t); await db.commit()
+    db.add(t)
+    await db.commit()
 
     result = await bulk_delete_pos(
-        payload={"ids": [po.id]}, db=db, admin=admin,
+        payload={"ids": [po.id]},
+        db=db,
+        admin=admin,
     )
     assert result["success_count"] == 1
 
-    await db.refresh(po); await db.refresh(t)
+    await db.refresh(po)
+    await db.refresh(t)
     assert po.deleted_at is not None
     assert t.purchase_order_id is None  # unlinked
 
@@ -400,25 +535,36 @@ async def test_bulk_delete_invoice_any_status(db):
 
     co, p, admin = await _seed(db)
     inv1 = Invoice(
-        number="INV/D1", project_id=p.id, type=InvoiceType.IN,
-        invoice_date=date(2026, 5, 24), total=Decimal("100"),
-        status=InvoiceStatus.DRAFT, created_by_id=admin.id,
+        number="INV/D1",
+        project_id=p.id,
+        type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 24),
+        total=Decimal("100"),
+        status=InvoiceStatus.DRAFT,
+        created_by_id=admin.id,
     )
     inv2 = Invoice(
-        number="INV/D2", project_id=p.id, type=InvoiceType.IN,
-        invoice_date=date(2026, 5, 24), total=Decimal("200"),
-        status=InvoiceStatus.PAID, created_by_id=admin.id,
+        number="INV/D2",
+        project_id=p.id,
+        type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 24),
+        total=Decimal("200"),
+        status=InvoiceStatus.PAID,
+        created_by_id=admin.id,
     )
-    db.add_all([inv1, inv2]); await db.commit()
+    db.add_all([inv1, inv2])
+    await db.commit()
 
     result = await bulk_delete_invoices(
         payload={"ids": [inv1.id, inv2.id]},
-        db=db, admin=admin,
+        db=db,
+        admin=admin,
     )
     # Soft-delete OK semua status (mirror single delete).
     assert result["success_count"] == 2
 
-    await db.refresh(inv1); await db.refresh(inv2)
+    await db.refresh(inv1)
+    await db.refresh(inv2)
     assert inv1.deleted_at is not None
     assert inv2.deleted_at is not None
 
@@ -431,25 +577,39 @@ async def test_bulk_delete_invoice_god_mode_cascade_alloc(db):
 
     co, p, admin = await _seed(db)
     inv = Invoice(
-        number="INV/G2", project_id=p.id, type=InvoiceType.IN,
-        invoice_date=date(2026, 5, 24), total=Decimal("100"),
-        status=InvoiceStatus.PAID, created_by_id=admin.id,
-    )
-    t = Transaction(
-        project_id=p.id, tx_date=date(2026, 5, 24), type=TxnType.OUT,
-        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("100"),
-        payment_method=PaymentMethod.CASH, status=TxnStatus.VERIFIED,
+        number="INV/G2",
+        project_id=p.id,
+        type=InvoiceType.IN,
+        invoice_date=date(2026, 5, 24),
+        total=Decimal("100"),
+        status=InvoiceStatus.PAID,
         created_by_id=admin.id,
     )
-    db.add_all([inv, t]); await db.flush()
-    alloc = InvoiceAllocation(
-        transaction_id=t.id, invoice_id=inv.id,
-        allocated_amount=Decimal("100"), created_by_id=admin.id,
+    t = Transaction(
+        project_id=p.id,
+        tx_date=date(2026, 5, 24),
+        type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE.value,
+        amount=Decimal("100"),
+        payment_method=PaymentMethod.CASH,
+        status=TxnStatus.VERIFIED,
+        created_by_id=admin.id,
     )
-    db.add(alloc); await db.commit()
+    db.add_all([inv, t])
+    await db.flush()
+    alloc = InvoiceAllocation(
+        transaction_id=t.id,
+        invoice_id=inv.id,
+        allocated_amount=Decimal("100"),
+        created_by_id=admin.id,
+    )
+    db.add(alloc)
+    await db.commit()
 
     result = await bulk_delete_invoices(
-        payload={"ids": [inv.id]}, db=db, admin=admin,
+        payload={"ids": [inv.id]},
+        db=db,
+        admin=admin,
     )
     assert result["success_count"] == 1
 
@@ -473,20 +633,24 @@ async def test_bulk_verify_tx_http_route_no_422(db):
 
     co, p, admin = await _seed(db)
     t1 = Transaction(
-        project_id=p.id, tx_date=date(2026, 5, 22), type=TxnType.OUT,
-        kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("100"),
-        payment_method=PaymentMethod.CASH, status=TxnStatus.SUBMITTED,
+        project_id=p.id,
+        tx_date=date(2026, 5, 22),
+        type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE.value,
+        amount=Decimal("100"),
+        payment_method=PaymentMethod.CASH,
+        status=TxnStatus.SUBMITTED,
         created_by_id=admin.id,
     )
-    db.add(t1); await db.commit()
+    db.add(t1)
+    await db.commit()
 
     async def _gen():
         yield db
+
     app.dependency_overrides[get_db] = _gen
     try:
-        token = create_access_token(
-            admin.id, extra={"role": admin.role.value}
-        )
+        token = create_access_token(admin.id, extra={"role": admin.role.value})
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://t") as ac:
             r = await ac.post(

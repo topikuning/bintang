@@ -16,7 +16,7 @@ engine = create_async_engine(settings.DATABASE_URL, **engine_kwargs)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+async def get_db() -> AsyncGenerator[AsyncSession]:
     async with SessionLocal() as session:
         try:
             yield session

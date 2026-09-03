@@ -111,6 +111,7 @@ def _resolve_model(engine: str) -> str:
         return per_engine
     # OCR_MODEL legacy tidak di whitelist registry, pakai env fallback langsung
     from app.core.config import settings as _env_settings
+
     legacy = (_env_settings.OCR_MODEL or "").strip()
     if legacy:
         if engine == "claude" and legacy.startswith("claude-"):
@@ -120,7 +121,10 @@ def _resolve_model(engine: str) -> str:
         log.warning(
             "ocr.model_mismatch: OCR_MODEL=%r tdk cocok utk engine=%s -- "
             "pakai default '%s'. Set OCR_MODEL_%s di Pengaturan utk override.",
-            legacy, engine, _DEFAULT_MODEL.get(engine), engine.upper(),
+            legacy,
+            engine,
+            _DEFAULT_MODEL.get(engine),
+            engine.upper(),
         )
     return _DEFAULT_MODEL.get(engine, "")
 
@@ -201,13 +205,15 @@ def list_available_engines() -> list[dict]:
     # Fallback: stub kalau tidak ada engine yg available di prod
     has_any = any(e["available"] for e in engines)
     if not has_any:
-        engines.append({
-            "key": "stub",
-            "label": "Stub (dummy data)",
-            "model": "-",
-            "cost_per_doc": "free",
-            "available": True,
-            "default": True,
-            "note": "Dev mode -- hasil dummy, tidak panggil API.",
-        })
+        engines.append(
+            {
+                "key": "stub",
+                "label": "Stub (dummy data)",
+                "model": "-",
+                "cost_per_doc": "free",
+                "available": True,
+                "default": True,
+                "note": "Dev mode -- hasil dummy, tidak panggil API.",
+            }
+        )
     return engines

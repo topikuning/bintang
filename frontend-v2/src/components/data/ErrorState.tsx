@@ -18,7 +18,7 @@ export function ErrorState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-3 rounded-md border bg-danger-50 p-6 text-center",
+        "flex flex-col items-center justify-center gap-3 rounded-xl border border-danger-100 bg-danger-50 p-6 text-center shadow-sm",
         className,
       )}
     >

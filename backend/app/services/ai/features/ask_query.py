@@ -7,9 +7,10 @@ raw SQL generation (cegah injection).
 Aman: semua query SQLAlchemy parameterized, scoped ke user_project_ids,
 limit row count, hanya read.
 """
+
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -27,19 +28,21 @@ from app.models.models import (
     TxnStatus,
     TxnType,
     User,
-    VendorClient,
 )
 from app.services.ai import chat
-
 
 # Registry template -- map template_id -> handler + description.
 # Tambah template baru di sini, LLM otomatis aware via SYSTEM_PROMPT.
 
 
 async def _q_expense_by_category(
-    db: AsyncSession, *, pids: list[int] | None,
-    date_from: date | None, date_to: date | None,
-    project_id: int | None = None, **_,
+    db: AsyncSession,
+    *,
+    pids: list[int] | None,
+    date_from: date | None,
+    date_to: date | None,
+    project_id: int | None = None,
+    **_,
 ) -> dict:
     """Total pengeluaran per kategori dlm periode."""
     stmt = (
@@ -70,9 +73,14 @@ async def _q_expense_by_category(
 
 
 async def _q_top_vendors(
-    db: AsyncSession, *, pids: list[int] | None,
-    date_from: date | None, date_to: date | None,
-    project_id: int | None = None, limit: int = 10, **_,
+    db: AsyncSession,
+    *,
+    pids: list[int] | None,
+    date_from: date | None,
+    date_to: date | None,
+    project_id: int | None = None,
+    limit: int = 10,
+    **_,
 ) -> dict:
     """Top vendor by pengeluaran."""
     stmt = (
@@ -103,9 +111,13 @@ async def _q_top_vendors(
 
 
 async def _q_cashflow_summary(
-    db: AsyncSession, *, pids: list[int] | None,
-    date_from: date | None, date_to: date | None,
-    project_id: int | None = None, **_,
+    db: AsyncSession,
+    *,
+    pids: list[int] | None,
+    date_from: date | None,
+    date_to: date | None,
+    project_id: int | None = None,
+    **_,
 ) -> dict:
     """Total IN, OUT, saldo periode."""
     stmt = (
@@ -142,13 +154,17 @@ async def _q_cashflow_summary(
 
 
 async def _q_outstanding_debts(
-    db: AsyncSession, *, pids: list[int] | None,
-    project_id: int | None = None, **_,
+    db: AsyncSession,
+    *,
+    pids: list[int] | None,
+    project_id: int | None = None,
+    **_,
 ) -> dict:
     """Total sisa hutang & piutang. Audit 2026-05-24: KONSISTEN dgn
     dashboard/notif -- exclude proyek SELESAI (tagihan dianggap clear)
     + DIBATALKAN (soft-deleted)."""
     from app.services.project_guard import operational_project_ids
+
     op_pids = await operational_project_ids(db, pids)
     if not op_pids:
         return {
@@ -163,7 +179,9 @@ async def _q_outstanding_debts(
         select(Invoice.type, func.coalesce(func.sum(Invoice.total), 0))
         .where(
             Invoice.deleted_at.is_(None),
-            Invoice.status.in_([InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE]),
+            Invoice.status.in_(
+                [InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE]
+            ),
             Invoice.project_id.in_(op_pids),
         )
         .group_by(Invoice.type)
@@ -188,7 +206,10 @@ async def _q_outstanding_debts(
 
 
 async def _q_project_budget_status(
-    db: AsyncSession, *, pids: list[int] | None, **_,
+    db: AsyncSession,
+    *,
+    pids: list[int] | None,
+    **_,
 ) -> dict:
     """Status budget proyek (budget vs spent non-marketing vs sisa).
 
@@ -207,16 +228,18 @@ async def _q_project_budget_status(
     mkt_map: dict[int, Decimal] = {}
     ps_map: dict[int, Decimal] = {}
     if pids_list:
-        spent = (await db.execute(
-            select(Transaction.project_id, func.coalesce(func.sum(Transaction.amount), 0))
-            .where(
-                Transaction.project_id.in_(pids_list),
-                Transaction.type == TxnType.OUT,
-                Transaction.status == TxnStatus.VERIFIED,
-                Transaction.deleted_at.is_(None),
+        spent = (
+            await db.execute(
+                select(Transaction.project_id, func.coalesce(func.sum(Transaction.amount), 0))
+                .where(
+                    Transaction.project_id.in_(pids_list),
+                    Transaction.type == TxnType.OUT,
+                    Transaction.status == TxnStatus.VERIFIED,
+                    Transaction.deleted_at.is_(None),
+                )
+                .group_by(Transaction.project_id)
             )
-            .group_by(Transaction.project_id)
-        )).all()
+        ).all()
         spent_map = {pid: Decimal(a or 0) for pid, a in spent}
 
         def _flag_sum(flag_col):
@@ -232,6 +255,7 @@ async def _q_project_budget_status(
                 )
                 .group_by(Transaction.project_id)
             )
+
         mkt_map = {
             pid: Decimal(a or 0)
             for pid, a in (await db.execute(_flag_sum(Category.is_marketing))).all()
@@ -257,10 +281,10 @@ async def _q_project_budget_status(
 
 
 TEMPLATES = {
-    "expense_by_category":  _q_expense_by_category,
-    "top_vendors":          _q_top_vendors,
-    "cashflow_summary":     _q_cashflow_summary,
-    "outstanding_debts":    _q_outstanding_debts,
+    "expense_by_category": _q_expense_by_category,
+    "top_vendors": _q_top_vendors,
+    "cashflow_summary": _q_cashflow_summary,
+    "outstanding_debts": _q_outstanding_debts,
     "project_budget_status": _q_project_budget_status,
 }
 
@@ -311,21 +335,24 @@ async def run(
     pids = await user_project_ids(db, user)
     if pids is not None and not pids:
         return {
-            "template": "none", "reason": "User tdk punya akses proyek apapun.",
-            "data": None, "follow_up": "",
+            "template": "none",
+            "reason": "User tdk punya akses proyek apapun.",
+            "data": None,
+            "follow_up": "",
         }
     today_str = date.today().isoformat()
     # Audit 2026-05-24: pakai prompt registry (admin override-able).
     from app.services.ai.prompt_registry import get_prompt
+
     p = await get_prompt(db, "ask_query")
-    system_resolved = (
-        p.system
-        .replace("{TEMPLATES}", TEMPLATE_DESCRIPTIONS.rstrip())
-        .replace("{TODAY}", today_str)
+    system_resolved = p.system.replace("{TEMPLATES}", TEMPLATE_DESCRIPTIONS.rstrip()).replace(
+        "{TODAY}", today_str
     )
 
     resp = await chat(
-        db, user_id=user.id, feature="ai:ask_query",
+        db,
+        user_id=user.id,
+        feature="ai:ask_query",
         system=system_resolved,
         prompt=p.user_template.format(question=question),
         json_schema=SCHEMA,
@@ -343,6 +370,7 @@ async def run(
         }
 
     raw_params = structured.get("params") or {}
+
     # Parse date strings
     def _pdate(s):
         if not s:
@@ -368,10 +396,12 @@ async def run(
         "data": result_data,
         "params_used": {
             k: (v.isoformat() if hasattr(v, "isoformat") else v)
-            for k, v in params.items() if k != "pids"
+            for k, v in params.items()
+            if k != "pids"
         },
         "_meta": {
-            "model": resp.model, "cached": resp.cached,
+            "model": resp.model,
+            "cached": resp.cached,
             "cost_usd": str(resp.cost_usd),
         },
     }

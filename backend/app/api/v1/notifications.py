@@ -14,6 +14,7 @@ state saat ini:
 Pagination + read/unread state tdk di-track (stateless feed). Kalau
 user butuh history, lihat audit-log.
 """
+
 from __future__ import annotations
 
 from datetime import date as date_type
@@ -33,8 +34,8 @@ from app.db.session import get_db
 from app.models.models import (
     Invoice,
     InvoiceStatus,
-    PurchaseOrder,
     POStatus,
+    PurchaseOrder,
     Transaction,
     TxnStatus,
     User,
@@ -82,6 +83,7 @@ async def notifications_summary(
     # DIBATALKAN dari semua counter notifikasi (semantik: tagihan
     # dianggap clear, dibatalkan = soft-deleted).
     from app.services.project_guard import operational_project_ids
+
     op_pids = await operational_project_ids(db, pids)
 
     def _scope_filter(stmt, project_col):
@@ -99,13 +101,15 @@ async def notifications_summary(
         q = _scope_filter(q, Transaction.project_id)
         n = int((await db.execute(q)).scalar_one() or 0)
         if n > 0:
-            items.append(NotificationItem(
-                kind="tx_pending_verify",
-                label=f"{n} transaksi menunggu verifikasi",
-                count=n,
-                to="/transactions?status=SUBMITTED",
-                tone="warning",
-            ))
+            items.append(
+                NotificationItem(
+                    kind="tx_pending_verify",
+                    label=f"{n} transaksi menunggu verifikasi",
+                    count=n,
+                    to="/transactions?status=SUBMITTED",
+                    tone="warning",
+                )
+            )
 
     # 2. Tx draft milik sendiri (utk reminder submit). Auto-exclude
     # proyek SELESAI/DIBATALKAN (KONSISTEN dgn dashboard).
@@ -117,32 +121,38 @@ async def notifications_summary(
     q = _scope_filter(q, Transaction.project_id)
     n = int((await db.execute(q)).scalar_one() or 0)
     if n > 0:
-        items.append(NotificationItem(
-            kind="tx_my_draft",
-            label=f"{n} draft transaksi belum kamu submit",
-            count=n,
-            to="/transactions?status=DRAFT",
-            tone="info",
-        ))
+        items.append(
+            NotificationItem(
+                kind="tx_my_draft",
+                label=f"{n} draft transaksi belum kamu submit",
+                count=n,
+                to="/transactions?status=DRAFT",
+                tone="info",
+            )
+        )
 
     # 3. Invoice overdue (untuk semua user yg punya akses)
     today = date_type.today()
     q = select(func.count(Invoice.id)).where(
         Invoice.deleted_at.is_(None),
-        Invoice.status.in_([InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE]),
+        Invoice.status.in_(
+            [InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE]
+        ),
         Invoice.due_date.is_not(None),
         Invoice.due_date < today,
     )
     q = _scope_filter(q, Invoice.project_id)
     n = int((await db.execute(q)).scalar_one() or 0)
     if n > 0:
-        items.append(NotificationItem(
-            kind="invoice_overdue",
-            label=f"{n} invoice lewat jatuh tempo",
-            count=n,
-            to="/invoices?status=OVERDUE",
-            tone="danger",
-        ))
+        items.append(
+            NotificationItem(
+                kind="invoice_overdue",
+                label=f"{n} invoice lewat jatuh tempo",
+                count=n,
+                to="/invoices?status=OVERDUE",
+                tone="danger",
+            )
+        )
 
     # 4. PO menunggu approval (ISSUED -- belum APPROVED) -- admin only
     if is_admin or has_global:
@@ -153,13 +163,15 @@ async def notifications_summary(
         q = _scope_filter(q, PurchaseOrder.project_id)
         n = int((await db.execute(q)).scalar_one() or 0)
         if n > 0:
-            items.append(NotificationItem(
-                kind="po_pending_approval",
-                label=f"{n} PO menunggu approval",
-                count=n,
-                to="/purchase-orders?status=ISSUED",
-                tone="warning",
-            ))
+            items.append(
+                NotificationItem(
+                    kind="po_pending_approval",
+                    label=f"{n} PO menunggu approval",
+                    count=n,
+                    to="/purchase-orders?status=ISSUED",
+                    tone="warning",
+                )
+            )
 
     total = sum(it.count for it in items)
     return NotificationSummary(total=total, items=items)

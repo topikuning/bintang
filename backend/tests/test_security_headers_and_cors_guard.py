@@ -8,6 +8,7 @@
     * 2026-08-30    : localhost tidak lagi refuse boot, cukup DIBUANG --
                       hanya wildcard '*' yang masih menolak boot.
 """
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -18,20 +19,20 @@ import pytest
 def test_app_imports_with_security_middleware():
     """Sanity: app build dgn middleware tdk crash."""
     from app.main import app
+
     # Middleware terdaftar
-    assert any(
-        "SecurityHeaders" in str(m.cls)
-        for m in app.user_middleware
-    )
+    assert any("SecurityHeaders" in str(m.cls) for m in app.user_middleware)
 
 
 def test_cors_prod_guard_rejects_wildcard():
-    from app.main import _guard_production_config
     from app.core.config import settings
+    from app.main import _guard_production_config
 
-    with patch.object(settings, "APP_ENV", "prod"), \
-         patch.object(settings, "SECRET_KEY", "a" * 40), \
-         patch.object(settings, "ALLOWED_ORIGINS", "*"):
+    with (
+        patch.object(settings, "APP_ENV", "prod"),
+        patch.object(settings, "SECRET_KEY", "a" * 40),
+        patch.object(settings, "ALLOWED_ORIGINS", "*"),
+    ):
         with pytest.raises(RuntimeError, match="ALLOWED_ORIGINS='\\*'"):
             _guard_production_config()
 
@@ -49,13 +50,14 @@ def test_cors_prod_tidak_menolak_boot_karena_localhost():
     era 3-service adalah reaksi yang terlalu keras: yang dibutuhkan cuma
     mengabaikan entri itu.
     """
-    from app.main import _guard_production_config
     from app.core.config import settings
+    from app.main import _guard_production_config
 
-    with patch.object(settings, "APP_ENV", "prod"), \
-         patch.object(settings, "SECRET_KEY", "a" * 40), \
-         patch.object(settings, "ALLOWED_ORIGINS",
-                      "http://localhost:5173,http://127.0.0.1:5173"):
+    with (
+        patch.object(settings, "APP_ENV", "prod"),
+        patch.object(settings, "SECRET_KEY", "a" * 40),
+        patch.object(settings, "ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"),
+    ):
         _guard_production_config()  # tidak boleh raise
         # ...dan entri localhost TIDAK boleh sampai ke CORSMiddleware.
         assert settings.allowed_origins_effective == []
@@ -65,9 +67,10 @@ def test_cors_prod_membuang_localhost_tapi_menyimpan_origin_asli():
     """Origin produksi yang sah tetap dipertahankan."""
     from app.core.config import settings
 
-    with patch.object(settings, "APP_ENV", "prod"), \
-         patch.object(settings, "ALLOWED_ORIGINS",
-                      "https://app.bintang.com,http://localhost:5173"):
+    with (
+        patch.object(settings, "APP_ENV", "prod"),
+        patch.object(settings, "ALLOWED_ORIGINS", "https://app.bintang.com,http://localhost:5173"),
+    ):
         assert settings.allowed_origins_effective == ["https://app.bintang.com"]
         assert settings.local_origins_in_prod == ["http://localhost:5173"]
 
@@ -76,8 +79,10 @@ def test_cors_dev_tidak_membuang_localhost():
     """Di dev, localhost justru yang dipakai -- jangan disaring."""
     from app.core.config import settings
 
-    with patch.object(settings, "APP_ENV", "dev"), \
-         patch.object(settings, "ALLOWED_ORIGINS", "http://localhost:5173"):
+    with (
+        patch.object(settings, "APP_ENV", "dev"),
+        patch.object(settings, "ALLOWED_ORIGINS", "http://localhost:5173"),
+    ):
         assert settings.allowed_origins_effective == ["http://localhost:5173"]
 
 
@@ -92,33 +97,39 @@ def test_cors_prod_guard_accepts_empty_after_single_service_merge():
 
     Wildcard '*' TETAP menolak boot; localhost hanya dibuang.
     """
-    from app.main import _guard_production_config
     from app.core.config import settings
+    from app.main import _guard_production_config
 
-    with patch.object(settings, "APP_ENV", "prod"), \
-         patch.object(settings, "SECRET_KEY", "a" * 40), \
-         patch.object(settings, "ALLOWED_ORIGINS", ""):
+    with (
+        patch.object(settings, "APP_ENV", "prod"),
+        patch.object(settings, "SECRET_KEY", "a" * 40),
+        patch.object(settings, "ALLOWED_ORIGINS", ""),
+    ):
         _guard_production_config()  # tidak boleh raise
 
 
 def test_cors_prod_guard_accepts_valid():
-    from app.main import _guard_production_config
     from app.core.config import settings
+    from app.main import _guard_production_config
 
-    with patch.object(settings, "APP_ENV", "prod"), \
-         patch.object(settings, "SECRET_KEY", "a" * 40), \
-         patch.object(settings, "ALLOWED_ORIGINS", "https://app.bintang.com"):
+    with (
+        patch.object(settings, "APP_ENV", "prod"),
+        patch.object(settings, "SECRET_KEY", "a" * 40),
+        patch.object(settings, "ALLOWED_ORIGINS", "https://app.bintang.com"),
+    ):
         # Tdk raise
         _guard_production_config()
 
 
 def test_cors_dev_guard_allows_anything():
     """Dev (APP_ENV != prod) tdk validate origins -- developer flexibility."""
-    from app.main import _guard_production_config
     from app.core.config import settings
+    from app.main import _guard_production_config
 
-    with patch.object(settings, "APP_ENV", "dev"), \
-         patch.object(settings, "ALLOWED_ORIGINS", "http://localhost"):
+    with (
+        patch.object(settings, "APP_ENV", "dev"),
+        patch.object(settings, "ALLOWED_ORIGINS", "http://localhost"),
+    ):
         _guard_production_config()  # no raise
 
 
@@ -128,8 +139,10 @@ async def test_security_headers_attached_to_response():
 
     Pakai httpx AsyncClient ke ASGI app supaya tdk perlu uvicorn live.
     """
-    from httpx import AsyncClient, ASGITransport
+    from httpx import ASGITransport, AsyncClient
+
     from app.main import app
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         r = await ac.get("/health")

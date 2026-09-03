@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useSearchParams } from "react-router"
 import { Clock, FileMinus, FilePlus, Plus, Receipt, Search, X } from "lucide-react"
 import { useInvoice, useInvoices, type InvoiceListParams } from "@/hooks/useInvoices"
 import { useProjects } from "@/hooks/useProjects"

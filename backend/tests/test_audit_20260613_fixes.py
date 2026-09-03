@@ -9,6 +9,7 @@ perbaikannya tidak diam-diam hilang lagi:
   #S-05  lampiran bot melewati whitelist MIME
   #S-06  rate-limit login dilewati dgn X-Forwarded-For palsu
 """
+
 from __future__ import annotations
 
 import pytest
@@ -17,10 +18,10 @@ from fastapi import HTTPException, Request
 from app.core.net_guard import BlockedURL, assert_public_url
 from app.services.storage.paths import UnsafeUploadPath, resolve_upload_path
 
-
 # ---------------------------------------------------------------------------
 # #S-01 -- path traversal
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "evil",
@@ -29,8 +30,8 @@ from app.services.storage.paths import UnsafeUploadPath, resolve_upload_path
         "/files/../../../etc/hosts",
         "../../etc/passwd",
         "/files/sub/../../../../etc/passwd",
-        "/etc/passwd",            # path absolut
-        "/files/",                # kosong setelah prefix
+        "/etc/passwd",  # path absolut
+        "/files/",  # kosong setelah prefix
     ],
 )
 def test_resolve_upload_path_menolak_traversal(evil, tmp_path, monkeypatch):
@@ -77,16 +78,17 @@ def test_resolve_upload_path_menolak_symlink_keluar(tmp_path, monkeypatch):
 # #S-02 -- SSRF
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "blocked",
     [
         "http://127.0.0.1:8000/admin",
-        "http://localhost:3000/api/sessions",   # WAHA internal
+        "http://localhost:3000/api/sessions",  # WAHA internal
         "http://169.254.169.254/latest/meta-data/",  # metadata cloud
         "http://10.0.0.5/internal",
         "http://192.168.1.1/",
         "http://[::1]:8000/",
-        "file:///etc/passwd",                   # skema bukan http(s)
+        "file:///etc/passwd",  # skema bukan http(s)
         "ftp://example.com/x",
     ],
 )
@@ -110,6 +112,7 @@ def test_assert_public_url_meloloskan_host_publik():
 # #S-05 -- whitelist MIME untuk lampiran bot
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "name,mime",
@@ -126,8 +129,12 @@ async def test_save_bytes_menolak_jenis_berbahaya(name, mime, tmp_path, monkeypa
 
     monkeypatch.setattr(config.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     with pytest.raises(HTTPException) as exc:
-        await save_bytes(b"<script>alert(1)</script>", original_name=name,
-                         subdir="transactions/1", mime_hint=mime)
+        await save_bytes(
+            b"<script>alert(1)</script>",
+            original_name=name,
+            subdir="transactions/1",
+            mime_hint=mime,
+        )
     assert exc.value.status_code == 415
 
 
@@ -142,9 +149,12 @@ async def test_save_bytes_mengabaikan_ekstensi_kiriman(tmp_path, monkeypatch):
     from app.services.storage.local import save_bytes
 
     monkeypatch.setattr(config.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    meta = await save_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 64,
-                            original_name="jahat.html", subdir="transactions/1",
-                            mime_hint="image/png")
+    meta = await save_bytes(
+        b"\x89PNG\r\n\x1a\n" + b"0" * 64,
+        original_name="jahat.html",
+        subdir="transactions/1",
+        mime_hint="image/png",
+    )
     assert meta["url"].endswith(".png"), meta["url"]
     assert ".html" not in meta["url"]
 
@@ -153,13 +163,16 @@ async def test_save_bytes_mengabaikan_ekstensi_kiriman(tmp_path, monkeypatch):
 # #S-06 -- X-Forwarded-For tidak boleh dipercaya dari kiri
 # ---------------------------------------------------------------------------
 
+
 def _request_with_xff(xff: str, peer: str = "203.0.113.9") -> Request:
-    return Request({
-        "type": "http",
-        "method": "POST",
-        "headers": [(b"x-forwarded-for", xff.encode())],
-        "client": (peer, 0),
-    })
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "headers": [(b"x-forwarded-for", xff.encode())],
+            "client": (peer, 0),
+        }
+    )
 
 
 def test_client_ip_mengabaikan_entri_palsu_dari_kiri(monkeypatch):
@@ -186,6 +199,7 @@ def test_client_ip_abaikan_header_saat_hops_nol(monkeypatch):
 # ---------------------------------------------------------------------------
 # #S-04 -- secret webhook dibaca dari app_settings (DB > env)
 # ---------------------------------------------------------------------------
+
 
 def test_whatsapp_webhook_secret_terdaftar_di_registry():
     """Kalau key ini hilang dari registry, admin tidak bisa mengisinya

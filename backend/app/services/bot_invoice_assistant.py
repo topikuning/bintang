@@ -8,9 +8,11 @@ Default Invoice.type = IN (Hutang/tagihan dari vendor). Variants
 kalau caption tdk sebut, fallback ke proyek aktif pertama yg user
 punya akses (preview kasih note "default ke proyek X").
 """
+
 from __future__ import annotations
 
-from datetime import date as _date, datetime, timezone
+from datetime import UTC, datetime
+from datetime import date as _date
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,14 +36,15 @@ from app.services.bot_doc_session import (
     save_session,
 )
 
-
 ENTITY_TYPE = "INVOICE"
 
 
 # ---------- Photo path (OCR) ----------
 
+
 async def parse_photo_and_save(
-    db: AsyncSession, *,
+    db: AsyncSession,
+    *,
     user: User,
     channel: str,
     chat_id: str,
@@ -61,19 +64,24 @@ async def parse_photo_and_save(
     # halaman /ocr (Asisten OCR) -- user bisa verifikasi side-by-side
     # foto + hasil OCR sebelum konfirmasi via WA.
     from app.services.storage.local import save_bytes
+
     ext = _ext_from_media_type(media_type)
     saved = await save_bytes(
         content,
-        original_name=f"wa-{chat_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}.{ext}",
+        original_name=f"wa-{chat_id}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}.{ext}",
         subdir="ocr",
         mime_hint=media_type,
     )
     public_url = saved["url"]  # /files/ocr/YYYY/MM/...
 
     from app.services.ocr.pipeline import run_extraction
+
     ocr = await run_extraction(
-        db, content=content, media_type=media_type,
-        source_url=public_url, engine=None,
+        db,
+        content=content,
+        media_type=media_type,
+        source_url=public_url,
+        engine=None,
         # Audit 2026-06-02: user context (caption "konteks: ...") di-inject
         # ke OCR system prompt utk disambiguasi handwriting/items.
         user_context=notes,
@@ -92,20 +100,19 @@ async def parse_photo_and_save(
         project = await resolve_project(db, user, project_hint)
         if project is None:
             raise BotDocError(
-                f"Proyek '{project_hint}' tidak ketemu atau kamu tidak "
-                f"punya akses. Cek /proyek.",
+                f"Proyek '{project_hint}' tidak ketemu atau kamu tidak punya akses. Cek /proyek.",
             )
     if project is None:
         project = await first_accessible_project(db, user)
         project_default = True
     if project is None:
         raise BotDocError(
-            "Tidak ada proyek aktif yg bisa kamu akses -- minta admin "
-            "tambahkan akses dulu.",
+            "Tidak ada proyek aktif yg bisa kamu akses -- minta admin tambahkan akses dulu.",
         )
 
     vendor_id, vendor_name = await resolve_vendor(
-        db, ocr.get("vendor_name") or None,
+        db,
+        ocr.get("vendor_name") or None,
     )
 
     payload = {
@@ -141,10 +148,15 @@ async def parse_photo_and_save(
     payload["ai_extraction_id"] = extraction_id
 
     session_id = await save_session(
-        db, channel=channel, chat_id=chat_id, user_id=user.id,
-        entity_type=ENTITY_TYPE, payload=payload,
+        db,
+        channel=channel,
+        chat_id=chat_id,
+        user_id=user.id,
+        entity_type=ENTITY_TYPE,
+        payload=payload,
     )
     from app.services.bot_doc_session import schedule_reminder
+
     schedule_reminder(channel=channel, chat_id=chat_id, session_id=session_id)
     return _format_preview(payload)
 
@@ -162,17 +174,20 @@ def _ext_from_media_type(mime: str | None) -> str:
 
 
 async def _create_ai_extraction(
-    db: AsyncSession, source_url: str, ocr: dict, *, entity: str,
+    db: AsyncSession,
+    source_url: str,
+    ocr: dict,
+    *,
+    entity: str,
 ) -> int:
     """Persist hasil OCR sbg AIExtraction supaya tampil di Asisten OCR.
     Audit 2026-06-02 -- bridge bot OCR ke web visibility."""
     from app.models.models import AIExtraction, AIExtractionStatus
+
     # Decimal -> str supaya JSON-serializable (sama dgn _persist_extraction
     # di api/v1/ocr.py).
     extracted = {
-        k: (str(v) if hasattr(v, "is_finite") else v)
-        for k, v in ocr.items()
-        if k != "raw_response"
+        k: (str(v) if hasattr(v, "is_finite") else v) for k, v in ocr.items() if k != "raw_response"
     }
     rec = AIExtraction(
         entity=entity,  # "invoice" | "po"
@@ -188,6 +203,7 @@ async def _create_ai_extraction(
 
 
 # ---------- Helpers ----------
+
 
 def _normalize_date(s: str | None) -> str | None:
     """OCR kasih YYYY-MM-DD or empty string. Return ISO or None."""
@@ -223,19 +239,23 @@ def _ocr_items_to_payload(ocr_items: list[dict]) -> list[dict]:
                 unit_price = float(amount_raw) / qty
             else:
                 unit_price = 0.0
-        out.append({
-            "description": desc,
-            "quantity": qty,
-            "unit": (it.get("unit") or None),
-            "unit_price": unit_price,
-        })
+        out.append(
+            {
+                "description": desc,
+                "quantity": qty,
+                "unit": (it.get("unit") or None),
+                "unit_price": unit_price,
+            }
+        )
     return out
 
 
 def _format_preview(payload: dict) -> str:
     items: list[dict] = payload.get("items") or []
     inv_type = payload.get("type") or "IN"
-    type_label = "Hutang/Tagihan dr Vendor (IN)" if inv_type == "IN" else "Piutang ke Customer (OUT)"
+    type_label = (
+        "Hutang/Tagihan dr Vendor (IN)" if inv_type == "IN" else "Piutang ke Customer (OUT)"
+    )
     total_est = Decimal("0")
     for it in items:
         total_est += Decimal(str(it.get("unit_price") or 0)) * Decimal(str(it.get("quantity") or 1))
@@ -276,9 +296,7 @@ def _format_preview(payload: dict) -> str:
     if payload.get("notes"):
         lines.append(f"💬 Konteks: _{payload['notes']}_")
     if payload.get("ai_extraction_id"):
-        lines.append(
-            f"🔍 Cek hasil OCR di web: /ocr (cari #{payload['ai_extraction_id']})"
-        )
+        lines.append(f"🔍 Cek hasil OCR di web: /ocr (cari #{payload['ai_extraction_id']})")
     lines.append("")
     lines.append("Balas *ya* untuk simpan sbg DRAFT, *batal* untuk batal.")
     return "\n".join(lines)
@@ -286,8 +304,12 @@ def _format_preview(payload: dict) -> str:
 
 # ---------- Confirm create ----------
 
+
 async def confirm_create(
-    db: AsyncSession, *, user: User, session: BotPendingDocSession,
+    db: AsyncSession,
+    *,
+    user: User,
+    session: BotPendingDocSession,
 ) -> Invoice:
     """Create Invoice DRAFT dari session payload. Caller harus commit."""
     payload = parse_payload(session)
@@ -300,8 +322,7 @@ async def confirm_create(
 
     invoice_date_s = payload.get("invoice_date")
     invoice_date = (
-        _date.fromisoformat(invoice_date_s)
-        if invoice_date_s else datetime.now(timezone.utc).date()
+        _date.fromisoformat(invoice_date_s) if invoice_date_s else datetime.now(UTC).date()
     )
     due_date_s = payload.get("due_date")
     due_date = _date.fromisoformat(due_date_s) if due_date_s else None
@@ -312,9 +333,8 @@ async def confirm_create(
     number = raw_number or _placeholder_number(user.id)
     # Dedup check + retry kalau collision.
     from sqlalchemy import select as _sel
-    dup = (await db.execute(
-        _sel(Invoice).where(Invoice.number == number)
-    )).scalar_one_or_none()
+
+    dup = (await db.execute(_sel(Invoice).where(Invoice.number == number))).scalar_one_or_none()
     if dup is not None:
         # Nomor sudah dipakai -- generate placeholder unik.
         number = _placeholder_number(user.id, suffix=str(dup.id))
@@ -339,16 +359,19 @@ async def confirm_create(
     for it in items_payload:
         qty = Decimal(str(it.get("quantity") or 1))
         price = Decimal(str(it.get("unit_price") or 0))
-        inv.items.append(InvoiceItem(
-            description=it["description"],
-            quantity=qty,
-            unit=it.get("unit"),
-            unit_price=price,
-            subtotal=qty * price,
-            category_id=None,
-        ))
+        inv.items.append(
+            InvoiceItem(
+                description=it["description"],
+                quantity=qty,
+                unit=it.get("unit"),
+                unit_price=price,
+                subtotal=qty * price,
+                category_id=None,
+            )
+        )
     # Compute totals (reuse helper kalau ada; otherwise inline).
     from app.api.v1.invoices import _compute_totals
+
     sub, tot = _compute_totals(inv.items, inv.tax)
     inv.subtotal = sub
     inv.total = tot
@@ -366,6 +389,7 @@ async def confirm_create(
     extraction_id = payload.get("ai_extraction_id")
     if extraction_id:
         from app.models.models import AIExtraction
+
         extraction = await db.get(AIExtraction, extraction_id)
         if extraction is not None:
             extraction.entity_id = inv.id
@@ -377,7 +401,7 @@ async def confirm_create(
 
 def _placeholder_number(user_id: int, suffix: str = "") -> str:
     """Format: DRAFT-INV-{YYMMDD}-{epoch_last5}{user_id}{suffix}."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     epoch = int(now.timestamp()) % 100000
     base = f"DRAFT-INV-{now.strftime('%y%m%d')}-{epoch}{user_id}"
     return f"{base}{suffix}" if suffix else base

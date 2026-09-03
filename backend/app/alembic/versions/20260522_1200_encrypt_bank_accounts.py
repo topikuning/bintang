@@ -17,16 +17,16 @@ key rotation: re-encrypt manual via script.
 Revision ID: d4f8a2e7c1b5
 Revises: c8e1d4f2a6b9
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
+from alembic import op
 
-
-revision: str = 'd4f8a2e7c1b5'
-down_revision: Union[str, Sequence[str], None] = 'c8e1d4f2a6b9'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "d4f8a2e7c1b5"
+down_revision: str | Sequence[str] | None = "c8e1d4f2a6b9"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 _PREFIX = "enc:v1:"
@@ -45,7 +45,9 @@ def _encrypt_value(value):
     import base64
     import hashlib
     import os
+
     from cryptography.fernet import Fernet
+
     secret = os.environ.get("SECRET_KEY", "dev-secret-change-me-please-rotate-in-prod")
     digest = hashlib.sha256(secret.encode("utf-8")).digest()
     f = Fernet(base64.urlsafe_b64encode(digest))
@@ -60,6 +62,11 @@ _TARGETS = [
 ]
 
 
+def _target_table(table_name: str, column_name: str):
+    """Bentuk ekspresi Core agar identifier di-quote oleh dialect."""
+    return sa.table(table_name, sa.column("id"), sa.column(column_name))
+
+
 def upgrade() -> None:
     # 1. Widen column types (200 -> 500) supaya cukup utk ciphertext.
     for table, col in _TARGETS:
@@ -69,17 +76,16 @@ def upgrade() -> None:
     # 2. Encrypt existing values.
     conn = op.get_bind()
     for table, col in _TARGETS:
+        target = _target_table(table, col)
+        sensitive_column = target.c[col]
         rows = conn.execute(
-            sa.text(f"SELECT id, {col} FROM {table} WHERE {col} IS NOT NULL")
+            sa.select(target.c.id, sensitive_column).where(sensitive_column.is_not(None))
         ).fetchall()
         for rid, raw in rows:
             encrypted = _encrypt_value(raw)
             if encrypted == raw:
                 continue  # already encrypted, skip
-            conn.execute(
-                sa.text(f"UPDATE {table} SET {col} = :v WHERE id = :id"),
-                {"v": encrypted, "id": rid},
-            )
+            conn.execute(sa.update(target).where(target.c.id == rid).values({col: encrypted}))
 
 
 def downgrade() -> None:
@@ -88,28 +94,29 @@ def downgrade() -> None:
     import base64
     import hashlib
     import os
+
     from cryptography.fernet import Fernet, InvalidToken
+
     secret = os.environ.get("SECRET_KEY", "dev-secret-change-me-please-rotate-in-prod")
     digest = hashlib.sha256(secret.encode("utf-8")).digest()
     f = Fernet(base64.urlsafe_b64encode(digest))
 
     conn = op.get_bind()
     for table, col in _TARGETS:
+        target = _target_table(table, col)
+        sensitive_column = target.c[col]
         rows = conn.execute(
-            sa.text(f"SELECT id, {col} FROM {table} WHERE {col} IS NOT NULL")
+            sa.select(target.c.id, sensitive_column).where(sensitive_column.is_not(None))
         ).fetchall()
         for rid, val in rows:
             if not val or not str(val).startswith(_PREFIX):
                 continue
-            token = str(val)[len(_PREFIX):]
+            token = str(val)[len(_PREFIX) :]
             try:
                 plain = f.decrypt(token.encode("ascii")).decode("utf-8")
             except InvalidToken:
                 continue
-            conn.execute(
-                sa.text(f"UPDATE {table} SET {col} = :v WHERE id = :id"),
-                {"v": plain, "id": rid},
-            )
+            conn.execute(sa.update(target).where(target.c.id == rid).values({col: plain}))
 
     # Revert column widths.
     for table, col in _TARGETS:

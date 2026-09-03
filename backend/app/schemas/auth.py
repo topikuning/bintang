@@ -1,9 +1,8 @@
 import re
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
 from app.models.models import UserRole
-
 
 # Username format: 3-50 char, lowercase alphanumeric + dot/underscore/dash.
 # Sengaja tdk allow '@' supaya jelas dibedakan dari email saat login lookup.
@@ -47,8 +46,7 @@ class UserOut(BaseModel):
     telegram_chat_id: str | None = None
     whatsapp_chat_id: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserMe(UserOut):

@@ -4,6 +4,7 @@ from app.api.v1 import (
     admin_orphans,
     admin_role_menus,
     admin_settings,
+    ai,
     ai_feature_settings,
     ai_prompts,
     allocations,
@@ -14,7 +15,6 @@ from app.api.v1 import (
     cash_requests,
     categories,
     companies,
-    ai,
     dashboard,
     imports,
     invoices,
@@ -53,8 +53,12 @@ api_router.include_router(notifications.router, prefix="/notifications", tags=["
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(audit_logs.router, prefix="/audit-logs", tags=["audit-logs"])
 api_router.include_router(admin_settings.router, prefix="/admin/settings", tags=["admin-settings"])
-api_router.include_router(admin_role_menus.router, prefix="/admin/role-menus", tags=["admin-role-menus"])
-api_router.include_router(admin_orphans.router, prefix="/admin/orphan-files", tags=["admin-orphans"])
+api_router.include_router(
+    admin_role_menus.router, prefix="/admin/role-menus", tags=["admin-role-menus"]
+)
+api_router.include_router(
+    admin_orphans.router, prefix="/admin/orphan-files", tags=["admin-orphans"]
+)
 api_router.include_router(imports.router, prefix="/imports", tags=["imports"])
 api_router.include_router(ocr.router, prefix="/ocr", tags=["ocr"])
 api_router.include_router(ai.router, prefix="/ai", tags=["ai"])

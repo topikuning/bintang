@@ -1,4 +1,5 @@
 """Endpoint AI-2: PO cover letter generator."""
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +33,10 @@ async def generate_po_cover(
     await ensure_project_access(db, user, po.project_id)
     try:
         result = await run_po_cover(
-            db, user_id=user.id, po_id=payload.po_id, tone=payload.tone,
+            db,
+            user_id=user.id,
+            po_id=payload.po_id,
+            tone=payload.tone,
         )
     except ValueError as e:
         raise HTTPException(404, str(e)) from e

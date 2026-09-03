@@ -9,24 +9,24 @@ Audit 2026-05-22 #C5.
 Revision ID: c8e1d4f2a6b9
 Revises: b7e2f4a8c9d1
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
+from alembic import op
 
-
-revision: str = 'c8e1d4f2a6b9'
-down_revision: Union[str, Sequence[str], None] = 'b7e2f4a8c9d1'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "c8e1d4f2a6b9"
+down_revision: str | Sequence[str] | None = "b7e2f4a8c9d1"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
     op.add_column(
-        'users',
-        sa.Column('tokens_revoked_after', sa.DateTime(timezone=True), nullable=True),
+        "users",
+        sa.Column("tokens_revoked_after", sa.DateTime(timezone=True), nullable=True),
     )
 
 
 def downgrade() -> None:
-    op.drop_column('users', 'tokens_revoked_after')
+    op.drop_column("users", "tokens_revoked_after")

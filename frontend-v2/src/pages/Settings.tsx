@@ -10,7 +10,7 @@ import {
   User as UserIcon,
 } from "lucide-react"
 import { z } from "zod"
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "react-router"
 import { useAuthStore } from "@/store/auth"
 import { useUpdateUser } from "@/hooks/useUsers"
 import { MessagingSection } from "@/components/domain/settings/MessagingSection"

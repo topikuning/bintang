@@ -6,6 +6,7 @@ Kirim daftar item + konteks, return suggestion per item.
 User pattern di FE: tombol "🤖 Saran kategori per item" -> POST endpoint
 ini -> isi otomatis category_id per row.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -35,7 +36,8 @@ class CategorizeItemsIn(BaseModel):
     party_name: str | None = Field(None, max_length=200)
     project_id: int | None = None
     context_label: str | None = Field(
-        None, max_length=200,
+        None,
+        max_length=200,
         description="Label utk konteks (mis. 'Invoice INV-001').",
     )
 
@@ -53,7 +55,8 @@ async def categorize_items(
     """
     try:
         result = await run_categorize(
-            db, user_id=user.id,
+            db,
+            user_id=user.id,
             items=[it.model_dump() for it in payload.items],
             direction=payload.direction,
             party_name=payload.party_name,

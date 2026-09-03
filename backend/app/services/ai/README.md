@@ -23,12 +23,13 @@ generator, justifier, dll). OCR existing tetap di `services/ocr/`.
 
    SYSTEM_PROMPT = """Kamu bantu pilih kategori transaksi dari list..."""
 
-   async def suggest_category(
-       db, *, user_id, description, available_categories
-   ):
+
+   async def suggest_category(db, *, user_id, description, available_categories):
        cats_str = "\n".join(f"- {c.id}: {c.name}" for c in available_categories)
        resp = await chat(
-           db=db, user_id=user_id, feature="chat:category",
+           db=db,
+           user_id=user_id,
+           feature="chat:category",
            system=SYSTEM_PROMPT,
            prompt=f"Kategori untuk: {description}\n\nPilihan:\n{cats_str}",
            json_schema={
@@ -49,13 +50,13 @@ generator, justifier, dll). OCR existing tetap di `services/ocr/`.
 
    ```python
    @router.post("/ai/suggest-category")
-   async def suggest_category_endpoint(
-       payload: SuggestIn, db, user=Depends(get_current_user)
-   ):
+   async def suggest_category_endpoint(payload: SuggestIn, db, user=Depends(get_current_user)):
        cats = await load_categories(db)
        result = await suggest_category(
-           db, user_id=user.id,
-           description=payload.description, available_categories=cats,
+           db,
+           user_id=user.id,
+           description=payload.description,
+           available_categories=cats,
        )
        await db.commit()
        return result

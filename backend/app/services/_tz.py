@@ -18,7 +18,7 @@ yang datang dari DB aman diperlakukan sebagai UTC.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def as_utc(value: datetime | None) -> datetime | None:
@@ -26,8 +26,8 @@ def as_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def is_expired(expires_at: datetime | None, *, now: datetime | None = None) -> bool:
@@ -37,5 +37,5 @@ def is_expired(expires_at: datetime | None, *, now: datetime | None = None) -> b
     """
     if expires_at is None:
         return False
-    reference = now or datetime.now(timezone.utc)
+    reference = now or datetime.now(UTC)
     return as_utc(expires_at) < as_utc(reference)

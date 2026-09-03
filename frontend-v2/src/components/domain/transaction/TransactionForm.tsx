@@ -49,11 +49,11 @@ const itemSchema = z.object({
 })
 
 const schema = z.object({
-  project_id: z.number({ required_error: "Pilih proyek" }).min(1, "Pilih proyek"),
+  project_id: z.number({ error: "Pilih proyek" }).min(1, "Pilih proyek"),
   tx_date: z.string().min(1, "Tanggal wajib diisi"),
   type: z.enum(["IN", "OUT"]),
   kind: z.enum(["INVOICE_PAYMENT", "CASH_ADVANCE", "DIRECT_EXPENSE"]),
-  amount: z.number({ required_error: "Nominal wajib diisi" }).positive("Nominal harus lebih dari 0"),
+  amount: z.number({ error: "Nominal wajib diisi" }).positive("Nominal harus lebih dari 0"),
   category_id: z.number().nullable().optional(),
   vendor_client_id: z.number().nullable().optional(),
   party_name: z.string().nullable().optional(),

@@ -10,7 +10,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 from starlette.responses import Response as StarletteResponse
 
-from app.api.files import FILE_COOKIE_NAME, router as files_router
+from app.api.files import FILE_COOKIE_NAME
+from app.api.files import router as files_router
 from app.api.v1 import api_router
 from app.core.config import settings
 from app.db.base import Base
@@ -20,7 +21,6 @@ from app.db.schema_sync import (
     _sync_pg_enums,
 )
 from app.db.session import engine
-
 
 _DEFAULT_SECRET_KEY = "dev-secret-change-me-please-rotate-in-prod"
 
@@ -40,9 +40,7 @@ def _guard_production_config() -> None:
                 "lalu set env SECRET_KEY sebelum boot."
             )
         if len(settings.SECRET_KEY) < 32:
-            raise RuntimeError(
-                "REFUSE_BOOT: SECRET_KEY terlalu pendek (<32 char) di prod."
-            )
+            raise RuntimeError("REFUSE_BOOT: SECRET_KEY terlalu pendek (<32 char) di prod.")
         # Audit 2026-05-22 #H6: validate CORS allowed_origins di prod.
         # Wildcard '*' + localhost reference = misconfig dangerous.
         #
@@ -82,7 +80,7 @@ def _guard_production_config() -> None:
 
 
 async def _warn_missing_webhook_secrets(db) -> None:
-    """Peringatkan kalau integrasi bot aktif di prod tanpa webhook secret.
+    """Peringatkan kalau WhatsApp aktif di prod tanpa webhook secret.
 
     Audit 2026-06-13 #S-04 awalnya membuat kondisi ini REFUSE_BOOT.
     Itu keliru dan terbukti di produksi 2026-08-30: seluruh aplikasi
@@ -104,15 +102,12 @@ async def _warn_missing_webhook_secrets(db) -> None:
     from app.services.app_settings import get_setting
 
     problems: list[str] = []
-    if await get_setting(db, "TELEGRAM_BOT_TOKEN"):
-        if not await get_setting(db, "TELEGRAM_WEBHOOK_SECRET"):
-            problems.append("TELEGRAM_WEBHOOK_SECRET")
     if await get_setting(db, "WHATSAPP_BASE_URL"):
         if not await get_setting(db, "WHATSAPP_WEBHOOK_SECRET"):
             problems.append("WHATSAPP_WEBHOOK_SECRET")
     if problems:
         print(
-            "[startup] CATATAN: integrasi bot berjalan TANPA verifikasi "
+            "[startup] CATATAN: integrasi WhatsApp berjalan TANPA verifikasi "
             f"webhook ({', '.join(problems)} kosong). Webhook tetap "
             "menerima request. Untuk mengaktifkan verifikasi, isi "
             "secretnya di Pengaturan > Integrasi -- untuk WhatsApp, "
@@ -136,20 +131,13 @@ async def lifespan(_app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
     # Sync enum + kolom baru (hanya Postgres). SQLite cukup create_all.
     if not settings.is_sqlite:
-        try:
-            async with engine.begin() as conn:
-                await _sync_pg_columns(conn)
-                await _sync_pg_enums(conn)
-        except Exception as e:  # noqa: BLE001
-            # jangan blok startup; cetak warning saja
-            print(f"[startup] schema sync warning: {e}")
+        async with engine.begin() as conn:
+            await _sync_pg_columns(conn)
+            await _sync_pg_enums(conn)
     # Indeks performa: idempoten utk SQLite & Postgres. create_all di atas
     # tidak menambahkan indeks baru ke tabel yg sudah ada di DB lama.
-    try:
-        async with engine.begin() as conn:
-            await _ensure_perf_indexes(conn)
-    except Exception as e:  # noqa: BLE001
-        print(f"[startup] perf index warning: {e}")
+    async with engine.begin() as conn:
+        await _ensure_perf_indexes(conn)
     # Audit 2026-05-24: invalidate asyncpg prepared statement cache.
     # Tanpa ini, kolom yg baru di-ALTER (mis. invoice_items.category_id)
     # menyebabkan UndefinedColumnError karena prepared stmt lama refer ke
@@ -194,19 +182,23 @@ async def lifespan(_app: FastAPI):
     wa_base = get_cached("WHATSAPP_BASE_URL")
 
     # Register Telegram webhook kalau token + base URL tersedia.
-    if tg_token and public_base:
+    if tg_token and public_base and tg_secret:
         try:
             from app.services.telegram import client as tg
+
             url = public_base.rstrip("/") + "/api/v1/telegram/webhook"
-            ok = await tg.set_webhook(url, tg_secret or None)
+            ok = await tg.set_webhook(url, tg_secret)
             print(f"[startup] telegram setWebhook {url} -> ok={ok}")
         except Exception as e:  # noqa: BLE001
             print(f"[startup] telegram setWebhook failed: {e}")
+    elif tg_token and public_base:
+        print("[startup] Telegram webhook TIDAK didaftarkan: TELEGRAM_WEBHOOK_SECRET wajib diisi.")
 
     # Register WAHA webhook kalau base URL + PUBLIC_BASE_URL tersedia.
     if wa_base and public_base:
         try:
             from app.services.whatsapp import client as wa
+
             url = public_base.rstrip("/") + "/api/v1/whatsapp/webhook"
             ok = await wa.set_webhook(url)
             print(f"[startup] WAHA setWebhook {url} -> ok={ok}")
@@ -247,13 +239,8 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
       punya <script> inline (diverifikasi di dist/index.html), jadi
       tidak perlu 'unsafe-inline' untuk skrip.
 
-      Dikirim sebagai **Report-Only** secara default. CSP yang salah
-      menghasilkan halaman putih tanpa pesan yang jelas, jadi jangan
-      langsung memaksakannya di aplikasi yang sedang dipakai. Alur yang
-      dimaksudkan:
-        1. Deploy dgn report-only, buka aplikasi, cek console browser.
-        2. Kalau tidak ada laporan pelanggaran, set CSP_ENFORCE=true.
-      Set `CSP_ENFORCE=true` untuk mengubahnya jadi menegakkan.
+      Ditegakkan secara default. `CSP_ENFORCE=false` hanya dipakai
+      sementara saat diagnosis untuk mengubah header menjadi Report-Only.
 
       `style-src` memakai 'unsafe-inline' karena Radix/Recharts menaruh
       gaya lewat atribut style. (React menulis gaya lewat CSSOM yang
@@ -267,18 +254,20 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """
 
     # Sumber daya SPA semuanya same-origin setelah penggabungan service.
-    _CSP = "; ".join([
-        "default-src 'self'",
-        "base-uri 'self'",
-        "object-src 'none'",
-        "frame-ancestors 'none'",
-        "script-src 'self'",
-        "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data: blob:",
-        "font-src 'self'",
-        "connect-src 'self'",
-        "form-action 'self'",
-    ])
+    _CSP = "; ".join(
+        [
+            "default-src 'self'",
+            "base-uri 'self'",
+            "object-src 'none'",
+            "frame-ancestors 'none'",
+            "script-src 'self'",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data: blob:",
+            "font-src 'self'",
+            "connect-src 'self'",
+            "form-action 'self'",
+        ]
+    )
 
     # Halaman yang sengaja tidak diberi CSP.
     _CSP_EXEMPT = ("/docs", "/redoc", "/openapi.json")
@@ -287,8 +276,7 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._is_prod = is_prod
         self._csp_header = (
-            "Content-Security-Policy" if csp_enforce
-            else "Content-Security-Policy-Report-Only"
+            "Content-Security-Policy" if csp_enforce else "Content-Security-Policy-Report-Only"
         )
 
     async def dispatch(self, request: StarletteRequest, call_next) -> StarletteResponse:
@@ -297,9 +285,7 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if not request.url.path.startswith(self._CSP_EXEMPT):
             response.headers.setdefault(self._csp_header, self._CSP)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        response.headers.setdefault(
-            "Referrer-Policy", "strict-origin-when-cross-origin"
-        )
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault(
             "Permissions-Policy",
             "camera=(), microphone=(), geolocation=(), interest-cohort=()",
@@ -432,10 +418,7 @@ if _frontend_index.is_file():
         if full_path:
             try:
                 candidate = (_frontend_dist / full_path).resolve()
-                if (
-                    candidate.is_file()
-                    and candidate.is_relative_to(_frontend_dist.resolve())
-                ):
+                if candidate.is_file() and candidate.is_relative_to(_frontend_dist.resolve()):
                     return FileResponse(candidate)
             except (OSError, ValueError):
                 pass

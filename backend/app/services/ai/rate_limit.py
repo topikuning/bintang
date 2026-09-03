@@ -12,6 +12,7 @@ Pemakaian:
     if not ok:
         raise HTTPException(429, ...)
 """
+
 from __future__ import annotations
 
 from app.core.rate_limit import RateLimiter
@@ -34,7 +35,8 @@ def get_limiter(
     """
     if feature_id not in _limiters:
         _limiters[feature_id] = RateLimiter(
-            max_calls=max_calls, period_seconds=period_seconds,
+            max_calls=max_calls,
+            period_seconds=period_seconds,
         )
     return _limiters[feature_id]
 

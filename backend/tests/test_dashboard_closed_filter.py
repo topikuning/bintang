@@ -12,6 +12,7 @@ semua section (totals, count, list, chart, warning), bukan cuma
 warning. closed_count tetap dihitung independent supaya FE bisa kasih
 hint "ada N proyek selesai" walaupun mode strict.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -42,66 +43,105 @@ from app.models.models import (
 
 
 async def _seed(db):
-    co = Company(name="C"); db.add(co); await db.flush()
+    co = Company(name="C")
+    db.add(co)
+    await db.flush()
     # 2 projects: 1 AKTIF + 1 SELESAI, masing-2 ada bukti minus + overdue
     # invoice + pending tx -- supaya kelihatan filter exclude vs include.
     p_aktif = Project(
-        code="P-AKTIF", name="Aktif", company_id=co.id,
-        status=ProjectStatus.AKTIF, kind=ProjectKind.REGULAR.value,
+        code="P-AKTIF",
+        name="Aktif",
+        company_id=co.id,
+        status=ProjectStatus.AKTIF,
+        kind=ProjectKind.REGULAR.value,
         budget_amount=Decimal("1000"),
     )
     p_selesai = Project(
-        code="P-DONE", name="Selesai", company_id=co.id,
-        status=ProjectStatus.SELESAI, kind=ProjectKind.REGULAR.value,
+        code="P-DONE",
+        name="Selesai",
+        company_id=co.id,
+        status=ProjectStatus.SELESAI,
+        kind=ProjectKind.REGULAR.value,
         budget_amount=Decimal("1000"),
     )
-    db.add_all([p_aktif, p_selesai]); await db.flush()
+    db.add_all([p_aktif, p_selesai])
+    await db.flush()
     user = User(
-        email="u@x", name="U", password_hash=hash_password("x"),
-        role=UserRole.SUPERADMIN, scope_all_projects=True,
+        email="u@x",
+        name="U",
+        password_hash=hash_password("x"),
+        role=UserRole.SUPERADMIN,
+        scope_all_projects=True,
     )
-    db.add(user); await db.flush()
+    db.add(user)
+    await db.flush()
     # Tx pending di kedua proyek -> warning operational
     for proj in (p_aktif, p_selesai):
-        db.add(Transaction(
-            project_id=proj.id, tx_date=date(2026, 5, 24),
-            type=TxnType.OUT, kind=TxnKind.DIRECT_EXPENSE.value,
-            amount=Decimal("100"), payment_method=PaymentMethod.CASH,
-            status=TxnStatus.SUBMITTED, created_by_id=user.id,
-        ))
+        db.add(
+            Transaction(
+                project_id=proj.id,
+                tx_date=date(2026, 5, 24),
+                type=TxnType.OUT,
+                kind=TxnKind.DIRECT_EXPENSE.value,
+                amount=Decimal("100"),
+                payment_method=PaymentMethod.CASH,
+                status=TxnStatus.SUBMITTED,
+                created_by_id=user.id,
+            )
+        )
     # Overdue invoice di kedua proyek
     for proj in (p_aktif, p_selesai):
-        db.add(Invoice(
-            number=f"INV-OD-{proj.code}", project_id=proj.id,
-            type=InvoiceType.IN, invoice_date=date(2026, 1, 1),
-            total=Decimal("500"), status=InvoiceStatus.OVERDUE,
-            created_by_id=user.id,
-        ))
+        db.add(
+            Invoice(
+                number=f"INV-OD-{proj.code}",
+                project_id=proj.id,
+                type=InvoiceType.IN,
+                invoice_date=date(2026, 1, 1),
+                total=Decimal("500"),
+                status=InvoiceStatus.OVERDUE,
+                created_by_id=user.id,
+            )
+        )
     # Tx OUT VERIFIED gede di selesai supaya jadi top_spender kalau ikut.
-    db.add(Transaction(
-        project_id=p_selesai.id, tx_date=date(2026, 5, 24),
-        type=TxnType.OUT, kind=TxnKind.DIRECT_EXPENSE.value,
-        amount=Decimal("9999"), payment_method=PaymentMethod.CASH,
-        status=TxnStatus.VERIFIED, created_by_id=user.id,
-    ))
-    db.add(Transaction(
-        project_id=p_aktif.id, tx_date=date(2026, 5, 24),
-        type=TxnType.OUT, kind=TxnKind.DIRECT_EXPENSE.value,
-        amount=Decimal("50"), payment_method=PaymentMethod.CASH,
-        status=TxnStatus.VERIFIED, created_by_id=user.id,
-    ))
+    db.add(
+        Transaction(
+            project_id=p_selesai.id,
+            tx_date=date(2026, 5, 24),
+            type=TxnType.OUT,
+            kind=TxnKind.DIRECT_EXPENSE.value,
+            amount=Decimal("9999"),
+            payment_method=PaymentMethod.CASH,
+            status=TxnStatus.VERIFIED,
+            created_by_id=user.id,
+        )
+    )
+    db.add(
+        Transaction(
+            project_id=p_aktif.id,
+            tx_date=date(2026, 5, 24),
+            type=TxnType.OUT,
+            kind=TxnKind.DIRECT_EXPENSE.value,
+            amount=Decimal("50"),
+            payment_method=PaymentMethod.CASH,
+            status=TxnStatus.VERIFIED,
+            created_by_id=user.id,
+        )
+    )
     await db.commit()
     return co, p_aktif, p_selesai, user
 
 
 def _hdr(user):
-    return {"Authorization": f"Bearer {create_access_token(user.id, extra={'role': user.role.value})}"}
+    return {
+        "Authorization": f"Bearer {create_access_token(user.id, extra={'role': user.role.value})}"
+    }
 
 
 @pytest.fixture
 def override_db(db):
     async def _gen():
         yield db
+
     app.dependency_overrides[get_db] = _gen
     yield
     app.dependency_overrides.pop(get_db, None)
@@ -160,7 +200,8 @@ async def test_dashboard_totals_strict_with_aktif_tab(db, override_db):
     async with AsyncClient(transport=transport, base_url="http://t") as ac:
         r_aktif = await ac.get("/api/v1/dashboard/global", headers=_hdr(user))
         r_all = await ac.get(
-            "/api/v1/dashboard/global?include_closed=true", headers=_hdr(user),
+            "/api/v1/dashboard/global?include_closed=true",
+            headers=_hdr(user),
         )
     body_aktif = r_aktif.json()
     body_all = r_all.json()
@@ -176,12 +217,8 @@ async def test_project_dashboard_warnings_suppressed_for_selesai(db, override_db
     _, p_aktif, p_selesai, user = await _seed(db)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as ac:
-        r_aktif = await ac.get(
-            f"/api/v1/dashboard/project/{p_aktif.id}", headers=_hdr(user)
-        )
-        r_selesai = await ac.get(
-            f"/api/v1/dashboard/project/{p_selesai.id}", headers=_hdr(user)
-        )
+        r_aktif = await ac.get(f"/api/v1/dashboard/project/{p_aktif.id}", headers=_hdr(user))
+        r_selesai = await ac.get(f"/api/v1/dashboard/project/{p_selesai.id}", headers=_hdr(user))
     # AKTIF: ada warnings (overdue + pending).
     assert len(r_aktif.json()["warnings"]) > 0
     # SELESAI: warnings disuppress (banner sudah indikasi status).
@@ -195,11 +232,15 @@ async def test_dashboard_excludes_dibatalkan_completely(db, override_db):
     co, p_aktif, p_selesai, user = await _seed(db)
     # Tambah 1 proyek DIBATALKAN
     p_cancel = Project(
-        code="P-X", name="Dibatalkan", company_id=co.id,
-        status=ProjectStatus.DIBATALKAN, kind=ProjectKind.REGULAR.value,
+        code="P-X",
+        name="Dibatalkan",
+        company_id=co.id,
+        status=ProjectStatus.DIBATALKAN,
+        kind=ProjectKind.REGULAR.value,
         budget_amount=Decimal("1000"),
     )
-    db.add(p_cancel); await db.commit()
+    db.add(p_cancel)
+    await db.commit()
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as ac:

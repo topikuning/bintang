@@ -14,6 +14,7 @@ admin bisa override lewat AI Settings).
 Placeholder user template tetap {ctx} + {cats} -- backward compat dgn
 override existing. History di-embed dalam {ctx}.
 """
+
 from __future__ import annotations
 
 from sqlalchemy import select
@@ -22,7 +23,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.models import Category, CategoryType, Project, Transaction, TxnStatus
 from app.services.ai import chat
 from app.services.ai.prompt_registry import get_prompt
-
 
 SCHEMA = {
     "type": "object",
@@ -85,10 +85,7 @@ async def _fetch_vendor_history(
     elif direction == "OUT":
         stmt = stmt.where(Transaction.type == "OUT")
     rows = (await db.execute(stmt)).all()
-    return [
-        (str(d), (desc or "")[:60], cat or "—")
-        for d, desc, cat in rows
-    ]
+    return [(str(d), (desc or "")[:60], cat or "—") for d, desc, cat in rows]
 
 
 async def _fetch_similar_tx(
@@ -125,10 +122,7 @@ async def _fetch_similar_tx(
     elif direction == "OUT":
         stmt = stmt.where(Transaction.type == "OUT")
     rows = (await db.execute(stmt)).all()
-    return [
-        (str(d), (de or "")[:60], (p or "—"), c or "—")
-        for d, de, p, c in rows
-    ]
+    return [(str(d), (de or "")[:60], (p or "—"), c or "—") for d, de, p, c in rows]
 
 
 async def run(
@@ -154,8 +148,10 @@ async def run(
     cats = (await db.execute(stmt)).all()
     if not cats:
         return {
-            "category_id": None, "category_name": None,
-            "confidence": 0, "reason": "Tdk ada kategori di database.",
+            "category_id": None,
+            "category_name": None,
+            "confidence": 0,
+            "reason": "Tdk ada kategori di database.",
             "alternatives": [],
         }
 
@@ -163,7 +159,8 @@ async def run(
     party_clean = (party_name or "").strip()
     if not desc_clean and not party_clean:
         return {
-            "category_id": None, "category_name": None,
+            "category_id": None,
+            "category_name": None,
             "confidence": 0,
             "reason": "Isi deskripsi atau nama vendor/klien dulu supaya AI punya konteks.",
             "alternatives": [],
@@ -171,7 +168,10 @@ async def run(
 
     # Fetch enriched context: vendor history + similar tx
     vendor_history = await _fetch_vendor_history(
-        db, party_clean, direction, project_id,
+        db,
+        party_clean,
+        direction,
+        project_id,
     )
     similar_tx = await _fetch_similar_tx(db, desc_clean, direction)
 
@@ -182,9 +182,7 @@ async def run(
         if proj:
             project_info = f"{proj.name} ({proj.code})"
 
-    cats_str = "\n".join(
-        f"- ID {cid}: {name} ({ctype.value})" for cid, name, ctype in cats
-    )
+    cats_str = "\n".join(f"- ID {cid}: {name} ({ctype.value})" for cid, name, ctype in cats)
 
     # Build context (embedded di {ctx} -- backward compat dgn template)
     ctx_lines = []
@@ -215,8 +213,12 @@ async def run(
     prompt = p.user_template.format(ctx=ctx_str, cats=cats_str)
 
     resp = await chat(
-        db, user_id=user_id, feature="ai:category",
-        system=p.system, prompt=prompt, json_schema=SCHEMA,
+        db,
+        user_id=user_id,
+        feature="ai:category",
+        system=p.system,
+        prompt=prompt,
+        json_schema=SCHEMA,
         feature_key="category",
     )
     out = resp.structured or {}
@@ -233,12 +235,14 @@ async def run(
     for a in raw_alts[:2]:
         aid = a.get("category_id")
         if aid in valid_ids and aid != cid:
-            alts.append({
-                "category_id": aid,
-                "category_name": cat_name_by_id.get(aid),
-                "confidence": float(a.get("confidence") or 0),
-                "reason": a.get("reason") or "",
-            })
+            alts.append(
+                {
+                    "category_id": aid,
+                    "category_name": cat_name_by_id.get(aid),
+                    "confidence": float(a.get("confidence") or 0),
+                    "reason": a.get("reason") or "",
+                }
+            )
 
     return {
         "category_id": cid,

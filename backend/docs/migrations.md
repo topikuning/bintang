@@ -39,7 +39,9 @@ Migrasi dijalankan `docker-entrypoint.sh` sebelum uvicorn, lewat
 
 `bootstrap_db.py` menangani tiga keadaan:
 
-1. **DB kosong** -> `alembic upgrade head` (rantai penuh).
+1. **DB kosong** -> model membangun schema lalu `alembic stamp head`.
+   Jalur ini kompatibel dengan SQLite dan aman karena belum ada data
+   yang membutuhkan data migration.
 2. **DB lama tanpa `alembic_version`** -> `alembic stamp head`, TANPA
    DDL dan tanpa menyentuh data. Ini kasus DB produksi yang selama ini
    dikelola `create_all`: strukturnya sudah setara head, jadi
@@ -48,7 +50,9 @@ Migrasi dijalankan `docker-entrypoint.sh` sebelum uvicorn, lewat
 3. **DB sudah ter-stamp** -> `alembic upgrade head` seperti biasa.
 
 Baca komentar di `app/bootstrap_db.py` untuk daftar data migration yang
-sengaja dilewati pada jalur (2) beserta alasannya.
+sengaja dilewati pada jalur (2) beserta alasannya. Sebelum stamp,
+bootstrap memverifikasi tabel, kolom, tipe/nullability, primary key,
+foreign key, unique constraint, dan index terhadap metadata model.
 
 Kalau migrasi gagal, container exit non-zero -> deploy Railway ditandai
 gagal dan versi lama tetap melayani.
@@ -83,16 +87,17 @@ alembic downgrade <rev>    # ke revision tertentu
 alembic downgrade base     # rollback semua
 ```
 
-## Coexistence dgn `create_all` + `_sync_pg_columns`
+## Coexistence dengan `create_all` + `_sync_pg_columns`
 
-Saat ini lifespan still call `create_all` (idempotent — tidak
+Saat ini lifespan tetap memanggil `create_all` (idempotent — tidak
 overwrite tabel ada) + `_sync_pg_columns` (ALTER TABLE additions for
 legacy DBs).
 
 Strategi transisi:
 1. Phase 1 (sekarang): Alembic available, prod tetap pakai `create_all`
    + `_sync_pg_columns`. Setiap perubahan model di-cover oleh BOTH
-   migration baru DAN `_sync_pg_columns` patch.
+   migration baru DAN `_sync_pg_columns` patch. Kegagalan sinkronisasi
+   menghentikan startup; schema parsial tidak lagi disembunyikan sebagai warning.
 2. Phase 2 (setelah verifikasi): hapus `create_all` di prod lifespan,
    pure Alembic.
 3. Phase 3: hapus `_sync_pg_columns` setelah semua DB prod stamped &

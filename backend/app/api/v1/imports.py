@@ -70,7 +70,11 @@ async def _process(
     handler = SCHEMAS[entity]["handler"]
     try:
         new, dupes, errors = await handler(
-            rows, db, user, commit=commit, dup_action=dup_action,
+            rows,
+            db,
+            user,
+            commit=commit,
+            dup_action=dup_action,
         )
         if commit:
             await db.commit()

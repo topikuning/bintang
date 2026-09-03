@@ -7,21 +7,20 @@ Catatan: webhook diset dengan secret_token; Telegram mengirim header
 `X-Telegram-Bot-Api-Secret-Token`. Selain header, kita juga dukung
 query string `?secret=` agar bisa dites dengan curl manual.
 """
+
 from __future__ import annotations
 
 import hmac
 import logging
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.deps import get_current_user, require_admin
 from app.core.rate_limit import telegram_link_limiter
 from app.db.session import get_db
-from app.models.models import TelegramLinkCode, User
+from app.models.models import User
 from app.services import messaging
 from app.services.app_settings import get_setting
 from app.services.telegram import client as tg
@@ -34,16 +33,25 @@ router = APIRouter()
 
 
 async def _handle_doc_session_reply(
-    db: AsyncSession, user: User, chat_id: str, text: str,
+    db: AsyncSession,
+    user: User,
+    chat_id: str,
+    text: str,
 ) -> str:
     """Handle balasan "ya"/"batal" utk PO/Invoice session. Audit 2026-06-02:
     dispatch by entity_type via shared helper."""
     from app.services.bot_doc_photo import handle_session_reply
+
     reply_md = await handle_session_reply(
-        db, user=user, channel="telegram", chat_id=chat_id, text=text,
+        db,
+        user=user,
+        channel="telegram",
+        chat_id=chat_id,
+        text=text,
     )
     # Convert *bold* + `mono` markdown -> Telegram HTML.
     import re as _re
+
     html = _re.sub(r"\*([^*\n]+)\*", r"<b>\1</b>", reply_md)
     html = _re.sub(r"`([^`\n]+)`", r"<code>\1</code>", html)
     return html
@@ -86,18 +94,12 @@ async def webhook(
     # SEMUA update sah justru ditolak 401.
     expected = await get_setting(db, "TELEGRAM_WEBHOOK_SECRET")
     if not expected:
-        # Secret kosong = verifikasi dilewati, konsisten dgn whatsapp.py.
-        #
-        # Catatan: berbeda dari WAHA, secret Telegram STABIL -- kita
-        # sendiri yang mendaftarkannya ke Telegram saat startup, dan
-        # Telegram mengirimkannya balik di tiap update. Jadi di sini
-        # mengisi TELEGRAM_WEBHOOK_SECRET tidak punya masalah
-        # operasional seperti WAHA, dan tetap disarankan.
-        pass
-    else:
-        provided = x_telegram_bot_api_secret_token or secret
-        if not provided or not hmac.compare_digest(provided, expected):
-            raise HTTPException(401, "bad_secret")
+        # Telegram menyimpan secret secara stabil dan mengirimkannya pada
+        # setiap update. Tidak ada alasan operasional untuk fail-open.
+        raise HTTPException(503, "telegram_webhook_secret_required")
+    provided = x_telegram_bot_api_secret_token or secret
+    if not provided or not hmac.compare_digest(provided, expected):
+        raise HTTPException(401, "bad_secret")
 
     update = await request.json()
     message = update.get("message") or update.get("edited_message")
@@ -110,9 +112,9 @@ async def webhook(
         return {"ok": True, "skipped": "no chat_id"}
 
     # cari user berdasarkan chat_id (kalau sudah link)
-    user = (await db.execute(
-        select(User).where(User.telegram_chat_id == chat_id)
-    )).scalar_one_or_none()
+    user = (
+        await db.execute(select(User).where(User.telegram_chat_id == chat_id))
+    ).scalar_one_or_none()
 
     text: str = message.get("text") or message.get("caption") or ""
     reply: str = ""
@@ -140,10 +142,12 @@ async def webhook(
     # Audit 2026-06-02: foto + caption /po atau /invoice -> OCR flow
     # (jangan attach ke pending TX). Pakai bot_doc_photo helper.
     from app.services.bot_doc_photo import parse_doc_cmd
+
     doc_cmd_spec = parse_doc_cmd(caption) if file_id else None
 
     if doc_cmd_spec is not None and file_id:
         from app.services.bot_doc_photo import handle_doc_photo
+
         payload = await tg.download_file(file_id)
         if payload is None:
             reply = "Gagal download foto dari Telegram. Coba kirim ulang."
@@ -151,17 +155,25 @@ async def webhook(
             content, file_path = payload
             ext = (file_path.rsplit(".", 1)[-1] if "." in file_path else "jpg").lower()
             media_type = {
-                "jpg": "image/jpeg", "jpeg": "image/jpeg",
-                "png": "image/png", "webp": "image/webp",
+                "jpg": "image/jpeg",
+                "jpeg": "image/jpeg",
+                "png": "image/png",
+                "webp": "image/webp",
                 "pdf": "application/pdf",
             }.get(ext, "image/jpeg")
             reply_md = await handle_doc_photo(
-                db, user=user, channel="telegram", chat_id=chat_id,
-                content=content, media_type=media_type,
-                source_url=None, spec=doc_cmd_spec,
+                db,
+                user=user,
+                channel="telegram",
+                chat_id=chat_id,
+                content=content,
+                media_type=media_type,
+                source_url=None,
+                spec=doc_cmd_spec,
             )
             # Markdown -> Telegram HTML
             import re as _re
+
             reply = _re.sub(r"\*([^*\n]+)\*", r"<b>\1</b>", reply_md)
             reply = _re.sub(r"`([^`\n]+)`", r"<code>\1</code>", reply)
     else:
@@ -175,7 +187,9 @@ async def webhook(
         if file_id:
             # Foto/file biasa (tanpa caption /po atau /invoice): standard
             # attachment ke TX pending (existing behavior).
-            photo_reply = await handle_photo(db, user, chat_id, file_id, caption, file_name=file_name)
+            photo_reply = await handle_photo(
+                db, user, chat_id, file_id, caption, file_name=file_name
+            )
             if reply and photo_reply:
                 reply = f"{reply}\n\n{photo_reply}"
             else:
@@ -190,6 +204,7 @@ async def webhook(
 
 
 # --- Linking endpoint untuk web (perlu auth) -------------------------------
+
 
 @router.post("/me/link-code")
 async def issue_my_link_code(

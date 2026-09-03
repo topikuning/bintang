@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -14,7 +14,6 @@ from app.core.deps import (
     get_current_user,
     require_admin,
     require_can_write,
-    require_superadmin,
 )
 from app.core.rate_limit import ocr_limiter
 from app.db.session import get_db
@@ -31,7 +30,7 @@ from app.models.models import (
     UserRole,
 )
 from app.services.audit import log, snapshot
-from app.services.ocr.adapter import get_ocr_adapter, list_available_engines
+from app.services.ocr.adapter import list_available_engines
 from app.services.storage.local import ALLOWED_MIME, save_upload
 from app.services.storage.paths import (
     UnsafeUploadPath,
@@ -105,6 +104,7 @@ async def test_connection(
                 "hint": "Restart deploy supaya pip install anthropic dijalankan.",
             }
         from app.services.ocr.adapter import _resolve_model
+
         model = _resolve_model("claude")
         adapter = ClaudeVisionOCRAdapter(api_key=anthropic_key, model=model)
         result = await adapter.test_connection()
@@ -139,7 +139,7 @@ async def test_connection(
 
 
 def _persist_extraction(
-    *, entity: str, source_url: str, result: dict[str, Any]
+    *, user_id: int, entity: str, source_url: str, result: dict[str, Any]
 ) -> AIExtraction:
     """Bangun row AIExtraction dari hasil adapter -- kompatibel dgn URL dan
     upload path. Decimal di-stringify agar JSON-serializable.
@@ -150,6 +150,7 @@ def _persist_extraction(
         if k != "raw_response"
     }
     return AIExtraction(
+        user_id=user_id,
         entity=entity,
         source_url=source_url,
         status=AIExtractionStatus.DONE,
@@ -181,6 +182,7 @@ async def extract(
     # Pipeline: fetch URL -> hash cache -> preprocess -> adapter (+ fallback).
     # Audit 2026-05-23 OCR opt #T1.1/#T1.2/#T2.6.
     from app.services.ocr.pipeline import fetch_to_bytes, run_extraction
+
     try:
         content, media_type = await fetch_to_bytes(payload.file_url)
     except (FileNotFoundError, ValueError) as e:
@@ -193,8 +195,11 @@ async def extract(
         raise HTTPException(502, "fetch_http_error: gagal mengunduh berkas dari URL itu") from e
     try:
         result = await run_extraction(
-            db, content=content, media_type=media_type,
-            source_url=payload.file_url, engine=payload.engine,
+            db,
+            content=content,
+            media_type=media_type,
+            source_url=payload.file_url,
+            engine=payload.engine,
         )
     except Exception as e:  # noqa: BLE001
         # Audit #S-12: pesan dari provider OCR bisa memuat potongan
@@ -202,7 +207,10 @@ async def extract(
         logger.exception("ocr.extract_failed url=%s", payload.file_url)
         raise HTTPException(502, "ocr_failed: mesin OCR gagal memproses berkas") from e
     rec = _persist_extraction(
-        entity=payload.entity, source_url=payload.file_url, result=result
+        user_id=user.id,
+        entity=payload.entity,
+        source_url=payload.file_url,
+        result=result,
     )
     db.add(rec)
     await db.flush()
@@ -265,16 +273,25 @@ async def extract_upload(
 
     # Pipeline shared (hash cache + preprocess + engine fallback).
     from app.services.ocr.pipeline import run_extraction
+
     try:
         result = await run_extraction(
-            db, content=content, media_type=media_type,
-            source_url=source_url, engine=engine,
+            db,
+            content=content,
+            media_type=media_type,
+            source_url=source_url,
+            engine=engine,
         )
     except Exception as e:  # noqa: BLE001
         logger.exception("ocr.extract_upload_failed file=%s", saved["file_name"])
         raise HTTPException(502, "ocr_failed: mesin OCR gagal memproses berkas") from e
 
-    rec = _persist_extraction(entity=entity, source_url=source_url, result=result)
+    rec = _persist_extraction(
+        user_id=user.id,
+        entity=entity,
+        source_url=source_url,
+        result=result,
+    )
     db.add(rec)
     await db.flush()
     await log(
@@ -327,6 +344,7 @@ async def create_ocr_job(
 
     saved = await save_upload(file, subdir="ocr")
     from app.models.models import OCRJob, OCRJobStatus
+
     job = OCRJob(
         user_id=user.id,
         entity=entity,
@@ -342,6 +360,7 @@ async def create_ocr_job(
     # Spawn background task (asyncio.create_task fire-and-forget).
     # Task pakai DB session sendiri (request session di-close setelah return).
     import asyncio
+
     asyncio.create_task(_process_ocr_job(job.id))
 
     return {
@@ -359,15 +378,12 @@ async def _process_ocr_job(job_id: int) -> None:
     State transitions: PENDING -> PROCESSING -> DONE/FAILED.
     """
     import logging
-    from datetime import datetime, timezone
-    from pathlib import Path
+    from datetime import datetime
 
-    from app.core.config import settings
     from app.db.session import SessionLocal
-    from app.models.models import OCRJob, OCRJobStatus
-    from app.services.ocr.pipeline import run_extraction
+    from app.models.models import AuditAction, OCRJob, OCRJobStatus
     from app.services.audit import log as _audit_log
-    from app.models.models import AuditAction
+    from app.services.ocr.pipeline import run_extraction
 
     # Logger lokal. Di dalam fungsi ini `log` aman dipakai sbg logger
     # karena fungsi audit di-impor dgn alias `_audit_log` di atas.
@@ -379,7 +395,7 @@ async def _process_ocr_job(job_id: int) -> None:
             log.error("ocr.job.not_found id=%s", job_id)
             return
         job.status = OCRJobStatus.PROCESSING
-        job.started_at = datetime.now(timezone.utc)
+        job.started_at = datetime.now(UTC)
         await bg_db.commit()
         try:
             # Resolve file path (audit #S-01: lewat resolver bersama)
@@ -388,34 +404,41 @@ async def _process_ocr_job(job_id: int) -> None:
             # Mime guessing dari ext (cukup utk pipeline)
             ext = p.suffix.lower()
             media_map = {
-                ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-                ".png": "image/png", ".webp": "image/webp",
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".webp": "image/webp",
                 ".pdf": "application/pdf",
             }
             media_type = media_map.get(ext, "image/jpeg")
 
             result = await run_extraction(
-                bg_db, content=content, media_type=media_type,
-                source_url=job.source_url, engine=job.engine_requested,
+                bg_db,
+                content=content,
+                media_type=media_type,
+                source_url=job.source_url,
+                engine=job.engine_requested,
             )
             # Serialize Decimal sebelum simpan JSON
             serializable = {
-                k: (str(v) if hasattr(v, "is_finite") else v)
-                for k, v in result.items()
+                k: (str(v) if hasattr(v, "is_finite") else v) for k, v in result.items()
             }
             job.result = serializable
             job.status = OCRJobStatus.DONE
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = datetime.now(UTC)
             await _audit_log(
-                bg_db, user_id=job.user_id,
-                entity="ocr_job", entity_id=job.id, action=AuditAction.CREATE,
+                bg_db,
+                user_id=job.user_id,
+                entity="ocr_job",
+                entity_id=job.id,
+                action=AuditAction.CREATE,
                 note=f"async ocr engine={result.get('raw_response', {}).get('engine', '?')}",
             )
         except Exception as e:  # noqa: BLE001
             log.exception("ocr.job.failed id=%s", job_id)
             job.status = OCRJobStatus.FAILED
             job.error = str(e)[:1000]
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = datetime.now(UTC)
         await bg_db.commit()
 
 
@@ -444,11 +467,13 @@ async def get_ocr_job(
 ) -> dict:
     """Poll status OCR job. Return full state (status, result/error)."""
     from app.models.models import OCRJob
+
     job = await db.get(OCRJob, job_id)
     if not job:
         raise HTTPException(404, "job_not_found")
     if job.user_id != user.id and user.role not in (
-        UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN,
+        UserRole.SUPERADMIN,
+        UserRole.CENTRAL_ADMIN,
     ):
         raise HTTPException(403, "not_owner")
     return _job_to_dict(job)
@@ -471,20 +496,24 @@ async def stream_ocr_job(
         // setelah terminal (DONE/FAILED).
     """
     from fastapi.responses import StreamingResponse
-    from app.models.models import OCRJob, OCRJobStatus
+
+    from app.models.models import OCRJob
 
     job = await db.get(OCRJob, job_id)
     if not job:
         raise HTTPException(404, "job_not_found")
     if job.user_id != user.id and user.role not in (
-        UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN,
+        UserRole.SUPERADMIN,
+        UserRole.CENTRAL_ADMIN,
     ):
         raise HTTPException(403, "not_owner")
 
     async def _gen():
         import asyncio
         import json
+
         from app.db.session import SessionLocal
+
         last_status: str | None = None
         # Poll interval 800ms. Total max wait 5 menit (~375 ticks).
         for _ in range(375):
@@ -502,7 +531,7 @@ async def stream_ocr_job(
                     return
             await asyncio.sleep(0.8)
         # Timeout
-        yield f"event: timeout\ndata: {{\"error\":\"poll_timeout\"}}\n\n"
+        yield 'event: timeout\ndata: {"error":"poll_timeout"}\n\n'
 
     return StreamingResponse(
         _gen(),
@@ -517,12 +546,17 @@ async def list_drafts(
     _admin: User = Depends(require_admin),
 ) -> list[dict]:
     rows = (
-        await db.execute(
-            select(AIExtraction).where(AIExtraction.deleted_at.is_(None))
-            .order_by(AIExtraction.id.desc())
-            .limit(100)
+        (
+            await db.execute(
+                select(AIExtraction)
+                .where(AIExtraction.deleted_at.is_(None))
+                .order_by(AIExtraction.id.desc())
+                .limit(100)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [
         {
             "id": r.id,
@@ -556,7 +590,7 @@ async def discard_draft(
             409,
             f"draft_already_linked_to_invoice_{rec.entity_id}_cannot_discard",
         )
-    rec.deleted_at = datetime.now(timezone.utc)
+    rec.deleted_at = datetime.now(UTC)
     await log(
         db,
         user_id=user.id,
@@ -571,6 +605,7 @@ async def discard_draft(
 class OcrItemOverrideIn(BaseModel):
     """Item override saat user edit di OCR Asisten sebelum Buat Invoice.
     Audit 2026-06-13: items bisa di-edit / exclude per-baris."""
+
     description: str
     quantity: Decimal = Decimal("1")
     unit: str | None = None
@@ -642,14 +677,13 @@ async def create_invoice_from_draft(
     if not rec or rec.deleted_at is not None:
         raise HTTPException(404, "draft_not_found")
     if rec.entity_id is not None:
-        raise HTTPException(
-            409, f"draft_already_linked_to_invoice_{rec.entity_id}"
-        )
+        raise HTTPException(409, f"draft_already_linked_to_invoice_{rec.entity_id}")
     # User harus punya akses ke project tujuan
     await ensure_project_access(db, user, body.project_id)
     # Audit 2026-05-24 Phase 1: guard project closed. OCR import =
     # mutasi baru -- konsisten dgn create invoice biasa.
     from app.services.project_guard import assert_project_open
+
     await assert_project_open(db, body.project_id, user=user, force=False)
 
     data = rec.extracted_data or {}
@@ -670,26 +704,18 @@ async def create_invoice_from_draft(
         notes_parts.append(body.override_notes.strip())
     if notes_from_ocr:
         notes_parts.append(f"[OCR] {notes_from_ocr}")
-    notes_parts.append(
-        f"[OCR] Dibuat dari draft #{rec.id} oleh {user.email or user.id}"
-    )
+    notes_parts.append(f"[OCR] Dibuat dari draft #{rec.id} oleh {user.email or user.id}")
 
     # Audit 2026-06-13: dates + tax override-able. Fallback ke OCR.
     invoice_date = (
-        body.override_invoice_date
-        or _parse_iso_date(data.get("invoice_date"))
-        or date.today()
+        body.override_invoice_date or _parse_iso_date(data.get("invoice_date")) or date.today()
     )
     due_date = (
         body.override_due_date
         if body.override_due_date is not None
         else _parse_iso_date(data.get("due_date"))
     )
-    tax_value = (
-        body.override_tax
-        if body.override_tax is not None
-        else _to_decimal(data.get("tax"))
-    )
+    tax_value = body.override_tax if body.override_tax is not None else _to_decimal(data.get("tax"))
 
     inv = Invoice(
         number=number,
@@ -775,9 +801,12 @@ async def create_invoice_from_draft(
         if p is not None:
             suffix = p.suffix.lower()
             mime_map = {
-                ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-                ".png": "image/png", ".webp": "image/webp",
-                ".gif": "image/gif", ".pdf": "application/pdf",
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".webp": "image/webp",
+                ".gif": "image/gif",
+                ".pdf": "application/pdf",
             }
             inv.attachments.append(
                 InvoiceAttachment(

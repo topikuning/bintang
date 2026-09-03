@@ -7,12 +7,13 @@ Namespace + key based. Lebih luas dari OCRCache (yg khusus file_hash):
 
 Audit 2026-05-23 AI foundation.
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, select, update
@@ -49,24 +50,26 @@ async def lookup(
 
     Side effect: increment hits & set last_hit_at. Caller commit.
     """
-    row = (await db.execute(
-        select(AICache).where(
-            AICache.namespace == namespace,
-            AICache.cache_key == key,
+    row = (
+        await db.execute(
+            select(AICache).where(
+                AICache.namespace == namespace,
+                AICache.cache_key == key,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if row is None:
         return None
     # TTL check
     created = row.created_at
     if created.tzinfo is None:
-        created = created.replace(tzinfo=timezone.utc)
-    if (datetime.now(timezone.utc) - created) > timedelta(days=ttl_days):
+        created = created.replace(tzinfo=UTC)
+    if (datetime.now(UTC) - created) > timedelta(days=ttl_days):
         return None
     await db.execute(
         update(AICache)
         .where(AICache.id == row.id)
-        .values(hits=AICache.hits + 1, last_hit_at=datetime.now(timezone.utc))
+        .values(hits=AICache.hits + 1, last_hit_at=datetime.now(UTC))
     )
     log.info("ai.cache.hit ns=%s key=%s hits=%d", namespace, key[:12], row.hits + 1)
     return dict(row.value)
@@ -88,16 +91,19 @@ async def store(
     global _insert_counter
     await db.execute(
         delete(AICache).where(
-            AICache.namespace == namespace, AICache.cache_key == key,
+            AICache.namespace == namespace,
+            AICache.cache_key == key,
         )
     )
-    db.add(AICache(
-        namespace=namespace,
-        cache_key=key,
-        value=value,
-        source_info=source_info,
-        hits=0,
-    ))
+    db.add(
+        AICache(
+            namespace=namespace,
+            cache_key=key,
+            value=value,
+            source_info=source_info,
+            hits=0,
+        )
+    )
     _insert_counter += 1
     if _insert_counter >= _CLEANUP_EVERY_N_INSERTS:
         _insert_counter = 0
@@ -106,7 +112,7 @@ async def store(
 
 
 async def _cleanup_expired(db: AsyncSession) -> None:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=DEFAULT_TTL_DAYS)
+    cutoff = datetime.now(UTC) - timedelta(days=DEFAULT_TTL_DAYS)
     try:
         res = await db.execute(delete(AICache).where(AICache.created_at < cutoff))
         n = res.rowcount or 0

@@ -64,6 +64,9 @@ async def _sync_pg_columns(conn) -> None:
         # Token revocation cutoff (audit #C5). Logout set ke now() supaya
         # JWT dgn iat <= cutoff dianggap revoked. Migrasi c8e1d4f2a6b9.
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS tokens_revoked_after TIMESTAMP WITH TIME ZONE",
+        # Ownership upload OCR/contract untuk otorisasi /files.
+        "ALTER TABLE ai_extractions ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)",
+        "CREATE INDEX IF NOT EXISTS ix_ai_extractions_user_id ON ai_extractions (user_id)",
         # Encrypt-at-rest utk bank_account & party_account (audit #C3).
         # Widen kolom 200 -> 500 supaya cukup Fernet ciphertext. Postgres
         # ALTER COLUMN TYPE OK; SQLite skip (try/except wrapping).
@@ -113,10 +116,9 @@ async def _sync_pg_columns(conn) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_invoices_number ON invoices (number)",
     ]
     for sql in statements:
-        try:
-            await conn.execute(text(sql))
-        except Exception as e:  # noqa: BLE001
-            print(f"[startup] column add warning: {e}")
+        # Schema parsial bukan kondisi yang boleh disembunyikan: transaksi
+        # pemanggil harus gagal agar deploy tidak men-stamp DB yang cacat.
+        await conn.execute(text(sql))
 
 
 # Indeks performa yg ditambahkan setelah tabel sudah berisi data.
@@ -159,10 +161,7 @@ _PERF_INDEXES = [
 
 async def _ensure_perf_indexes(conn) -> None:
     for sql in _PERF_INDEXES:
-        try:
-            await conn.execute(text(sql))
-        except Exception as e:  # noqa: BLE001
-            print(f"[startup] index ensure warning: {e}")
+        await conn.execute(text(sql))
 
 
 async def _sync_pg_enums(conn) -> None:
@@ -185,6 +184,4 @@ async def _sync_pg_enums(conn) -> None:
                 seen.add(key)
                 # Aman karena enum name & value semuanya literal Python sumber.
                 safe = val.replace("'", "''")
-                await conn.execute(
-                    text(f"ALTER TYPE {t.name} ADD VALUE IF NOT EXISTS '{safe}'")
-                )
+                await conn.execute(text(f"ALTER TYPE {t.name} ADD VALUE IF NOT EXISTS '{safe}'"))

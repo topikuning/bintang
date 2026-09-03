@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -54,9 +54,7 @@ async def list_users(
     if q:
         like = f"%{q}%"
         stmt = stmt.where(
-            (User.email.ilike(like))
-            | (User.name.ilike(like))
-            | (User.username.ilike(like))
+            (User.email.ilike(like)) | (User.name.ilike(like)) | (User.username.ilike(like))
         )
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     stmt = stmt.order_by(User.id.desc()).offset((page - 1) * size).limit(size)
@@ -70,15 +68,17 @@ async def create_user(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_superadmin),
 ) -> UserOut:
-    exists = (await db.execute(select(User).where(User.email == payload.email))).scalar_one_or_none()
+    exists = (
+        await db.execute(select(User).where(User.email == payload.email))
+    ).scalar_one_or_none()
     if exists:
         raise HTTPException(status_code=409, detail="email_already_used")
     # Username validation sudah di-handle pydantic (lowercase + format).
     # Cek uniqueness di sini.
     if payload.username:
-        dup = (await db.execute(
-            select(User).where(User.username == payload.username)
-        )).scalar_one_or_none()
+        dup = (
+            await db.execute(select(User).where(User.username == payload.username))
+        ).scalar_one_or_none()
         if dup:
             raise HTTPException(status_code=409, detail="username_already_used")
     user = User(
@@ -92,8 +92,14 @@ async def create_user(
     )
     db.add(user)
     await db.flush()
-    await log(db, user_id=admin.id, entity="user", entity_id=user.id,
-              action=AuditAction.CREATE, after=snapshot(user))
+    await log(
+        db,
+        user_id=admin.id,
+        entity="user",
+        entity_id=user.id,
+        action=AuditAction.CREATE,
+        after=snapshot(user),
+    )
     await db.commit()
     await db.refresh(user)
     return UserOut.model_validate(user)
@@ -134,13 +140,12 @@ async def users_lookup(
     if q:
         like = f"%{q}%"
         stmt = stmt.where(
-            (User.name.ilike(like))
-            | (User.email.ilike(like))
-            | (User.username.ilike(like))
+            (User.name.ilike(like)) | (User.email.ilike(like)) | (User.username.ilike(like))
         )
     if role:
         # Validate role string aman -- skip kalau bukan UserRole valid.
         from app.models.models import UserRole as _UR
+
         try:
             role_enum = _UR(role.upper())
             stmt = stmt.where(User.role == role_enum)
@@ -217,8 +222,13 @@ async def update_user(
     # SUPERADMIN.
     if is_self and not is_super:
         forbidden = {
-            "role", "is_active", "scope_all_projects", "username",
-            "telegram_chat_id", "whatsapp_phone", "whatsapp_chat_id",
+            "role",
+            "is_active",
+            "scope_all_projects",
+            "username",
+            "telegram_chat_id",
+            "whatsapp_phone",
+            "whatsapp_chat_id",
         }
         bad = forbidden & set(data.keys())
         if bad:
@@ -226,11 +236,14 @@ async def update_user(
 
     # Validasi uniqueness username kalau diubah ke value baru.
     if "username" in data and data["username"] is not None:
-        dup = (await db.execute(
-            select(User).where(
-                User.username == data["username"], User.id != u.id,
+        dup = (
+            await db.execute(
+                select(User).where(
+                    User.username == data["username"],
+                    User.id != u.id,
+                )
             )
-        )).scalar_one_or_none()
+        ).scalar_one_or_none()
         if dup:
             raise HTTPException(status_code=409, detail="username_already_used")
 
@@ -257,8 +270,15 @@ async def update_user(
         data["whatsapp_chat_id"] = wa or None
     for k, v in data.items():
         setattr(u, k, v)
-    await log(db, user_id=actor.id, entity="user", entity_id=u.id,
-              action=AuditAction.UPDATE, before=before, after=snapshot(u))
+    await log(
+        db,
+        user_id=actor.id,
+        entity="user",
+        entity_id=u.id,
+        action=AuditAction.UPDATE,
+        before=before,
+        after=snapshot(u),
+    )
     await db.commit()
     await db.refresh(u)
     return UserOut.model_validate(u)
@@ -277,9 +297,15 @@ async def delete_user(
         raise HTTPException(400, "cannot_delete_self")
     before = snapshot(u)
     u.is_active = False
-    u.deleted_at = datetime.utcnow()
-    await log(db, user_id=admin.id, entity="user", entity_id=u.id,
-              action=AuditAction.DELETE, before=before)
+    u.deleted_at = datetime.now(UTC)
+    await log(
+        db,
+        user_id=admin.id,
+        entity="user",
+        entity_id=u.id,
+        action=AuditAction.DELETE,
+        before=before,
+    )
     await db.commit()
 
 
@@ -320,26 +346,36 @@ async def list_user_projects(
 
 @router.post("/{user_id}/projects/{project_id}", status_code=204)
 async def assign_project(
-    user_id: int, project_id: int,
+    user_id: int,
+    project_id: int,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> None:
-    exists = (await db.execute(
-        select(ProjectUser).where(
-            ProjectUser.user_id == user_id, ProjectUser.project_id == project_id
+    exists = (
+        await db.execute(
+            select(ProjectUser).where(
+                ProjectUser.user_id == user_id, ProjectUser.project_id == project_id
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if exists:
         return
     db.add(ProjectUser(user_id=user_id, project_id=project_id))
-    await log(db, user_id=admin.id, entity="project_user", entity_id=project_id,
-              action=AuditAction.CREATE, note=f"user {user_id} -> project {project_id}")
+    await log(
+        db,
+        user_id=admin.id,
+        entity="project_user",
+        entity_id=project_id,
+        action=AuditAction.CREATE,
+        note=f"user {user_id} -> project {project_id}",
+    )
     await db.commit()
 
 
 @router.delete("/{user_id}/projects/{project_id}", status_code=204)
 async def unassign_project(
-    user_id: int, project_id: int,
+    user_id: int,
+    project_id: int,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> None:
@@ -352,6 +388,12 @@ async def unassign_project(
     if not link:
         return
     await db.delete(link)
-    await log(db, user_id=admin.id, entity="project_user", entity_id=project_id,
-              action=AuditAction.DELETE, note=f"user {user_id} <- project {project_id}")
+    await log(
+        db,
+        user_id=admin.id,
+        entity="project_user",
+        entity_id=project_id,
+        action=AuditAction.DELETE,
+        note=f"user {user_id} <- project {project_id}",
+    )
     await db.commit()

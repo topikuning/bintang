@@ -5,11 +5,12 @@
 - Login endpoint rate-limit per IP (5/60s). Wrong password 6x dari IP
   sama -> 429.
 """
+
 from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import HTTPException, Request, Response
@@ -47,18 +48,21 @@ def _FakeResp() -> Response:
 
 async def _seed_user(db, *, email="x@x", username=None, password="secret123"):
     u = User(
-        email=email, username=username, name="X",
+        email=email,
+        username=username,
+        name="X",
         password_hash=hash_password(password),
         role=UserRole.PROJECT_ADMIN,
     )
-    db.add(u); await db.flush()
+    db.add(u)
+    await db.flush()
     return u
 
 
 @pytest.mark.asyncio
 async def test_login_includes_iat_and_is_accepted(db):
     login_limiter.reset("login:127.0.0.1")
-    user = await _seed_user(db, email="a@x", password="pw123456")
+    await _seed_user(db, email="a@x", password="pw123456")
     out = await login(
         request=_fake_request(),
         response=_FakeResp(),
@@ -68,7 +72,9 @@ async def test_login_includes_iat_and_is_accepted(db):
     assert out.access_token
     # Decode untuk verifikasi iat ada
     from jose import jwt
+
     from app.core.config import settings
+
     payload = jwt.decode(out.access_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
     assert "iat" in payload
 
@@ -126,7 +132,8 @@ def test_rate_limiter_blocks_after_max_calls():
 
 def test_rate_limiter_resets_after_reset():
     rl = RateLimiter(max_calls=2, period_seconds=10.0)
-    rl.check("k"); rl.check("k")
+    rl.check("k")
+    rl.check("k")
     ok, _ = rl.check("k")
     assert not ok
     rl.reset("k")
@@ -136,7 +143,8 @@ def test_rate_limiter_resets_after_reset():
 
 def test_rate_limiter_window_slides():
     rl = RateLimiter(max_calls=2, period_seconds=0.3)
-    rl.check("k"); rl.check("k")
+    rl.check("k")
+    rl.check("k")
     ok, _ = rl.check("k")
     assert not ok
     time.sleep(0.35)
@@ -150,7 +158,7 @@ async def test_login_rate_limit_kicks_in(db):
     test_ip = "10.20.30.40"
     key = f"login:{test_ip}"
     login_limiter.reset(key)
-    user = await _seed_user(db, email="d@x", password="correct123")
+    await _seed_user(db, email="d@x", password="correct123")
 
     # 5 attempts gagal -- semua dpt 401 (wrong password)
     for _ in range(5):
@@ -182,7 +190,7 @@ async def test_successful_login_resets_limiter(db):
     test_ip = "10.20.30.41"
     key = f"login:{test_ip}"
     login_limiter.reset(key)
-    user = await _seed_user(db, email="e@x", password="correct123")
+    await _seed_user(db, email="e@x", password="correct123")
 
     for _ in range(4):
         with pytest.raises(HTTPException):
@@ -220,12 +228,14 @@ async def test_legacy_token_without_iat_still_works(db):
     """Token lama (di-issued sebelum #C5, tanpa iat di payload) harus
     tetap accepted -- supaya deploy tdk pecahkan session existing."""
     from jose import jwt
+
     from app.core.config import settings
+
     user = await _seed_user(db, email="f@x", password="x")
     # Manually issue token tanpa iat
     payload = {
         "sub": str(user.id),
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=60),
+        "exp": datetime.now(UTC) + timedelta(minutes=60),
         "role": user.role.value,
     }
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)

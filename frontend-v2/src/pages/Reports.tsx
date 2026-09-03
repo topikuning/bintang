@@ -11,7 +11,7 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react"
-import { Link } from "react-router-dom"
+import { Link } from "react-router"
 import { ReportSection } from "@/components/reports/ReportSection"
 import { useAuthStore } from "@/store/auth"
 

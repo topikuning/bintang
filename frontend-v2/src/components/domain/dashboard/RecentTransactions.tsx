@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom"
+import { Link } from "react-router"
 import { ArrowDownLeft, ArrowUpRight, ChevronRight } from "lucide-react"
 import type { DashboardRecentTransaction } from "@/types/dashboard"
 import { fmtDate, fmtIDR } from "@/lib/format"

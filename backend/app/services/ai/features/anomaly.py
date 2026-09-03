@@ -11,20 +11,19 @@ Two-stage approach:
 
 Hemat token: LLM dapat ringkasan + top candidates, bukan full data dump.
 """
+
 from __future__ import annotations
 
-import statistics
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.models import Project, Transaction, TxnStatus, TxnType
+from app.models.models import Project, Transaction, TxnStatus
 from app.services.ai import chat
 from app.services.ai.prompt_registry import get_prompt
-
 
 SCHEMA = {
     "type": "object",
@@ -78,14 +77,16 @@ def _build_candidates(
         if t.id in seen_tx_ids:
             continue
         seen_tx_ids.add(t.id)
-        candidates.append({
-            "tx_id": t.id,
-            "date": str(t.tx_date),
-            "amount": str(t.amount),
-            "vendor": t.party_name or "(tdk ada)",
-            "description": (t.description or "")[:100],
-            "reason_prefilter": "top10_amount",
-        })
+        candidates.append(
+            {
+                "tx_id": t.id,
+                "date": str(t.tx_date),
+                "amount": str(t.amount),
+                "vendor": t.party_name or "(tdk ada)",
+                "description": (t.description or "")[:100],
+                "reason_prefilter": "top10_amount",
+            }
+        )
 
     # Vendor baru + amount > median
     for t in txs:
@@ -95,14 +96,16 @@ def _build_candidates(
         amount = Decimal(t.amount or 0)
         if vendor and vendor not in historical_vendors and amount > median:
             seen_tx_ids.add(t.id)
-            candidates.append({
-                "tx_id": t.id,
-                "date": str(t.tx_date),
-                "amount": str(t.amount),
-                "vendor": t.party_name,
-                "description": (t.description or "")[:100],
-                "reason_prefilter": "vendor_baru + amount > median",
-            })
+            candidates.append(
+                {
+                    "tx_id": t.id,
+                    "date": str(t.tx_date),
+                    "amount": str(t.amount),
+                    "vendor": t.party_name,
+                    "description": (t.description or "")[:100],
+                    "reason_prefilter": "vendor_baru + amount > median",
+                }
+            )
 
     # Amount > p95
     for t in txs:
@@ -110,14 +113,16 @@ def _build_candidates(
             continue
         if Decimal(t.amount or 0) > p95:
             seen_tx_ids.add(t.id)
-            candidates.append({
-                "tx_id": t.id,
-                "date": str(t.tx_date),
-                "amount": str(t.amount),
-                "vendor": t.party_name or "(tdk ada)",
-                "description": (t.description or "")[:100],
-                "reason_prefilter": "amount > p95",
-            })
+            candidates.append(
+                {
+                    "tx_id": t.id,
+                    "date": str(t.tx_date),
+                    "amount": str(t.amount),
+                    "vendor": t.party_name or "(tdk ada)",
+                    "description": (t.description or "")[:100],
+                    "reason_prefilter": "amount > p95",
+                }
+            )
 
     # Cap candidates ke 30 (LLM token budget)
     return candidates[:30]
@@ -133,14 +138,11 @@ async def run(
 ) -> dict[str, Any]:
     """Scan periode utk anomali transaksi."""
     # Load tx periode
-    stmt = (
-        select(Transaction)
-        .where(
-            Transaction.deleted_at.is_(None),
-            Transaction.status == TxnStatus.VERIFIED,
-            Transaction.tx_date >= date_from,
-            Transaction.tx_date <= date_to,
-        )
+    stmt = select(Transaction).where(
+        Transaction.deleted_at.is_(None),
+        Transaction.status == TxnStatus.VERIFIED,
+        Transaction.tx_date >= date_from,
+        Transaction.tx_date <= date_to,
     )
     if project_id:
         stmt = stmt.where(Transaction.project_id == project_id)
@@ -153,7 +155,8 @@ async def run(
     # vendor baru muncul.
     hist_start = date_from - timedelta(days=90)
     hist_stmt = (
-        select(Transaction.party_name).distinct()
+        select(Transaction.party_name)
+        .distinct()
         .where(
             Transaction.deleted_at.is_(None),
             Transaction.status == TxnStatus.VERIFIED,
@@ -164,9 +167,7 @@ async def run(
     if project_id:
         hist_stmt = hist_stmt.where(Transaction.project_id == project_id)
     historical_vendors = {
-        (v or "").strip().lower()
-        for (v,) in (await db.execute(hist_stmt)).all()
-        if v
+        (v or "").strip().lower() for (v,) in (await db.execute(hist_stmt)).all() if v
     }
 
     candidates = _build_candidates(txs, historical_vendors)
@@ -176,7 +177,6 @@ async def run(
     # Build summary stats
     total_tx = len(txs)
     total_amount = sum(Decimal(t.amount or 0) for t in txs)
-    amounts = [Decimal(t.amount or 0) for t in txs]
     avg_amount = total_amount / Decimal(total_tx) if total_tx else Decimal("0")
 
     project = None
@@ -205,16 +205,19 @@ async def run(
     )
 
     resp = await chat(
-        db, user_id=user_id, feature="ai:anomaly",
-        system=p.system, prompt=prompt, json_schema=SCHEMA,
+        db,
+        user_id=user_id,
+        feature="ai:anomaly",
+        system=p.system,
+        prompt=prompt,
+        json_schema=SCHEMA,
         feature_key="anomaly",
     )
     structured = resp.structured or {"flagged": [], "summary": "(no output)"}
     # Validate tx_id ada di periode
     valid_ids = {t.id for t in txs}
     structured["flagged"] = [
-        f for f in structured.get("flagged", [])
-        if f.get("tx_id") in valid_ids
+        f for f in structured.get("flagged", []) if f.get("tx_id") in valid_ids
     ]
     structured["_meta"] = {
         "model": resp.model,

@@ -1,4 +1,6 @@
-from fastapi import Depends, HTTPException, status
+from datetime import UTC
+
+from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,11 +41,12 @@ async def resolve_user_from_token(db: AsyncSession, token: str) -> User:
     if user.tokens_revoked_after is not None:
         iat = payload.get("iat")
         if iat is not None:
-            from datetime import datetime, timezone
-            token_issued = datetime.fromtimestamp(int(iat), tz=timezone.utc)
+            from datetime import datetime
+
+            token_issued = datetime.fromtimestamp(int(iat), tz=UTC)
             cutoff = user.tokens_revoked_after
             if cutoff.tzinfo is None:
-                cutoff = cutoff.replace(tzinfo=timezone.utc)
+                cutoff = cutoff.replace(tzinfo=UTC)
             if token_issued <= cutoff:
                 raise HTTPException(status_code=401, detail="token_revoked")
     return user

@@ -7,11 +7,12 @@ LLM utk SME yg re-upload (salah klik / iterasi).
 TTL 30 hari (default). Cleanup di-pickup lazy saat insert -- entry lama
 di-purge utk cegah tabel bengkak unbounded.
 """
+
 from __future__ import annotations
 
 import hashlib
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, select, update
@@ -41,16 +42,15 @@ async def lookup(db: AsyncSession, hash_hex: str) -> dict[str, Any] | None:
     Sebagai side effect, increment `hits` & set `last_hit_at` kalau hit.
     Tdk commit -- caller responsible.
     """
-    row = (await db.execute(
-        select(OCRCache).where(OCRCache.file_hash == hash_hex)
-    )).scalar_one_or_none()
+    row = (
+        await db.execute(select(OCRCache).where(OCRCache.file_hash == hash_hex))
+    ).scalar_one_or_none()
     if row is None:
         return None
     # Cek TTL. Kalau expired, treat as miss (caller akan re-extract
     # dan overwrite via store()).
-    age = datetime.now(timezone.utc) - (
-        row.created_at.replace(tzinfo=timezone.utc)
-        if row.created_at.tzinfo is None else row.created_at
+    age = datetime.now(UTC) - (
+        row.created_at.replace(tzinfo=UTC) if row.created_at.tzinfo is None else row.created_at
     )
     if age > timedelta(days=CACHE_TTL_DAYS):
         return None
@@ -58,11 +58,13 @@ async def lookup(db: AsyncSession, hash_hex: str) -> dict[str, Any] | None:
     await db.execute(
         update(OCRCache)
         .where(OCRCache.id == row.id)
-        .values(hits=OCRCache.hits + 1, last_hit_at=datetime.now(timezone.utc))
+        .values(hits=OCRCache.hits + 1, last_hit_at=datetime.now(UTC))
     )
     log.info(
         "ocr.cache.hit hash=%s engine=%s hits=%d",
-        hash_hex[:12], row.source_engine, row.hits + 1,
+        hash_hex[:12],
+        row.source_engine,
+        row.hits + 1,
     )
     return dict(row.extracted_data)
 
@@ -84,35 +86,36 @@ async def store(
     global _insert_counter
     # Hapus existing dgn hash sama (overwrite semantics).
     await db.execute(delete(OCRCache).where(OCRCache.file_hash == hash_hex))
-    db.add(OCRCache(
-        file_hash=hash_hex,
-        source_engine=engine,
-        media_type=media_type,
-        size_bytes=size_bytes,
-        extracted_data=extracted_data,
-        hits=0,
-    ))
+    db.add(
+        OCRCache(
+            file_hash=hash_hex,
+            source_engine=engine,
+            media_type=media_type,
+            size_bytes=size_bytes,
+            extracted_data=extracted_data,
+            hits=0,
+        )
+    )
     _insert_counter += 1
     if _insert_counter >= _CLEANUP_EVERY_N_INSERTS:
         _insert_counter = 0
         await _cleanup_expired(db)
     log.info(
         "ocr.cache.store hash=%s engine=%s size_kb=%d",
-        hash_hex[:12], engine, size_bytes // 1024,
+        hash_hex[:12],
+        engine,
+        size_bytes // 1024,
     )
 
 
 async def _cleanup_expired(db: AsyncSession) -> None:
     """Purge entry lebih lama dari TTL. Best-effort, log only on err."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=CACHE_TTL_DAYS)
+    cutoff = datetime.now(UTC) - timedelta(days=CACHE_TTL_DAYS)
     try:
-        res = await db.execute(
-            delete(OCRCache).where(OCRCache.created_at < cutoff)
-        )
+        res = await db.execute(delete(OCRCache).where(OCRCache.created_at < cutoff))
         n = res.rowcount or 0
         if n > 0:
-            log.info("ocr.cache.cleanup deleted=%d entries (>%dd old)",
-                     n, CACHE_TTL_DAYS)
+            log.info("ocr.cache.cleanup deleted=%d entries (>%dd old)", n, CACHE_TTL_DAYS)
     except Exception as e:  # noqa: BLE001
         log.warning("ocr.cache.cleanup_failed: %s", e)
 
@@ -123,20 +126,23 @@ async def stats(db: AsyncSession) -> dict:
     Return: {total_entries, total_hits, total_size_kb, oldest_age_days}.
     """
     from sqlalchemy import func
-    row = (await db.execute(
-        select(
-            func.count(OCRCache.id),
-            func.coalesce(func.sum(OCRCache.hits), 0),
-            func.coalesce(func.sum(OCRCache.size_bytes), 0),
-            func.min(OCRCache.created_at),
+
+    row = (
+        await db.execute(
+            select(
+                func.count(OCRCache.id),
+                func.coalesce(func.sum(OCRCache.hits), 0),
+                func.coalesce(func.sum(OCRCache.size_bytes), 0),
+                func.min(OCRCache.created_at),
+            )
         )
-    )).one()
+    ).one()
     total, hits, size_b, oldest = row
     age_days = None
     if oldest:
-        age_days = (datetime.now(timezone.utc) - (
-            oldest.replace(tzinfo=timezone.utc) if oldest.tzinfo is None else oldest
-        )).days
+        age_days = (
+            datetime.now(UTC) - (oldest.replace(tzinfo=UTC) if oldest.tzinfo is None else oldest)
+        ).days
     return {
         "total_entries": int(total or 0),
         "total_hits": int(hits or 0),

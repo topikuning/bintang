@@ -16,7 +16,7 @@ Return: str -- pesan utk dikirim balik ke chat.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,7 +25,6 @@ from app.core.deps import user_project_ids
 from app.models.models import (
     AuditAction,
     Transaction,
-    TxnKind,
     TxnStatus,
     TxnType,
     User,
@@ -46,14 +45,11 @@ def _fmt_tx_line(t: Transaction, *, with_status: bool = True) -> str:
     }.get(t.kind if isinstance(t.kind, str) else t.kind.value, "")
     status = f" [{t.status.value}]" if with_status else ""
     return (
-        f"#{t.id} {arrow} {kind_emoji} Rp {float(t.amount):,.0f}"
-        f"{status} -- {t.description or '-'}"
+        f"#{t.id} {arrow} {kind_emoji} Rp {float(t.amount):,.0f}{status} -- {t.description or '-'}"
     ).replace(",", ".")
 
 
-async def _get_tx_with_access(
-    db: AsyncSession, user: User, tx_id: int
-) -> Transaction | None:
+async def _get_tx_with_access(db: AsyncSession, user: User, tx_id: int) -> Transaction | None:
     """Load tx + cek user punya akses proyeknya. Return None kalau tdk
     boleh atau tdk ada."""
     t = await db.get(Transaction, tx_id)
@@ -69,9 +65,8 @@ async def _get_tx_with_access(
 # Workflow commands: submit / verify / reject / cancel
 # ============================================================
 
-async def cmd_submit(
-    db: AsyncSession, user: User, args: list[str], **_
-) -> str:
+
+async def cmd_submit(db: AsyncSession, user: User, args: list[str], **_) -> str:
     """Submit tx DRAFT/REJECTED -> SUBMITTED (siap di-verifikasi admin)."""
     if not args:
         return "Format: /submit <tx_id>\nMis: /submit 123"
@@ -89,11 +84,16 @@ async def cmd_submit(
         )
     t.status = TxnStatus.SUBMITTED
     await log(
-        db, user_id=user.id, entity="transaction", entity_id=t.id,
-        action=AuditAction.SUBMIT, note="via chat bot",
+        db,
+        user_id=user.id,
+        entity="transaction",
+        entity_id=t.id,
+        action=AuditAction.SUBMIT,
+        note="via chat bot",
     )
     await db.commit()
     from app.services.messaging import notify_transaction_submitted
+
     await notify_transaction_submitted(db, t, actor_id=user.id)
     return (
         f"✓ Tx #{tx_id} di-submit utk validasi.\n"
@@ -102,9 +102,7 @@ async def cmd_submit(
     )
 
 
-async def cmd_verify(
-    db: AsyncSession, user: User, args: list[str], **_
-) -> str:
+async def cmd_verify(db: AsyncSession, user: User, args: list[str], **_) -> str:
     """Verify tx SUBMITTED -> VERIFIED. Hanya CENTRAL_ADMIN+SUPERADMIN."""
     if user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
         return "Hanya admin (CENTRAL_ADMIN/SUPERADMIN) yg bisa verify."
@@ -118,19 +116,21 @@ async def cmd_verify(
     if t is None:
         return f"Tx #{tx_id} tidak ditemukan atau bukan akses Anda."
     if t.status != TxnStatus.SUBMITTED:
-        return (
-            f"Tx #{tx_id} status {t.status.value} -- tdk bisa verify. "
-            f"Hanya SUBMITTED yg boleh."
-        )
+        return f"Tx #{tx_id} status {t.status.value} -- tdk bisa verify. Hanya SUBMITTED yg boleh."
     t.status = TxnStatus.VERIFIED
     t.verified_by_id = user.id
-    t.verified_at = datetime.utcnow()
+    t.verified_at = datetime.now(UTC)
     await log(
-        db, user_id=user.id, entity="transaction", entity_id=t.id,
-        action=AuditAction.VERIFY, note="via chat bot",
+        db,
+        user_id=user.id,
+        entity="transaction",
+        entity_id=t.id,
+        action=AuditAction.VERIFY,
+        note="via chat bot",
     )
     await db.commit()
     from app.services.messaging import notify_transaction_verified
+
     await notify_transaction_verified(db, t, actor_id=user.id)
     return (
         f"✓ Tx #{tx_id} ter-VERIFIED.\n"
@@ -139,17 +139,12 @@ async def cmd_verify(
     )
 
 
-async def cmd_reject(
-    db: AsyncSession, user: User, args: list[str], **_
-) -> str:
+async def cmd_reject(db: AsyncSession, user: User, args: list[str], **_) -> str:
     """Reject tx SUBMITTED -> REJECTED dgn alasan. Admin only."""
     if user.role not in (UserRole.SUPERADMIN, UserRole.CENTRAL_ADMIN):
         return "Hanya admin (CENTRAL_ADMIN/SUPERADMIN) yg bisa reject."
     if len(args) < 2:
-        return (
-            "Format: /tolak <tx_id> <alasan>\n"
-            "Mis: /tolak 123 nominal tidak match dgn struk"
-        )
+        return "Format: /tolak <tx_id> <alasan>\nMis: /tolak 123 nominal tidak match dgn struk"
     try:
         tx_id = int(args[0])
     except ValueError:
@@ -165,28 +160,24 @@ async def cmd_reject(
     t.status = TxnStatus.REJECTED
     t.cancel_reason = reason
     await log(
-        db, user_id=user.id, entity="transaction", entity_id=t.id,
-        action=AuditAction.REJECT, note=f"via chat bot: {reason}",
+        db,
+        user_id=user.id,
+        entity="transaction",
+        entity_id=t.id,
+        action=AuditAction.REJECT,
+        note=f"via chat bot: {reason}",
     )
     await db.commit()
     from app.services.messaging import notify_transaction_rejected
+
     await notify_transaction_rejected(db, t, actor_id=user.id)
-    return (
-        f"⨯ Tx #{tx_id} di-REJECT.\n"
-        f"Alasan: {reason}\n"
-        f"Submitter bisa edit + /submit ulang."
-    )
+    return f"⨯ Tx #{tx_id} di-REJECT.\nAlasan: {reason}\nSubmitter bisa edit + /submit ulang."
 
 
-async def cmd_cancel(
-    db: AsyncSession, user: User, args: list[str], **_
-) -> str:
+async def cmd_cancel(db: AsyncSession, user: User, args: list[str], **_) -> str:
     """Cancel tx (DRAFT/SUBMITTED/REJECTED) -> CANCELLED."""
     if len(args) < 2:
-        return (
-            "Format: /batal <tx_id> <alasan>\n"
-            "Mis: /batal 123 dobel input"
-        )
+        return "Format: /batal <tx_id> <alasan>\nMis: /batal 123 dobel input"
     try:
         tx_id = int(args[0])
     except ValueError:
@@ -204,11 +195,16 @@ async def cmd_cancel(
     t.status = TxnStatus.CANCELLED
     t.cancel_reason = reason
     await log(
-        db, user_id=user.id, entity="transaction", entity_id=t.id,
-        action=AuditAction.CANCEL, note=f"via chat bot: {reason}",
+        db,
+        user_id=user.id,
+        entity="transaction",
+        entity_id=t.id,
+        action=AuditAction.CANCEL,
+        note=f"via chat bot: {reason}",
     )
     await db.commit()
     from app.services.messaging import notify_transaction_cancelled
+
     await notify_transaction_cancelled(db, t, actor_id=user.id)
     return f"⨯ Tx #{tx_id} di-CANCEL.\nAlasan: {reason}"
 
@@ -217,9 +213,8 @@ async def cmd_cancel(
 # View / list commands
 # ============================================================
 
-async def cmd_lihat(
-    db: AsyncSession, user: User, args: list[str], **_
-) -> str:
+
+async def cmd_lihat(db: AsyncSession, user: User, args: list[str], **_) -> str:
     """Detail satu tx by ID."""
     if not args:
         return "Format: /lihat <tx_id>"
@@ -253,9 +248,7 @@ async def cmd_lihat(
     return "\n".join(lines)
 
 
-async def cmd_draft(
-    db: AsyncSession, user: User, args: list[str], **_
-) -> str:
+async def cmd_draft(db: AsyncSession, user: User, args: list[str], **_) -> str:
     """List tx draft milik user (yg perlu di-submit)."""
     stmt = (
         select(Transaction)

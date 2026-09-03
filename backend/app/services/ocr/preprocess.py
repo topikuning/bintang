@@ -7,11 +7,11 @@ besar di hasil resize.
 
 Audit 2026-05-23 OCR optimization #T1.1.
 """
+
 from __future__ import annotations
 
 import io
 import logging
-from typing import Literal
 
 from PIL import Image, ImageOps
 
@@ -76,12 +76,15 @@ def preprocess_for_ocr(
         out = buf.getvalue()
         log.info(
             "ocr.preprocess: %dx%d -> %dx%d, %dKB -> %dKB (%.0f%% reduction)",
-            w, h, img.width, img.height,
-            original_size_kb, len(out) // 1024,
+            w,
+            h,
+            img.width,
+            img.height,
+            original_size_kb,
+            len(out) // 1024,
             (1 - len(out) / max(len(content), 1)) * 100,
         )
         return out, "image/jpeg"
     except Exception as e:  # noqa: BLE001
-        log.warning("ocr.preprocess.failed media=%s err=%s -- pass-through",
-                    media_type, e)
+        log.warning("ocr.preprocess.failed media=%s err=%s -- pass-through", media_type, e)
         return content, media_type

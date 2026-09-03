@@ -1,16 +1,17 @@
-"""Regression test untuk pattern soft-delete dgn `datetime.utcnow()`.
+"""Regression test untuk pattern soft-delete dgn `datetime.now(UTC)`.
 
 Bug yg di-fix di PR #68: `obj.deleted_at = sa_func.now()` (SQL expr)
 membuat kolom expired post-commit. Access subsequent -> SELECT -> kalau
 async di luar greenlet -> MissingGreenlet 500.
 
-Fix: pakai datetime.utcnow() Python-side. Value diketahui session,
+Fix: pakai datetime.now(UTC) Python-side. Value diketahui session,
 tdk pernah expire. Test ini verify pattern fix konsisten -- akses
 `obj.deleted_at` setelah commit TIDAK trigger query baru.
 """
+
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy import inspect as sa_inspect
@@ -30,15 +31,17 @@ from app.models.models import (
 
 @pytest.mark.asyncio
 async def test_soft_delete_with_python_datetime_no_expiry(db):
-    """Set deleted_at = datetime.utcnow() -> setelah commit, kolom TETAP
+    """Set deleted_at = datetime.now(UTC) -> setelah commit, kolom TETAP
     loaded (tdk expired). Access deleted_at TIDAK trigger SELECT lazy."""
-    co = Company(name="C"); db.add(co); await db.flush()
+    co = Company(name="C")
+    db.add(co)
+    await db.flush()
     p = Project(name="P", code="P", company_id=co.id)
     db.add(p)
     await db.commit()
 
     # Simulate soft delete pattern yg di-fix di PR #68
-    p.deleted_at = datetime.utcnow()
+    p.deleted_at = datetime.now(UTC)
     await db.commit()
 
     # Verify deleted_at TIDAK expired -- loaded_value tetap value asli
@@ -56,23 +59,35 @@ async def test_soft_delete_with_python_datetime_no_expiry(db):
 async def test_soft_delete_tx_recoverable_no_lazy_load(db):
     """End-to-end: soft delete tx, lalu re-query -> field accessible
     tanpa MissingGreenlet."""
-    co = Company(name="C"); db.add(co); await db.flush()
+    co = Company(name="C")
+    db.add(co)
+    await db.flush()
     user = User(
-        name="u", email="u@x", password_hash="x", role=UserRole.PROJECT_ADMIN,
+        name="u",
+        email="u@x",
+        password_hash="x",
+        role=UserRole.PROJECT_ADMIN,
     )
-    db.add(user); await db.flush()
+    db.add(user)
+    await db.flush()
     p = Project(name="P", code="P", company_id=co.id)
-    db.add(p); await db.flush()
+    db.add(p)
+    await db.flush()
 
     tx = Transaction(
-        project_id=p.id, type=TxnType.OUT, kind=TxnKind.DIRECT_EXPENSE,
-        amount=100, tx_date=date.today(),
-        status=TxnStatus.DRAFT, created_by_id=user.id,
+        project_id=p.id,
+        type=TxnType.OUT,
+        kind=TxnKind.DIRECT_EXPENSE,
+        amount=100,
+        tx_date=date.today(),
+        status=TxnStatus.DRAFT,
+        created_by_id=user.id,
     )
-    db.add(tx); await db.commit()
+    db.add(tx)
+    await db.commit()
 
     # Pattern yg sudah di-fix (PR #68)
-    tx.deleted_at = datetime.utcnow()
+    tx.deleted_at = datetime.now(UTC)
     await db.commit()
 
     # Akses post-commit -- harus return datetime, BUKAN raise
@@ -82,6 +97,7 @@ async def test_soft_delete_tx_recoverable_no_lazy_load(db):
 
     # Re-fetch fresh dan verify deleted_at sama (persisted)
     from sqlalchemy import select
+
     res = await db.execute(select(Transaction).where(Transaction.id == tx.id))
     fresh = res.scalar_one()
     assert fresh.deleted_at is not None

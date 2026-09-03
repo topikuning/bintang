@@ -2,17 +2,18 @@
 
 Audit 2026-05-22 #M1: split dari models.py.
 """
+
 import enum
 
 
-class UserRole(str, enum.Enum):
-    SUPERADMIN = "SUPERADMIN"          # god-mode: hard delete + cascade
-    CENTRAL_ADMIN = "CENTRAL_ADMIN"    # admin pusat, manage semua kecuali destructive ops
-    PROJECT_ADMIN = "PROJECT_ADMIN"    # admin proyek, scoped ke project_users
-    EXECUTIVE = "EXECUTIVE"            # view-only (laporan, dashboard) -- bisa scope semua atau per proyek
+class UserRole(enum.StrEnum):
+    SUPERADMIN = "SUPERADMIN"  # god-mode: hard delete + cascade
+    CENTRAL_ADMIN = "CENTRAL_ADMIN"  # admin pusat, manage semua kecuali destructive ops
+    PROJECT_ADMIN = "PROJECT_ADMIN"  # admin proyek, scoped ke project_users
+    EXECUTIVE = "EXECUTIVE"  # view-only (laporan, dashboard) -- bisa scope semua atau per proyek
 
 
-class ProjectStatus(str, enum.Enum):
+class ProjectStatus(enum.StrEnum):
     # Proposal dr non-admin user -> menunggu approve dr CENTRAL/SUPERADMIN.
     # Tidak muncul di operasional (ProjectPicker/Switcher/list/dashboard);
     # hanya muncul di approval queue + master CRUD utk admin.
@@ -23,7 +24,7 @@ class ProjectStatus(str, enum.Enum):
     DIBATALKAN = "DIBATALKAN"
 
 
-class ProjectKind(str, enum.Enum):
+class ProjectKind(enum.StrEnum):
     """Klasifikasi proyek utk pemisahan agregasi keuangan.
 
     - REGULAR: proyek konstruksi normal -- ikut semua agregat dashboard,
@@ -32,31 +33,33 @@ class ProjectKind(str, enum.Enum):
       company. Tx di sini IS-A "side ledger" yg by default TIDAK ikut
       agregat global. Dikontrol per-tahun lewat NonProjectYearSetting.
     """
+
     REGULAR = "REGULAR"
     NON_PROJECT = "NON_PROJECT"
 
 
-class ProjectDocType(str, enum.Enum):
+class ProjectDocType(enum.StrEnum):
     """Tipe dokumen lampiran proyek (kategorisasi utk audit).
     Disimpan sbg VARCHAR di DB supaya luwes nambah tipe baru tanpa
     perlu ALTER TYPE di Postgres. Validasi enum hanya di app level."""
-    SPK = "SPK"                          # Surat Perintah Kerja
-    SURAT_PESANAN = "SURAT_PESANAN"      # Surat Pesanan
-    BAST = "BAST"                        # Berita Acara Serah Terima
-    KONTRAK = "KONTRAK"                  # Kontrak induk
-    FAKTUR_PAJAK = "FAKTUR_PAJAK"        # Faktur Pajak
-    INVOICE = "INVOICE"                  # Invoice fisik dr vendor
-    KWITANSI = "KWITANSI"                # Kwitansi pembayaran
-    BERITA_ACARA = "BERITA_ACARA"        # Berita Acara umum (selain BAST)
-    LAINNYA = "LAINNYA"                  # Catch-all
+
+    SPK = "SPK"  # Surat Perintah Kerja
+    SURAT_PESANAN = "SURAT_PESANAN"  # Surat Pesanan
+    BAST = "BAST"  # Berita Acara Serah Terima
+    KONTRAK = "KONTRAK"  # Kontrak induk
+    FAKTUR_PAJAK = "FAKTUR_PAJAK"  # Faktur Pajak
+    INVOICE = "INVOICE"  # Invoice fisik dr vendor
+    KWITANSI = "KWITANSI"  # Kwitansi pembayaran
+    BERITA_ACARA = "BERITA_ACARA"  # Berita Acara umum (selain BAST)
+    LAINNYA = "LAINNYA"  # Catch-all
 
 
-class TxnType(str, enum.Enum):
+class TxnType(enum.StrEnum):
     IN = "IN"
     OUT = "OUT"
 
 
-class TxnKind(str, enum.Enum):
+class TxnKind(enum.StrEnum):
     """Sub-jenis transaksi (terutama utk OUT) -- memenuhi kaidah akunting:
 
     - INVOICE_PAYMENT: pembayaran ke vendor lewat invoice (ada party
@@ -71,12 +74,13 @@ class TxnKind(str, enum.Enum):
     Utk TxnType.IN: kind biasanya INVOICE_PAYMENT (penerimaan dr invoice
     OUT) atau OTHER -- tdk dibedakan ketat.
     """
+
     INVOICE_PAYMENT = "INVOICE_PAYMENT"
     CASH_ADVANCE = "CASH_ADVANCE"
     DIRECT_EXPENSE = "DIRECT_EXPENSE"
 
 
-class TxnStatus(str, enum.Enum):
+class TxnStatus(enum.StrEnum):
     DRAFT = "DRAFT"
     SUBMITTED = "SUBMITTED"
     VERIFIED = "VERIFIED"
@@ -84,7 +88,7 @@ class TxnStatus(str, enum.Enum):
     CANCELLED = "CANCELLED"
 
 
-class CashRequestStatus(str, enum.Enum):
+class CashRequestStatus(enum.StrEnum):
     """Status pengajuan dana operasional (CashRequest).
 
     Transitions:
@@ -96,6 +100,7 @@ class CashRequestStatus(str, enum.Enum):
               dikembalikan ke PENDING (audit Q5 keputusan: finally state).
               Kalau perlu pengajuan baru, requester buat CR baru.
     """
+
     PENDING = "PENDING"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
@@ -103,7 +108,7 @@ class CashRequestStatus(str, enum.Enum):
     DISBURSEMENT_CANCELLED = "DISBURSEMENT_CANCELLED"
 
 
-class PaymentMethod(str, enum.Enum):
+class PaymentMethod(enum.StrEnum):
     CASH = "CASH"
     TRANSFER = "TRANSFER"
     QRIS = "QRIS"
@@ -111,7 +116,7 @@ class PaymentMethod(str, enum.Enum):
     OTHER = "OTHER"
 
 
-class PartyType(str, enum.Enum):
+class PartyType(enum.StrEnum):
     COMPANY = "COMPANY"
     PERSONAL = "PERSONAL"
     EMPLOYEE = "EMPLOYEE"
@@ -119,12 +124,12 @@ class PartyType(str, enum.Enum):
     OTHER = "OTHER"
 
 
-class InvoiceType(str, enum.Enum):
-    IN = "IN"   # invoice masuk dari vendor
+class InvoiceType(enum.StrEnum):
+    IN = "IN"  # invoice masuk dari vendor
     OUT = "OUT"  # tagihan ke client
 
 
-class InvoiceStatus(str, enum.Enum):
+class InvoiceStatus(enum.StrEnum):
     DRAFT = "DRAFT"
     ISSUED = "ISSUED"
     PARTIALLY_PAID = "PARTIALLY_PAID"
@@ -133,7 +138,7 @@ class InvoiceStatus(str, enum.Enum):
     CANCELLED = "CANCELLED"
 
 
-class POStatus(str, enum.Enum):
+class POStatus(enum.StrEnum):
     DRAFT = "DRAFT"
     ISSUED = "ISSUED"
     APPROVED = "APPROVED"
@@ -142,33 +147,34 @@ class POStatus(str, enum.Enum):
     CANCELLED = "CANCELLED"
 
 
-class CategoryType(str, enum.Enum):
+class CategoryType(enum.StrEnum):
     IN = "IN"
     OUT = "OUT"
 
 
-class VendorClientType(str, enum.Enum):
+class VendorClientType(enum.StrEnum):
     VENDOR = "VENDOR"
     CLIENT = "CLIENT"
     BOTH = "BOTH"
 
 
-class AIExtractionStatus(str, enum.Enum):
+class AIExtractionStatus(enum.StrEnum):
     PENDING = "PENDING"
     DONE = "DONE"
     FAILED = "FAILED"
     REVIEWED = "REVIEWED"
 
 
-class OCRJobStatus(str, enum.Enum):
+class OCRJobStatus(enum.StrEnum):
     """Status async OCR job. Audit 2026-05-23 OCR opt #T3.8."""
+
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
     DONE = "DONE"
     FAILED = "FAILED"
 
 
-class AuditAction(str, enum.Enum):
+class AuditAction(enum.StrEnum):
     CREATE = "CREATE"
     UPDATE = "UPDATE"
     DELETE = "DELETE"

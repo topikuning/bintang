@@ -1,11 +1,12 @@
 """Endpoint AI-8: daily summary."""
+
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_admin
+from app.core.deps import require_admin
 from app.db.session import get_db
 from app.models.models import User
 from app.services.ai.features.daily_summary import run as run_summary
