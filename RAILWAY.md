@@ -143,6 +143,7 @@ Deploy log yang sehat berurutan seperti ini:
 ```text
 [entrypoint] menyiapkan schema database...
 [bootstrap_db] ...
+[entrypoint] memastikan akun awal dan master data tersedia...
 [entrypoint] menjalankan uvicorn di port 8000...
 ```
 
@@ -151,20 +152,18 @@ mengalihkan traffic setelah endpoint itu mengembalikan HTTP 200. Karena
 service memiliki volume, redeploy dapat mengalami jeda singkat; Railway
 tidak menjalankan dua deployment yang memasang volume yang sama sekaligus.
 
-### F. Seed dan smoke test dev
+### F. Login awal dan smoke test dev
 
-Untuk database dev baru, jalankan seed **di container**, bukan dengan
-`railway run` (perintah itu berjalan di mesin lokal):
+Tidak ada perintah seed manual. Entrypoint otomatis membuat superadmin dan
+12 kategori default apabila database belum memiliki user. Deploy ulang tidak
+menimpa akun/password yang sudah ada dan tidak menyisipkan akun default ke
+database yang sudah digunakan.
 
-```bash
-railway login
-railway link --project <nama-atau-id-project> --environment dev --service <nama-service-app>
-railway status
-railway ssh -- python -m app.seed_master
+Login fresh deployment:
+
+```text
+admin@bintang.me / admin123
 ```
-
-Sebelum seed, hasil `railway status` wajib menunjukkan environment `dev`.
-Jangan jalankan `app.seed` kecuali memang menginginkan demo data lengkap.
 
 Lakukan smoke test berikut:
 
@@ -325,25 +324,12 @@ Domain ini menyajikan aplikasi **dan** API:
 
 ---
 
-## 4. Init schema + seed
+## 4. Init schema + master data otomatis
 
-Schema sudah dibuat migrasi saat deploy pertama. Tinggal isi data awal:
+Schema, akun awal, dan 12 kategori master dibuat otomatis oleh entrypoint saat
+deploy pertama. Tidak ada perintah Railway yang perlu dijalankan.
 
-```bash
-# 1. login & link project
-railway login
-railway link
-# pilih project, environment (production), dan service aplikasi
-
-# 2. eksekusi seed di dalam container
-# clean install: 1 superadmin + 12 kategori default
-railway ssh -- python -m app.seed_master
-
-# atau demo data lengkap (3 perusahaan, 5 proyek, 30+ transaksi):
-railway ssh -- python -m app.seed
-```
-
-Setelah seed sukses → buka domain → login `admin@bintang.me` / `admin123`.
+Setelah deploy sehat → buka domain → login `admin@bintang.me` / `admin123`.
 **Ganti password default itu sebelum dipakai sungguhan.**
 
 ---

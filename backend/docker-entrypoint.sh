@@ -16,5 +16,8 @@ fi
 echo "[entrypoint] menyiapkan schema database..."
 python -m app.bootstrap_db
 
+echo "[entrypoint] memastikan akun awal dan master data tersedia..."
+python -m app.seed_master --startup
+
 echo "[entrypoint] menjalankan uvicorn di port ${PORT:-8000}..."
 exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"
