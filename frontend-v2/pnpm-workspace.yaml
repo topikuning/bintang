@@ -1,0 +1,16 @@
+packages:
+  - "."
+
+# pnpm 11 menahan rilis yang berumur kurang dari 24 jam secara default.
+# Versi-versi ini sudah dikunci dengan integrity hash di pnpm-lock.yaml dan
+# diverifikasi lewat lint, type-check, test, serta Docker build. Pengecualian
+# dibuat per versi (bukan per package) agar rilis berikutnya tetap dikarantina.
+minimumReleaseAgeExclude:
+  - "@eslint/plugin-kit@0.7.3"
+  - "@types/react-dom@19.2.7"
+  - "@vitest/mocker@5.0.0"
+  - "@vitest/spy@5.0.0"
+  - "baseline-browser-mapping@2.11.21"
+  - "lucide-react@1.40.0"
+  - "postcss@8.5.28"
+  - "vitest@5.0.0"

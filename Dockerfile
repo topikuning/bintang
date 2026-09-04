@@ -24,7 +24,7 @@ WORKDIR /build
 
 # Lockfile dulu supaya layer pnpm ter-cache selama dependency
 # tidak berubah.
-COPY frontend-v2/package.json frontend-v2/pnpm-lock.yaml ./
+COPY frontend-v2/package.json frontend-v2/pnpm-lock.yaml frontend-v2/pnpm-workspace.yaml ./
 RUN npm install --global pnpm@11.25.0 && \
     pnpm install --frozen-lockfile
 
