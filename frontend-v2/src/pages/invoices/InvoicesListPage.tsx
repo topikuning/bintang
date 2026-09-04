@@ -65,6 +65,15 @@ export function InvoicesListPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Invoice | null>(null)
+
+  useEffect(() => {
+    if (searchParams.get("new") !== "1") return
+    setEditTarget(null)
+    setFormOpen(true)
+    const next = new URLSearchParams(searchParams)
+    next.delete("new")
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
   // Expandable rows utk grid desktop: kumpulan ID invoice yg sedang expand.
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
   const toggleExpanded = (id: number) =>
@@ -612,4 +621,3 @@ function InvoiceItemsInline({ invoice }: { invoice: Invoice }) {
     </div>
   )
 }
-

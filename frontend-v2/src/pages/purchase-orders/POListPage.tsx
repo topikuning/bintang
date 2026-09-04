@@ -57,6 +57,15 @@ export function POListPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<PurchaseOrder | null>(null)
 
+  useEffect(() => {
+    if (searchParams.get("new") !== "1") return
+    setEditTarget(null)
+    setFormOpen(true)
+    const next = new URLSearchParams(searchParams)
+    next.delete("new")
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
+
   // Deep link: ?id=N auto-open detail. ?project_id + ?status override
   // filter dr URL (mis. dari ProjectDashboard 'Lihat semua').
   useEffect(() => {

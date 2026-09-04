@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react"
-import { useNavigate } from "react-router"
+import { useEffect, useMemo, useState } from "react"
+import { useNavigate, useSearchParams } from "react-router"
 import type { ColumnDef } from "@tanstack/react-table"
 import {
   CheckCircle2,
@@ -90,6 +90,7 @@ function StatusBadge({ status }: { status: CashRequestStatus }) {
 export function CashRequestsListPage() {
   usePageTitle("Pengajuan Dana")
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const user = useAuthStore((s) => s.user)
   const canApprove =
     user?.role === "CENTRAL_ADMIN" || user?.role === "SUPERADMIN"
@@ -101,6 +102,15 @@ export function CashRequestsListPage() {
   const [q, setQ] = useState("")
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<CashRequest | null>(null)
+
+  useEffect(() => {
+    if (searchParams.get("new") !== "1") return
+    setEditTarget(null)
+    setFormOpen(true)
+    const next = new URLSearchParams(searchParams)
+    next.delete("new")
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
 
   // Dropdown filter proyek: TANPA NON_PROJECT (rahasia SUPERADMIN +
   // tdk relevan utk pengajuan dana operasional).

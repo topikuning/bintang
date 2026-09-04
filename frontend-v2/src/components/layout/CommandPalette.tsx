@@ -8,6 +8,7 @@ import {
   FolderKanban,
   History,
   Home,
+  ListTodo,
   PieChart,
   Receipt,
   Search,
@@ -41,6 +42,7 @@ interface PaletteItem {
 
 const NAV_ITEMS: PaletteItem[] = [
   { id: "nav-home", label: "Beranda", icon: Home, group: "Navigasi", to: "/dashboard" },
+  { id: "nav-actions", label: "Pusat Tindakan", icon: ListTodo, group: "Navigasi", to: "/action-center" },
   { id: "nav-tx", label: "Transaksi", icon: ArrowLeftRight, group: "Navigasi", to: "/transactions" },
   { id: "nav-tx-draft", label: "Transaksi Draft", icon: ArrowLeftRight, group: "Navigasi", to: "/transactions?status=DRAFT", hint: "Belum di-submit" },
   { id: "nav-tx-pending", label: "Transaksi Menunggu Verifikasi", icon: ArrowLeftRight, group: "Navigasi", to: "/transactions?status=SUBMITTED" },

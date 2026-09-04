@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router"
-import { Search, Sparkles } from "lucide-react"
+import { FileText, Plus, Receipt, Search, ShoppingCart, Sparkles } from "lucide-react"
 import { NotificationBell } from "./NotificationBell"
 import { UserMenu } from "./UserMenu"
 import { BrandMark } from "./BrandMark"
@@ -94,8 +94,46 @@ export function Topbar({
         </>
       )}
 
+      <details className="group relative hidden sm:block">
+        <summary className="flex h-10 cursor-pointer list-none items-center gap-2 rounded-xl bg-ink-900 px-3.5 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-ink-800 [&::-webkit-details-marker]:hidden">
+          <Plus className="h-4 w-4" /> Buat baru
+        </summary>
+        <div className="absolute right-0 top-12 z-40 w-56 overflow-hidden rounded-xl border border-white bg-white p-1.5 shadow-[var(--app-shadow-raised)]">
+          <QuickCreateLink to="/transactions?new=1" icon={FileText} label="Transaksi" hint="Catat kas masuk atau keluar" />
+          <QuickCreateLink to="/invoices?new=1" icon={Receipt} label="Invoice" hint="Buat hutang atau piutang" />
+          <QuickCreateLink to="/cash-requests?new=1" icon={Sparkles} label="Pengajuan dana" hint="Mulai alur persetujuan" />
+          <QuickCreateLink to="/purchase-orders?new=1" icon={ShoppingCart} label="Purchase order" hint="Buat komitmen belanja" />
+        </div>
+      </details>
+
       <NotificationBell />
       <UserMenu />
     </header>
+  )
+}
+
+function QuickCreateLink({
+  to,
+  icon: Icon,
+  label,
+  hint,
+}: {
+  to: string
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  hint: string
+}) {
+  return (
+    <Link
+      to={to}
+      onClick={(event) => event.currentTarget.closest("details")?.removeAttribute("open")}
+      className="flex items-start gap-3 rounded-lg px-3 py-2.5 hover:bg-ink-50"
+    >
+      <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600"><Icon className="h-4 w-4" /></span>
+      <span className="min-w-0">
+        <span className="block text-[12px] font-semibold text-ink-800">{label}</span>
+        <span className="block text-[10px] leading-4 text-ink-500">{hint}</span>
+      </span>
+    </Link>
   )
 }

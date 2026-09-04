@@ -5,6 +5,7 @@ import { NavRail } from "./NavRail"
 import { BottomNav } from "./BottomNav"
 import { Topbar } from "./Topbar"
 import { CommandPalette } from "./CommandPalette"
+import { WorkspaceContextBar } from "./WorkspaceContextBar"
 import { useGlobalShortcut } from "@/hooks/useGlobalShortcut"
 
 /**
@@ -39,6 +40,7 @@ export function AppShell() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onCommandPaletteOpen={() => setPaletteOpen(true)} />
+        <WorkspaceContextBar />
 
         {/* Main content. Padding bottom utk mobile bottom nav (56px + safe). */}
         <main className="app-content flex-1 overflow-x-hidden pb-[calc(76px+env(safe-area-inset-bottom))] md:pb-0">

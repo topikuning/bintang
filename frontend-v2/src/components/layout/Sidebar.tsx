@@ -25,7 +25,7 @@ export function Sidebar() {
                 <li key={item.to}>
                   <NavLink
                     to={item.to}
-                    end={item.to === "/dashboard"}
+                    end={item.to === "/dashboard" || item.to === "/transactions" || item.to === "/projects" || item.to === "/reports" || item.to === "/settings" || item.to === "/master/projects"}
                     className={({ isActive }) =>
                       cn(
                         "group relative flex h-10 items-center gap-3 rounded-lg px-3 text-[13px] transition-colors",

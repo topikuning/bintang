@@ -27,12 +27,23 @@ describe("navigation contract", () => {
 
   it("removes denied groups and retains only explicitly allowed menu items", () => {
     const filtered = filterNavGroups(DESKTOP_NAV, new Set(["dashboard", "reports"]))
-    expect(filtered.map((group) => group.label)).toEqual(["Beranda", "Laporan"])
-    expect(flatten(filtered).map((item) => item.id)).toEqual(["dashboard", "reports"])
+    expect(filtered.map((group) => group.label)).toEqual(["Command Center", "Analisis"])
+    expect(flatten(filtered).map((item) => item.to)).toEqual([
+      "/dashboard",
+      "/action-center",
+      "/reports",
+    ])
   })
 
   it("keeps the unguarded mobile aggregator available", () => {
     const filtered = filterNavItems(MOBILE_BOTTOM_NAV, new Set())
     expect(filtered.map((item) => item.to)).toEqual(["/more"])
+  })
+
+  it("places decisions before domain modules on mobile", () => {
+    expect(MOBILE_BOTTOM_NAV.slice(0, 2).map((item) => item.to)).toEqual([
+      "/dashboard",
+      "/action-center",
+    ])
   })
 })

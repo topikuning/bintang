@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 import {
   AlertTriangle,
+  ArrowRight,
   ArrowDownLeft,
   ArrowUpRight,
   BadgeCheck,
@@ -8,6 +9,7 @@ import {
   Flame,
   FolderKanban,
   Link2Off,
+  ListChecks,
   Loader2,
   PieChart as PieIcon,
   Search,
@@ -36,7 +38,7 @@ import { fmtCompact, fmtIDR } from "@/lib/format"
 import { apiErrorMessage } from "@/lib/api"
 import { useBreakpoint } from "@/lib/breakpoint"
 import { cn } from "@/lib/utils"
-import type { GlobalDashboardProjectSummary, HealthStatus } from "@/types/dashboard"
+import type { GlobalDashboardProjectSummary, GlobalDashboardResponse, HealthStatus } from "@/types/dashboard"
 import {
   useAskQuery,
   useDailySummary,
@@ -124,11 +126,12 @@ function GlobalDashboard() {
 
   return (
     <Page>
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-ink-900 sm:text-2xl">Beranda</h1>
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-brand-600">Command Center</p>
+          <h1 className="text-xl font-bold text-ink-900 sm:text-2xl">Posisi Keuangan</h1>
           <p className="text-[13px] text-ink-500 mt-0.5">
-            Ringkasan {d.active_projects} proyek aktif
+            Kendali kas dan risiko dari {d.active_projects} proyek aktif
             {d.total_projects > d.active_projects &&
               ` dari ${d.total_projects} total`}
             {hasActiveFilter && (
@@ -152,6 +155,8 @@ function GlobalDashboard() {
           </button>
         )}
       </div>
+
+      <FinancialPositionHero data={d} />
 
       {/* Filter bar -- samakan dgn ProjectsHubPage:
           Search + Perusahaan + Lokasi + Dinas + Pendana + tabs Aktif/Semua.
@@ -226,63 +231,35 @@ function GlobalDashboard() {
 
       {d.warnings.length > 0 && <WarningBanner warnings={d.warnings} />}
 
-      {/* Pending + unlinked highlight */}
-      {(d.pending_count > 0 || d.unlinked_out_count > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          {d.pending_count > 0 && (
-            <Link to="/transactions?status=DRAFT&status=SUBMITTED" className="block">
-              <HighlightCard
-                tone="warning"
-                icon={Clock}
-                label="Belum Verifikasi"
-                bigValue={`${d.pending_count} transaksi`}
-                hint={fmtIDR(d.pending_total)}
-              />
-            </Link>
-          )}
-          {d.unlinked_out_count > 0 && (
-            <Link to="/transactions?unlinked=true" className="block">
-              <HighlightCard
-                tone="info"
-                icon={Link2Off}
-                label="Pengeluaran Belum Dialokasi"
-                bigValue={`${d.unlinked_out_count} transaksi`}
-                hint={`Sisa ${fmtIDR(d.unlinked_out_total)} · klik utk lihat`}
-              />
-            </Link>
-          )}
-        </div>
-      )}
-
-      {/* 4 summary card multi-project */}
+      {/* Supporting metrics intentionally follow the decision hero. */}
       <SummaryCardGrid>
         <SummaryCard
-          icon={Wallet}
-          label="Total Saldo"
-          value={fmtCompact(d.totals.balance)}
-          hint={fmtIDR(d.totals.balance)}
-          tone={d.totals.balance < 0 ? "danger" : "success"}
-        />
-        <SummaryCard
-          icon={FolderKanban}
-          label="Proyek Aktif"
-          value={String(d.active_projects)}
-          hint={d.minus_projects > 0 ? `${d.minus_projects} minus` : "semua sehat"}
-          tone={d.minus_projects > 0 ? "warning" : "neutral"}
-        />
-        <SummaryCard
           icon={ArrowDownLeft}
-          label="Total Pemasukan"
+          label="Kas Masuk Tervalidasi"
           value={fmtCompact(d.totals.in)}
           hint={fmtIDR(d.totals.in)}
           tone="success"
         />
         <SummaryCard
           icon={ArrowUpRight}
-          label="Total Pengeluaran"
+          label="Kas Keluar Tervalidasi"
           value={fmtCompact(d.totals.out)}
           hint={fmtIDR(d.totals.out)}
           tone="danger"
+        />
+        <SummaryCard
+          icon={Clock}
+          label="Nilai Belum Final"
+          value={fmtCompact(d.pending_total)}
+          hint={`${d.pending_count} transaksi menunggu`}
+          tone={d.pending_count > 0 ? "warning" : "neutral"}
+        />
+        <SummaryCard
+          icon={FolderKanban}
+          label="Portofolio Aktif"
+          value={String(d.active_projects)}
+          hint={d.minus_projects > 0 ? `${d.minus_projects} proyek minus` : "semua dalam batas"}
+          tone={d.minus_projects > 0 ? "warning" : "neutral"}
         />
       </SummaryCardGrid>
 
@@ -382,10 +359,51 @@ function GlobalDashboard() {
             tone="neutral"
           />
         ) : (
-          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-            {sortedProjects.map((p) => (
-              <ProjectSummaryCard key={p.id} project={p} />
-            ))}
+          <div>
+            <div className="grid gap-2.5 sm:grid-cols-2 md:hidden">
+              {sortedProjects.map((p) => <ProjectSummaryCard key={p.id} project={p} />)}
+            </div>
+            <div className="hidden overflow-hidden rounded-2xl border border-white bg-white shadow-[var(--app-shadow)] md:block">
+              <table className="w-full border-collapse text-left">
+                <thead className="bg-ink-50/80 text-[10px] font-bold uppercase tracking-[0.12em] text-ink-400">
+                  <tr>
+                    <th className="px-4 py-3">Proyek</th>
+                    <th className="px-4 py-3">Kesehatan</th>
+                    <th className="px-4 py-3 text-right">Masuk</th>
+                    <th className="px-4 py-3 text-right">Keluar</th>
+                    <th className="px-4 py-3 text-right">Saldo</th>
+                    <th className="w-48 px-4 py-3">Realisasi budget</th>
+                    <th className="w-10 px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ink-100">
+                  {sortedProjects.map((p) => {
+                    const usage = Math.min(100, Math.max(0, p.budget.usage_pct))
+                    return (
+                      <tr key={p.id} className="group hover:bg-brand-50/30">
+                        <td className="px-4 py-3">
+                          <Link to={`/projects/${p.id}`} className="font-semibold text-ink-900 group-hover:text-brand-700">{p.name}</Link>
+                          <p className="text-[11px] text-ink-500">{p.code}{p.company ? ` · ${p.company}` : ""}</p>
+                        </td>
+                        <td className="px-4 py-3"><HealthBadge status={p.health} /></td>
+                        <td className="px-4 py-3 text-right font-mono text-[12px] font-medium text-success-700">{fmtCompact(p.total_in)}</td>
+                        <td className="px-4 py-3 text-right font-mono text-[12px] font-medium text-danger-700">{fmtCompact(p.total_out)}</td>
+                        <td className={cn("px-4 py-3 text-right font-mono text-[12px] font-semibold", p.balance < 0 ? "text-danger-700" : "text-ink-900")}>{fmtCompact(p.balance)}</td>
+                        <td className="px-4 py-3">
+                          {p.budget.amount > 0 ? (
+                            <div>
+                              <div className="mb-1 flex justify-between text-[10px] text-ink-500"><span>{Math.round(usage)}%</span><span>{fmtCompact(p.budget.remaining)} sisa</span></div>
+                              <div className="h-1.5 overflow-hidden rounded-full bg-ink-100"><div className={cn("h-full", p.budget.status === "overbudget" ? "bg-danger-500" : p.budget.status === "mendekati_batas" ? "bg-warning-500" : "bg-success-500")} style={{ width: `${p.budget.status === "overbudget" ? 100 : usage}%` }} /></div>
+                            </div>
+                          ) : <span className="text-[11px] text-ink-400">Belum ditetapkan</span>}
+                        </td>
+                        <td className="px-4 py-3"><Link to={`/projects/${p.id}`} aria-label={`Buka ${p.name}`}><ArrowRight className="h-4 w-4 text-ink-300 group-hover:text-brand-600" /></Link></td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </Section>
@@ -400,6 +418,97 @@ function GlobalDashboard() {
 // ============================================================
 // Sub-components
 // ============================================================
+
+function FinancialPositionHero({ data: d }: { data: GlobalDashboardResponse }) {
+  const riskCount = d.pending_count + d.unlinked_out_count + d.overdue_invoices + d.minus_projects
+  const netMovement = d.totals.in - d.totals.out
+  const actions = [
+    {
+      label: "Transaksi belum final",
+      value: d.pending_count,
+      hint: fmtCompact(d.pending_total),
+      to: "/transactions?status=DRAFT&status=SUBMITTED",
+      icon: Clock,
+      urgent: d.pending_count > 0,
+    },
+    {
+      label: "Invoice lewat jatuh tempo",
+      value: d.overdue_invoices,
+      hint: "Tutup risiko koleksi",
+      to: "/invoices?status=OVERDUE",
+      icon: AlertTriangle,
+      urgent: d.overdue_invoices > 0,
+    },
+    {
+      label: "Pengeluaran belum dialokasi",
+      value: d.unlinked_out_count,
+      hint: fmtCompact(d.unlinked_out_total),
+      to: "/transactions?unlinked=true",
+      icon: Link2Off,
+      urgent: d.unlinked_out_count > 0,
+    },
+  ]
+
+  return (
+    <section className="overflow-hidden rounded-2xl bg-ink-900 text-white shadow-[0_24px_70px_rgb(15_23_42/0.16)]">
+      <div className="grid lg:grid-cols-[1.35fr_1fr]">
+        <div className="relative overflow-hidden p-5 sm:p-7 lg:p-8">
+          <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-brand-500/20 blur-3xl" />
+          <div className="relative">
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+              <Wallet className="h-3.5 w-3.5 text-brand-300" /> Saldo terkonsolidasi
+            </div>
+            <p className={cn("mt-3 font-mono text-4xl font-semibold tracking-tight tabular-nums sm:text-5xl", d.totals.balance < 0 ? "text-rose-300" : "text-white")}>
+              {fmtIDR(d.totals.balance)}
+            </p>
+            <div className="mt-7 grid max-w-xl grid-cols-3 gap-3 border-t border-white/10 pt-5">
+              <PositionMetric label="Masuk" value={fmtCompact(d.totals.in)} tone="positive" />
+              <PositionMetric label="Keluar" value={fmtCompact(d.totals.out)} tone="negative" />
+              <PositionMetric label="Pergerakan neto" value={fmtCompact(netMovement)} tone={netMovement < 0 ? "negative" : "positive"} />
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-white/10 bg-white/[0.045] p-4 sm:p-5 lg:border-l lg:border-t-0">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Prioritas hari ini</p>
+              <p className="text-sm font-semibold text-white">{riskCount === 0 ? "Tidak ada exception terbuka" : `${riskCount} sinyal perlu ditinjau`}</p>
+            </div>
+            <Link to="/action-center" className="grid h-9 w-9 place-items-center rounded-lg bg-white/10 text-white hover:bg-white/15" aria-label="Buka pusat tindakan">
+              <ListChecks className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="space-y-1.5">
+            {actions.map(({ label, value, hint, to, icon: Icon, urgent }) => (
+              <Link key={label} to={to} className="group flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.045] p-3 hover:bg-white/[0.09]">
+                <span className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-lg", urgent ? "bg-warning-500/15 text-warning-400" : "bg-success-500/15 text-success-400")}><Icon className="h-4 w-4" /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12px] font-medium text-slate-200">{label}</span>
+                  <span className="block text-[10px] text-slate-500">{hint}</span>
+                </span>
+                <span className={cn("font-mono text-lg font-semibold tabular-nums", urgent ? "text-warning-300" : "text-slate-400")}>{value}</span>
+                <ArrowRight className="h-3.5 w-3.5 text-slate-600 group-hover:text-white" />
+              </Link>
+            ))}
+          </div>
+          <Link to="/action-center" className="mt-3 flex h-10 items-center justify-center gap-2 rounded-xl bg-white text-[12px] font-semibold text-ink-900 hover:bg-slate-100">
+            Buka Pusat Tindakan <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function PositionMetric({ label, value, tone }: { label: string; value: string; tone: "positive" | "negative" }) {
+  return (
+    <div className="min-w-0">
+      <p className="truncate text-[10px] uppercase tracking-[0.11em] text-slate-500">{label}</p>
+      <p className={cn("mt-1 truncate font-mono text-sm font-semibold tabular-nums sm:text-base", tone === "positive" ? "text-emerald-300" : "text-rose-300")}>{value}</p>
+    </div>
+  )
+}
 
 function ProjectSummaryCard({ project: p }: { project: GlobalDashboardProjectSummary }) {
   const minus = p.balance < 0
@@ -524,54 +633,6 @@ function HealthBadge({ status }: { status: HealthStatus }) {
       <BadgeCheck className="h-3 w-3 mr-1 inline-block" />
       {meta.label}
     </Badge>
-  )
-}
-
-function HighlightCard({
-  tone,
-  icon: Icon,
-  label,
-  bigValue,
-  hint,
-}: {
-  tone: "warning" | "info" | "success" | "danger"
-  icon: React.ComponentType<{ className?: string }>
-  label: string
-  bigValue: string
-  hint?: string
-}) {
-  const cls = {
-    warning: "border-warning-200 bg-warning-50/70 hover:bg-warning-100/60 text-warning-800",
-    info: "border-info-200 bg-info-50/70 hover:bg-info-100/60 text-info-800",
-    success: "border-success-200 bg-success-50/70 hover:bg-success-100/60 text-success-800",
-    danger: "border-danger-200 bg-danger-50/70 hover:bg-danger-100/60 text-danger-800",
-  }[tone]
-  const iconCls = {
-    warning: "text-warning-600",
-    info: "text-info-600",
-    success: "text-success-600",
-    danger: "text-danger-600",
-  }[tone]
-  return (
-    <div className={cn("rounded-md border p-3 transition-colors", cls)}>
-      <div className="flex items-start gap-2.5">
-        <Icon className={cn("h-5 w-5 shrink-0 mt-0.5", iconCls)} />
-        <div className="min-w-0 flex-1">
-          <div className="text-[11px] uppercase font-semibold tracking-wider opacity-80">
-            {label}
-          </div>
-          <div className="text-base font-bold tabular-nums">{bigValue}</div>
-          {hint && (
-            <div
-              data-num
-              className="text-[11px] truncate font-mono [font-variant-numeric:tabular-nums]"
-            >
-              {hint}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
   )
 }
 

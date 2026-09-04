@@ -23,7 +23,7 @@ export function NavRail() {
                   <Tooltip.Trigger asChild>
                     <NavLink
                       to={item.to}
-                      end={item.to === "/dashboard"}
+                      end={item.to === "/dashboard" || item.to === "/transactions" || item.to === "/projects" || item.to === "/reports" || item.to === "/settings" || item.to === "/master/projects"}
                       className={({ isActive }) =>
                         cn(
                           "flex h-11 w-11 items-center justify-center rounded-xl transition-colors",

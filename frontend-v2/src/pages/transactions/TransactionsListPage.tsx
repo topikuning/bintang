@@ -69,6 +69,15 @@ export function TransactionsListPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Transaction | null>(null)
 
+  useEffect(() => {
+    if (searchParams.get("new") !== "1") return
+    setEditTarget(null)
+    setFormOpen(true)
+    const next = new URLSearchParams(searchParams)
+    next.delete("new")
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
+
   // Deep link: ?id=N auto-open detail. Pakai pattern sama dgn POListPage
   // dan InvoicesListPage -- baca sekali di mount, strip dari URL supaya
   // bisa close tanpa back-loop, lalu state biasa.

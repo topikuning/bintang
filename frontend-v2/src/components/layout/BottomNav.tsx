@@ -14,7 +14,7 @@ export function BottomNav() {
           <li key={item.to} className="flex-1">
             <NavLink
               to={item.to}
-              end={item.to === "/dashboard"}
+              end={item.to === "/dashboard" || item.to === "/transactions" || item.to === "/projects"}
               className={({ isActive }) =>
                 cn(
                   "flex h-14 flex-col items-center justify-center gap-1 rounded-xl text-[10px] transition-colors",
