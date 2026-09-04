@@ -26,6 +26,199 @@ yang menyajikan SPA sekaligus API.
 
 ---
 
+## Jalur aman: jalankan `dev` berdampingan dengan `main`
+
+Gunakan **dua Railway Environment yang terisolasi**, bukan dua service
+yang menunjuk database/volume yang sama:
+
+| Railway Environment | Branch | Database | Volume upload | Domain |
+| --- | --- | --- | --- | --- |
+| `production` | `main` | Postgres production | volume production `/data` | domain production |
+| `dev` | `dev` | Postgres dev | volume dev `/data` | domain Railway terpisah |
+
+Railway mengisolasi network, database, volume, variable, dan deployment
+per environment. Jangan menyalin URL database mentah, volume, domain,
+atau kredensial bot production ke `dev`.
+
+### A. Buat environment `dev`
+
+1. Buka project Railway production yang sudah ada.
+2. Klik pemilih environment di bagian atas → **New Environment**.
+3. Pilih **Duplicate Environment**, sumber `production`, nama `dev`.
+   Duplikasi ini memberi susunan service yang sama tetapi instance
+   database, volume, network, dan deployment tetap terpisah.
+4. Pastikan pemilih environment di bagian atas sekarang menampilkan
+   **`dev`** sebelum mengubah apa pun.
+5. Jangan klik deploy final sebelum langkah B–E selesai. Perubahan Railway
+   bersifat staged, sehingga semuanya dapat diperiksa lebih dulu.
+
+> Sealed variable tidak ikut tersalin saat environment diduplikasi.
+> Ini memang aman; isi secret khusus dev pada langkah C.
+
+### B. Kunci source service aplikasi ke branch `dev`
+
+Di environment `dev`, buka service aplikasi → **Settings**:
+
+1. Source repository: `topikuning/bintang`.
+2. Trigger branch: **`dev`**.
+3. Root Directory: **`/`** atau kosong (root repository).
+4. Watch Paths: kosong.
+5. Aktifkan **Wait for CI** agar Railway hanya deploy setelah GitHub
+   Actions branch `dev` berhasil.
+6. Pastikan builder membaca `railway.toml` dan `Dockerfile` di root.
+7. Jangan isi Start Command. Image memakai `docker-entrypoint.sh`, yang
+   menjalankan migrasi lalu Uvicorn.
+
+Kembali sebentar ke environment `production` dan pastikan trigger branch
+service production masih **`main`**. Setelah itu kembali ke `dev`.
+
+### C. Set variable khusus dev
+
+Di service aplikasi environment `dev` → **Variables**, set:
+
+```dotenv
+APP_ENV=prod
+APP_NAME=Bintang Dev
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+UPLOAD_DIR=/data/uploads
+TRUSTED_PROXY_HOPS=1
+CSP_ENFORCE=true
+OCR_ENGINE=stub
+PUBLIC_BASE_URL=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+WHATSAPP_BASE_URL=
+WHATSAPP_API_KEY=
+WHATSAPP_WEBHOOK_SECRET=
+ANTHROPIC_API_KEY=
+MISTRAL_API_KEY=
+```
+
+Tambahkan `SECRET_KEY` kuat yang **berbeda dari production**. Gunakan
+terminal lokal:
+
+```bash
+python -c 'import secrets; print(secrets.token_urlsafe(48))'
+```
+
+Lalu masukkan hasilnya sebagai `SECRET_KEY` dan seal variable tersebut.
+
+`DATABASE_URL` harus dibuat sebagai **reference variable** ke service
+Postgres pada environment `dev`, bukan hasil copy-paste URL production.
+Aplikasi otomatis menormalisasi URL Railway `postgresql://...` menjadi
+driver async `postgresql+asyncpg://...`.
+
+Jangan set `ALLOWED_ORIGINS`; SPA dan API memakai origin yang sama.
+Integrasi Telegram, WhatsApp, dan AI sengaja dikosongkan pada deploy
+pertama agar dev tidak mengambil alih webhook production atau memakai
+API berbayar.
+
+### D. Periksa Postgres dan volume dev
+
+1. Di canvas environment `dev`, buka service **Postgres** dan pastikan
+   itu milik environment `dev`.
+2. Kembali ke service aplikasi → **Volumes**.
+3. Pastikan ada volume environment `dev` dengan mount path **`/data`**.
+   Jika belum ada, buat **New Volume** dan mount ke `/data`.
+4. Gunakan satu replica aplikasi. Rate limiter saat ini masih in-memory,
+   dan Railway tidak memasang satu volume ke beberapa deployment aktif.
+5. Jangan attach/detach volume dari environment `production`.
+
+Data production tidak diperlukan untuk smoke test. Gunakan database dev
+kosong atau restore dump yang sudah dianonimkan secara sengaja; jangan
+menghubungkan aplikasi dev langsung ke Postgres production.
+
+### E. Buat domain dev dan deploy
+
+1. Service aplikasi dev → **Settings → Networking → Generate Domain**.
+2. Target port: **`8000`**.
+3. Salin domain dev, misalnya `https://bintang-dev.up.railway.app`.
+4. Set `PUBLIC_BASE_URL` ke domain dev tersebut.
+5. Review seluruh staged changes. Pastikan banner masih menyebut
+   environment **`dev`**, lalu klik **Deploy**.
+
+Build yang benar harus memperlihatkan penggunaan `Dockerfile` root.
+Deploy log yang sehat berurutan seperti ini:
+
+```text
+[entrypoint] menyiapkan schema database...
+[bootstrap_db] ...
+[entrypoint] menjalankan uvicorn di port 8000...
+```
+
+`railway.toml` memberi healthcheck `/health` waktu 300 detik. Railway baru
+mengalihkan traffic setelah endpoint itu mengembalikan HTTP 200. Karena
+service memiliki volume, redeploy dapat mengalami jeda singkat; Railway
+tidak menjalankan dua deployment yang memasang volume yang sama sekaligus.
+
+### F. Seed dan smoke test dev
+
+Untuk database dev baru, jalankan seed **di container**, bukan dengan
+`railway run` (perintah itu berjalan di mesin lokal):
+
+```bash
+railway login
+railway link --project <nama-atau-id-project> --environment dev --service <nama-service-app>
+railway status
+railway ssh -- python -m app.seed_master
+```
+
+Sebelum seed, hasil `railway status` wajib menunjukkan environment `dev`.
+Jangan jalankan `app.seed` kecuali memang menginginkan demo data lengkap.
+
+Lakukan smoke test berikut:
+
+1. `https://<domain-dev>/health` → `{"status":"ok"}`.
+2. Buka `/`, login, lalu ganti password admin hasil seed.
+3. Buka langsung `/transactions`, refresh, dan pastikan tidak 404.
+4. Buat proyek, transaksi, invoice, dan upload satu lampiran.
+5. Redeploy service dev; pastikan lampiran tetap tersedia setelah login.
+6. Buka URL lampiran dari incognito tanpa login; hasilnya harus **401**.
+7. Periksa deploy log: tidak boleh ada `REFUSE_BOOT`, traceback, atau
+   kegagalan `[bootstrap_db]`.
+8. Pastikan production masih membuka branch `main`, domain production,
+   data production, dan tidak menerima perubahan data smoke test dev.
+
+### G. Aktifkan integrasi dev hanya jika diperlukan
+
+- Telegram: gunakan bot token dan webhook secret khusus dev.
+- WhatsApp: gunakan instance/session WAHA khusus dev. Jangan arahkan satu
+  session WAHA ke dua environment.
+- OCR/AI: gunakan key dev atau limit terpisah sebelum mengubah
+  `OCR_ENGINE` dari `stub`.
+
+### H. Promosi ke production
+
+1. Pastikan seluruh smoke test dev lulus.
+2. Di Postgres production → **Backups**, buat manual backup dan tunggu
+   hingga selesai.
+3. Buat PR GitHub dari `dev` ke `main`; jangan mengubah trigger branch
+   production menjadi `dev`.
+4. Tunggu seluruh GitHub Actions lulus, lalu merge PR.
+5. Railway production yang tetap terhubung ke `main` akan membangun
+   commit merge dan menjalankan migrasi otomatis.
+6. Pantau log sampai `/health` lulus, lalu uji login, dashboard,
+   transaksi, invoice, dan satu lampiran production.
+
+Migrasi release ini hanya menambahkan `ai_extractions.user_id`, foreign
+key, dan indeks. Ia tidak menghapus atau menulis ulang data lama.
+
+Jika aplikasi baru sudah memigrasikan database lalu harus kembali ke
+image lama, jangan langsung memakai Railway Rollback: image lama tidak
+mengenal revision Alembic baru. Pilihan utama adalah memperbaiki maju.
+Untuk rollback penuh yang benar-benar diperlukan, selama image baru masih
+aktif jalankan:
+
+```bash
+railway ssh -- python -m alembic downgrade n9c7e2f4d6a3
+```
+
+Baru setelah downgrade berhasil, lakukan rollback deployment aplikasi.
+Downgrade ini menghapus kolom ownership baru, sehingga nilai ownership
+yang tercatat setelah deploy akan hilang. Gunakan hanya dalam insiden.
+
+---
+
 ## 1. Bikin project di Railway
 
 1. Dashboard Railway → **New Project** → **Deploy from GitHub repo**.
@@ -38,9 +231,7 @@ yang menyajikan SPA sekaligus API.
 
 1. Di dalam project → **New** → **Database** → **Add PostgreSQL**.
 2. Railway menyediakan variabel `DATABASE_URL` di service Postgres.
-   Formatnya `postgresql://...`; aplikasi butuh driver async, jadi di
-   service aplikasi kita tulis ulang jadi `postgresql+asyncpg://...`
-   (lihat langkah 3c).
+   Aplikasi otomatis menormalisasinya ke driver asyncpg.
 
 ---
 
@@ -84,7 +275,7 @@ Set di service aplikasi:
 | --- | --- |
 | `APP_ENV` | `prod` |
 | `SECRET_KEY` | hasil generate di langkah 0 |
-| `DATABASE_URL` | `postgresql+asyncpg://${{Postgres.PGUSER}}:${{Postgres.PGPASSWORD}}@${{Postgres.RAILWAY_PRIVATE_DOMAIN}}:5432/${{Postgres.PGDATABASE}}` |
+| `DATABASE_URL` | reference variable `${{Postgres.DATABASE_URL}}` |
 | `UPLOAD_DIR` | `/data/uploads` |
 | `TRUSTED_PROXY_HOPS` | `1` |
 | `ALLOWED_ORIGINS` | **tidak perlu di-set** (default sudah kosong) |
@@ -103,10 +294,10 @@ Catatan penting:
   dibaca saat rate-limit login; kalau salah, batas login bisa dilewati
   dengan header palsu.
 - Aplikasi **menolak boot** di `APP_ENV=prod` kalau `SECRET_KEY` masih
-  default/terlalu pendek, `ALLOWED_ORIGINS` berisi `*`, atau integrasi
-  bot aktif tanpa webhook secret. Pesannya diawali `REFUSE_BOOT:` di
-  deploy log. (Entri `localhost` TIDAK menggagalkan boot — hanya
-  diabaikan.)
+  default/terlalu pendek atau `ALLOWED_ORIGINS` berisi `*`. Pesannya
+  diawali `REFUSE_BOOT:` di deploy log. Telegram tidak mendaftarkan
+  webhook tanpa secret; WhatsApp mengikuti pengecualian operasional yang
+  dijelaskan di `docs/setup-whatsapp.md`.
 
 ### 3e. Public domain
 
@@ -146,10 +337,10 @@ railway link
 
 # 2. eksekusi seed di dalam container
 # clean install: 1 superadmin + 12 kategori default
-railway run python -m app.seed_master
+railway ssh -- python -m app.seed_master
 
 # atau demo data lengkap (3 perusahaan, 5 proyek, 30+ transaksi):
-railway run python -m app.seed
+railway ssh -- python -m app.seed
 ```
 
 Setelah seed sukses → buka domain → login `admin@bintang.me` / `admin123`.

@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -92,6 +93,18 @@ class Settings(BaseSettings):
     # Saat ini boleh kosong karena keterbatasan persistensi WAHA Core;
     # lihat catatan eksplisit di api/v1/whatsapp.py.
     WHATSAPP_WEBHOOK_SECRET: str = ""
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url(cls, value: object) -> object:
+        """Railway menyediakan URL Postgres sync; runtime memakai asyncpg."""
+        if not isinstance(value, str):
+            return value
+        if value.startswith("postgres://"):
+            return "postgresql+asyncpg://" + value.removeprefix("postgres://")
+        if value.startswith("postgresql://"):
+            return "postgresql+asyncpg://" + value.removeprefix("postgresql://")
+        return value
 
     @property
     def allowed_origins_list(self) -> list[str]:
