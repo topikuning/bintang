@@ -28,7 +28,7 @@ CSS_STYLE = """
         color: #888;
     }
     @bottom-left {
-        content: "Bintang Finance & Project — Manual Penggunaan";
+        content: "CACAK — Manual Penggunaan";
         font-size: 9pt;
         color: #888;
     }
@@ -107,7 +107,7 @@ html_full = f"""<!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="utf-8">
-<title>Manual Penggunaan — Bintang Finance & Project</title>
+<title>Manual Penggunaan — CACAK</title>
 </head>
 <body>
 {html_body}
