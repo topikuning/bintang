@@ -1,4 +1,4 @@
-# Bintang Frontend v2 — Blueprint
+# CACAK Frontend v2 — Blueprint
 
 Adaptive Financial Reporting Web App. Desktop = table-first / data grid lengkap. Tablet = adaptive (tabel ringkas + side panel). Mobile = report-first (summary cards + card list + bottom sheet).
 

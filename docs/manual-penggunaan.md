@@ -1,4 +1,4 @@
-# Manual Penggunaan — Bintang Finance & Project
+# Manual Penggunaan — CACAK
 
 **Versi**: 2.x  
 **Aplikasi**: Manajemen Keuangan Multi-Proyek  
@@ -32,7 +32,7 @@
 
 ## 1. Pengantar
 
-**Bintang Finance & Project** adalah aplikasi web manajemen keuangan multi-proyek dengan standar akuntansi profesional (mirip Jurnal/Xero/QuickBooks, disesuaikan untuk konteks proyek konstruksi & jasa Indonesia).
+**CACAK** adalah aplikasi web manajemen keuangan multi-proyek dengan standar akuntansi profesional (mirip Jurnal/Xero/QuickBooks, disesuaikan untuk konteks proyek konstruksi & jasa Indonesia).
 
 ### Fitur utama
 

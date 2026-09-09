@@ -16,6 +16,6 @@ export const useUIPrefs = create<UIPrefsState>()(
       setDensity: (d) => set({ density: d }),
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
     }),
-    { name: "bintang-ui-prefs" },
+    { name: "cacak-ui-prefs" },
   ),
 )

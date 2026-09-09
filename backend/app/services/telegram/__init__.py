@@ -1,1 +1,1 @@
-"""Bintang Telegram bot integration."""
+"""CACAK Telegram bot integration."""
