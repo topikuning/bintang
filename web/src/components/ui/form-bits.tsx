@@ -23,9 +23,22 @@ export function SubmitButton({ children, pendingText, ...rest }: ButtonProps & {
  * menutupnya dan isinya tidak menggeser tata letak.
  */
 export function ActionFeedback({ state, className }: { state: ActionState; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  // Galat yang tidak terlihat sama dengan tidak ada galat: di form panjang
+  // tombol kirimnya di bawah, pesannya di atas. Bawa mata (dan fokus) ke
+  // kolom pertama yang salah; kalau tidak ada, ke pesan galatnya.
+  useEffect(() => {
+    if (!state?.error || !ref.current) return;
+    const form = ref.current.closest("form");
+    const salah = form?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    const target = salah ?? ref.current;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (salah) salah.focus({ preventScroll: true });
+  }, [state?.error, state?.at]);
   if (!state?.error) return null;
   return (
     <div
+      ref={ref}
       role="alert"
       className={cn(
         "flex items-start gap-2.5 rounded-lg border border-danger-border bg-danger-soft px-3.5 py-3 text-sm",

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/masuk", "/api/health"];
+const PUBLIC_PATHS = ["/masuk", "/mulai", "/api/health"];
 const SESSION_COOKIE = "bintang_session";
 
 /**

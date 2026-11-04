@@ -135,3 +135,17 @@ export async function arusKasBulanan(
   }
   return out;
 }
+
+/**
+ * Saldo transaksi yang tidak ditandai rekening (mis. hasil impor Bintang lama,
+ * yang belum mengenal rekening). Ditampilkan terpisah supaya total saldo
+ * rekening + baris ini = saldo kas keseluruhan.
+ */
+export async function saldoTanpaRekening(): Promise<bigint> {
+  const rows = await db.transaction.groupBy({
+    by: ["kind"],
+    where: { status: "terverifikasi", accountId: null },
+    _sum: { amount: true },
+  });
+  return ringkasKas(kelompokkan(rows.map((x) => ({ kind: x.kind, amount: x._sum.amount })))).saldo;
+}

@@ -24,7 +24,7 @@ import { accessibleProjectIds, requireUser } from "@/lib/auth/session";
 import { can } from "@/lib/authz";
 import { cn } from "@/lib/cn";
 import { db } from "@/lib/db";
-import { arusKasBulanan, ringkasan, ringkasanPerProyek, saldoRekening } from "@/lib/keuangan/queries";
+import { arusKasBulanan, ringkasan, ringkasanPerProyek, saldoRekening, saldoTanpaRekening } from "@/lib/keuangan/queries";
 import { statusAnggaran } from "@/lib/keuangan/hitung";
 import { ambilPengaturan } from "@/lib/pengaturan";
 import { scopePengajuan, tugasSaya } from "@/lib/pengajuan/queries";
@@ -109,10 +109,11 @@ export default async function BerandaPage() {
     komitmen: bigint;
     grafik: Awaited<ReturnType<typeof arusKasBulanan>>;
     rekening: Awaited<ReturnType<typeof saldoRekening>>;
+    tanpaRekening: bigint;
     proyek: { id: string; code: string; name: string; budget: bigint; terpakai: bigint }[];
   } = null;
   if (bolehKas) {
-    const [semua, bulanIni, grafik, rekening, perProyek, komitmen, projects] = await Promise.all([
+    const [semua, bulanIni, grafik, rekening, perProyek, komitmen, projects, tanpaRekening] = await Promise.all([
       ringkasan(ids),
       ringkasan(ids, bulan),
       arusKasBulanan(ids, 6, today),
@@ -126,14 +127,16 @@ export default async function BerandaPage() {
         where: { status: "aktif", ...(ids === null ? {} : { id: { in: ids } }) },
         select: { id: true, code: true, name: true, budget: true },
       }),
+      ids === null ? saldoTanpaRekening() : Promise.resolve(0n),
     ]);
-    const saldoTotal = ids === null ? jumlahkan(rekening.map((r) => r.saldo)) : semua.saldo;
+    const saldoTotal = ids === null ? jumlahkan(rekening.map((r) => r.saldo)) + tanpaRekening : semua.saldo;
     keuangan = {
       saldo: saldoTotal,
       bulanIni,
       komitmen: komitmen._sum.total ?? 0n,
       grafik,
       rekening,
+      tanpaRekening,
       proyek: projects
         .map((p) => ({ ...p, terpakai: perProyek.get(p.id)?.terpakai ?? 0n }))
         .sort((a, b) => (statusAnggaran(b.terpakai, b.budget).persen ?? -1) - (statusAnggaran(a.terpakai, a.budget).persen ?? -1))
@@ -276,6 +279,12 @@ export default async function BerandaPage() {
                       <p className={cn("tabular text-base font-semibold", r.saldo < 0n && "text-danger")}>{rupiah(r.saldo)}</p>
                     </li>
                   ))}
+                {keuangan.tanpaRekening !== 0n ? (
+                  <li className="px-4 py-3">
+                    <p className="text-xs text-ink-muted">Tanpa rekening (data lama)</p>
+                    <p className={cn("tabular text-base font-semibold", keuangan.tanpaRekening < 0n && "text-danger")}>{rupiah(keuangan.tanpaRekening)}</p>
+                  </li>
+                ) : null}
               </ul>
             </Card>
           ) : null}

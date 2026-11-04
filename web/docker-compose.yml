@@ -1,0 +1,40 @@
+# Self-host Bintang v3: Postgres + aplikasi. Untuk Railway pakai railway.json.
+#   cp .env.example .env   # isi SESSION_SECRET (dan KUNCI_DATA)
+#   docker compose up -d --build
+#   buka http://localhost:3000 → layar "Mulai" membuat admin pertama.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bintang
+      POSTGRES_PASSWORD: bintang
+      POSTGRES_DB: bintang_v3
+    volumes:
+      - bintang-v3-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bintang"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql://bintang:bintang@db:5432/bintang_v3
+      SESSION_SECRET: ${SESSION_SECRET:?isi SESSION_SECRET di .env}
+      KUNCI_DATA: ${KUNCI_DATA:-}
+      UPLOAD_DIR: /data/berkas
+      # Tanpa preDeploy seperti Railway, migrasi dijalankan saat start.
+      MIGRASI_SAAT_START: "1"
+    volumes:
+      - bintang-v3-berkas:/data
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  bintang-v3-db:
+  bintang-v3-berkas:

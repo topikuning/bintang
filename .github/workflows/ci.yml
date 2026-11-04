@@ -112,3 +112,74 @@ jobs:
       # kegagalan ketahuan sebelum Railway, bukan sesudah.
       - name: Build image
         run: docker build -t bintang:ci .
+
+  # ── Bintang v3 (web/) ────────────────────────────────────────
+  # Gerbang yang sama dengan MARLIN: typecheck · lint · unit · integrasi
+  # (Postgres sungguhan) · `next build` · docker build. Jalan berdampingan
+  # dengan job aplikasi lama sampai aplikasi lama dipensiunkan.
+  web:
+    name: web v3 (typecheck + lint + unit + integrasi + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: bintang
+          POSTGRES_PASSWORD: bintang
+          POSTGRES_DB: bintang_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U bintang"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://bintang:bintang@localhost:5432/bintang_test
+      SESSION_SECRET: ci-only-secret-0123456789abcdef-0123456789abcdef
+      APP_ENV: test
+      UPLOAD_DIR: /tmp/bintang-berkas
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma generate
+        run: pnpm prisma generate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit test
+        run: pnpm vitest run tests/unit
+
+      - name: Migrasi DB uji
+        run: pnpm prisma migrate deploy
+
+      - name: Integrasi (PostgreSQL)
+        run: pnpm vitest run tests/integration
+
+      - name: Build
+        run: pnpm next build
+        env:
+          APP_ENV: production
+          SESSION_SECRET: build-placeholder-secret-0123456789abcdef
+
+  web-image:
+    name: web v3 docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build image
+        run: docker build -t bintang-web:ci web
