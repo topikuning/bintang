@@ -416,6 +416,23 @@ arahkan CNAME sesuai instruksi Railway. Setelah aktif, perbarui
 
 ---
 
+## Pindah ke Bintang v3 (server Lenovo)
+
+Bintang v3 (`web/` di cabang `dev3`) menarik data **dan semua lampiran** dari
+layanan ini lewat API ekspor sekali pakai. Volume Railway tidak perlu diakses
+langsung dan tidak ada arsip raksasa yang harus diunduh manual.
+
+1. Railway → layanan aplikasi → Variables: isi `EKSPOR_V3_TOKEN` dengan nilai
+   acak ≥ 32 karakter, lalu redeploy.
+2. Di server Lenovo jalankan importer v3 (lihat `web/README.md` di `dev3`)
+   dengan `SUMBER_LAMA_URL` = domain layanan ini dan token yang sama.
+3. Setelah impor final berhasil: **kosongkan** `EKSPOR_V3_TOKEN` dan redeploy.
+   Selama token terisi, siapa pun yang memegangnya bisa mengambil seluruh
+   data – termasuk hash password dan nomor rekening yang sudah didekripsi.
+
+Rute: `GET /api/v1/ekspor-v3/manifest`, `/tabel/{nama}`, `/berkas`,
+`/berkas/{path}` – semuanya wajib header `X-Ekspor-Token`.
+
 ## Troubleshooting
 
 **Deploy gagal, log memuat `REFUSE_BOOT:`**

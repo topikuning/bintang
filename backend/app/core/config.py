@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./bintang.db"
 
     UPLOAD_DIR: str = "./uploads"
+    # Ekspor sekali pakai ke Bintang v3 (api/v1/ekspor_v3.py). KOSONG = mati.
+    # Isi minimal 32 karakter acak hanya selama pindahan, lalu kosongkan lagi:
+    # token ini membuka seluruh data termasuk hash password & rekening.
+    EKSPOR_V3_TOKEN: str = ""
     MAX_UPLOAD_MB: int = 20
 
     # Default KOSONG = hanya same-origin.
