@@ -1,0 +1,195 @@
+@import "tailwindcss";
+
+/*
+ * BINTANG design tokens – satu sumber warna/radius/font (konsep MARLIN).
+ * Komponen TIDAK memakai hex; pakai kelas yang dipetakan ke token di bawah
+ * (bg-primary, text-ink, border-border, text-masuk, …).
+ */
+@theme {
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Primer: indigo tua – tenang, terbaca serius untuk urusan uang. */
+  --color-primary-50: #eef2ff;
+  --color-primary-100: #e0e7ff;
+  --color-primary-200: #c7d2fe;
+  --color-primary-300: #a5b4fc;
+  --color-primary-400: #818cf8;
+  --color-primary-500: #6366f1;
+  --color-primary-600: #4f46e5;
+  --color-primary-700: #4338ca;
+  --color-primary-800: #3730a3;
+  --color-primary-900: #312e81;
+  --color-primary: #4338ca;
+
+  /* Aksen merek: bintang emas. HANYA untuk logo & sorotan kecil. */
+  --color-gold: #f59e0b;
+  --color-gold-soft: #fffbeb;
+
+  /* Arah uang – dipakai konsisten di semua angka. */
+  --color-masuk: #047857;
+  --color-masuk-soft: #ecfdf5;
+  --color-keluar: #be123c;
+  --color-keluar-soft: #fff1f2;
+
+  /* Status */
+  --color-success: #15803d;
+  --color-success-soft: #f0fdf4;
+  --color-success-border: #bbf7d0;
+  --color-warning: #b45309;
+  --color-warning-soft: #fffbeb;
+  --color-warning-border: #fde68a;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fef2f2;
+  --color-danger-border: #fecaca;
+  --color-info: #1d4ed8;
+  --color-info-soft: #eff6ff;
+  --color-info-border: #bfdbfe;
+
+  /* Permukaan & teks */
+  --color-surface: #ffffff;
+  --color-surface-muted: #f6f7fb;
+  --color-surface-inset: #eef0f6;
+  --color-border: #e3e6ee;
+  --color-border-strong: #cdd2de;
+  --color-ink: #111827;
+  --color-ink-muted: #5b6475;
+  --color-ink-faint: #9aa3b2;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
+  --shadow-pop: 0 10px 30px -10px rgb(16 24 40 / 0.25);
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background-color: var(--color-surface-muted);
+    color: var(--color-ink);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Jaring zoom iOS untuk kontrol polos. Komponen ber-utility menyetel
+     sendiri `text-base sm:text-sm` (lihat ui/field.tsx). */
+  @media (max-width: 640px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary-600);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::placeholder {
+    color: var(--color-ink-faint);
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@utility no-print {
+  @media print {
+    display: none !important;
+  }
+}
+
+@media screen {
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+@media print {
+  body {
+    background: #fff;
+    font-size: 11pt;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+fieldset {
+  min-inline-size: 0;
+}
+
+html,
+body {
+  overscroll-behavior-y: contain;
+}
+
+/* Lembar bawah (bottom sheet) naik halus di ponsel. */
+@keyframes bintang-naik {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.bintang-naik {
+  animation: bintang-naik 160ms ease-out;
+}
+
+@keyframes bintang-kilau {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+/* Kerangka pemuatan (loading.tsx). */
+.bintang-skeleton {
+  background: linear-gradient(90deg, var(--color-surface-inset) 0, #f8f9fc 50%, var(--color-surface-inset) 100%);
+  background-size: 200px 100%;
+  background-repeat: no-repeat;
+  background-color: var(--color-surface-inset);
+  animation: bintang-kilau 1.2s ease-in-out infinite;
+}
+
+/* Tautan yang sedang dibuka berdenyut – umpan balik di benda yang disentuh. */
+@keyframes bintang-sibuk {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+a[data-pending] {
+  animation: bintang-sibuk 1s ease-in-out infinite;
+  cursor: progress;
+}

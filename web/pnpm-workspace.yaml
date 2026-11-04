@@ -1,0 +1,8 @@
+# Bukan monorepo – berkas ini hanya tempat pengaturan pnpm.
+allowBuilds:
+  '@prisma/engines': true
+  '@node-rs/argon2': true
+  esbuild: true
+  prisma: true
+  unrs-resolver: true
+  sharp: false

@@ -1,0 +1,590 @@
+// BINTANG v3 · Prisma Schema
+// Konsep diambil dari MARLIN: identifier kode Inggris, nilai enum status domain
+// Indonesia, DB snake_case via @map/@@map, uang = BigInt rupiah (tanpa sen),
+// tanggal kerja = @db.Date, waktu = Timestamptz (logika harian Asia/Jakarta).
+//
+// Angka agregat (saldo, terpakai, sisa anggaran) TIDAK disimpan – selalu
+// dihitung di src/lib/keuangan/hitung.ts. Satu-satunya kolom jumlah yang
+// disimpan adalah total dokumen, dan ia diturunkan dari rinciannya saat ditulis.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
+
+enum UserRole {
+  /// Admin sistem – semua wewenang.
+  super_admin
+  /// Pimpinan – menyetujui pengajuan berapa pun nilainya, melihat semua.
+  director
+  /// Keuangan – menyetujui (sampai batas), membayar, mencatat & memverifikasi kas.
+  finance
+  /// Admin proyek – mengajukan dan mencatat kas di proyek yang ditugaskan.
+  project_admin
+  /// Staf – mengajukan pembayaran di proyek yang ditugaskan.
+  staff
+  /// Pengamat – hanya melihat (investor/pendana/eksekutif).
+  viewer
+}
+
+enum ProjectStatus {
+  aktif
+  ditahan
+  selesai
+  batal
+}
+
+/// `operasional` = buku kas di luar proyek (kantor, overhead) – pengganti
+/// "Catatan Non-Proyek" versi lama.
+enum ProjectKind {
+  proyek
+  operasional
+}
+
+enum CashDirection {
+  masuk
+  keluar
+}
+
+enum AccountKind {
+  kas
+  bank
+}
+
+enum PartyKind {
+  vendor
+  klien
+  karyawan
+  lainnya
+}
+
+/// Jenis pengajuan pembayaran.
+/// - pembayaran: bayar langsung ke pihak lain (vendor, tukang, tagihan).
+/// - uang_muka: dana dipegang dulu oleh orang internal, wajib LPJ.
+/// - penggantian: orang internal sudah membayar, minta diganti (reimburse).
+enum RequestKind {
+  pembayaran
+  uang_muka
+  penggantian
+}
+
+enum RequestStatus {
+  draft
+  diajukan
+  perlu_revisi
+  disetujui
+  dibayar
+  lpj_diajukan
+  selesai
+  ditolak
+  dibatalkan
+}
+
+enum PaymentMethod {
+  transfer
+  tunai
+  qris
+  giro
+  lainnya
+}
+
+/// Jenis baris buku kas.
+/// - pemasukan / pengeluaran: kas bergerak + pendapatan/biaya.
+/// - uang_muka: kas keluar, BELUM biaya (masih dipegang orang).
+/// - pengembalian_uang_muka: sisa uang muka kembali ke kas.
+/// - realisasi_uang_muka: TIDAK menggerakkan kas; mengakui biaya uang muka
+///   per kategori saat LPJ diterima.
+enum TransactionKind {
+  pemasukan
+  pengeluaran
+  uang_muka
+  pengembalian_uang_muka
+  realisasi_uang_muka
+}
+
+enum TransactionStatus {
+  menunggu_verifikasi
+  terverifikasi
+  ditolak
+  dibatalkan
+}
+
+enum AttachmentKind {
+  nota
+  bukti_bayar
+  lpj
+  lainnya
+}
+
+// ─────────────────────────────────────────────────────────────
+// AUTH
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id                 String    @id @default(uuid(7)) @db.Uuid
+  fullName           String    @map("full_name")
+  username           String?   @unique
+  email              String?   @unique
+  phone              String?
+  passwordHash       String    @map("password_hash")
+  role               UserRole
+  isActive           Boolean   @default(true) @map("is_active")
+  mustChangePassword Boolean   @default(false) @map("must_change_password")
+  /// Naik setiap ganti password / paksa keluar → semua sesi lama gugur.
+  tokenVersion       Int       @default(0) @map("token_version")
+  /// Untuk peran ter-scope (admin proyek, staf, pengamat): lihat semua proyek.
+  allProjects        Boolean   @default(false) @map("all_projects")
+  /// Rekening pribadi – dipakai otomatis untuk uang muka & penggantian.
+  bankName           String?   @map("bank_name")
+  bankAccount        String?   @map("bank_account")
+  bankHolder         String?   @map("bank_holder")
+  lastLoginAt        DateTime? @map("last_login_at") @db.Timestamptz
+  /// Id user di Bintang lama (impor). Null untuk user baru.
+  legacyId           Int?      @unique @map("legacy_id")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  sessions          Session[]
+  memberships       ProjectMember[]
+  requests          PaymentRequest[]      @relation("RequestRequester")
+  approvedRequests  PaymentRequest[]      @relation("RequestApprover")
+  paidRequests      PaymentRequest[]      @relation("RequestPayer")
+  requestEvents     PaymentRequestEvent[]
+  createdTx         Transaction[]         @relation("TxCreatedBy")
+  verifiedTx        Transaction[]         @relation("TxVerifiedBy")
+  notifications     Notification[]
+  attachments       Attachment[]
+  auditLogs         AuditLog[]
+
+  @@map("users")
+}
+
+model Session {
+  /// sha256(token) – token mentah hanya ada di cookie.
+  id           String    @id
+  userId       String    @map("user_id") @db.Uuid
+  tokenVersion Int       @map("token_version")
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz
+  ip           String?
+  userAgent    String?   @map("user_agent")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model LoginAttempt {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  identifier String
+  ip         String
+  success    Boolean
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([identifier, ip, createdAt])
+  @@map("login_attempts")
+}
+
+// ─────────────────────────────────────────────────────────────
+// MASTER
+// ─────────────────────────────────────────────────────────────
+
+model Company {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  name      String
+  address   String?
+  city      String?
+  npwp      String?
+  phone     String?
+  email     String?
+  isActive  Boolean  @default(true) @map("is_active")
+  legacyId  Int?     @unique @map("legacy_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  projects Project[]
+  accounts Account[]
+
+  @@map("companies")
+}
+
+model Project {
+  id            String        @id @default(uuid(7)) @db.Uuid
+  code          String        @unique
+  name          String
+  kind          ProjectKind   @default(proyek)
+  companyId     String        @map("company_id") @db.Uuid
+  client        String?
+  location      String?
+  /// Nilai kontrak/SPK (pemasukan yang diharapkan).
+  contractValue BigInt        @default(0) @map("contract_value")
+  /// Batas biaya yang direncanakan.
+  budget        BigInt        @default(0)
+  startDate     DateTime?     @map("start_date") @db.Date
+  endDate       DateTime?     @map("end_date") @db.Date
+  status        ProjectStatus @default(aktif)
+  notes         String?
+  legacyId      Int?          @unique @map("legacy_id")
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  company      Company          @relation(fields: [companyId], references: [id])
+  members      ProjectMember[]
+  requests     PaymentRequest[]
+  transactions Transaction[]
+
+  @@index([status])
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
+}
+
+model Category {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  name        String
+  direction   CashDirection
+  description String?
+  isActive    Boolean       @default(true) @map("is_active")
+  sortOrder   Int           @default(0) @map("sort_order")
+  legacyId    Int?          @unique @map("legacy_id")
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  requestItems     PaymentRequestItem[]
+  realizationItems PaymentRequestRealization[]
+  transactionItems TransactionItem[]
+
+  @@unique([direction, name])
+  @@map("categories")
+}
+
+/// Vendor, klien, tukang, karyawan non-akun – siapa pun yang menerima/memberi uang.
+model Party {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  name        String
+  kind        PartyKind @default(vendor)
+  phone       String?
+  email       String?
+  address     String?
+  npwp        String?
+  bankName    String?   @map("bank_name")
+  /// Tersandi bila KUNCI_DATA diisi (lib/kripto.ts).
+  bankAccount String?   @map("bank_account")
+  bankHolder  String?   @map("bank_holder")
+  isActive    Boolean   @default(true) @map("is_active")
+  legacyId    Int?      @unique @map("legacy_id")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  requests     PaymentRequest[]
+  transactions Transaction[]
+
+  @@index([name])
+  @@map("parties")
+}
+
+/// Rekening bank / kas tunai milik perusahaan – asal & tujuan uang.
+model Account {
+  id             String      @id @default(uuid(7)) @db.Uuid
+  name           String
+  kind           AccountKind @default(bank)
+  companyId      String?     @map("company_id") @db.Uuid
+  bankName       String?     @map("bank_name")
+  accountNumber  String?     @map("account_number")
+  openingBalance BigInt      @default(0) @map("opening_balance")
+  isActive       Boolean     @default(true) @map("is_active")
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  company      Company?         @relation(fields: [companyId], references: [id])
+  transactions Transaction[]
+  requests     PaymentRequest[]
+
+  @@map("accounts")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PENGAJUAN PEMBAYARAN
+// ─────────────────────────────────────────────────────────────
+
+model PaymentRequest {
+  id          String        @id @default(uuid(7)) @db.Uuid
+  /// PGJ/2026/11/0001 – diberikan saat pertama kali DIAJUKAN, bukan saat draft.
+  number      String?       @unique
+  projectId   String        @map("project_id") @db.Uuid
+  kind        RequestKind
+  title       String
+  description String?
+  urgent      Boolean       @default(false)
+  neededDate  DateTime?     @map("needed_date") @db.Date
+  /// Total = jumlah rincian. Diturunkan saat menulis, tidak pernah diedit langsung.
+  total       BigInt        @default(0)
+  status      RequestStatus @default(draft)
+
+  // Penerima dana (snapshot saat diajukan – master boleh berubah belakangan).
+  partyId     String? @map("party_id") @db.Uuid
+  payeeName   String? @map("payee_name")
+  bankName    String? @map("bank_name")
+  bankAccount String? @map("bank_account")
+  bankHolder  String? @map("bank_holder")
+
+  requesterId String    @map("requester_id") @db.Uuid
+  submittedAt DateTime? @map("submitted_at") @db.Timestamptz
+
+  approverId   String?   @map("approver_id") @db.Uuid
+  approvedAt   DateTime? @map("approved_at") @db.Timestamptz
+  approvalNote String?   @map("approval_note")
+
+  // Pembayaran.
+  payerId       String?        @map("payer_id") @db.Uuid
+  paidAt        DateTime?      @map("paid_at") @db.Timestamptz
+  paidDate      DateTime?      @map("paid_date") @db.Date
+  accountId     String?        @map("account_id") @db.Uuid
+  paymentMethod PaymentMethod? @map("payment_method")
+  paymentRef    String?        @map("payment_ref")
+
+  // LPJ uang muka.
+  lpjSubmittedAt DateTime? @map("lpj_submitted_at") @db.Timestamptz
+  lpjNote        String?   @map("lpj_note")
+  closedAt       DateTime? @map("closed_at") @db.Timestamptz
+
+  legacyId  Int?     @unique @map("legacy_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  project      Project                     @relation(fields: [projectId], references: [id])
+  party        Party?                      @relation(fields: [partyId], references: [id])
+  requester    User                        @relation("RequestRequester", fields: [requesterId], references: [id])
+  approver     User?                       @relation("RequestApprover", fields: [approverId], references: [id])
+  payer        User?                       @relation("RequestPayer", fields: [payerId], references: [id])
+  account      Account?                    @relation(fields: [accountId], references: [id])
+  items        PaymentRequestItem[]
+  realizations PaymentRequestRealization[]
+  events       PaymentRequestEvent[]
+  attachments  Attachment[]
+  transactions Transaction[]
+
+  @@index([status])
+  @@index([projectId, status])
+  @@index([requesterId, status])
+  @@map("payment_requests")
+}
+
+model PaymentRequestItem {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  requestId   String   @map("request_id") @db.Uuid
+  position    Int      @default(0)
+  categoryId  String?  @map("category_id") @db.Uuid
+  description String
+  /// Opsional – bila diisi, amount = round(quantity × unitPrice).
+  quantity    Decimal? @db.Decimal(15, 3)
+  unit        String?
+  unitPrice   BigInt?  @map("unit_price")
+  amount      BigInt
+
+  request  PaymentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  category Category?      @relation(fields: [categoryId], references: [id])
+
+  @@index([requestId])
+  @@map("payment_request_items")
+}
+
+/// Rincian pemakaian uang muka (LPJ).
+model PaymentRequestRealization {
+  id          String  @id @default(uuid(7)) @db.Uuid
+  requestId   String  @map("request_id") @db.Uuid
+  position    Int     @default(0)
+  categoryId  String? @map("category_id") @db.Uuid
+  description String
+  amount      BigInt
+
+  request  PaymentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  category Category?      @relation(fields: [categoryId], references: [id])
+
+  @@index([requestId])
+  @@map("payment_request_realizations")
+}
+
+/// Riwayat status – append-only. Sumber garis waktu di layar detail.
+model PaymentRequestEvent {
+  id         String         @id @default(uuid(7)) @db.Uuid
+  requestId  String         @map("request_id") @db.Uuid
+  fromStatus RequestStatus? @map("from_status")
+  toStatus   RequestStatus  @map("to_status")
+  /// Kata kerja: dibuat, diajukan, disetujui, revisi, ditolak, dibayar, ...
+  action     String
+  note       String?
+  actorId    String         @map("actor_id") @db.Uuid
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  request PaymentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actor   User           @relation(fields: [actorId], references: [id])
+
+  @@index([requestId, createdAt])
+  @@map("payment_request_events")
+}
+
+// ─────────────────────────────────────────────────────────────
+// BUKU KAS
+// ─────────────────────────────────────────────────────────────
+
+model Transaction {
+  id          String            @id @default(uuid(7)) @db.Uuid
+  number      String            @unique
+  projectId   String            @map("project_id") @db.Uuid
+  date        DateTime          @db.Date
+  kind        TransactionKind
+  accountId   String?           @map("account_id") @db.Uuid
+  method      PaymentMethod     @default(transfer)
+  /// Jumlah = jumlah rincian. Selalu positif; arah ditentukan `kind`.
+  amount      BigInt
+  description String
+  partyId     String?           @map("party_id") @db.Uuid
+  partyName   String?           @map("party_name")
+  reference   String?
+  status      TransactionStatus @default(menunggu_verifikasi)
+  /// Alasan tolak / batal.
+  statusNote  String?           @map("status_note")
+  requestId   String?           @map("request_id") @db.Uuid
+
+  createdById  String    @map("created_by_id") @db.Uuid
+  verifiedById String?   @map("verified_by_id") @db.Uuid
+  verifiedAt   DateTime? @map("verified_at") @db.Timestamptz
+
+  legacyId  Int?     @unique @map("legacy_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  project     Project           @relation(fields: [projectId], references: [id])
+  account     Account?          @relation(fields: [accountId], references: [id])
+  party       Party?            @relation(fields: [partyId], references: [id])
+  request     PaymentRequest?   @relation(fields: [requestId], references: [id])
+  createdBy   User              @relation("TxCreatedBy", fields: [createdById], references: [id])
+  verifiedBy  User?             @relation("TxVerifiedBy", fields: [verifiedById], references: [id])
+  items       TransactionItem[]
+  attachments Attachment[]
+
+  @@index([projectId, date])
+  @@index([status, kind])
+  @@index([accountId])
+  @@index([requestId])
+  @@map("transactions")
+}
+
+model TransactionItem {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  transactionId String    @map("transaction_id") @db.Uuid
+  position      Int       @default(0)
+  categoryId    String?   @map("category_id") @db.Uuid
+  description   String
+  amount        BigInt
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  category    Category?   @relation(fields: [categoryId], references: [id])
+
+  @@index([transactionId])
+  @@index([categoryId])
+  @@map("transaction_items")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PENDUKUNG
+// ─────────────────────────────────────────────────────────────
+
+model Attachment {
+  id            String         @id @default(uuid(7)) @db.Uuid
+  kind          AttachmentKind @default(nota)
+  requestId     String?        @map("request_id") @db.Uuid
+  transactionId String?        @map("transaction_id") @db.Uuid
+  fileName      String         @map("file_name")
+  mimeType      String         @map("mime_type")
+  size          Int
+  /// Kunci di penyimpanan (lib/penyimpanan). Bukan URL publik.
+  storageKey    String         @unique @map("storage_key")
+  uploadedById  String         @map("uploaded_by_id") @db.Uuid
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  request     PaymentRequest? @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  transaction Transaction?    @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  uploadedBy  User            @relation(fields: [uploadedById], references: [id])
+
+  @@index([requestId])
+  @@index([transactionId])
+  @@map("attachments")
+}
+
+model Notification {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  title     String
+  body      String?
+  href      String?
+  readAt    DateTime? @map("read_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+/// Penomoran dokumen berurutan per periode, aman dari balapan
+/// (UPDATE … RETURNING dalam transaksi yang sama dengan dokumennya).
+model Counter {
+  key   String @id
+  value Int    @default(0)
+
+  @@map("counters")
+}
+
+/// Pengaturan organisasi – satu baris (id = 1).
+model Setting {
+  id                 Int      @id @default(1)
+  orgName            String   @default("Bintang") @map("org_name")
+  /// Pengajuan di atas nilai ini hanya bisa disetujui Pimpinan. 0 = tanpa batas.
+  financeApproveCap  BigInt   @default(0) @map("finance_approve_cap")
+  /// Wajib unggah bukti bayar saat menandai dibayar.
+  requireProof       Boolean  @default(false) @map("require_proof")
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("settings")
+}
+
+/// Jejak audit – append-only (dijaga trigger di migrasi).
+model AuditLog {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  userId       String?  @map("user_id") @db.Uuid
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  payload      Json?
+  ip           String?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+  @@index([userId])
+  @@map("audit_logs")
+}
