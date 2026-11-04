@@ -8,6 +8,7 @@ import { auditIn } from "@/lib/audit";
 import { requireCapability } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { PesanError } from "@/lib/galat";
+import { berkasDariForm, hapusBerkas, simpanBerkas, type BerkasTersimpan } from "@/lib/penyimpanan";
 import { keyKeTanggal } from "@/lib/tanggal";
 import { parseRupiah } from "@/lib/uang";
 
@@ -98,4 +99,51 @@ export async function simpanProyek(_prev: ActionState, form: FormData): Promise<
   });
   if (tujuan) redirect(tujuan);
   return hasil;
+}
+
+// ─── Dokumen proyek (kontrak, SPK, BAST, …) ──────────────────
+
+export async function unggahDokumenProyek(projectId: string, _prev: ActionState, form: FormData): Promise<ActionState> {
+  return jalankan(async () => {
+    const user = await requireCapability("project.manage");
+    const label = z.string().trim().min(2, "Beri judul dokumennya, mis. Kontrak No. 12/2026.").max(200).parse(form.get("label") ?? "");
+    const files = berkasDariForm(form, "dokumen");
+    if (!files.length) throw new PesanError("Pilih berkasnya dulu.");
+    const tersimpan: BerkasTersimpan[] = [];
+    try {
+      for (const f of files) tersimpan.push(await simpanBerkas(f, "proyek"));
+      await db.$transaction(async (tx) => {
+        await tx.attachment.createMany({
+          data: tersimpan.map((b, i) => ({
+            ...b,
+            kind: "lainnya" as const,
+            label: files.length > 1 ? `${label} (${i + 1})` : label,
+            projectId,
+            uploadedById: user.id,
+          })),
+        });
+        await auditIn(tx, user.id, "project.document_add", "project", projectId, { label, berkas: tersimpan.length });
+      });
+    } catch (e) {
+      await Promise.all(tersimpan.map((b) => hapusBerkas(b.storageKey).catch(() => undefined)));
+      throw e;
+    }
+    revalidatePath(`/proyek/${projectId}`);
+    return sukses("Dokumen tersimpan.");
+  });
+}
+
+export async function hapusDokumenProyek(attachmentId: string, projectId: string, _prev: ActionState, _form: FormData): Promise<ActionState> {
+  return jalankan(async () => {
+    const user = await requireCapability("project.manage");
+    const a = await db.attachment.findFirst({ where: { id: attachmentId, projectId } });
+    if (!a) throw new PesanError("Dokumen tidak ditemukan.");
+    await db.$transaction(async (tx) => {
+      await tx.attachment.delete({ where: { id: a.id } });
+      await auditIn(tx, user.id, "project.document_delete", "project", projectId, { label: a.label, fileName: a.fileName });
+    });
+    await hapusBerkas(a.storageKey).catch(() => undefined);
+    revalidatePath(`/proyek/${projectId}`);
+    return sukses("Dokumen dihapus.");
+  });
 }

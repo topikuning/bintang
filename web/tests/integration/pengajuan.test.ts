@@ -203,3 +203,16 @@ describe("lingkup & buku kas", () => {
     await expect(db.auditLog.update({ where: { id: log.id }, data: { action: "palsu" } })).rejects.toThrow();
   });
 });
+
+describe("dokumen proyek", () => {
+  it("lampiran wajib tepat satu pemilik (dijaga CHECK di DB)", async () => {
+    const dasarBerkas = { fileName: "kontrak.pdf", mimeType: "application/pdf", size: 10, uploadedById: f.keuangan.id };
+    const ok = await db.attachment.create({ data: { ...dasarBerkas, storageKey: "proyek/uji-1.pdf", projectId: f.proyek.id, label: "Kontrak" } });
+    expect(ok.projectId).toBe(f.proyek.id);
+    const r = await ajukanPembayaran();
+    await expect(
+      db.attachment.create({ data: { ...dasarBerkas, storageKey: "proyek/uji-2.pdf", projectId: f.proyek.id, requestId: r.id } }),
+    ).rejects.toThrow();
+    await expect(db.attachment.create({ data: { ...dasarBerkas, storageKey: "proyek/uji-3.pdf" } })).rejects.toThrow();
+  });
+});

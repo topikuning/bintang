@@ -14,6 +14,13 @@ const schema = z.object({
   /** Kunci penyandian nomor rekening. Kosong = disimpan polos. */
   KUNCI_DATA: z.string().optional(),
   PENANDA_LINGKUNGAN: z.string().optional(),
+  /**
+   * Cookie sesi `Secure`? "auto" (bawaan) = ya bila permintaan datang lewat
+   * HTTPS (Cloudflare Tunnel / reverse proxy), tidak bila lewat http:// di
+   * jaringan kantor. Tanpa ini, server Lenovo yang dibuka lewat IP LAN tidak
+   * bisa dipakai login sama sekali – peramban membuang cookie Secure di http.
+   */
+  COOKIE_AMAN: z.enum(["auto", "1", "0"]).default("auto"),
 });
 
 function normalizeDatabaseUrl(raw: string): string {

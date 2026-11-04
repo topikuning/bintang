@@ -76,6 +76,24 @@ export async function simpanBerkas(file: File, folder: string): Promise<BerkasTe
   return { storageKey: kunci, fileName: nama, mimeType: mime, size: buf.length };
 }
 
+/**
+ * Tulis isi berkas yang SUDAH tepercaya (hasil impor dari Bintang lama, arsip
+ * Excel buatan sistem) – tanpa daftar putih MIME, karena versi lama juga
+ * menyimpan GIF/video dari bot. Jangan dipakai untuk unggahan pengguna.
+ */
+export async function simpanBuffer(buf: Buffer, folder: string, fileName: string, mimeType: string): Promise<BerkasTersimpan> {
+  if (!/^[a-z0-9-]+$/.test(folder)) throw new BerkasError("Folder tidak valid.");
+  const eksAsli = fileName.includes(".") ? (fileName.split(".").pop() || "").toLowerCase() : "";
+  const ext = /^[a-z0-9]{1,5}$/.test(eksAsli) ? eksAsli : (MIME_DIIZINKAN[mimeType] ?? "bin");
+  const now = new Date();
+  const kunci = `${folder}/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${randomUUID()}.${ext}`;
+  const p = jalur(kunci);
+  await mkdir(path.dirname(p), { recursive: true });
+  await writeFile(p, buf, { flag: "wx" });
+  const nama = fileName.replace(/[\\/\0]/g, "_").slice(0, 200) || `berkas.${ext}`;
+  return { storageKey: kunci, fileName: nama, mimeType: mimeType || "application/octet-stream", size: buf.length };
+}
+
 export async function ambilBerkas(kunci: string): Promise<Buffer> {
   return readFile(jalur(kunci));
 }

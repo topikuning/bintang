@@ -30,6 +30,11 @@
  * Transaksi lama tidak punya rekening – di v3 tampil sebagai "tanpa rekening".
  */
 import { createDecipheriv, createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createWriteStream } from "node:fs";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { dirname, join, resolve, sep } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { Client } from "pg";
 
 try {
@@ -104,23 +109,160 @@ const METODE: Record<string, "transfer" | "tunai" | "qris" | "giro" | "lainnya">
   OTHER: "lainnya",
 };
 
+// ─── Sumber data lama ────────────────────────────────────────
+
+type Baris = Record<string, any>;
+type InfoBerkas = { path: string; size: number };
+
+interface Sumber {
+  nama: string;
+  /** Semua baris tabel (kosong bila tabel tidak ada di versi lama itu). */
+  tabel(nama: string): Promise<Baris[]>;
+  /** Daftar berkas di UPLOAD_DIR lama; null = sumber ini tidak membawa berkas. */
+  berkas(): Promise<InfoBerkas[] | null>;
+  unduh(path: string, tujuan: string): Promise<void>;
+  tutup(): Promise<void>;
+}
+
+/** Kolom tanggal/waktu dari JSON → Date (pg mengembalikannya sudah sebagai Date). */
+function hidupkanTanggal(r: Baris): Baris {
+  for (const [k, v] of Object.entries(r)) {
+    if (typeof v !== "string" || !/(_at|_date)$/.test(k)) continue;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) r[k] = new Date(`${v}T00:00:00Z`);
+    else if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(v)) r[k] = new Date(/[zZ]|[+-]\d{2}:?\d{2}$/.test(v) ? v : `${v.replace(" ", "T")}Z`);
+  }
+  return r;
+}
+
+async function sumberPostgres(url: string): Promise<Sumber> {
+  const lama = new Client({ connectionString: url.replace(/^postgres(ql)?\+[a-z0-9]+:\/\//i, "postgresql://") });
+  await lama.connect();
+  return {
+    nama: "PostgreSQL lama (tanpa berkas)",
+    async tabel(nama) {
+      const ada = await lama.query(`SELECT 1 FROM information_schema.tables WHERE table_name = $1`, [nama]);
+      if (!ada.rowCount) return [];
+      // Nama tabel hanya dari daftar tetap di skrip ini, bukan dari luar.
+      return (await lama.query(`SELECT * FROM "${nama}" ORDER BY id`)).rows;
+    },
+    async berkas() {
+      return null;
+    },
+    async unduh() {
+      throw new Error("Sumber PostgreSQL tidak membawa berkas – pakai SUMBER_LAMA_URL.");
+    },
+    async tutup() {
+      await lama.end();
+    },
+  };
+}
+
+async function sumberApi(base: string, token: string): Promise<Sumber> {
+  const akar = base.replace(/\/+$/, "") + "/api/v1/ekspor-v3";
+  const h = { "X-Ekspor-Token": token };
+  async function json(path: string) {
+    for (let coba = 1; ; coba++) {
+      try {
+        const r = await fetch(akar + path, { headers: h });
+        if (r.status === 404 && path === "/manifest") {
+          throw new Error("API ekspor mati di server lama – isi EKSPOR_V3_TOKEN di sana lalu redeploy.");
+        }
+        if (r.status === 401) throw new Error("Token ekspor ditolak server lama (EKSPOR_V3_TOKEN tidak sama).");
+        if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
+        return await r.json();
+      } catch (e) {
+        if (coba >= 4 || (e instanceof Error && /ditolak|mati/.test(e.message))) throw e;
+        await new Promise((ok) => setTimeout(ok, 2000 * 2 ** (coba - 1)));
+      }
+    }
+  }
+  const manifest = await json("/manifest");
+  if (manifest.versi !== 1) throw new Error(`Format ekspor versi ${manifest.versi} belum didukung importer ini.`);
+  console.log(`Sumber: ${base} – ${Object.values(manifest.tabel as Record<string, number>).reduce((a, b) => a + b, 0)} baris, ${manifest.berkas.jumlah} berkas (${(manifest.berkas.total_bytes / 1e6).toFixed(1)} MB).`);
+  return {
+    nama: base,
+    async tabel(nama) {
+      if (!(nama in manifest.tabel)) return [];
+      const out: Baris[] = [];
+      for (let offset = 0; ; ) {
+        const r = await json(`/tabel/${nama}?offset=${offset}&limit=2000`);
+        out.push(...(r.rows as Baris[]).map(hidupkanTanggal));
+        if (!r.lanjut) break;
+        offset += r.rows.length;
+      }
+      return out;
+    },
+    async berkas() {
+      return (await json("/berkas")).berkas as InfoBerkas[];
+    },
+    async unduh(path, tujuan) {
+      const enc = path.split("/").map(encodeURIComponent).join("/");
+      for (let coba = 1; ; coba++) {
+        try {
+          const r = await fetch(`${akar}/berkas/${enc}`, { headers: h });
+          if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
+          await mkdir(dirname(tujuan), { recursive: true });
+          const sementara = `${tujuan}.part`;
+          await pipeline(Readable.fromWeb(r.body as never), createWriteStream(sementara));
+          await rename(sementara, tujuan);
+          return;
+        } catch (e) {
+          if (coba >= 4) throw new Error(`Gagal mengunduh ${path}: ${e instanceof Error ? e.message : e}`);
+          await new Promise((ok) => setTimeout(ok, 2000 * 2 ** (coba - 1)));
+        }
+      }
+    },
+    async tutup() {},
+  };
+}
+
+const MIME_DARI_EKS: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+  heic: "image/heic",
+  heif: "image/heif",
+  pdf: "application/pdf",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
+
+const JENIS_DOKUMEN: Record<string, string> = {
+  SPK: "SPK",
+  SURAT_PESANAN: "Surat pesanan",
+  BAST: "BAST",
+  KONTRAK: "Kontrak",
+  FAKTUR_PAJAK: "Faktur pajak",
+  INVOICE: "Invoice",
+  KWITANSI: "Kwitansi",
+  BERITA_ACARA: "Berita acara",
+  LAINNYA: "Dokumen",
+};
+
 async function main() {
-  const urlLama = process.env.DATABASE_URL_LAMA;
-  if (!urlLama) throw new Error("Isi DATABASE_URL_LAMA (PostgreSQL Bintang lama).");
-  if (/^sqlite/i.test(urlLama)) throw new Error("Importer hanya mendukung Bintang lama di PostgreSQL.");
+  const urlApi = process.env.SUMBER_LAMA_URL?.trim();
+  const tokenApi = process.env.EKSPOR_V3_TOKEN?.trim();
+  const urlLama = process.env.DATABASE_URL_LAMA?.trim();
+  if (!urlApi && !urlLama) {
+    throw new Error("Isi SUMBER_LAMA_URL + EKSPOR_V3_TOKEN (disarankan: data + berkas), atau DATABASE_URL_LAMA (data saja).");
+  }
+  if (urlApi && !tokenApi) throw new Error("SUMBER_LAMA_URL butuh EKSPOR_V3_TOKEN yang sama dengan di server lama.");
+  if (!urlApi && urlLama && /^sqlite/i.test(urlLama)) throw new Error("Importer hanya mendukung Bintang lama di PostgreSQL.");
   const secretLama = process.env.SECRET_KEY_LAMA;
+  const cermin = resolve(process.env.IMPOR_CERMIN || "./.data/impor-cermin");
 
   const { db } = await import("@/lib/db");
   const { sandikan } = await import("@/lib/kripto");
-
-  const lama = new Client({ connectionString: urlLama.replace(/^postgres(ql)?\+[a-z0-9]+:\/\//i, "postgresql://") });
-  await lama.connect();
-  const q = async <T = Record<string, unknown>>(sql: string) => (await lama.query(sql)).rows as T[];
-  const ada = async (tabel: string) =>
-    (await q<{ n: number }>(`SELECT count(*)::int AS n FROM information_schema.tables WHERE table_name = '${tabel}'`))[0].n > 0;
+  const { simpanBuffer, hapusBerkas } = await import("@/lib/penyimpanan");
+  const { bukuBaru, tambahSheet } = await import("@/lib/laporan/excel");
 
   const sudah = await db.transaction.count({ where: { legacyId: { not: null } } });
   if (sudah > 0 && !KERING) throw new Error(`Database v3 sudah berisi ${sudah} transaksi hasil impor. Impor hanya dijalankan sekali.`);
+
+  const sumber = urlApi ? await sumberApi(urlApi, tokenApi!) : await sumberPostgres(urlLama!);
 
   let pecahan = 0;
   const uang = (v: unknown) => keBigInt(v as string, () => pecahan++);
@@ -143,22 +285,79 @@ async function main() {
     return sandikan(polos);
   };
 
-  // Berurutan: satu koneksi pg tidak boleh menjalankan dua kueri sekaligus.
-  const users = await q(`SELECT * FROM users ORDER BY id`);
-  const companies = await q(`SELECT * FROM companies ORDER BY id`);
-  const projects = await q(`SELECT * FROM projects ORDER BY id`);
-  const members = await q(`SELECT * FROM project_users`);
-  const categories = await q(`SELECT * FROM categories ORDER BY id`);
-  const parties = await q(`SELECT * FROM vendors_clients ORDER BY id`);
-  const txs = await q(`SELECT * FROM transactions WHERE deleted_at IS NULL ORDER BY id`);
-  const items = await q(`SELECT * FROM transaction_items WHERE deleted_at IS NULL ORDER BY id`);
-  const settlements = (await ada("cash_advance_settlements")) ? await q(`SELECT * FROM cash_advance_settlements ORDER BY id`) : [];
-  const settleItems = (await ada("cash_advance_settlement_items"))
-    ? await q(`SELECT * FROM cash_advance_settlement_items WHERE deleted_at IS NULL ORDER BY id`)
-    : [];
-  const crs = (await ada("cash_requests")) ? await q(`SELECT * FROM cash_requests WHERE deleted_at IS NULL ORDER BY id`) : [];
-  const crItems = (await ada("cash_request_items")) ? await q(`SELECT * FROM cash_request_items ORDER BY id`) : [];
-  await lama.end();
+  const hidup = (rows: Baris[]) => rows.filter((r) => !r.deleted_at);
+  const users = await sumber.tabel("users");
+  const companies = await sumber.tabel("companies");
+  const projects = await sumber.tabel("projects");
+  const members = await sumber.tabel("project_users");
+  const categories = await sumber.tabel("categories");
+  const parties = await sumber.tabel("vendors_clients");
+  const txs = hidup(await sumber.tabel("transactions"));
+  const items = hidup(await sumber.tabel("transaction_items"));
+  const settlements = await sumber.tabel("cash_advance_settlements");
+  const settleItems = hidup(await sumber.tabel("cash_advance_settlement_items"));
+  const crs = hidup(await sumber.tabel("cash_requests"));
+  const crItems = await sumber.tabel("cash_request_items");
+  const txAtt = hidup(await sumber.tabel("transaction_attachments"));
+  const projAtt = hidup(await sumber.tabel("project_attachments"));
+  const invoices = hidup(await sumber.tabel("invoices"));
+  const invItems = hidup(await sumber.tabel("invoice_items"));
+  const invAlloc = hidup(await sumber.tabel("invoice_allocations"));
+  const invAtt = hidup(await sumber.tabel("invoice_attachments"));
+  const pos = hidup(await sumber.tabel("purchase_orders"));
+  const poItems = hidup(await sumber.tabel("po_items"));
+
+  // ─── Berkas: cermin lokal dulu (bisa dilanjutkan), baru masuk transaksi DB ───
+  const daftarBerkas = await sumber.berkas();
+  const ukuranDi = new Map((daftarBerkas ?? []).map((b) => [b.path, b.size]));
+  const relDari = (url: unknown): string | null => {
+    if (typeof url !== "string" || !url) return null;
+    if (url.startsWith("/files/")) return url.slice(7);
+    return /^[a-z][a-z0-9+.-]*:/i.test(url) ? null : url.replace(/^\/+/, "");
+  };
+  let diunduh = 0;
+  let sudahAda = 0;
+  if (daftarBerkas) {
+    console.log(`Mencerminkan ${daftarBerkas.length} berkas ke ${cermin} …`);
+    for (const [i, b] of daftarBerkas.entries()) {
+      const tujuan = join(cermin, b.path);
+      if (!tujuan.startsWith(cermin + sep)) continue;
+      const st = await stat(tujuan).catch(() => null);
+      if (st && st.size === b.size) {
+        sudahAda++;
+        continue;
+      }
+      await sumber.unduh(b.path, tujuan);
+      const cek = await stat(tujuan);
+      if (cek.size !== b.size) throw new Error(`Ukuran ${b.path} tidak cocok (${cek.size} ≠ ${b.size}). Jalankan ulang.`);
+      diunduh++;
+      if ((i + 1) % 50 === 0) console.log(`  ${i + 1}/${daftarBerkas.length}`);
+    }
+  }
+  await sumber.tutup();
+
+  const ditulis: string[] = [];
+  const tautanLuar: string[] = [];
+  const hilang: string[] = [];
+  /** Salin berkas lama dari cermin ke penyimpanan v3. null = tidak bisa (tautan luar / hilang). */
+  async function salin(url: unknown, namaBerkas: unknown, mime: unknown, konteks: string) {
+    const rel = relDari(url);
+    if (rel === null) {
+      if (url) tautanLuar.push(`${konteks}\t${url}`);
+      return null;
+    }
+    if (!daftarBerkas || !ukuranDi.has(rel)) {
+      hilang.push(`${konteks}\t${rel}`);
+      return null;
+    }
+    const buf = await readFile(join(cermin, rel));
+    const nama = String(namaBerkas || rel.split("/").pop() || "berkas");
+    const eks = (nama.split(".").pop() || rel.split(".").pop() || "").toLowerCase();
+    const tipe = typeof mime === "string" && mime ? mime : (MIME_DARI_EKS[eks] ?? "application/octet-stream");
+    const b = await simpanBuffer(buf, "impor", nama, tipe);
+    ditulis.push(b.storageKey);
+    return b;
+  }
 
   const ringkas: Record<string, number> = {};
   const hitung = (k: string, n = 1) => (ringkas[k] = (ringkas[k] ?? 0) + n);
@@ -407,6 +606,7 @@ async function main() {
         }
 
         // ─── Pengajuan dana (cash request) → pengajuan uang muka ───
+        const reqUntukAdv = new Map<number, string>();
         const crItemsPer = new Map<number, Record<string, any>[]>();
         for (const it of crItems as Record<string, any>[]) {
           const l = crItemsPer.get(it.request_id) ?? [];
@@ -484,6 +684,7 @@ async function main() {
           await tx.paymentRequestEvent.createMany({
             data: ev.map((e) => ({ requestId: p.id, toStatus: e.toStatus, action: e.action, actorId: e.actorId, createdAt: e.createdAt, note: "note" in e ? (e.note ?? null) : null })),
           });
+          if (adv) reqUntukAdv.set(adv.id, p.id);
           if (adv && tid.has(adv.id)) {
             const topup = (settlements as Record<string, any>[])
               .filter((s) => s.cash_advance_tx_id === adv.id && s.topup_tx_id && tid.has(s.topup_tx_id))
@@ -495,6 +696,122 @@ async function main() {
             });
           }
           hitung(`pengajuan ${status}`);
+        }
+
+        // ─── Lampiran (hanya bila sumbernya membawa berkas) ───
+        if (daftarBerkas) {
+          for (const a of txAtt) {
+            if (!tid.has(a.transaction_id)) continue;
+            const b = await salin(a.url, a.file_name, a.mime_type, `transaksi lama #${a.transaction_id}`);
+            if (!b) continue;
+            await tx.attachment.create({ data: { ...b, kind: "nota", transactionId: tid.get(a.transaction_id)!, uploadedById: u(a.uploaded_by_id) } });
+            hitung("lampiran transaksi");
+          }
+          for (const a of projAtt) {
+            if (!pid.has(a.project_id)) continue;
+            const b = await salin(a.url, a.file_name, a.mime_type, `dokumen proyek lama #${a.project_id}`);
+            if (!b) continue;
+            const label = a.label || JENIS_DOKUMEN[a.doc_type] || "Dokumen";
+            await tx.attachment.create({
+              data: { ...b, kind: "lainnya", label: String(label).slice(0, 200), projectId: pid.get(a.project_id)!, uploadedById: u(a.uploaded_by_id) },
+            });
+            hitung("dokumen proyek");
+          }
+          const invMap = new Map(invoices.map((i) => [i.id, i]));
+          for (const a of invAtt) {
+            const inv = invMap.get(a.invoice_id);
+            if (!inv || !pid.has(inv.project_id)) continue;
+            const b = await salin(a.url, a.file_name, a.mime_type, `invoice lama ${inv.number}`);
+            if (!b) continue;
+            const label = `Invoice ${inv.number}${inv.party_name ? ` – ${inv.party_name}` : ""}`;
+            await tx.attachment.create({
+              data: { ...b, kind: "lainnya", label: label.slice(0, 200), projectId: pid.get(inv.project_id)!, uploadedById: u(a.uploaded_by_id) },
+            });
+            hitung("berkas invoice → dokumen proyek");
+          }
+          const settleMap = new Map(settlements.map((st) => [st.id, st]));
+          for (const it of settleItems) {
+            if (!it.receipt_url) continue;
+            const st = settleMap.get(it.settlement_id);
+            if (!st) continue;
+            const b = await salin(it.receipt_url, null, null, `nota penyelesaian #${st.id}`);
+            if (!b) continue;
+            const reqId = reqUntukAdv.get(st.cash_advance_tx_id);
+            const real = reqId ? null : await tx.transaction.findUnique({ where: { number: `LAMA/REAL/${st.id}` }, select: { id: true } });
+            const pemilik = reqId ? { requestId: reqId } : real ? { transactionId: real.id } : null;
+            if (!pemilik) continue;
+            await tx.attachment.create({ data: { ...b, kind: "lpj", ...pemilik, uploadedById: u(st.settled_by_id) } });
+            hitung("nota LPJ uang muka");
+          }
+        }
+
+        // ─── Arsip invoice & PO per proyek (v3 belum punya modulnya) ───
+        // Supaya tidak ada yang hilang: setiap proyek yang punya invoice/PO
+        // mendapat satu berkas Excel di Dokumen proyek.
+        const txNomor = new Map<number, string>(txs.map((t) => [t.id, `LAMA/TRX/${t.id}`]));
+        const projDenganArsip = new Set<number>([...invoices.map((i) => i.project_id), ...pos.map((p) => p.project_id)]);
+        for (const lp of projDenganArsip) {
+          if (!pid.has(lp)) continue;
+          const proj = projects.find((p) => p.id === lp);
+          const invP = invoices.filter((i) => i.project_id === lp);
+          const invIds = new Set(invP.map((i) => i.id));
+          const nomorInv = new Map(invP.map((i) => [i.id, i.number]));
+          const poP = pos.filter((p) => p.project_id === lp);
+          const poIds = new Set(poP.map((p) => p.id));
+          const nomorPo = new Map(poP.map((p) => [p.id, p.number]));
+          const wb = bukuBaru();
+          const sub = `Proyek ${proj?.code ?? lp} – diarsipkan dari Bintang lama`;
+          tambahSheet(wb, "Invoice", "Invoice (hutang & piutang)", sub, [
+            { header: "Nomor", key: "number", width: 20 },
+            { header: "Jenis", key: "jenis", width: 10 },
+            { header: "Tanggal", key: "invoice_date", tanggal: true, width: 12 },
+            { header: "Jatuh tempo", key: "due_date", tanggal: true, width: 12 },
+            { header: "Pihak", key: "party_name", width: 28 },
+            { header: "Subtotal", key: "subtotal", uang: true },
+            { header: "Pajak", key: "tax", uang: true },
+            { header: "Total", key: "total", uang: true },
+            { header: "Status", key: "status", width: 16 },
+            { header: "Catatan", key: "notes", width: 40 },
+          ], invP.map((i) => ({ ...i, jenis: i.type === "IN" ? "Masuk (hutang)" : "Keluar (piutang)", subtotal: uang(i.subtotal), tax: uang(i.tax), total: uang(i.total) })));
+          tambahSheet(wb, "Rincian invoice", "Rincian invoice", sub, [
+            { header: "Invoice", key: "inv", width: 20 },
+            { header: "Uraian", key: "description", width: 40 },
+            { header: "Qty", key: "quantity", width: 10 },
+            { header: "Satuan", key: "unit", width: 10 },
+            { header: "Harga satuan", key: "unit_price", uang: true },
+            { header: "Subtotal", key: "subtotal", uang: true },
+          ], invItems.filter((x) => invIds.has(x.invoice_id)).map((x) => ({ ...x, inv: nomorInv.get(x.invoice_id), quantity: String(x.quantity ?? ""), unit_price: uang(x.unit_price), subtotal: uang(x.subtotal) })));
+          tambahSheet(wb, "Pembayaran invoice", "Alokasi pembayaran invoice", sub, [
+            { header: "Invoice", key: "inv", width: 20 },
+            { header: "Transaksi di v3", key: "trx", width: 20 },
+            { header: "Jumlah", key: "allocated_amount", uang: true },
+            { header: "Catatan", key: "note", width: 40 },
+          ], invAlloc.filter((x) => invIds.has(x.invoice_id)).map((x) => ({ ...x, inv: nomorInv.get(x.invoice_id), trx: txNomor.get(x.transaction_id) ?? "", allocated_amount: uang(x.allocated_amount) })));
+          tambahSheet(wb, "PO", "Purchase order", sub, [
+            { header: "Nomor", key: "number", width: 20 },
+            { header: "Tanggal", key: "po_date", tanggal: true, width: 12 },
+            { header: "Vendor", key: "vendor_name", width: 28 },
+            { header: "Total", key: "total", uang: true },
+            { header: "Status", key: "status", width: 16 },
+            { header: "Syarat bayar", key: "payment_terms", width: 24 },
+            { header: "Catatan", key: "notes", width: 40 },
+          ], poP.map((x) => ({ ...x, total: uang(x.total) })));
+          tambahSheet(wb, "Rincian PO", "Rincian PO", sub, [
+            { header: "PO", key: "po", width: 20 },
+            { header: "Uraian", key: "description", width: 40 },
+            { header: "Qty", key: "quantity", width: 10 },
+            { header: "Satuan", key: "unit", width: 10 },
+            { header: "Harga satuan", key: "unit_price", uang: true },
+            { header: "Subtotal", key: "subtotal", uang: true },
+          ], poItems.filter((x) => poIds.has(x.po_id)).map((x) => ({ ...x, po: nomorPo.get(x.po_id), quantity: String(x.quantity ?? ""), unit_price: uang(x.unit_price), subtotal: uang(x.subtotal) })));
+          const buf = Buffer.from(await wb.xlsx.writeBuffer());
+          const nama = `arsip-invoice-po-${String(proj?.code ?? lp).toLowerCase()}.xlsx`;
+          const b = await simpanBuffer(buf, "impor", nama, MIME_DARI_EKS.xlsx);
+          ditulis.push(b.storageKey);
+          await tx.attachment.create({
+            data: { ...b, kind: "lainnya", label: `Arsip invoice & PO dari Bintang lama (${invP.length} invoice, ${poP.length} PO)`, projectId: pid.get(lp)!, uploadedById: sistem.id },
+          });
+          hitung("arsip invoice & PO (Excel per proyek)");
         }
 
         const topupMenunggu = (settlements as Record<string, any>[]).filter((s) => {
@@ -511,7 +828,16 @@ async function main() {
       { timeout: 15 * 60_000, maxWait: 60_000 },
     );
   } catch (e) {
+    // Transaksi DB batal → berkas yang terlanjur ditulis ke penyimpanan v3
+    // dibuang supaya tidak jadi yatim. Cermin lokal tetap ada untuk diulang.
+    await Promise.all(ditulis.map((k) => hapusBerkas(k).catch(() => undefined)));
     if (!(e instanceof Batal)) throw e;
+  }
+
+  if (tautanLuar.length || hilang.length) {
+    await mkdir(cermin, { recursive: true });
+    await writeFile(join(cermin, "laporan-tautan-luar.tsv"), tautanLuar.join("\n"));
+    await writeFile(join(cermin, "laporan-berkas-hilang.tsv"), hilang.join("\n"));
   }
 
   console.log(`\n${KERING ? "UJI KERING – tidak ada yang disimpan" : "IMPOR SELESAI"}\n`);
@@ -519,7 +845,15 @@ async function main() {
   if (pecahan) console.log(`\n  ${pecahan} nilai bersen dibulatkan ke rupiah terdekat.`);
   if (rekeningTerbuka) console.log(`  ${rekeningTerbuka} nomor rekening terenkripsi berhasil dibuka & disandikan ulang.`);
   if (rekeningGagal) console.log(`  ${rekeningGagal} nomor rekening terenkripsi TIDAK bisa dibuka (isi SECRET_KEY_LAMA) – dikosongkan.`);
-  console.log("\n  Berkas lampiran, invoice, PO, dan pengaturan AI/bot tidak ikut diimpor.\n");
+  if (daftarBerkas) {
+    console.log(`\n  Berkas: ${diunduh} diunduh, ${sudahAda} sudah ada di cermin (${cermin}).`);
+    console.log(`  Semua isi UPLOAD_DIR lama ikut dicerminkan – termasuk yang tidak ditautkan ke data mana pun.`);
+    if (tautanLuar.length) console.log(`  ${tautanLuar.length} lampiran berupa tautan luar (tidak bisa diunduh) – lihat laporan-tautan-luar.tsv.`);
+    if (hilang.length) console.log(`  ${hilang.length} lampiran tercatat di DB tapi berkasnya tidak ada di server lama – lihat laporan-berkas-hilang.tsv.`);
+  } else {
+    console.log("\n  Sumber PostgreSQL langsung: berkas lampiran TIDAK ikut. Pakai SUMBER_LAMA_URL untuk membawa berkas.");
+  }
+  console.log("  Pengaturan AI/OCR/bot tidak dipindah.\n");
   await db.$disconnect();
 }
 

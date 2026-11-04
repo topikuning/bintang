@@ -45,11 +45,21 @@ export async function createSession(userId: string, role: UserRole, ip?: string,
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: env.APP_ENV === "production",
+    secure: await cookieAman(),
     sameSite: "lax",
     path: "/",
     expires: expiresAt,
   });
+}
+
+/** Lihat env COOKIE_AMAN. */
+async function cookieAman(): Promise<boolean> {
+  if (env.COOKIE_AMAN === "1") return true;
+  if (env.COOKIE_AMAN === "0") return false;
+  if (env.APP_ENV !== "production") return false;
+  const h = await headers();
+  const proto = h.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  return proto === "https";
 }
 
 export async function destroySession() {

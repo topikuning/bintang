@@ -1,18 +1,21 @@
 #!/bin/sh
 set -e
 
-# Volume Railway dipasang milik root saat RUNTIME, sedangkan aplikasi berjalan
+# Volume/bind mount dipasang milik root saat RUNTIME, sedangkan aplikasi berjalan
 # sebagai `bintang`. `chown` saat build tidak menolong (ditimpa pemasangan
 # volume), jadi direktori lampiran disiapkan DI SINI, lalu hak root dilepas.
 # Pelajaran dari MARLIN (kejadian 2026-09-03: berkas hilang tiap deploy).
 DIR="${UPLOAD_DIR:-/data/berkas}"
 
 if [ "$(id -u)" = "0" ]; then
-  if mkdir -p "$DIR" 2>/dev/null; then
-    chown bintang:bintang "$DIR" 2>/dev/null || echo "[entrypoint] tidak bisa mengubah pemilik $DIR – unggahan lampiran akan gagal." >&2
-  else
-    echo "[entrypoint] tidak bisa membuat $DIR – unggahan lampiran akan gagal." >&2
-  fi
+  # IMPOR_CERMIN hanya ada di image `alat` (impor dari Bintang lama).
+  for d in "$DIR" ${IMPOR_CERMIN:-}; do
+    if mkdir -p "$d" 2>/dev/null; then
+      chown bintang:bintang "$d" 2>/dev/null || echo "[entrypoint] tidak bisa mengubah pemilik $d – penulisan berkas akan gagal." >&2
+    else
+      echo "[entrypoint] tidak bisa membuat $d – penulisan berkas akan gagal." >&2
+    fi
+  done
 fi
 
 # Self-host (docker-compose) tanpa preDeploy: jalankan migrasi dulu.

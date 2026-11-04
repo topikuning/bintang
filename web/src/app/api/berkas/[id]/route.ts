@@ -22,6 +22,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       fileName: true,
       mimeType: true,
       requestId: true,
+      projectId: true,
       transaction: { select: { projectId: true } },
     },
   });
@@ -34,6 +35,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   } else if (a.transaction && can(user.role, "tx.view")) {
     const ids = await accessibleProjectIds(user);
     boleh = ids === null || ids.includes(a.transaction.projectId);
+  } else if (a.projectId && can(user.role, "project.view")) {
+    const ids = await accessibleProjectIds(user);
+    boleh = ids === null || ids.includes(a.projectId);
   }
   // 404, bukan 403: jangan membocorkan bahwa berkasnya ada.
   if (!boleh) return new NextResponse("Tidak ditemukan.", { status: 404 });

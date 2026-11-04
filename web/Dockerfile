@@ -1,6 +1,6 @@
 # BINTANG v3 – multi-stage build untuk Railway (builder DOCKERFILE).
 # Debian slim (bukan alpine): kompatibel Prisma engine & OpenSSL.
-# Root Directory layanan Railway = `web` (lihat README).
+# Dijalankan di server Lenovo lewat docker-compose.yml (lihat README).
 
 # ── base ─────────────────────────────────────────────────────
 FROM node:24.18.0-bookworm-slim AS base
@@ -20,12 +20,27 @@ WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 # Nilai env palsu hanya supaya validasi zod saat build lolos; nilai asli dari
-# Railway saat runtime.
+# .env server saat runtime.
 RUN pnpm prisma generate && \
     DATABASE_URL="postgresql://build:build@localhost:5432/build" \
     SESSION_SECRET="build-placeholder-secret-0123456789abcdef" \
     APP_ENV="production" \
     pnpm next build
+
+# ── alat ─────────────────────────────────────────────────────
+# Image untuk pekerjaan sekali jalan (impor dari Bintang lama). Berisi
+# node_modules lengkap + skrip, TIDAK dipakai untuk melayani pengguna.
+#   docker compose --profile impor run --rm impor --kering
+# Diletakkan SEBELUM runner supaya target bawaan `docker build` tetap runner.
+FROM builder AS alat
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gosu ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd --gid 1001 bintang && \
+    useradd --uid 1001 --gid bintang --create-home --shell /usr/sbin/nologin bintang
+COPY --chmod=755 scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+ENV UPLOAD_DIR=/data/berkas IMPOR_CERMIN=/data/impor-cermin
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh", "node_modules/.bin/tsx", "--require", "./scripts/stub-server-only.cjs", "scripts/impor-bintang-lama.ts"]
 
 # ── runner ───────────────────────────────────────────────────
 FROM node:24.18.0-bookworm-slim AS runner
@@ -43,8 +58,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends tini gosu ca-certificates openssl && \
     rm -rf /var/lib/apt/lists/*
 
-# Prisma CLI (pinned) untuk `prisma migrate deploy` (preDeploy Railway /
-# entrypoint docker-compose).
+# Prisma CLI (pinned) untuk `prisma migrate deploy` saat start
+# (MIGRASI_SAAT_START=1 di docker-compose).
 RUN npm install -g prisma@7.8.0 && npm cache clean --force
 
 RUN groupadd --gid 1001 bintang && useradd --uid 1001 --gid bintang --create-home --shell /usr/sbin/nologin bintang

@@ -1,9 +1,10 @@
 # Bintang
 
-> **Bintang v3 sedang dibangun di [`web/`](./web/README.md)** – rombak total di
-> atas stack MARLIN (Next.js 16 + Prisma 7 + PostgreSQL) dengan alur pengajuan →
-> persetujuan → pembayaran sebagai inti. Aplikasi di bawah ini (FastAPI + React)
-> tetap berjalan sampai v3 menggantikannya; importer datanya ada di `web/`.
+> **Bintang v3 ada di [`web/`](./web/README.md) (cabang `dev3`)** – rombak total di
+> atas stack MARLIN (Next.js 16 + Prisma 7 + PostgreSQL), berjalan di **server
+> Lenovo**, dengan alur pengajuan → persetujuan → pembayaran sebagai inti.
+> Aplikasi di bawah ini (FastAPI + React, Railway) tetap berjalan sampai hari
+> pindah – runbook-nya di [`web/docs/PINDAHAN.md`](./web/docs/PINDAHAN.md).
 
 **Bintang — Biaya, Investasi dan Tata Anggaran Gerak.**
 Aplikasi web pencatatan & monitoring keuangan multi-proyek, mobile-first.

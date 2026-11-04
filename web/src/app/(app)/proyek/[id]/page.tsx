@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BarisPengajuan } from "@/components/pengajuan/baris-pengajuan";
 import { AnggaranBar } from "@/components/proyek/anggaran-bar";
+import { DokumenProyek } from "@/components/proyek/dokumen-proyek";
 import { Avatar, Badge, ButtonLink, Card, CardBody, CardHeader, Kpi, ProgressBar } from "@/components/ui";
 import { requireCapabilityPage } from "@/lib/auth/page-guard";
 import { hasProjectAccess, requireUser } from "@/lib/auth/session";
@@ -12,7 +13,7 @@ import { db } from "@/lib/db";
 import { biayaPerKategori, ringkasan } from "@/lib/keuangan/queries";
 import { PROJECT_STATUS_LABEL, PROJECT_STATUS_TONE } from "@/lib/lifecycle";
 import { scopePengajuan } from "@/lib/pengajuan/queries";
-import { fmtTanggal, hariIniKey } from "@/lib/tanggal";
+import { fmtTanggal, fmtWaktu, hariIniKey } from "@/lib/tanggal";
 import { persen, rupiah, rupiahRingkas } from "@/lib/uang";
 
 export const metadata: Metadata = { title: "Proyek" };
@@ -27,6 +28,7 @@ export default async function DetailProyekPage({ params }: { params: Promise<{ i
     include: {
       company: { select: { name: true } },
       members: { include: { user: { select: { fullName: true, role: true, isActive: true } } }, orderBy: { createdAt: "asc" } },
+      documents: { orderBy: { createdAt: "desc" }, include: { uploadedBy: { select: { fullName: true } } } },
     },
   });
   if (!p) notFound();
@@ -160,6 +162,23 @@ export default async function DetailProyekPage({ params }: { params: Promise<{ i
             </Card>
           ) : null}
         </div>
+        <div className="min-w-0 space-y-5">
+        <Card>
+          <CardHeader title="Dokumen proyek" subtitle={`${p.documents.length} berkas`} />
+          <DokumenProyek
+            projectId={p.id}
+            bolehKelola={can(user.role, "project.manage")}
+            rows={p.documents.map((d) => ({
+              id: d.id,
+              label: d.label ?? d.fileName,
+              fileName: d.fileName,
+              mimeType: d.mimeType,
+              size: d.size,
+              tanggal: fmtWaktu(d.createdAt),
+              oleh: d.uploadedBy.fullName,
+            }))}
+          />
+        </Card>
         <Card>
           <CardHeader title="Tim proyek" subtitle={`${p.members.length} orang`} />
           <ul className="divide-y divide-border">
@@ -179,6 +198,7 @@ export default async function DetailProyekPage({ params }: { params: Promise<{ i
           </ul>
           {p.notes ? <p className="border-t border-border px-4 py-3 text-[13px] whitespace-pre-line text-ink-muted">{p.notes}</p> : null}
         </Card>
+        </div>
       </div>
     </div>
   );

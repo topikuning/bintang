@@ -1,40 +1,122 @@
-# Self-host Bintang v3: Postgres + aplikasi. Untuk Railway pakai railway.json.
-#   cp .env.example .env   # isi SESSION_SECRET (dan KUNCI_DATA)
-#   docker compose up -d --build
-#   buka http://localhost:3000 → layar "Mulai" membuat admin pertama.
+# ═══════════════════════════════════════════════════════════════
+# Bintang v3 di server Lenovo (Linux + Docker). Lihat README §Server Lenovo.
+#
+#   cp .env.lenovo.example .env       # isi SESSION_SECRET, KUNCI_DATA, dst.
+#   docker compose up -d --build      # app + Postgres + cadangan harian
+#   docker compose --profile tunnel up -d   # + Cloudflare Tunnel (HTTPS publik)
+#
+# Semua data tinggal di DATA_DIR di mesin ini (bawaan ./data):
+#   postgres/  isi database      berkas/  lampiran      cadangan/  dump harian
+# Mesin di pojok ruangan akan mati listrik dan reboot – semua layanan
+# `restart: unless-stopped`, jadi kembali sendiri begitu Docker hidup.
+# ═══════════════════════════════════════════════════════════════
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: bintang
-      POSTGRES_PASSWORD: bintang
-      POSTGRES_DB: bintang_v3
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?isi DB_PASSWORD di .env}
+      POSTGRES_DB: bintang
     volumes:
-      - bintang-v3-db:/var/lib/postgresql/data
+      - ${DATA_DIR:-./data}/postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bintang"]
+      test: ["CMD-SHELL", "pg_isready -U bintang -d bintang"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
 
   app:
     build: .
+    image: bintang-web:lokal
+    restart: unless-stopped
     environment:
       APP_ENV: production
-      DATABASE_URL: postgresql://bintang:bintang@db:5432/bintang_v3
+      DATABASE_URL: postgresql://bintang:${DB_PASSWORD}@db:5432/bintang
       SESSION_SECRET: ${SESSION_SECRET:?isi SESSION_SECRET di .env}
       KUNCI_DATA: ${KUNCI_DATA:-}
+      APP_NAME: ${APP_NAME:-Bintang}
+      PENANDA_LINGKUNGAN: ${PENANDA_LINGKUNGAN:-}
+      COOKIE_AMAN: ${COOKIE_AMAN:-auto}
       UPLOAD_DIR: /data/berkas
-      # Tanpa preDeploy seperti Railway, migrasi dijalankan saat start.
+      # Tanpa platform pre-deploy, migrasi dijalankan tiap start (aman:
+      # `migrate deploy` hanya menerapkan yang belum).
       MIGRASI_SAAT_START: "1"
     volumes:
-      - bintang-v3-berkas:/data
+      - ${DATA_DIR:-./data}/berkas:/data/berkas
     ports:
-      - "3000:3000"
+      # Bawaan: terbuka di LAN kantor (http://<ip-lenovo>:3000). Kalau hanya
+      # lewat Cloudflare Tunnel, ganti BIND=127.0.0.1 supaya tidak terbuka.
+      - "${BIND:-0.0.0.0}:${PORT:-3000}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Cadangan harian: dump DB (format custom, bisa pg_restore) + salinan
+  # tambahan berkas lampiran. Lampiran tidak pernah ditimpa (nama acak),
+  # jadi salinan "tanpa menimpa" sudah merupakan cadangan inkremental.
+  # INI MASIH DI MESIN YANG SAMA – salin DATA_DIR/cadangan ke luar mesin
+  # (lihat README) supaya disk rusak tidak menghapus semuanya sekaligus.
+  cadangan:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: bintang
+      PGPASSWORD: ${DB_PASSWORD}
+      PGDATABASE: bintang
+      TZ: Asia/Jakarta
+      CADANGAN_JAM: ${CADANGAN_JAM:-02}
+      CADANGAN_SIMPAN_HARI: ${CADANGAN_SIMPAN_HARI:-14}
+    volumes:
+      - ${DATA_DIR:-./data}/berkas:/data/berkas:ro
+      - ${DATA_DIR:-./data}/cadangan:/cadangan
+      - ./scripts/cadangan.sh:/cadangan.sh:ro
+    entrypoint: ["/bin/sh", "/cadangan.sh"]
     depends_on:
       db:
         condition: service_healthy
 
-volumes:
-  bintang-v3-db:
-  bintang-v3-berkas:
+  # Impor sekali jalan dari Bintang lama (data + semua lampiran) lewat API
+  # ekspor di server lama. Lihat docs/PINDAHAN.md.
+  #   docker compose --profile impor run --rm impor --kering   # uji
+  #   docker compose --profile impor run --rm impor            # sungguhan
+  impor:
+    profiles: ["impor"]
+    build:
+      context: .
+      target: alat
+    image: bintang-web-alat:lokal
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql://bintang:${DB_PASSWORD}@db:5432/bintang
+      SESSION_SECRET: ${SESSION_SECRET}
+      # WAJIB sama dengan app: nomor rekening disandikan dengan kunci ini.
+      KUNCI_DATA: ${KUNCI_DATA:-}
+      SUMBER_LAMA_URL: ${SUMBER_LAMA_URL:-}
+      EKSPOR_V3_TOKEN: ${EKSPOR_V3_TOKEN:-}
+    volumes:
+      - ${DATA_DIR:-./data}/berkas:/data/berkas
+      - ${DATA_DIR:-./data}/impor-cermin:/data/impor-cermin
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # HTTPS publik tanpa membuka port router: Cloudflare Tunnel.
+  # Buat tunnel di dasbor Cloudflare Zero Trust → arahkan hostname ke
+  # http://app:3000 → salin token ke TUNNEL_TOKEN.
+  cloudflared:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:${CLOUDFLARED_VERSI:-latest}
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?isi TUNNEL_TOKEN untuk profil tunnel}
+    depends_on:
+      - app
