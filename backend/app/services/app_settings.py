@@ -43,75 +43,88 @@ _cache: dict[str, tuple[str | None, float]] = {}
 SETTING_REGISTRY: dict[str, dict[str, Any]] = {
     # OCR
     "ANTHROPIC_API_KEY": {
-        "group": "ocr", "secret": True,
+        "group": "ocr",
+        "secret": True,
         "label": "Anthropic API Key",
         "hint": "Generate di console.anthropic.com. Wajib utk engine Claude.",
     },
     "MISTRAL_API_KEY": {
-        "group": "ocr", "secret": True,
+        "group": "ocr",
+        "secret": True,
         "label": "Mistral API Key",
         "hint": "Generate di console.mistral.ai. Wajib utk engine Mistral.",
     },
     "OCR_ENGINE": {
-        "group": "ocr", "secret": False,
+        "group": "ocr",
+        "secret": False,
         "label": "Engine OCR Default",
         "hint": "claude / mistral / stub. Hanya jadi default awal di dropdown.",
     },
     "OCR_MODEL_CLAUDE": {
-        "group": "ocr", "secret": False,
+        "group": "ocr",
+        "secret": False,
         "label": "Model Claude (opsional override)",
         "hint": "Default claude-haiku-4-5. Kosongkan utk pakai default.",
     },
     "OCR_MODEL_MISTRAL": {
-        "group": "ocr", "secret": False,
+        "group": "ocr",
+        "secret": False,
         "label": "Model Mistral (opsional override)",
         "hint": "Default mistral-ocr-latest. Kosongkan utk pakai default.",
     },
     "OCR_FALLBACK_ENABLED": {
-        "group": "ocr", "secret": False,
+        "group": "ocr",
+        "secret": False,
         "label": "OCR Fallback Mistral→Claude",
         "hint": "true/false. Default false (hormati pilihan engine). Set true "
-                "kalau mau auto-retry ke Claude saat Mistral confidence rendah.",
+        "kalau mau auto-retry ke Claude saat Mistral confidence rendah.",
     },
     "OCR_TESSERACT_ENABLED": {
-        "group": "ocr", "secret": False,
+        "group": "ocr",
+        "secret": False,
         "label": "Tesseract Pre-pass",
         "hint": "true/false. Default false. Set true utk gratis cek receipt printed "
-                "via Tesseract dulu (butuh tesseract-ocr binary di OS).",
+        "via Tesseract dulu (butuh tesseract-ocr binary di OS).",
     },
     # AI broader (selain OCR) -- audit 2026-05-23
     "AI_DEFAULT_PROVIDER": {
-        "group": "ai", "secret": False,
+        "group": "ai",
+        "secret": False,
         "label": "Provider AI Default",
         "hint": "mistral / claude. Default 'mistral' (lebih murah). Dipakai utk "
-                "semua fitur AI selain OCR (saran kategori, justifier, PO cover, "
-                "ringkasan, dll). Kalau API key provider yg dipilih tdk tersedia, "
-                "auto-fallback ke yg lain.",
+        "semua fitur AI selain OCR (saran kategori, justifier, PO cover, "
+        "ringkasan, dll). Kalau API key provider yg dipilih tdk tersedia, "
+        "auto-fallback ke yg lain.",
     },
     # Telegram
     "TELEGRAM_BOT_TOKEN": {
-        "group": "telegram", "secret": True,
+        "group": "telegram",
+        "secret": True,
         "label": "Telegram Bot Token",
         "hint": "Dari @BotFather. Kosong = integrasi off.",
     },
     "TELEGRAM_WEBHOOK_SECRET": {
-        "group": "telegram", "secret": True,
+        "group": "telegram",
+        "secret": True,
         "label": "Webhook Secret",
         "hint": "Random string utk verifikasi webhook dr Telegram.",
     },
     # WhatsApp / WAHA
     "WHATSAPP_BASE_URL": {
-        "group": "whatsapp", "secret": False,
+        "group": "whatsapp",
+        "secret": False,
         "label": "WAHA Base URL",
         "hint": "Mis. http://waha.example.com:3000 (tanpa trailing slash).",
     },
     "WHATSAPP_SESSION": {
-        "group": "whatsapp", "secret": False,
+        "group": "whatsapp",
+        "secret": False,
         "label": "Session Name",
         "hint": "Default 'default'. WAHA Core hanya 1 session.",
     },
     "WHATSAPP_API_KEY": {
-        "group": "whatsapp", "secret": True,
+        "group": "whatsapp",
+        "secret": True,
         "label": "WAHA API Key",
         "hint": "Header X-Api-Key. Boleh kosong utk WAHA Core tanpa auth.",
     },
@@ -119,14 +132,16 @@ SETTING_REGISTRY: dict[str, dict[str, Any]] = {
     # padahal seluruh config bot lain di-manage dari UI. Admin yg setup
     # lewat UI berakhir dgn webhook tanpa verifikasi sama sekali.
     "WHATSAPP_WEBHOOK_SECRET": {
-        "group": "whatsapp", "secret": True,
+        "group": "whatsapp",
+        "secret": True,
         "label": "Webhook Secret (HMAC)",
         "hint": "Samakan dgn WAHA_HMAC_KEY di sisi WAHA. Wajib diisi di "
-                "produksi -- tanpa ini webhook bisa dipanggil siapa pun.",
+        "produksi -- tanpa ini webhook bisa dipanggil siapa pun.",
     },
     # System
     "PUBLIC_BASE_URL": {
-        "group": "system", "secret": False,
+        "group": "system",
+        "secret": False,
         "label": "Public Base URL",
         "hint": "URL backend yg accessible dari Telegram/WAHA webhook.",
     },
@@ -218,13 +233,15 @@ async def set_setting(
     if value:
         stored = _encrypt(value) if meta["secret"] else value
     if row is None:
-        db.add(AppSetting(
-            key=key,
-            value=stored,
-            is_secret=meta["secret"],
-            group_key=meta["group"],
-            updated_by_id=user_id,
-        ))
+        db.add(
+            AppSetting(
+                key=key,
+                value=stored,
+                is_secret=meta["secret"],
+                group_key=meta["group"],
+                updated_by_id=user_id,
+            )
+        )
     else:
         row.value = stored
         row.is_secret = meta["secret"]

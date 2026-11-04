@@ -1,4 +1,4 @@
-import { Navigate, Outlet, useLocation } from "react-router-dom"
+import { Navigate, Outlet, useLocation } from "react-router"
 import { useAuthStore } from "@/store/auth"
 
 /** Guard: redirect ke /login kalau belum punya token, simpan ?next. */

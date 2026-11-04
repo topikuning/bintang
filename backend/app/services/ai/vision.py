@@ -6,13 +6,13 @@ Audit 2026-05-23 AI foundation. Pakai utk extract dokumen non-invoice
 Selalu pakai Claude (Mistral OCR khusus invoice-shape, kurang fleksibel
 utk dokumen kompleks).
 """
+
 from __future__ import annotations
 
 import base64
 import hashlib
 import logging
 import time
-from decimal import Decimal
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,8 +58,10 @@ async def extract_from_image(
     # Per-feature config overlay (audit 2026-05-24).
     if feature_key:
         from app.services.ai.feature_settings import (
-            assert_within_budget, get_effective,
+            assert_within_budget,
+            get_effective,
         )
+
         _cfg = await get_effective(db, feature_key)
         await assert_within_budget(db, feature_key, _cfg)
         if model is None and _cfg.model:
@@ -73,7 +75,9 @@ async def extract_from_image(
             rate_limit_max = _cfg.rate_limit_per_min
     # Rate-limit per feature per user
     limiter = get_limiter(
-        feature, max_calls=rate_limit_max, period_seconds=rate_limit_period,
+        feature,
+        max_calls=rate_limit_max,
+        period_seconds=rate_limit_period,
     )
     rl_key = f"u:{user_id}" if user_id else "anon"
     if not limiter.check(rl_key)[0]:
@@ -82,20 +86,27 @@ async def extract_from_image(
     # Cache by (feature, content hash, schema hash) -- schema berubah =
     # cache invalidate (extraction shape beda).
     content_hash = hashlib.sha256(content).hexdigest()
-    schema_hash = hashlib.sha256(
-        cache.make_key(schema).encode("utf-8")
-    ).hexdigest()[:16]
+    schema_hash = hashlib.sha256(cache.make_key(schema).encode("utf-8")).hexdigest()[:16]
     cache_key = f"{content_hash}:{schema_hash}"
 
     if cache_ttl_days > 0:
         cached_val = await cache.lookup(
-            db, namespace=feature, key=cache_key, ttl_days=cache_ttl_days,
+            db,
+            namespace=feature,
+            key=cache_key,
+            ttl_days=cache_ttl_days,
         )
         if cached_val is not None:
             await audit.log_call(
-                db, user_id=user_id, feature=feature, model="cache",
-                input_tokens=0, output_tokens=0, cost_usd="0",
-                latency_ms=0, cached=True,
+                db,
+                user_id=user_id,
+                feature=feature,
+                model="cache",
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd="0",
+                latency_ms=0,
+                cached=True,
             )
             result = dict(cached_val)
             result["_meta"] = {"cached": True, "model": "cache", "cost_usd": "0"}
@@ -108,8 +119,11 @@ async def extract_from_image(
     chosen_model = model or _VISION_MODEL_DEFAULT
 
     import anthropic
+
     client = anthropic.AsyncAnthropic(
-        api_key=api_key, timeout=_ANTHROPIC_TIMEOUT, max_retries=0,
+        api_key=api_key,
+        timeout=_ANTHROPIC_TIMEOUT,
+        max_retries=0,
     )
 
     b64 = base64.standard_b64encode(content).decode("ascii")
@@ -137,26 +151,36 @@ async def extract_from_image(
         resp = await client.messages.create(
             model=chosen_model,
             max_tokens=max_tokens,
-            system=system_prompt + (
+            system=system_prompt
+            + (
                 "\n\nWAJIB call tool save_extraction (atau tool_name yg disediakan) "
                 "dgn semua field. Jangan jawab teks bebas."
             ),
             tools=[tool],
             tool_choice={"type": "tool", "name": tool_name},
-            messages=[{
-                "role": "user",
-                "content": [
-                    content_block,
-                    {"type": "text", "text": "Extract dokumen ini dan call tool."},
-                ],
-            }],
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        content_block,
+                        {"type": "text", "text": "Extract dokumen ini dan call tool."},
+                    ],
+                }
+            ],
         )
     except Exception as e:  # noqa: BLE001
         await audit.log_call(
-            db, user_id=user_id, feature=feature, model=chosen_model,
-            input_tokens=0, output_tokens=0, cost_usd="0",
+            db,
+            user_id=user_id,
+            feature=feature,
+            model=chosen_model,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd="0",
             latency_ms=int((time.monotonic() - t0) * 1000),
-            cached=False, success=False, error=str(e),
+            cached=False,
+            success=False,
+            error=str(e),
         )
         raise RuntimeError(f"vision_failed: {e}") from e
 
@@ -167,30 +191,39 @@ async def extract_from_image(
     )
     if tool_block is None:
         await audit.log_call(
-            db, user_id=user_id, feature=feature, model=chosen_model,
+            db,
+            user_id=user_id,
+            feature=feature,
+            model=chosen_model,
             input_tokens=resp.usage.input_tokens,
             output_tokens=resp.usage.output_tokens,
-            cost_usd=str(estimate_cost(
-                chosen_model, input_tokens=resp.usage.input_tokens,
-                output_tokens=resp.usage.output_tokens,
-            )),
-            latency_ms=latency_ms, cached=False, success=False,
+            cost_usd=str(
+                estimate_cost(
+                    chosen_model,
+                    input_tokens=resp.usage.input_tokens,
+                    output_tokens=resp.usage.output_tokens,
+                )
+            ),
+            latency_ms=latency_ms,
+            cached=False,
+            success=False,
             error=f"no_tool_use stop={resp.stop_reason}",
         )
-        raise RuntimeError(
-            f"claude_no_tool_use stop={resp.stop_reason}"
-        )
+        raise RuntimeError(f"claude_no_tool_use stop={resp.stop_reason}")
 
     data = dict(tool_block.input or {})
     cost = estimate_cost(
-        chosen_model, input_tokens=resp.usage.input_tokens,
+        chosen_model,
+        input_tokens=resp.usage.input_tokens,
         output_tokens=resp.usage.output_tokens,
     )
 
     # Cache
     if cache_ttl_days > 0:
         await cache.store(
-            db, namespace=feature, key=cache_key,
+            db,
+            namespace=feature,
+            key=cache_key,
             value=data,
             source_info={
                 "model": chosen_model,
@@ -202,10 +235,16 @@ async def extract_from_image(
         )
 
     await audit.log_call(
-        db, user_id=user_id, feature=feature, model=chosen_model,
+        db,
+        user_id=user_id,
+        feature=feature,
+        model=chosen_model,
         input_tokens=resp.usage.input_tokens,
         output_tokens=resp.usage.output_tokens,
-        cost_usd=str(cost), latency_ms=latency_ms, cached=False, success=True,
+        cost_usd=str(cost),
+        latency_ms=latency_ms,
+        cached=False,
+        success=True,
     )
 
     data["_meta"] = {

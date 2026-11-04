@@ -1,8 +1,9 @@
 """Generate / consume kode 6 digit untuk meng-link user ke chat Telegram."""
+
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,14 +27,14 @@ async def issue_code(db: AsyncSession, user: User) -> TelegramLinkCode:
         TelegramLinkCode.used_at.is_(None),
     )
     for old in (await db.execute(existing_q)).scalars().all():
-        old.expires_at = datetime.now(timezone.utc)
-    expires = datetime.now(timezone.utc) + timedelta(minutes=LINK_TTL_MINUTES)
+        old.expires_at = datetime.now(UTC)
+    expires = datetime.now(UTC) + timedelta(minutes=LINK_TTL_MINUTES)
     # tabrakan kode kecil kemungkinan; coba ulang sekali
     for _ in range(5):
         code = _generate_code()
-        if not (await db.execute(
-            select(TelegramLinkCode).where(TelegramLinkCode.code == code)
-        )).scalar_one_or_none():
+        if not (
+            await db.execute(select(TelegramLinkCode).where(TelegramLinkCode.code == code))
+        ).scalar_one_or_none():
             break
     row = TelegramLinkCode(user_id=user.id, code=code, expires_at=expires)
     db.add(row)
@@ -60,6 +61,6 @@ async def consume_code(db: AsyncSession, code: str, chat_id: str) -> User | None
     for other in (await db.execute(other_q)).scalars().all():
         other.telegram_chat_id = None
     user.telegram_chat_id = chat_id
-    row.used_at = datetime.now(timezone.utc)
+    row.used_at = datetime.now(UTC)
     await db.flush()
     return user

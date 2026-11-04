@@ -16,10 +16,11 @@ Penguncian:
 SQLite tidak men-support FOR UPDATE; di dev kita rely pada serializable
 transaction default-nya. Di prod (Postgres) lock benar-benar dipakai.
 """
+
 from __future__ import annotations
 
+from collections.abc import Iterable
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Iterable
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -64,9 +65,7 @@ ALLOCATABLE_INVOICE_STATUSES = (
 # User keputusan: strict policy -- payment hrs verified dulu sebelum
 # di-claim ke invoice. Kalau perlu attach saat create, user submit+verify
 # dulu di flow tx, baru link ke invoice.
-ALLOCATABLE_TXN_STATUSES = (
-    TxnStatus.VERIFIED,
-)
+ALLOCATABLE_TXN_STATUSES = (TxnStatus.VERIFIED,)
 # Audit 2026-05-27: kind=DIRECT_EXPENSE tdk boleh dialokasikan ke invoice.
 # DIRECT_EXPENSE sudah punya `items` (multi-line per kategori) -- beban
 # tercatat in-place via TX. Kalau di-link ke invoice -> double-count
@@ -74,9 +73,7 @@ ALLOCATABLE_TXN_STATUSES = (
 # dianggap "dibayar"). User keputusan: restrict DIRECT_EXPENSE saja
 # untuk sekarang; CASH_ADVANCE sementara biar terbuka (workflow settle
 # yg handle, bukan ban total).
-NON_ALLOCATABLE_TXN_KINDS = (
-    TxnKind.DIRECT_EXPENSE,
-)
+NON_ALLOCATABLE_TXN_KINDS = (TxnKind.DIRECT_EXPENSE,)
 
 
 def _sum_allocs_for_txn():
@@ -118,9 +115,7 @@ async def _load_invoice_locked(db: AsyncSession, invoice_id: int) -> Invoice:
     return inv
 
 
-async def _load_txns_locked(
-    db: AsyncSession, txn_ids: Iterable[int]
-) -> dict[int, Transaction]:
+async def _load_txns_locked(db: AsyncSession, txn_ids: Iterable[int]) -> dict[int, Transaction]:
     ids = sorted(set(txn_ids))
     if not ids:
         return {}
@@ -279,12 +274,14 @@ async def apply_allocations_to_transaction(
         # Hitung sisa kapasitas transaksi setelah alokasi sebelumnya
         room_txn = q2(txn_remaining - total_applied)
         if room_txn <= 0:
-            results.append({
-                "invoice_id": inv_id,
-                "applied": ZERO,
-                "leftover_requested": req,
-                "skipped": "transaction_exhausted",
-            })
+            results.append(
+                {
+                    "invoice_id": inv_id,
+                    "applied": ZERO,
+                    "leftover_requested": req,
+                    "skipped": "transaction_exhausted",
+                }
+            )
             continue
         single_req = min(req, room_txn)
         sub = await apply_allocations_to_invoice(
@@ -297,14 +294,16 @@ async def apply_allocations_to_transaction(
         applied_here = sub["total_applied"]
         total_applied += applied_here
         leftover = q2(req - applied_here)
-        results.append({
-            "invoice_id": inv_id,
-            "applied": applied_here,
-            "leftover_requested": leftover if leftover > 0 else ZERO,
-            "invoice_status": sub["invoice_status"],
-            "invoice_paid": sub["invoice_paid"],
-            "invoice_outstanding": sub["invoice_outstanding"],
-        })
+        results.append(
+            {
+                "invoice_id": inv_id,
+                "applied": applied_here,
+                "leftover_requested": leftover if leftover > 0 else ZERO,
+                "invoice_status": sub["invoice_status"],
+                "invoice_paid": sub["invoice_paid"],
+                "invoice_outstanding": sub["invoice_outstanding"],
+            }
+        )
 
     return results
 

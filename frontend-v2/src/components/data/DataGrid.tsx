@@ -60,7 +60,7 @@ export function DataGrid<T>({
 
   if (isLoading) {
     return (
-      <div className={cn("rounded-md border bg-surface", className)}>
+      <div className={cn("rounded-xl border bg-surface shadow-[var(--app-shadow)]", className)}>
         <div className="space-y-2 p-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-10 w-full" />
@@ -73,13 +73,13 @@ export function DataGrid<T>({
   return (
     <div
       className={cn(
-        "rounded-md border bg-surface overflow-hidden",
+        "overflow-hidden rounded-xl border border-white/80 bg-surface shadow-[var(--app-shadow)] ring-1 ring-ink-200/60",
         className,
       )}
     >
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
-          <thead className="bg-surface-muted">
+          <thead className="bg-ink-50/80">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="border-b">
                 {hg.headers.map((header, idx) => {
@@ -95,7 +95,7 @@ export function DataGrid<T>({
                       key={header.id}
                       style={meta.width ? { width: meta.width } : undefined}
                       className={cn(
-                        "h-10 px-3 text-[11px] font-semibold uppercase tracking-wider text-ink-600 whitespace-nowrap",
+                        "h-11 px-4 text-[10px] font-bold uppercase tracking-[0.12em] text-ink-500 whitespace-nowrap",
                         meta.align === "right" && "text-right",
                         meta.align === "center" && "text-center",
                         meta.align === "num" && "text-right",
@@ -171,7 +171,7 @@ export function DataGrid<T>({
                           <td
                             key={cell.id}
                             className={cn(
-                              "px-3 py-2.5 align-top",
+                              "px-4 py-3 align-top",
                               meta.align === "right" && "text-right",
                               meta.align === "center" && "text-center",
                               meta.align === "num" && "text-right font-mono [font-variant-numeric:tabular-nums]",

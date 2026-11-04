@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.models.models import (
     InvoiceStatus,
@@ -23,20 +23,21 @@ class AttachmentOut(BaseModel):
     url: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ExternalLinkIn(BaseModel):
     """Tambah lampiran berupa link eksternal (mis. Google Drive)."""
+
     url: str
-    label: str | None = None        # dipakai sebagai file_name kalau diisi
-    file_name: str | None = None    # override eksplisit nama file
+    label: str | None = None  # dipakai sebagai file_name kalau diisi
+    file_name: str | None = None  # override eksplisit nama file
 
 
 # --- Transaction ---
 class TransactionItemIn(BaseModel):
     """Multi-line item utk tx (DIRECT_EXPENSE). Sum(items.amount) hrs = tx.amount."""
+
     category_id: int | None = None
     description: str
     amount: Decimal
@@ -45,8 +46,7 @@ class TransactionItemIn(BaseModel):
 class TransactionItemOut(TransactionItemIn):
     id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TransactionBase(BaseModel):
@@ -111,7 +111,8 @@ class TransactionUpdate(BaseModel):
 
 class TransactionAllocationRef(BaseModel):
     """Ringkasan alokasi yang dipakai pada response Transaction."""
-    id: int                       # allocation_id
+
+    id: int  # allocation_id
     invoice_id: int
     invoice_number: str | None = None
     invoice_total: Decimal
@@ -133,13 +134,12 @@ class TransactionOut(TransactionBase):
     remaining_amount: Decimal = Decimal("0")
     allocations: list[TransactionAllocationRef] = []
     # CASH_ADVANCE only: display info recipient + status settlement.
-    recipient_display: str | None = None     # nama user OR recipient_name
-    settlement_status: str | None = None     # "OUTSTANDING" / "SETTLED" / None
+    recipient_display: str | None = None  # nama user OR recipient_name
+    settlement_status: str | None = None  # "OUTSTANDING" / "SETTLED" / None
     settlement_id: int | None = None
     parent_advance_tx_id: int | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CancelIn(BaseModel):
@@ -162,8 +162,7 @@ class CashAdvanceSettlementItemOut(CashAdvanceSettlementItemIn):
     # Untuk tampilan FE -- nama invoice yg di-link (di-resolve di endpoint)
     invoice_number: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CashAdvanceSettlementIn(BaseModel):
@@ -174,7 +173,8 @@ class CashAdvanceSettlementIn(BaseModel):
     - Kalau total > advance.amount: auto-create top-up tx (kind=DIRECT_EXPENSE)
       utk selisih, parent_advance_tx_id = advance.id.
     """
-    settled_at: datetime | None = None     # default now()
+
+    settled_at: datetime | None = None  # default now()
     returned_to_kas: Decimal = Decimal("0")
     notes: str | None = None
     items: list[CashAdvanceSettlementItemIn]
@@ -192,17 +192,17 @@ class CashAdvanceSettlementOut(BaseModel):
     notes: str | None = None
     items: list[CashAdvanceSettlementItemOut] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CashAdvanceBalanceRow(BaseModel):
     """Saldo uang muka outstanding per penerima (user atau nama bebas)."""
+
     recipient_user_id: int | None = None
     recipient_name: str
-    advance_total: Decimal           # sum kind=CASH_ADVANCE
-    settled_total: Decimal           # sum settlement.items + returned_to_kas
-    outstanding: Decimal             # = advance_total - settled_total
+    advance_total: Decimal  # sum kind=CASH_ADVANCE
+    settled_total: Decimal  # sum settlement.items + returned_to_kas
+    outstanding: Decimal  # = advance_total - settled_total
     advance_count: int
     unsettled_count: int
 
@@ -221,20 +221,20 @@ class InvoiceItemOut(InvoiceItemIn):
     id: int
     subtotal: Decimal
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class InvoicePayment(BaseModel):
     """Ringkasan transaksi pembayaran yang terhubung ke invoice
     (lewat tabel `invoice_allocations`).
     """
-    id: int                              # transaction_id
+
+    id: int  # transaction_id
     allocation_id: int
     tx_date: date
     type: TxnType
-    amount: Decimal                       # nilai yang dialokasikan ke invoice ini
-    transaction_total: Decimal            # nilai total transaksi
+    amount: Decimal  # nilai yang dialokasikan ke invoice ini
+    transaction_total: Decimal  # nilai total transaksi
     status: TxnStatus
     payment_method: PaymentMethod
     reference_no: str | None = None
@@ -244,8 +244,9 @@ class InvoicePayment(BaseModel):
 
 class AllocationItemIn(BaseModel):
     """Satu baris alokasi (digunakan oleh kedua arah API)."""
-    transaction_id: int | None = None     # diisi pada endpoint invoice-side
-    invoice_id: int | None = None         # diisi pada endpoint transaction-side
+
+    transaction_id: int | None = None  # diisi pada endpoint invoice-side
+    invoice_id: int | None = None  # diisi pada endpoint transaction-side
     requested_amount: Decimal
 
 
@@ -256,6 +257,7 @@ class AllocationCreate(BaseModel):
 
 class AllocationOut(BaseModel):
     """Detail satu baris alokasi."""
+
     id: int
     transaction_id: int
     invoice_id: int
@@ -263,12 +265,12 @@ class AllocationOut(BaseModel):
     note: str | None = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AllocationApplyResult(BaseModel):
     """Respons setelah create allocation (auto-cap)."""
+
     applied: list[AllocationOut]
     total_applied: Decimal
     leftover_requested: Decimal
@@ -283,6 +285,7 @@ class AllocationPatch(BaseModel):
 
 class AllocatableTransactionRow(BaseModel):
     """Kandidat transaksi untuk dialokasikan ke invoice."""
+
     id: int
     tx_date: date
     type: TxnType
@@ -298,6 +301,7 @@ class AllocatableTransactionRow(BaseModel):
 
 class AllocatableInvoiceRow(BaseModel):
     """Kandidat invoice untuk dialokasikan dari sebuah transaksi."""
+
     id: int
     number: str
     invoice_date: date
@@ -351,14 +355,13 @@ class InvoiceOut(InvoiceBase):
     created_by_id: int
     created_at: datetime
     paid_amount: Decimal = Decimal("0")
-    remaining: Decimal = Decimal("0")            # alias outstanding_amount
+    remaining: Decimal = Decimal("0")  # alias outstanding_amount
     outstanding_amount: Decimal = Decimal("0")
     attachments: list[AttachmentOut] = []
     items: list[InvoiceItemOut] = []
-    payments: list[InvoicePayment] = []          # 1 baris per allocation aktif
+    payments: list[InvoicePayment] = []  # 1 baris per allocation aktif
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- Purchase Order ---
@@ -373,8 +376,7 @@ class POItemOut(POItemIn):
     id: int
     subtotal: Decimal
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class POBase(BaseModel):
@@ -431,5 +433,4 @@ class POOut(POBase):
     # 2026-05-23 user request #2.
     vendor_client_name: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

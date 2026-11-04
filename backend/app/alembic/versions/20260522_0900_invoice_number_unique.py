@@ -12,16 +12,16 @@ Strategi:
 Revision ID: a5c7e9d2b3f4
 Revises: f3a7b9c5d2e8
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
+from alembic import op
 
-
-revision: str = 'a5c7e9d2b3f4'
-down_revision: Union[str, Sequence[str], None] = 'f3a7b9c5d2e8'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "a5c7e9d2b3f4"
+down_revision: str | Sequence[str] | None = "f3a7b9c5d2e8"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -30,12 +30,14 @@ def upgrade() -> None:
     # row dengan id terbesar (kedua dst) supaya yang TER-RECENT (yg
     # biasanya correct) yg keep nomor asli. Rule arbitrary -- yg penting
     # deterministic & non-destructive (data tetap ada, hanya nomor di-suffix).
-    dups = conn.execute(sa.text("""
+    dups = conn.execute(
+        sa.text("""
         SELECT number FROM invoices
         WHERE number IS NOT NULL
         GROUP BY number
         HAVING COUNT(*) > 1
-    """)).fetchall()
+    """)
+    ).fetchall()
     for (num,) in dups:
         rows = conn.execute(
             sa.text("SELECT id FROM invoices WHERE number = :n ORDER BY id ASC"),
@@ -54,12 +56,12 @@ def upgrade() -> None:
     # Pakai try/except utk SQLite vs Postgres compat. Index name dari
     # `index=True` di model lama auto = ix_invoices_number.
     try:
-        op.drop_index('ix_invoices_number', table_name='invoices')
+        op.drop_index("ix_invoices_number", table_name="invoices")
     except Exception:
         pass
-    op.create_index('ix_invoices_number', 'invoices', ['number'], unique=True)
+    op.create_index("ix_invoices_number", "invoices", ["number"], unique=True)
 
 
 def downgrade() -> None:
-    op.drop_index('ix_invoices_number', table_name='invoices')
-    op.create_index('ix_invoices_number', 'invoices', ['number'], unique=False)
+    op.drop_index("ix_invoices_number", table_name="invoices")
+    op.create_index("ix_invoices_number", "invoices", ["number"], unique=False)

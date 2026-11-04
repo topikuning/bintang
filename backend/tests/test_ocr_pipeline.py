@@ -2,10 +2,10 @@
 
 Audit 2026-05-23 OCR opt.
 """
+
 from __future__ import annotations
 
 import io
-from typing import Any
 
 import pytest
 from PIL import Image
@@ -23,6 +23,7 @@ def _make_image_bytes(w: int, h: int, fmt: str = "JPEG") -> bytes:
 
 
 # ---------- Preprocessing ----------
+
 
 def test_preprocess_resizes_large_image():
     """Image 4032x3024 -> max 1568 longest edge."""
@@ -69,12 +70,19 @@ def test_preprocess_corrupted_image_fallback():
 
 # ---------- Cache ----------
 
+
 @pytest.mark.asyncio
 async def test_cache_store_and_lookup(db):
     h = file_hash(b"some-content")
     assert await lookup(db, h) is None  # miss
-    await store(db, hash_hex=h, engine="claude:test", media_type="image/jpeg",
-                size_bytes=100, extracted_data={"total": "1000"})
+    await store(
+        db,
+        hash_hex=h,
+        engine="claude:test",
+        media_type="image/jpeg",
+        size_bytes=100,
+        extracted_data={"total": "1000"},
+    )
     await db.commit()
     cached = await lookup(db, h)
     assert cached is not None
@@ -84,16 +92,24 @@ async def test_cache_store_and_lookup(db):
 @pytest.mark.asyncio
 async def test_cache_increments_hits(db):
     h = file_hash(b"hit-test")
-    await store(db, hash_hex=h, engine="claude:test", media_type="image/jpeg",
-                size_bytes=100, extracted_data={"total": "500"})
+    await store(
+        db,
+        hash_hex=h,
+        engine="claude:test",
+        media_type="image/jpeg",
+        size_bytes=100,
+        extracted_data={"total": "500"},
+    )
     await db.commit()
-    await lookup(db, h); await lookup(db, h); await lookup(db, h)
+    await lookup(db, h)
+    await lookup(db, h)
+    await lookup(db, h)
     await db.commit()
     from sqlalchemy import select
+
     from app.models.models import OCRCache
-    row = (await db.execute(
-        select(OCRCache).where(OCRCache.file_hash == h)
-    )).scalar_one()
+
+    row = (await db.execute(select(OCRCache).where(OCRCache.file_hash == h))).scalar_one()
     assert row.hits == 3
 
 
@@ -101,10 +117,22 @@ async def test_cache_increments_hits(db):
 async def test_cache_overwrites_on_store(db):
     """Re-store dgn hash sama overwrite (mis. setelah expired re-extract)."""
     h = file_hash(b"overwrite-test")
-    await store(db, hash_hex=h, engine="mistral:v1", media_type="image/jpeg",
-                size_bytes=50, extracted_data={"total": "100"})
-    await store(db, hash_hex=h, engine="claude:v2", media_type="image/jpeg",
-                size_bytes=50, extracted_data={"total": "200"})
+    await store(
+        db,
+        hash_hex=h,
+        engine="mistral:v1",
+        media_type="image/jpeg",
+        size_bytes=50,
+        extracted_data={"total": "100"},
+    )
+    await store(
+        db,
+        hash_hex=h,
+        engine="claude:v2",
+        media_type="image/jpeg",
+        size_bytes=50,
+        extracted_data={"total": "200"},
+    )
     await db.commit()
     cached = await lookup(db, h)
     assert cached["total"] == "200"  # second store wins
@@ -112,26 +140,36 @@ async def test_cache_overwrites_on_store(db):
 
 # ---------- Pipeline integration ----------
 
+
 @pytest.mark.asyncio
 async def test_pipeline_cache_hit_skips_adapter(db, monkeypatch):
     """Kalau hash sudah di-cache, pipeline TIDAK panggil adapter."""
     content = _make_image_bytes(400, 400)
     h = file_hash(content)
-    await store(db, hash_hex=h, engine="claude:cached", media_type="image/jpeg",
-                size_bytes=len(content),
-                extracted_data={"total": "999",
-                                "raw_response": {"engine": "claude:cached"}})
+    await store(
+        db,
+        hash_hex=h,
+        engine="claude:cached",
+        media_type="image/jpeg",
+        size_bytes=len(content),
+        extracted_data={"total": "999", "raw_response": {"engine": "claude:cached"}},
+    )
     await db.commit()
 
     adapter_called = []
+
     async def _spy_call(*a, **kw):
         adapter_called.append(True)
         return {"total": "0", "raw_response": {"engine": "spy"}}
+
     monkeypatch.setattr(pipe, "_call_adapter", _spy_call)
 
     result = await pipe.run_extraction(
-        db, content=content, media_type="image/jpeg",
-        source_url="/files/x.jpg", engine="claude",
+        db,
+        content=content,
+        media_type="image/jpeg",
+        source_url="/files/x.jpg",
+        engine="claude",
     )
     assert result["total"] == "999"
     assert result["raw_response"]["cached"] is True
@@ -145,13 +183,20 @@ async def test_pipeline_cache_miss_calls_adapter_and_stores(db, monkeypatch):
     h = file_hash(content)
 
     async def _fake_call(adapter, c, mt, src):
-        return {"total": "555", "confidence_score": "0.9",
-                "raw_response": {"engine": "claude:fake"}}
+        return {
+            "total": "555",
+            "confidence_score": "0.9",
+            "raw_response": {"engine": "claude:fake"},
+        }
+
     monkeypatch.setattr(pipe, "_call_adapter", _fake_call)
 
     result = await pipe.run_extraction(
-        db, content=content, media_type="image/jpeg",
-        source_url="/files/y.jpg", engine="claude",
+        db,
+        content=content,
+        media_type="image/jpeg",
+        source_url="/files/y.jpg",
+        engine="claude",
     )
     assert result["raw_response"]["cached"] is False
     await db.commit()
@@ -168,8 +213,11 @@ async def test_pipeline_fallback_to_claude_when_mistral_low_conf(db, monkeypatch
     call_log: list[str] = []
 
     # Sentinel adapters (just labels)
-    class _MistralSentinel: pass
-    class _ClaudeSentinel: pass
+    class _MistralSentinel:
+        pass
+
+    class _ClaudeSentinel:
+        pass
 
     def _fake_get(engine, model_override=None):
         if engine == "claude":
@@ -179,11 +227,17 @@ async def test_pipeline_fallback_to_claude_when_mistral_low_conf(db, monkeypatch
     async def _fake_call(adapter, c, mt, src):
         if isinstance(adapter, _MistralSentinel):
             call_log.append("mistral")
-            return {"total": "0", "confidence_score": "0.3",
-                    "raw_response": {"engine": "mistral:test"}}
+            return {
+                "total": "0",
+                "confidence_score": "0.3",
+                "raw_response": {"engine": "mistral:test"},
+            }
         call_log.append("claude")
-        return {"total": "888", "confidence_score": "0.92",
-                "raw_response": {"engine": "claude:test"}}
+        return {
+            "total": "888",
+            "confidence_score": "0.92",
+            "raw_response": {"engine": "claude:test"},
+        }
 
     monkeypatch.setattr(pipe, "get_ocr_adapter", _fake_get)
     monkeypatch.setattr(pipe, "_call_adapter", _fake_call)
@@ -191,18 +245,25 @@ async def test_pipeline_fallback_to_claude_when_mistral_low_conf(db, monkeypatch
     # Fallback default OFF (audit 2026-05-23 user req #3). Test ini
     # explicit enable utk verify mekanisme masih bekerja saat opt-in.
     from app.services import app_settings as _ap
+
     monkeypatch.setattr(
-        _ap, "get_cached",
+        _ap,
+        "get_cached",
         lambda k: (
-            "sk-ant-test" if k == "ANTHROPIC_API_KEY"
-            else "true" if k == "OCR_FALLBACK_ENABLED"
+            "sk-ant-test"
+            if k == "ANTHROPIC_API_KEY"
+            else "true"
+            if k == "OCR_FALLBACK_ENABLED"
             else None
         ),
     )
 
     result = await pipe.run_extraction(
-        db, content=content, media_type="image/jpeg",
-        source_url=None, engine="mistral",
+        db,
+        content=content,
+        media_type="image/jpeg",
+        source_url=None,
+        engine="mistral",
     )
     assert call_log == ["mistral", "claude"]
     assert result["total"] == "888"
@@ -212,8 +273,10 @@ async def test_pipeline_fallback_to_claude_when_mistral_low_conf(db, monkeypatch
 
 # ---------- Vendor fuzzy match ----------
 
+
 def test_normalize_strips_legal_prefix():
     from app.services.ocr.vendor_match import normalize
+
     assert normalize("PT. Berkah Karya") == "berkah karya"
     assert normalize("CV Berkah Karya Sentosa") == "berkah karya sentosa"
     assert normalize("PT BERKAH KARYA") == "berkah karya"
@@ -221,10 +284,10 @@ def test_normalize_strips_legal_prefix():
 
 @pytest.mark.asyncio
 async def test_vendor_match_finds_typo_variant(db):
-    from app.services.ocr.vendor_match import match_vendor
     from app.models.models import VendorClient, VendorClientType
-    db.add(VendorClient(name="PT Berkah Karya Sentosa",
-                        type=VendorClientType.VENDOR))
+    from app.services.ocr.vendor_match import match_vendor
+
+    db.add(VendorClient(name="PT Berkah Karya Sentosa", type=VendorClientType.VENDOR))
     await db.commit()
     # OCR mengembalikan tanpa "PT" prefix
     m = await match_vendor(db, "Berkah Karya Sentosa")
@@ -235,8 +298,9 @@ async def test_vendor_match_finds_typo_variant(db):
 
 @pytest.mark.asyncio
 async def test_vendor_match_returns_none_when_too_different(db):
-    from app.services.ocr.vendor_match import match_vendor
     from app.models.models import VendorClient, VendorClientType
+    from app.services.ocr.vendor_match import match_vendor
+
     db.add(VendorClient(name="PT Alpha", type=VendorClientType.VENDOR))
     await db.commit()
     assert await match_vendor(db, "Toko Berbeda Sekali") is None
@@ -245,6 +309,7 @@ async def test_vendor_match_returns_none_when_too_different(db):
 @pytest.mark.asyncio
 async def test_vendor_match_none_when_empty(db):
     from app.services.ocr.vendor_match import match_vendor
+
     assert await match_vendor(db, None) is None
     assert await match_vendor(db, "") is None
 
@@ -253,19 +318,28 @@ async def test_vendor_match_none_when_empty(db):
 async def test_pipeline_attaches_vendor_match(db, monkeypatch):
     """Pipeline integrasi: vendor_match field ke-populate."""
     from app.models.models import VendorClient, VendorClientType
+
     db.add(VendorClient(name="CV Sumber Rejeki", type=VendorClientType.VENDOR))
     await db.commit()
 
     content = _make_image_bytes(300, 300)
+
     async def _fake_call(adapter, c, mt, src):
-        return {"vendor_name": "Sumber Rejeki",
-                "total": "100", "confidence_score": "0.9",
-                "raw_response": {"engine": "fake"}}
+        return {
+            "vendor_name": "Sumber Rejeki",
+            "total": "100",
+            "confidence_score": "0.9",
+            "raw_response": {"engine": "fake"},
+        }
+
     monkeypatch.setattr(pipe, "_call_adapter", _fake_call)
 
     result = await pipe.run_extraction(
-        db, content=content, media_type="image/jpeg",
-        source_url=None, engine="claude",
+        db,
+        content=content,
+        media_type="image/jpeg",
+        source_url=None,
+        engine="claude",
     )
     assert result["vendor_match"] is not None
     assert result["vendor_match"]["name"] == "CV Sumber Rejeki"
@@ -281,18 +355,24 @@ async def test_pipeline_no_fallback_by_default_even_low_conf(db, monkeypatch):
     async def _fake_call(adapter, c, mt, src):
         nonlocal call_count
         call_count += 1
-        return {"total": "0", "confidence_score": "0.2",  # sengaja rendah
-                "raw_response": {"engine": "mistral:test"}}
+        return {
+            "total": "0",
+            "confidence_score": "0.2",  # sengaja rendah
+            "raw_response": {"engine": "mistral:test"},
+        }
 
     monkeypatch.setattr(pipe, "_call_adapter", _fake_call)
     # OCR_FALLBACK_ENABLED tdk di-set (default None) -- fallback OFF.
     from app.services import app_settings as _ap
-    monkeypatch.setattr(_ap, "get_cached",
-                        lambda k: "sk-ant" if k == "ANTHROPIC_API_KEY" else None)
+
+    monkeypatch.setattr(_ap, "get_cached", lambda k: "sk-ant" if k == "ANTHROPIC_API_KEY" else None)
 
     result = await pipe.run_extraction(
-        db, content=content, media_type="image/jpeg",
-        source_url=None, engine="mistral",
+        db,
+        content=content,
+        media_type="image/jpeg",
+        source_url=None,
+        engine="mistral",
     )
     assert call_count == 1  # cuma 1 call (mistral), NO fallback ke claude
     assert result["raw_response"]["engine"] == "mistral:test"
@@ -308,14 +388,20 @@ async def test_pipeline_no_fallback_when_confidence_high(db, monkeypatch):
     async def _fake_call(adapter, c, mt, src):
         nonlocal call_count
         call_count += 1
-        return {"total": "777", "confidence_score": "0.95",
-                "raw_response": {"engine": "mistral:test"}}
+        return {
+            "total": "777",
+            "confidence_score": "0.95",
+            "raw_response": {"engine": "mistral:test"},
+        }
 
     monkeypatch.setattr(pipe, "_call_adapter", _fake_call)
 
     result = await pipe.run_extraction(
-        db, content=content, media_type="image/jpeg",
-        source_url=None, engine="mistral",
+        db,
+        content=content,
+        media_type="image/jpeg",
+        source_url=None,
+        engine="mistral",
     )
     assert call_count == 1  # NO fallback
     assert result["total"] == "777"

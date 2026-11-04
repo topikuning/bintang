@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { RouterProvider } from "react-router-dom"
+import { RouterProvider } from "react-router"
 import { Lightbox } from "@/components/domain/shared/Lightbox"
 import { Toaster } from "@/components/ui/sonner"
 import { router } from "./routes"

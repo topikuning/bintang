@@ -43,7 +43,7 @@ export function FilterBar({
         // Audit 2026-05-24: container muted bg + border supaya jelas
         // ini section filter (bukan tombol-tombol lepas). Anchor icon
         // "Filter" di kiri sebagai visual cue.
-        "flex items-center gap-1.5 flex-wrap rounded-md border bg-surface-muted/40 px-2.5 py-2",
+        "flex flex-wrap items-center gap-2 rounded-xl border border-white/80 bg-white p-2.5 shadow-[var(--app-shadow)] ring-1 ring-ink-200/60",
         className,
       )}
     >
@@ -93,7 +93,7 @@ export function FilterButton({
         <button
           type="button"
           className={cn(
-            "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[12.5px] transition-colors",
+            "flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12px] transition-colors",
             active
               ? "border-brand-300 bg-brand-50 text-brand-800 hover:bg-brand-100"
               : "border-border-strong bg-surface text-ink-700 hover:bg-ink-50",

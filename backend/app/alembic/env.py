@@ -6,6 +6,7 @@ via env DATABASE_URL).
 
 Online mode menggunakan AsyncEngine -- sama dgn runtime app.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -16,10 +17,10 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.core.config import settings
-from app.db.base import Base
 # IMPORTANT: import models supaya Base.metadata terisi
 import app.models.models  # noqa: F401
+from app.core.config import settings
+from app.db.base import Base
 
 config = context.config
 

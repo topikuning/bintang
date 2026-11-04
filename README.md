@@ -19,7 +19,7 @@ Aplikasi web pencatatan & monitoring keuangan multi-proyek, mobile-first.
 ## Stack
 
 - **Backend**: FastAPI 0.136, Python 3.13, SQLAlchemy 2.0 (async), Pydantic 2, WeasyPrint, openpyxl, JWT.
-- **Frontend**: React 19, Vite 6, TypeScript 5.6, Tailwind CSS 4, TanStack Query 5 + Table 8, React Router 7, Radix UI, Recharts.
+- **Frontend**: React 19.2, Vite 8.2, TypeScript 6 (tooling-compatible) + TypeScript Native 7, Tailwind CSS 4.3, TanStack Query 5 + Table 8, React Router 8.3, Radix UI, Recharts 3.10.
 - **DB**: SQLite (dev) / PostgreSQL 18 (prod).
 
 ### Satu service, satu origin
@@ -79,16 +79,17 @@ uvicorn app.main:app --reload --port 8000
 
 ```bash
 cd frontend-v2
-npm install
-npm run dev
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run dev
 # http://localhost:5174
 ```
 
 ### Cek sebelum push
 
 ```bash
-cd frontend-v2 && npm run typecheck && npm run lint && npm run test
-cd backend     && ruff check app tests && pytest -q
+cd frontend-v2 && pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build
+cd backend     && uv sync --frozen --extra dev && uv run ruff check app tests && uv run pytest -q
 ```
 
 ## Default credentials (dari seed)

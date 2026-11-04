@@ -5,9 +5,10 @@ Sengaja tidak share session antar test -- tiap test dapat session fresh
 supaya isolated. Untuk test yg butuh `app` lifespan (mis. e2e via
 httpx AsyncClient), tambah fixture tersendiri di file test masing-2.
 """
+
 from __future__ import annotations
 
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import (
@@ -16,10 +17,9 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.db.base import Base
 # IMPORTANT: import models supaya semua tabel ke-register di metadata
 import app.models.models  # noqa: F401
-
+from app.db.base import Base
 
 # CATATAN 2026-08-30: fixture `event_loop` kustom DIHAPUS.
 #
@@ -34,7 +34,7 @@ import app.models.models  # noqa: F401
 
 
 @pytest_asyncio.fixture
-async def db() -> AsyncGenerator[AsyncSession, None]:
+async def db() -> AsyncGenerator[AsyncSession]:
     """Async DB session fresh -- in-memory SQLite, schema baru.
 
     Pakai pool StaticPool supaya semua connection share DB yg sama

@@ -16,6 +16,7 @@ LIMITASI:
 
 Default DISABLED -- enable via app_settings OCR_TESSERACT_ENABLED=true.
 """
+
 from __future__ import annotations
 
 import io
@@ -30,6 +31,7 @@ log = logging.getLogger(__name__)
 try:
     import pytesseract  # type: ignore
     from PIL import Image  # type: ignore
+
     _PYTESSERACT_OK = True
 except ImportError:
     _PYTESSERACT_OK = False
@@ -103,7 +105,9 @@ def try_extract(content: bytes, media_type: str) -> dict[str, Any] | None:
         img = Image.open(io.BytesIO(content))
         # Get raw text + per-word confidence
         data = pytesseract.image_to_data(
-            img, lang="ind+eng", output_type=pytesseract.Output.DICT,
+            img,
+            lang="ind+eng",
+            output_type=pytesseract.Output.DICT,
         )
         raw_text = " ".join(t for t in data.get("text", []) if t.strip())
         # Avg confidence (skip -1 = no detection on that word)
@@ -135,7 +139,7 @@ def try_extract(content: bytes, media_type: str) -> dict[str, Any] | None:
     return {
         "invoice_number": inv_no,
         "invoice_date": None,  # date parsing fragile, leave to LLM nanti
-        "vendor_name": None,   # vendor extraction tdk reliable via regex
+        "vendor_name": None,  # vendor extraction tdk reliable via regex
         "due_date": None,
         "subtotal": None,
         "tax": None,

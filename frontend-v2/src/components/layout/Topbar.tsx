@@ -1,7 +1,9 @@
-import { Link } from "react-router-dom"
-import { Search } from "lucide-react"
+import { Link, useLocation } from "react-router"
+import { FileText, Plus, Receipt, Search, ShoppingCart, Sparkles } from "lucide-react"
 import { NotificationBell } from "./NotificationBell"
 import { UserMenu } from "./UserMenu"
+import { BrandMark } from "./BrandMark"
+import { DESKTOP_NAV } from "./nav-config"
 
 interface TopbarProps {
   /** Override judul (kalau tidak, child page bisa render judul sendiri di main). */
@@ -29,20 +31,22 @@ export function Topbar({
   showSearch = true,
   onCommandPaletteOpen,
 }: TopbarProps) {
+  const { pathname } = useLocation()
+  const routeTitle = DESKTOP_NAV.flatMap((group) => group.items)
+    .sort((a, b) => b.to.length - a.to.length)
+    .find((item) => pathname === item.to || pathname.startsWith(`${item.to}/`))?.label
+
   return (
-    <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b bg-surface px-3 sm:px-5 pt-safe">
+    <header className="sticky top-0 z-20 flex h-[72px] shrink-0 items-center gap-3 border-b border-white/70 bg-white/85 px-3 backdrop-blur-xl sm:px-6 pt-safe">
       {/* Brand mobile-only: Sidebar/NavRail hidden di <md, jadi tanpa
           ini area kiri Topbar kosong. Klik = ke /dashboard supaya
           double sebagai home-button. */}
       <Link
         to="/dashboard"
-        className="md:hidden flex items-center gap-2 -ml-1 pr-1"
+        className="-ml-1 flex items-center pr-1 md:hidden"
         aria-label="Beranda"
       >
-        <span className="flex h-7 w-7 items-center justify-center rounded bg-brand-500 text-white font-bold text-[13px]">
-          B
-        </span>
-        <span className="text-sm font-bold text-ink-900">Bintang</span>
+        <BrandMark compact />
       </Link>
 
       {leftSlot}
@@ -53,7 +57,15 @@ export function Topbar({
           </h1>
         </div>
       )}
-      {!title && <div className="flex-1" />}
+      {!title && (
+        <div className="hidden min-w-0 flex-1 md:block">
+          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-ink-400">
+            <Sparkles className="h-3 w-3 text-brand-500" /> Ruang kerja
+          </p>
+          <p className="truncate text-[15px] font-semibold tracking-tight text-ink-900">{routeTitle ?? "Bintang"}</p>
+        </div>
+      )}
+      {!title && <div className="flex-1 md:hidden" />}
 
       {showSearch && (
         <>
@@ -62,11 +74,11 @@ export function Topbar({
             type="button"
             aria-label="Buka pencarian (Ctrl+K)"
             onClick={onCommandPaletteOpen}
-            className="hidden md:inline-flex h-9 items-center gap-2 rounded border border-border bg-surface-muted px-3 text-[12px] text-ink-500 hover:bg-ink-100 hover:text-ink-700 w-72"
+            className="hidden h-10 w-72 items-center gap-2 rounded-xl border border-border bg-white px-3 text-[12px] text-ink-500 shadow-sm hover:border-brand-300 hover:text-ink-700 md:inline-flex"
           >
             <Search className="h-3.5 w-3.5" />
             <span className="flex-1 text-left">Cari halaman, tx, invoice…</span>
-            <kbd className="rounded border bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink-500">
+            <kbd className="rounded-md border bg-ink-50 px-1.5 py-0.5 font-mono text-[10px] text-ink-500">
               Ctrl K
             </kbd>
           </button>
@@ -75,15 +87,53 @@ export function Topbar({
             type="button"
             aria-label="Cari"
             onClick={onCommandPaletteOpen}
-            className="md:hidden flex h-10 w-10 items-center justify-center rounded text-ink-700 hover:bg-ink-100"
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-700 hover:bg-ink-100 md:hidden"
           >
             <Search className="h-5 w-5" />
           </button>
         </>
       )}
 
+      <details className="group relative hidden sm:block">
+        <summary className="flex h-10 cursor-pointer list-none items-center gap-2 rounded-xl bg-ink-900 px-3.5 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-ink-800 [&::-webkit-details-marker]:hidden">
+          <Plus className="h-4 w-4" /> Buat baru
+        </summary>
+        <div className="absolute right-0 top-12 z-40 w-56 overflow-hidden rounded-xl border border-white bg-white p-1.5 shadow-[var(--app-shadow-raised)]">
+          <QuickCreateLink to="/transactions?new=1" icon={FileText} label="Transaksi" hint="Catat kas masuk atau keluar" />
+          <QuickCreateLink to="/invoices?new=1" icon={Receipt} label="Invoice" hint="Buat hutang atau piutang" />
+          <QuickCreateLink to="/cash-requests?new=1" icon={Sparkles} label="Pengajuan dana" hint="Mulai alur persetujuan" />
+          <QuickCreateLink to="/purchase-orders?new=1" icon={ShoppingCart} label="Purchase order" hint="Buat komitmen belanja" />
+        </div>
+      </details>
+
       <NotificationBell />
       <UserMenu />
     </header>
+  )
+}
+
+function QuickCreateLink({
+  to,
+  icon: Icon,
+  label,
+  hint,
+}: {
+  to: string
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  hint: string
+}) {
+  return (
+    <Link
+      to={to}
+      onClick={(event) => event.currentTarget.closest("details")?.removeAttribute("open")}
+      className="flex items-start gap-3 rounded-lg px-3 py-2.5 hover:bg-ink-50"
+    >
+      <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600"><Icon className="h-4 w-4" /></span>
+      <span className="min-w-0">
+        <span className="block text-[12px] font-semibold text-ink-800">{label}</span>
+        <span className="block text-[10px] leading-4 text-ink-500">{hint}</span>
+      </span>
+    </Link>
   )
 }

@@ -10,6 +10,7 @@ Sekarang: cancel_transaction detect linked CR, update status ke
 DISBURSEMENT_CANCELLED (final state, tdk kembali ke PENDING per user
 keputusan).
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -39,20 +40,31 @@ from app.schemas.finance import CancelIn
 
 
 async def _seed(db):
-    co = Company(name="C"); db.add(co); await db.flush()
+    co = Company(name="C")
+    db.add(co)
+    await db.flush()
     proj = Project(
-        code="P", name="P", company_id=co.id, status=ProjectStatus.AKTIF,
+        code="P",
+        name="P",
+        company_id=co.id,
+        status=ProjectStatus.AKTIF,
     )
-    db.add(proj); await db.flush()
+    db.add(proj)
+    await db.flush()
     requester = User(
-        name="R", email="r@x", password_hash="x",
+        name="R",
+        email="r@x",
+        password_hash="x",
         role=UserRole.PROJECT_ADMIN,
     )
     admin = User(
-        name="A", email="a@x", password_hash="x",
+        name="A",
+        email="a@x",
+        password_hash="x",
         role=UserRole.CENTRAL_ADMIN,
     )
-    db.add_all([requester, admin]); await db.flush()
+    db.add_all([requester, admin])
+    await db.flush()
     db.add(ProjectUser(project_id=proj.id, user_id=requester.id))
     await db.flush()
     return proj, requester, admin
@@ -68,7 +80,8 @@ async def test_cancel_disbursement_tx_updates_cash_request(db):
             title="Material",
             items=[CashRequestItemIn(description="x", amount=Decimal("500000"))],
         ),
-        db=db, user=requester,
+        db=db,
+        user=requester,
     )
     approved = await approve_cash_request(cr_id=out.id, db=db, admin=admin)
     assert approved.status == CashRequestStatus.APPROVED.value
@@ -79,7 +92,8 @@ async def test_cancel_disbursement_tx_updates_cash_request(db):
     await cancel_transaction(
         tid=tx_id,
         body=CancelIn(reason="Dana tdk jadi cair"),
-        db=db, admin=admin,
+        db=db,
+        admin=admin,
     )
     # Reload CR
     cr_after = await db.get(CashRequest, approved.id)
@@ -101,22 +115,30 @@ async def test_cancel_unrelated_tx_does_not_touch_cash_request(db):
             title="x",
             items=[CashRequestItemIn(description="x", amount=Decimal("500000"))],
         ),
-        db=db, user=requester,
+        db=db,
+        user=requester,
     )
     approved = await approve_cash_request(cr_id=out.id, db=db, admin=admin)
     cr_disbursement_tx = approved.disbursement_tx_id
 
     # Bikin tx lain (tdk terhubung CR)
     other = Transaction(
-        project_id=proj.id, tx_date=date(2026, 5, 22),
-        type="OUT", kind="DIRECT_EXPENSE",
+        project_id=proj.id,
+        tx_date=date(2026, 5, 22),
+        type="OUT",
+        kind="DIRECT_EXPENSE",
         amount=Decimal("100000"),
-        status=TxnStatus.VERIFIED, created_by_id=admin.id,
+        status=TxnStatus.VERIFIED,
+        created_by_id=admin.id,
     )
-    db.add(other); await db.commit()
+    db.add(other)
+    await db.commit()
 
     await cancel_transaction(
-        tid=other.id, body=CancelIn(reason="x"), db=db, admin=admin,
+        tid=other.id,
+        body=CancelIn(reason="x"),
+        db=db,
+        admin=admin,
     )
     # CR tetap APPROVED, disbursement_tx_id tdk berubah
     cr_after = await db.get(CashRequest, approved.id)

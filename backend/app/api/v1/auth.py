@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
@@ -148,7 +148,7 @@ async def logout(
     Catatan: ini implementasi 'logout from all devices'. Untuk per-device
     logout, butuh jti tracking (di-tunda).
     """
-    user.tokens_revoked_after = datetime.now(timezone.utc)
+    user.tokens_revoked_after = datetime.now(UTC)
     await db.commit()
     # Cookie berkas dibuang juga -- kalau tidak, tab yang sudah terbuka
     # masih bisa memuat lampiran sampai cookie kedaluwarsa sendiri.

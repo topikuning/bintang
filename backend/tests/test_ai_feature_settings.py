@@ -1,7 +1,7 @@
 """Per-feature AI settings + budget enforcement. Audit 2026-05-24."""
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
@@ -22,27 +22,35 @@ from app.services.ai.feature_settings import (
 
 async def _seed_admin(db, role=UserRole.SUPERADMIN, email="s@x"):
     u = User(
-        email=email, name="X", password_hash=hash_password("x"),
-        role=role, scope_all_projects=True,
+        email=email,
+        name="X",
+        password_hash=hash_password("x"),
+        role=role,
+        scope_all_projects=True,
     )
-    db.add(u); await db.flush()
+    db.add(u)
+    await db.flush()
     return u
 
 
 def _hdr(user):
-    return {"Authorization": f"Bearer {create_access_token(user.id, extra={'role': user.role.value})}"}
+    return {
+        "Authorization": f"Bearer {create_access_token(user.id, extra={'role': user.role.value})}"
+    }
 
 
 @pytest.fixture
 def override_db(db):
     async def _gen():
         yield db
+
     app.dependency_overrides[get_db] = _gen
     yield
     app.dependency_overrides.pop(get_db, None)
 
 
 # ---------- Effective config ----------
+
 
 @pytest.mark.asyncio
 async def test_effective_falls_back_to_defaults(db):
@@ -55,10 +63,14 @@ async def test_effective_falls_back_to_defaults(db):
 @pytest.mark.asyncio
 async def test_effective_merges_override(db):
     admin = await _seed_admin(db)
-    db.add(AIFeatureSettings(
-        feature_key="category", model="claude-sonnet-4-6",
-        max_tokens=2048, updated_by_id=admin.id,
-    ))
+    db.add(
+        AIFeatureSettings(
+            feature_key="category",
+            model="claude-sonnet-4-6",
+            max_tokens=2048,
+            updated_by_id=admin.id,
+        )
+    )
     await db.commit()
     cfg = await get_effective(db, "category")
     assert cfg.model == "claude-sonnet-4-6"
@@ -70,21 +82,30 @@ async def test_effective_merges_override(db):
 
 # ---------- Budget ----------
 
+
 @pytest.mark.asyncio
 async def test_budget_enforcement(db):
     admin = await _seed_admin(db)
     # Set budget 0.01 USD, sudah ada AICallLog 0.05 bulan ini
-    db.add(AIFeatureSettings(
-        feature_key="category",
-        monthly_budget_usd=Decimal("0.01"),
-        updated_by_id=admin.id,
-    ))
-    db.add(AICallLog(
-        feature="ai:category", model="x",
-        input_tokens=0, output_tokens=0,
-        cost_usd="0.05",
-        latency_ms=0, cached=False, success=True,
-    ))
+    db.add(
+        AIFeatureSettings(
+            feature_key="category",
+            monthly_budget_usd=Decimal("0.01"),
+            updated_by_id=admin.id,
+        )
+    )
+    db.add(
+        AICallLog(
+            feature="ai:category",
+            model="x",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd="0.05",
+            latency_ms=0,
+            cached=False,
+            success=True,
+        )
+    )
     await db.commit()
     cfg = await get_effective(db, "category")
     spent = await monthly_spend_usd(db, "category")
@@ -99,17 +120,24 @@ async def test_budget_unlimited_when_null(db):
     cfg = await get_effective(db, "category")
     assert cfg.monthly_budget_usd is None
     # Tdk raise meskipun ada spend gede
-    db.add(AICallLog(
-        feature="ai:category", model="x",
-        input_tokens=0, output_tokens=0,
-        cost_usd="999",
-        latency_ms=0, cached=False, success=True,
-    ))
+    db.add(
+        AICallLog(
+            feature="ai:category",
+            model="x",
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd="999",
+            latency_ms=0,
+            cached=False,
+            success=True,
+        )
+    )
     await db.commit()
     await assert_within_budget(db, "category", cfg)  # no raise
 
 
 # ---------- HTTP endpoints ----------
+
 
 @pytest.mark.asyncio
 async def test_http_list_settings_superadmin(db, override_db):
@@ -174,14 +202,19 @@ async def test_http_update_model_provider_mismatch(db, override_db):
 @pytest.mark.asyncio
 async def test_http_reset_settings(db, override_db):
     admin = await _seed_admin(db)
-    db.add(AIFeatureSettings(
-        feature_key="category", max_tokens=999, updated_by_id=admin.id,
-    ))
+    db.add(
+        AIFeatureSettings(
+            feature_key="category",
+            max_tokens=999,
+            updated_by_id=admin.id,
+        )
+    )
     await db.commit()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as ac:
         r = await ac.delete(
-            "/api/v1/ai-feature-settings/category", headers=_hdr(admin),
+            "/api/v1/ai-feature-settings/category",
+            headers=_hdr(admin),
         )
     assert r.status_code == 200
     body = r.json()

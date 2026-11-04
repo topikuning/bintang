@@ -89,24 +89,31 @@ async def _schema_gap() -> tuple[bool, list[str]]:
     HARUS memakai engine ASYNC -- dialek sync default SQLAlchemy untuk
     Postgres adalah psycopg2, yang TIDAK ada di dependency proyek ini.
     """
-    from app.db.base import Base
     import app.models.models  # noqa: F401  (registrasi seluruh tabel)
+    from app.db.base import Base
 
-    def _inspect(conn) -> tuple[set[str], dict[str, set[str]]]:
+    def _inspect(conn):
         insp = inspect(conn)
         names = set(insp.get_table_names())
-        cols = {t: {c["name"] for c in insp.get_columns(t)} for t in names}
-        return names, cols
+        return {
+            "tables": names,
+            "columns": {t: {c["name"]: c for c in insp.get_columns(t)} for t in names},
+            "indexes": {t: insp.get_indexes(t) for t in names},
+            "uniques": {t: insp.get_unique_constraints(t) for t in names},
+            "foreign_keys": {t: insp.get_foreign_keys(t) for t in names},
+            "primary_keys": {t: insp.get_pk_constraint(t) for t in names},
+        }
 
     engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
     try:
         async with engine.connect() as conn:
-            live_tables, live_cols = await conn.run_sync(_inspect)
+            live = await conn.run_sync(_inspect)
     finally:
         await engine.dispose()
 
     # alembic_version bukan bagian dari model -- abaikan saat menilai
     # apakah DB "kosong".
+    live_tables = live["tables"]
     is_empty = not (live_tables - {"alembic_version"})
 
     missing: list[str] = []
@@ -114,9 +121,61 @@ async def _schema_gap() -> tuple[bool, list[str]]:
         if table.name not in live_tables:
             missing.append(table.name)
             continue
+        live_cols = live["columns"][table.name]
         for col in table.columns:
-            if col.name not in live_cols[table.name]:
+            if col.name not in live_cols:
                 missing.append(f"{table.name}.{col.name}")
+                continue
+            reflected = live_cols[col.name]
+            # Bandingkan karakteristik yang memengaruhi integritas data.
+            # Type affinity lintas dialek tetap stabil (Enum -> String,
+            # EncryptedString -> String), sedangkan nama SQL mentah tidak.
+            model_type = col.type._type_affinity
+            live_type = reflected["type"]._type_affinity
+            if model_type is not live_type:
+                missing.append(f"{table.name}.{col.name}:type")
+            if not col.primary_key and bool(col.nullable) != bool(reflected["nullable"]):
+                missing.append(f"{table.name}.{col.name}:nullable")
+
+        expected_pk = tuple(c.name for c in table.primary_key.columns)
+        live_pk = tuple(live["primary_keys"][table.name].get("constrained_columns") or ())
+        if expected_pk and expected_pk != live_pk:
+            missing.append(f"{table.name}:primary_key")
+
+        live_keys = {
+            (tuple(i.get("column_names") or ()), bool(i.get("unique")))
+            for i in live["indexes"][table.name]
+        }
+        live_keys.update(
+            (tuple(u.get("column_names") or ()), True) for u in live["uniques"][table.name]
+        )
+        expected_keys = {
+            (tuple(c.name for c in idx.columns), bool(idx.unique)) for idx in table.indexes
+        }
+        expected_keys.update(
+            (tuple(c.name for c in constraint.columns), True)
+            for constraint in table.constraints
+            if constraint.__class__.__name__ == "UniqueConstraint"
+        )
+        for columns, unique in expected_keys - live_keys:
+            missing.append(f"{table.name}:index({','.join(columns)};unique={str(unique).lower()})")
+
+        live_fks = {
+            (
+                tuple(fk.get("constrained_columns") or ()),
+                fk.get("referred_table"),
+                tuple(fk.get("referred_columns") or ()),
+            )
+            for fk in live["foreign_keys"][table.name]
+        }
+        for fk in table.foreign_key_constraints:
+            signature = (
+                tuple(e.parent.name for e in fk.elements),
+                next(iter(fk.elements)).column.table.name,
+                tuple(e.column.name for e in fk.elements),
+            )
+            if signature not in live_fks:
+                missing.append(f"{table.name}:foreign_key({','.join(signature[0])})")
     return is_empty, missing
 
 
@@ -138,9 +197,9 @@ async def _reconcile_legacy_schema() -> None:
     sehingga kita bisa `stamp head` dgn aman alih-alih `upgrade` dari
     revisi basi (yang akan menabrak DuplicateColumn -> crash loop).
     """
+    import app.models.models  # noqa: F401
     from app.db.base import Base
     from app.db.schema_sync import _sync_pg_columns, _sync_pg_enums
-    import app.models.models  # noqa: F401
 
     engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
     try:

@@ -19,51 +19,72 @@ Skema:
 Revision ID: c4d2a9e1f7b8
 Revises: a7e9f3c8b2d1
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
+from alembic import op
 
-
-revision: str = 'c4d2a9e1f7b8'
-down_revision: Union[str, Sequence[str], None] = 'a7e9f3c8b2d1'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "c4d2a9e1f7b8"
+down_revision: str | Sequence[str] | None = "a7e9f3c8b2d1"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
     # 1. Tambah kolom kind ke projects (default REGULAR utk legacy data)
     op.add_column(
-        'projects',
+        "projects",
         sa.Column(
-            'kind',
+            "kind",
             sa.String(length=20),
             nullable=False,
-            server_default='REGULAR',
+            server_default="REGULAR",
         ),
     )
-    op.create_index(op.f('ix_projects_kind'), 'projects', ['kind'], unique=False)
+    op.create_index(op.f("ix_projects_kind"), "projects", ["kind"], unique=False)
 
     # 2. Tabel toggle inklusi per-tahun
     op.create_table(
-        'non_project_year_settings',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('company_id', sa.Integer(), nullable=False),
-        sa.Column('year', sa.Integer(), nullable=False),
-        sa.Column('include_in_global', sa.Boolean(), nullable=False, server_default=sa.text('false')),
-        sa.Column('notes', sa.Text(), nullable=True),
-        sa.Column('updated_by_id', sa.Integer(), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.ForeignKeyConstraint(['company_id'], ['companies.id'], name=op.f('fk_non_project_year_settings_company_id_companies'), ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['updated_by_id'], ['users.id'], name=op.f('fk_non_project_year_settings_updated_by_id_users')),
-        sa.PrimaryKeyConstraint('id', name=op.f('pk_non_project_year_settings')),
-        sa.UniqueConstraint('company_id', 'year', name='uq_non_project_year'),
+        "non_project_year_settings",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("company_id", sa.Integer(), nullable=False),
+        sa.Column("year", sa.Integer(), nullable=False),
+        sa.Column(
+            "include_in_global", sa.Boolean(), nullable=False, server_default=sa.text("false")
+        ),
+        sa.Column("notes", sa.Text(), nullable=True),
+        sa.Column("updated_by_id", sa.Integer(), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["company_id"],
+            ["companies.id"],
+            name=op.f("fk_non_project_year_settings_company_id_companies"),
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["updated_by_id"],
+            ["users.id"],
+            name=op.f("fk_non_project_year_settings_updated_by_id_users"),
+        ),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_non_project_year_settings")),
+        sa.UniqueConstraint("company_id", "year", name="uq_non_project_year"),
     )
     op.create_index(
-        'ix_non_project_year_company_year',
-        'non_project_year_settings',
-        ['company_id', 'year'],
+        "ix_non_project_year_company_year",
+        "non_project_year_settings",
+        ["company_id", "year"],
         unique=False,
     )
 
@@ -110,16 +131,18 @@ def downgrade() -> None:
     # manual dulu). Hanya jalankan downgrade kalau data NON_PROJECT
     # sengaja mau dihapus permanen.
     conn = op.get_bind()
-    conn.execute(sa.text("""
+    conn.execute(
+        sa.text("""
         DELETE FROM transactions
         WHERE project_id IN (
             SELECT id FROM projects WHERE kind = 'NON_PROJECT'
         )
-    """))
+    """)
+    )
     conn.execute(sa.text("DELETE FROM projects WHERE kind = 'NON_PROJECT'"))
 
-    op.drop_index('ix_non_project_year_company_year', table_name='non_project_year_settings')
-    op.drop_table('non_project_year_settings')
+    op.drop_index("ix_non_project_year_company_year", table_name="non_project_year_settings")
+    op.drop_table("non_project_year_settings")
 
-    op.drop_index(op.f('ix_projects_kind'), table_name='projects')
-    op.drop_column('projects', 'kind')
+    op.drop_index(op.f("ix_projects_kind"), table_name="projects")
+    op.drop_column("projects", "kind")

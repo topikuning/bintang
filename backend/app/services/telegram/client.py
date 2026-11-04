@@ -1,4 +1,5 @@
 """HTTP client tipis untuk Bot API Telegram."""
+
 from __future__ import annotations
 
 import logging
@@ -59,7 +60,8 @@ async def send_message(
             if r.status_code == 400 and parse_mode:
                 logger.warning(
                     "telegram sendMessage 400 with parse_mode=%s; body=%s; retrying as plain",
-                    parse_mode, r.text[:500],
+                    parse_mode,
+                    r.text[:500],
                 )
                 payload.pop("parse_mode", None)
                 r = await cli.post(_api_url("sendMessage"), json=payload)

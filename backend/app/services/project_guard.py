@@ -12,6 +12,7 @@ Caller pattern:
     if forced:
         note = "FORCE bypass closed project"
 """
+
 from __future__ import annotations
 
 from fastapi import HTTPException

@@ -7,6 +7,7 @@ Sources of truth:
 - Default: `services/ai/prompt_registry.FEATURES`
 - Override: tabel `ai_prompt_overrides` (row baru kalau admin save).
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -78,9 +79,7 @@ async def list_prompts(
 ) -> PromptListOut:
     """List semua feature + current prompt (default kalau blm di-override)."""
     rows = (await db.execute(select(AIPromptOverride))).scalars().all()
-    overrides: dict[tuple[str, str], AIPromptOverride] = {
-        (r.feature_key, r.field): r for r in rows
-    }
+    overrides: dict[tuple[str, str], AIPromptOverride] = {(r.feature_key, r.field): r for r in rows}
     out_features: list[PromptFeatureOut] = []
     for spec in FEATURES.values():
         sys_field = _build_field(
@@ -97,13 +96,15 @@ async def list_prompts(
                 overrides.get((spec.key, "user_template")),
                 spec.user_placeholders,
             )
-        out_features.append(PromptFeatureOut(
-            key=spec.key,
-            label=spec.label,
-            description=spec.description,
-            system=sys_field,
-            user_template=usr_field,
-        ))
+        out_features.append(
+            PromptFeatureOut(
+                key=spec.key,
+                label=spec.label,
+                description=spec.description,
+                system=sys_field,
+                user_template=usr_field,
+            )
+        )
     return PromptListOut(features=out_features)
 
 
@@ -140,16 +141,20 @@ async def upsert_prompt(
             status_code=400,
             detail={"code": "invalid_placeholders", "errors": errs},
         )
-    row = (await db.execute(
-        select(AIPromptOverride).where(
-            AIPromptOverride.feature_key == feature_key,
-            AIPromptOverride.field == field,
+    row = (
+        await db.execute(
+            select(AIPromptOverride).where(
+                AIPromptOverride.feature_key == feature_key,
+                AIPromptOverride.field == field,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if row is None:
         row = AIPromptOverride(
-            feature_key=feature_key, field=field,
-            content=payload.content, updated_by_id=admin.id,
+            feature_key=feature_key,
+            field=field,
+            content=payload.content,
+            updated_by_id=admin.id,
         )
         db.add(row)
     else:
@@ -168,12 +173,14 @@ async def reset_prompt(
 ) -> PromptFeatureOut:
     """Reset ke default = hapus row override."""
     _required_for(feature_key, field)  # validate feature exists
-    row = (await db.execute(
-        select(AIPromptOverride).where(
-            AIPromptOverride.feature_key == feature_key,
-            AIPromptOverride.field == field,
+    row = (
+        await db.execute(
+            select(AIPromptOverride).where(
+                AIPromptOverride.feature_key == feature_key,
+                AIPromptOverride.field == field,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if row is not None:
         await db.delete(row)
         await db.commit()
@@ -182,12 +189,20 @@ async def reset_prompt(
 
 async def _get_feature_out(db: AsyncSession, feature_key: str) -> PromptFeatureOut:
     spec = FEATURES[feature_key]
-    rows = (await db.execute(
-        select(AIPromptOverride).where(AIPromptOverride.feature_key == feature_key)
-    )).scalars().all()
+    rows = (
+        (
+            await db.execute(
+                select(AIPromptOverride).where(AIPromptOverride.feature_key == feature_key)
+            )
+        )
+        .scalars()
+        .all()
+    )
     overrides = {r.field: r for r in rows}
     sys_field = _build_field(
-        spec.system_default, overrides.get("system"), spec.system_placeholders,
+        spec.system_default,
+        overrides.get("system"),
+        spec.system_placeholders,
     )
     usr_field: PromptFieldOut | None = None
     if spec.user_template_default:
@@ -197,6 +212,9 @@ async def _get_feature_out(db: AsyncSession, feature_key: str) -> PromptFeatureO
             spec.user_placeholders,
         )
     return PromptFeatureOut(
-        key=spec.key, label=spec.label, description=spec.description,
-        system=sys_field, user_template=usr_field,
+        key=spec.key,
+        label=spec.label,
+        description=spec.description,
+        system=sys_field,
+        user_template=usr_field,
     )

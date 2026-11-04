@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -11,7 +11,6 @@ from app.core.deps import (
     ensure_project_access,
     get_current_user,
     require_admin,
-    require_superadmin,
     user_project_ids,
 )
 from app.db.session import get_db
@@ -26,6 +25,24 @@ from app.models.models import (
     User,
     UserRole,
 )
+from app.models.models import (  # extra imports for stats endpoint
+    Company as _Company,
+)
+from app.models.models import (
+    Invoice as _Invoice,
+)
+from app.models.models import (
+    InvoiceStatus as _InvoiceStatus,
+)
+from app.models.models import (
+    Transaction as _Transaction,
+)
+from app.models.models import (
+    TxnStatus as _TxnStatus,
+)
+from app.models.models import (
+    TxnType as _TxnType,
+)
 from app.schemas.common import Page
 from app.schemas.refs import (
     ProjectCreate,
@@ -37,14 +54,6 @@ from app.schemas.refs import (
 from app.services.audit import log, snapshot
 from app.services.storage.links import normalize_external_link
 from app.services.storage.local import save_upload
-from app.models.models import (  # extra imports for stats endpoint
-    Company as _Company,
-    Invoice as _Invoice,
-    InvoiceStatus as _InvoiceStatus,
-    Transaction as _Transaction,
-    TxnStatus as _TxnStatus,
-    TxnType as _TxnType,
-)
 
 router = APIRouter()
 
@@ -180,12 +189,14 @@ async def list_project_filters(
     user. Termasuk funders {id,name} -- pendana = User(role=EXECUTIVE)
     ter-link via project_users.
     """
-    stmt = select(Project).options(
-        selectinload(Project.user_links).selectinload(ProjectUser.user)
-    ).where(
-        Project.deleted_at.is_(None),
-        Project.status != ProjectStatus.MENUNGGU_PERSETUJUAN,
-        Project.kind != ProjectKind.NON_PROJECT.value,
+    stmt = (
+        select(Project)
+        .options(selectinload(Project.user_links).selectinload(ProjectUser.user))
+        .where(
+            Project.deleted_at.is_(None),
+            Project.status != ProjectStatus.MENUNGGU_PERSETUJUAN,
+            Project.kind != ProjectKind.NON_PROJECT.value,
+        )
     )
     pids = await user_project_ids(db, user)
     if pids is not None:
@@ -198,7 +209,7 @@ async def list_project_filters(
     # Funder yg tertaut ke proyek user (subset User EXECUTIVE, sorted by name).
     funders_map: dict[int, str] = {}
     for p in projects:
-        for link in (p.user_links or []):
+        for link in p.user_links or []:
             u = link.user
             if u is None or u.role != UserRole.EXECUTIVE or u.deleted_at is not None:
                 continue
@@ -251,27 +262,24 @@ async def list_projects_with_stats(
         stmt = stmt.where(Project.company_id == company_id)
     if location:
         # Multi-value, case-insensitive
-        stmt = stmt.where(
-            func.lower(Project.location).in_([s.lower() for s in location])
-        )
+        stmt = stmt.where(func.lower(Project.location).in_([s.lower() for s in location]))
     if client_name:
-        stmt = stmt.where(
-            func.lower(Project.client_name).in_([s.lower() for s in client_name])
-        )
+        stmt = stmt.where(func.lower(Project.client_name).in_([s.lower() for s in client_name]))
     if funder_id:
         # JOIN lewat project_users -> users, filter role=EXECUTIVE.
         # distinct() supaya proyek dgn multi pendana yg ke-match tdk dobel.
-        stmt = stmt.join(
-            ProjectUser, ProjectUser.project_id == Project.id
-        ).join(
-            User, User.id == ProjectUser.user_id
-        ).where(
-            ProjectUser.user_id.in_(funder_id),
-            User.role == UserRole.EXECUTIVE,
-        ).distinct()
-    stmt = stmt.options(
-        selectinload(Project.user_links).selectinload(ProjectUser.user)
-    ).order_by(Project.id.desc())
+        stmt = (
+            stmt.join(ProjectUser, ProjectUser.project_id == Project.id)
+            .join(User, User.id == ProjectUser.user_id)
+            .where(
+                ProjectUser.user_id.in_(funder_id),
+                User.role == UserRole.EXECUTIVE,
+            )
+            .distinct()
+        )
+    stmt = stmt.options(selectinload(Project.user_links).selectinload(ProjectUser.user)).order_by(
+        Project.id.desc()
+    )
     projects = (await db.execute(stmt)).scalars().all()
 
     # company map
@@ -281,35 +289,41 @@ async def list_projects_with_stats(
     out: list[dict] = []
     active_tx_statuses = (_TxnStatus.DRAFT, _TxnStatus.SUBMITTED, _TxnStatus.VERIFIED)
     open_inv_statuses = (
-        _InvoiceStatus.ISSUED, _InvoiceStatus.PARTIALLY_PAID, _InvoiceStatus.OVERDUE,
+        _InvoiceStatus.ISSUED,
+        _InvoiceStatus.PARTIALLY_PAID,
+        _InvoiceStatus.OVERDUE,
     )
 
     # Audit #M3: bulk GROUP BY supaya tdk 3-query-per-project N+1.
     # Sebelumnya: 20 project × 3 SUM = 60 query. Sesudah: 3 query total.
     pids = [p.id for p in projects]
     if pids:
-        in_rows = (await db.execute(
-            select(_Transaction.project_id, func.coalesce(func.sum(_Transaction.amount), 0))
-            .where(
-                _Transaction.project_id.in_(pids),
-                _Transaction.type == _TxnType.IN,
-                _Transaction.status.in_(active_tx_statuses),
-                _Transaction.deleted_at.is_(None),
+        in_rows = (
+            await db.execute(
+                select(_Transaction.project_id, func.coalesce(func.sum(_Transaction.amount), 0))
+                .where(
+                    _Transaction.project_id.in_(pids),
+                    _Transaction.type == _TxnType.IN,
+                    _Transaction.status.in_(active_tx_statuses),
+                    _Transaction.deleted_at.is_(None),
+                )
+                .group_by(_Transaction.project_id)
             )
-            .group_by(_Transaction.project_id)
-        )).all()
+        ).all()
         in_map = {pid: float(s or 0) for pid, s in in_rows}
 
-        out_rows = (await db.execute(
-            select(_Transaction.project_id, func.coalesce(func.sum(_Transaction.amount), 0))
-            .where(
-                _Transaction.project_id.in_(pids),
-                _Transaction.type == _TxnType.OUT,
-                _Transaction.status.in_(active_tx_statuses),
-                _Transaction.deleted_at.is_(None),
+        out_rows = (
+            await db.execute(
+                select(_Transaction.project_id, func.coalesce(func.sum(_Transaction.amount), 0))
+                .where(
+                    _Transaction.project_id.in_(pids),
+                    _Transaction.type == _TxnType.OUT,
+                    _Transaction.status.in_(active_tx_statuses),
+                    _Transaction.deleted_at.is_(None),
+                )
+                .group_by(_Transaction.project_id)
             )
-            .group_by(_Transaction.project_id)
-        )).all()
+        ).all()
         out_map = {pid: float(s or 0) for pid, s in out_rows}
 
         # Audit 2026-05-23: exclude marketing + profit_share dr budget.
@@ -329,24 +343,25 @@ async def list_projects_with_stats(
                 )
                 .group_by(_Transaction.project_id)
             )
+
         mkt_map = {
-            pid: float(s or 0)
-            for pid, s in (await db.execute(_flag_q(_Cat.is_marketing))).all()
+            pid: float(s or 0) for pid, s in (await db.execute(_flag_q(_Cat.is_marketing))).all()
         }
         ps_map = {
-            pid: float(s or 0)
-            for pid, s in (await db.execute(_flag_q(_Cat.is_profit_share))).all()
+            pid: float(s or 0) for pid, s in (await db.execute(_flag_q(_Cat.is_profit_share))).all()
         }
 
-        inv_rows = (await db.execute(
-            select(_Invoice.project_id, func.coalesce(func.sum(_Invoice.total), 0))
-            .where(
-                _Invoice.project_id.in_(pids),
-                _Invoice.status.in_(open_inv_statuses),
-                _Invoice.deleted_at.is_(None),
+        inv_rows = (
+            await db.execute(
+                select(_Invoice.project_id, func.coalesce(func.sum(_Invoice.total), 0))
+                .where(
+                    _Invoice.project_id.in_(pids),
+                    _Invoice.status.in_(open_inv_statuses),
+                    _Invoice.deleted_at.is_(None),
+                )
+                .group_by(_Invoice.project_id)
             )
-            .group_by(_Invoice.project_id)
-        )).all()
+        ).all()
         inv_open_map = {pid: float(s or 0) for pid, s in inv_rows}
     else:
         in_map = out_map = inv_open_map = {}
@@ -382,40 +397,43 @@ async def list_projects_with_stats(
         else:
             health = "sehat"
 
-        out.append({
-            "id": p.id,
-            "code": p.code,
-            "name": p.name,
-            "location": p.location,
-            "status": p.status.value,
-            "currency": p.currency,
-            "company_id": p.company_id,
-            "company": cmap[p.company_id].name if p.company_id in cmap else None,
-            "project_value": float(p.project_value or 0),
-            "budget_amount": budget,
-            "total_in": total_in,
-            "total_out": total_out,
-            "balance": balance,
-            "invoice_open": inv_open,
-            "budget": {
-                "amount": budget,
-                "spent": spent,
-                "remaining": budget - spent,
-                "usage_pct": round(usage_pct, 2),
-                "status": bstatus,
-            },
-            "health": health,
-            # Pendana = User(role=EXECUTIVE) ter-link via project_users.
-            "funder_ids": [
-                link.user.id for link in (p.user_links or [])
-                if link.user is not None and link.user.role == UserRole.EXECUTIVE
-            ],
-            "funder_names": [
-                (link.user.name or link.user.email)
-                for link in (p.user_links or [])
-                if link.user is not None and link.user.role == UserRole.EXECUTIVE
-            ],
-        })
+        out.append(
+            {
+                "id": p.id,
+                "code": p.code,
+                "name": p.name,
+                "location": p.location,
+                "status": p.status.value,
+                "currency": p.currency,
+                "company_id": p.company_id,
+                "company": cmap[p.company_id].name if p.company_id in cmap else None,
+                "project_value": float(p.project_value or 0),
+                "budget_amount": budget,
+                "total_in": total_in,
+                "total_out": total_out,
+                "balance": balance,
+                "invoice_open": inv_open,
+                "budget": {
+                    "amount": budget,
+                    "spent": spent,
+                    "remaining": budget - spent,
+                    "usage_pct": round(usage_pct, 2),
+                    "status": bstatus,
+                },
+                "health": health,
+                # Pendana = User(role=EXECUTIVE) ter-link via project_users.
+                "funder_ids": [
+                    link.user.id
+                    for link in (p.user_links or [])
+                    if link.user is not None and link.user.role == UserRole.EXECUTIVE
+                ],
+                "funder_names": [
+                    (link.user.name or link.user.email)
+                    for link in (p.user_links or [])
+                    if link.user is not None and link.user.role == UserRole.EXECUTIVE
+                ],
+            }
+        )
     return out
 
 
@@ -444,14 +462,18 @@ async def _replace_project_funders(
     if new_set:
         # Validasi: semua ID exist sbg User aktif dgn role EXECUTIVE.
         valid_rows = (
-            await db.execute(
-                select(User.id).where(
-                    User.id.in_(new_set),
-                    User.role == UserRole.EXECUTIVE,
-                    User.deleted_at.is_(None),
+            (
+                await db.execute(
+                    select(User.id).where(
+                        User.id.in_(new_set),
+                        User.role == UserRole.EXECUTIVE,
+                        User.deleted_at.is_(None),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         invalid = new_set - set(valid_rows)
         if invalid:
             raise HTTPException(
@@ -481,12 +503,14 @@ async def _replace_project_funders(
     # juga sudah ter-link sbg PROJECT_ADMIN (extremely rare, tapi safe).
     to_add = new_set - existing_set
     for uid in to_add:
-        dup = (await db.execute(
-            select(ProjectUser).where(
-                ProjectUser.project_id == project_id,
-                ProjectUser.user_id == uid,
+        dup = (
+            await db.execute(
+                select(ProjectUser).where(
+                    ProjectUser.project_id == project_id,
+                    ProjectUser.user_id == uid,
+                )
             )
-        )).scalar_one_or_none()
+        ).scalar_one_or_none()
         if dup is None:
             db.add(ProjectUser(project_id=project_id, user_id=uid))
 
@@ -497,7 +521,9 @@ async def create_project(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> ProjectOut:
-    exists = (await db.execute(select(Project).where(Project.code == payload.code))).scalar_one_or_none()
+    exists = (
+        await db.execute(select(Project).where(Project.code == payload.code))
+    ).scalar_one_or_none()
     if exists:
         raise HTTPException(409, "project_code_already_used")
     payload_data = payload.model_dump(exclude={"funder_ids"})
@@ -514,7 +540,7 @@ async def create_project(
     # Pakai Python datetime (BUKAN func.now()) supaya snapshot(p) di
     # bawah bisa JSON-serialize utk AuditLog.after. func.now() return SQL
     # FunctionElement object yg gagal json.dumps -> 500.
-    p.approved_at = datetime.utcnow()
+    p.approved_at = datetime.now(UTC)
     db.add(p)
     await db.flush()
     if funder_ids:
@@ -525,11 +551,15 @@ async def create_project(
     # created_at/updated_at, def. column2) di-expire. Refresh dgn explicit
     # attribute_names supaya snapshot(p) tdk trigger lazy-load (yg gagal
     # di async context = MissingGreenlet).
-    await db.refresh(
-        p, attribute_names=[c.name for c in Project.__table__.columns]
+    await db.refresh(p, attribute_names=[c.name for c in Project.__table__.columns])
+    await log(
+        db,
+        user_id=admin.id,
+        entity="project",
+        entity_id=p.id,
+        action=AuditAction.CREATE,
+        after=snapshot(p),
     )
-    await log(db, user_id=admin.id, entity="project", entity_id=p.id,
-              action=AuditAction.CREATE, after=snapshot(p))
     await db.commit()
     p = await _load_with_company(db, p.id)
     return _to_out(p)
@@ -591,9 +621,9 @@ async def propose_project(
     """
     if user.role == UserRole.EXECUTIVE:
         raise HTTPException(403, "read_only_role")
-    exists = (await db.execute(
-        select(Project).where(Project.code == payload.code)
-    )).scalar_one_or_none()
+    exists = (
+        await db.execute(select(Project).where(Project.code == payload.code))
+    ).scalar_one_or_none()
     if exists:
         raise HTTPException(409, "project_code_already_used")
     p = Project(
@@ -603,8 +633,14 @@ async def propose_project(
     )
     db.add(p)
     await db.flush()
-    await log(db, user_id=user.id, entity="project_proposal", entity_id=p.id,
-              action=AuditAction.CREATE, after=snapshot(p))
+    await log(
+        db,
+        user_id=user.id,
+        entity="project_proposal",
+        entity_id=p.id,
+        action=AuditAction.CREATE,
+        after=snapshot(p),
+    )
     await db.commit()
     p = await _load_with_company(db, p.id)
     await _attach_relations(db, [p])
@@ -636,12 +672,14 @@ async def approve_proposal(
     # (MissingGreenlet).
     existing_pu = None
     if p.proposed_by_id:
-        existing_pu = (await db.execute(
-            select(ProjectUser).where(
-                ProjectUser.project_id == p.id,
-                ProjectUser.user_id == p.proposed_by_id,
+        existing_pu = (
+            await db.execute(
+                select(ProjectUser).where(
+                    ProjectUser.project_id == p.id,
+                    ProjectUser.user_id == p.proposed_by_id,
+                )
             )
-        )).scalar_one_or_none()
+        ).scalar_one_or_none()
 
     before = snapshot(p)
     p.status = ProjectStatus.AKTIF
@@ -649,15 +687,22 @@ async def approve_proposal(
     # Pakai Python datetime (BUKAN func.now()) supaya snapshot(p) di
     # bawah bisa JSON-serialize utk AuditLog.after. func.now() return SQL
     # FunctionElement object yg gagal json.dumps -> 500.
-    p.approved_at = datetime.utcnow()
+    p.approved_at = datetime.now(UTC)
     p.rejection_reason = None
     if p.proposed_by_id and not existing_pu:
         db.add(ProjectUser(project_id=p.id, user_id=p.proposed_by_id))
     # snapshot(p) DI SINI safe -- tdk ada execute() di antara setattr & ini,
     # jadi autoflush belum trigger, updated_at masih cached.
     after_data = snapshot(p)
-    await log(db, user_id=admin.id, entity="project_proposal", entity_id=p.id,
-              action=AuditAction.APPROVE, before=before, after=after_data)
+    await log(
+        db,
+        user_id=admin.id,
+        entity="project_proposal",
+        entity_id=p.id,
+        action=AuditAction.APPROVE,
+        before=before,
+        after=after_data,
+    )
     await db.commit()
     p = await _load_with_company(db, p.id)
     await _attach_relations(db, [p])
@@ -686,10 +731,17 @@ async def reject_proposal(
     # Pakai Python datetime (BUKAN func.now()) supaya snapshot(p) di
     # bawah bisa JSON-serialize utk AuditLog.after. func.now() return SQL
     # FunctionElement object yg gagal json.dumps -> 500.
-    p.approved_at = datetime.utcnow()
+    p.approved_at = datetime.now(UTC)
     p.rejection_reason = reason
-    await log(db, user_id=admin.id, entity="project_proposal", entity_id=p.id,
-              action=AuditAction.REJECT, before=before, after=snapshot(p))
+    await log(
+        db,
+        user_id=admin.id,
+        entity="project_proposal",
+        entity_id=p.id,
+        action=AuditAction.REJECT,
+        before=before,
+        after=snapshot(p),
+    )
     await db.commit()
     p = await _load_with_company(db, p.id)
     await _attach_relations(db, [p])
@@ -746,27 +798,44 @@ async def update_project(
         if not is_np:
             from app.models.models import (
                 Invoice as _Invoice,
+            )
+            from app.models.models import (
                 PurchaseOrder as _PurchaseOrder,
+            )
+            from app.models.models import (
                 Transaction as _Transaction,
             )
-            tx_exists = (await db.execute(
-                select(_Transaction.id).where(
-                    _Transaction.project_id == pid,
-                    _Transaction.deleted_at.is_(None),
-                ).limit(1)
-            )).scalar_one_or_none() is not None
-            inv_exists = (await db.execute(
-                select(_Invoice.id).where(
-                    _Invoice.project_id == pid,
-                    _Invoice.deleted_at.is_(None),
-                ).limit(1)
-            )).scalar_one_or_none() is not None
-            po_exists = (await db.execute(
-                select(_PurchaseOrder.id).where(
-                    _PurchaseOrder.project_id == pid,
-                    _PurchaseOrder.deleted_at.is_(None),
-                ).limit(1)
-            )).scalar_one_or_none() is not None
+
+            tx_exists = (
+                await db.execute(
+                    select(_Transaction.id)
+                    .where(
+                        _Transaction.project_id == pid,
+                        _Transaction.deleted_at.is_(None),
+                    )
+                    .limit(1)
+                )
+            ).scalar_one_or_none() is not None
+            inv_exists = (
+                await db.execute(
+                    select(_Invoice.id)
+                    .where(
+                        _Invoice.project_id == pid,
+                        _Invoice.deleted_at.is_(None),
+                    )
+                    .limit(1)
+                )
+            ).scalar_one_or_none() is not None
+            po_exists = (
+                await db.execute(
+                    select(_PurchaseOrder.id)
+                    .where(
+                        _PurchaseOrder.project_id == pid,
+                        _PurchaseOrder.deleted_at.is_(None),
+                    )
+                    .limit(1)
+                )
+            ).scalar_one_or_none() is not None
             if tx_exists or inv_exists or po_exists:
                 raise HTTPException(
                     400,
@@ -776,9 +845,9 @@ async def update_project(
                     "memutus referensi historis.",
                 )
         # Validasi unik (selalu, baik REGULAR maupun NON_PROJECT).
-        clash = (await db.execute(
-            select(Project).where(Project.code == data["code"], Project.id != pid)
-        )).scalar_one_or_none()
+        clash = (
+            await db.execute(select(Project).where(Project.code == data["code"], Project.id != pid))
+        ).scalar_one_or_none()
         if clash:
             raise HTTPException(409, "project_code_already_used")
 
@@ -793,8 +862,15 @@ async def update_project(
     for k, v in data.items():
         setattr(p, k, v)
     after_data = snapshot(p)
-    await log(db, user_id=admin.id, entity="project", entity_id=p.id,
-              action=AuditAction.UPDATE, before=before, after=after_data)
+    await log(
+        db,
+        user_id=admin.id,
+        entity="project",
+        entity_id=p.id,
+        action=AuditAction.UPDATE,
+        before=before,
+        after=after_data,
+    )
     await db.commit()
     p = await _load_with_company(db, p.id)
     return _to_out(p)
@@ -814,9 +890,15 @@ async def delete_project(
     if p.kind == ProjectKind.NON_PROJECT.value:
         raise HTTPException(400, "cannot_delete_system_non_project")
     before = snapshot(p)
-    p.deleted_at = datetime.utcnow()
-    await log(db, user_id=admin.id, entity="project", entity_id=p.id,
-              action=AuditAction.DELETE, before=before)
+    p.deleted_at = datetime.now(UTC)
+    await log(
+        db,
+        user_id=admin.id,
+        entity="project",
+        entity_id=p.id,
+        action=AuditAction.DELETE,
+        before=before,
+    )
     await db.commit()
 
 
@@ -828,7 +910,9 @@ async def project_users(
 ) -> list[dict]:
     await ensure_project_access(db, user, pid)
     res = await db.execute(
-        select(User).join(ProjectUser, ProjectUser.user_id == User.id).where(
+        select(User)
+        .join(ProjectUser, ProjectUser.user_id == User.id)
+        .where(
             ProjectUser.project_id == pid,
             User.deleted_at.is_(None),
         )
@@ -851,8 +935,7 @@ def _validate_doc_type(v: str | None) -> str | None:
     if v not in _VALID_DOC_TYPES:
         raise HTTPException(
             400,
-            f"invalid_doc_type: '{v}' tidak valid. Pilihan: "
-            + ", ".join(sorted(_VALID_DOC_TYPES)),
+            f"invalid_doc_type: '{v}' tidak valid. Pilihan: " + ", ".join(sorted(_VALID_DOC_TYPES)),
         )
     return v
 
@@ -868,8 +951,7 @@ class ProjectAttachmentOut(BaseModel):
     uploaded_by_id: int
     created_at: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 def _att_to_out(a: ProjectAttachment) -> ProjectAttachmentOut:
@@ -934,9 +1016,14 @@ async def upload_project_attachment(
     )
     db.add(att)
     await db.flush()
-    await log(db, user_id=admin.id, entity="project_attachment", entity_id=pid,
-              action=AuditAction.CREATE,
-              after={"file": meta["file_name"], "label": label, "doc_type": doc_type})
+    await log(
+        db,
+        user_id=admin.id,
+        entity="project_attachment",
+        entity_id=pid,
+        action=AuditAction.CREATE,
+        after={"file": meta["file_name"], "label": label, "doc_type": doc_type},
+    )
     await db.commit()
     await db.refresh(att)
     return _att_to_out(att)
@@ -971,10 +1058,19 @@ async def attach_project_link(
     )
     db.add(att)
     await db.flush()
-    await log(db, user_id=admin.id, entity="project_attachment", entity_id=pid,
-              action=AuditAction.CREATE,
-              after={"link": meta["file_name"], "url": meta["url"],
-                     "label": body.label, "doc_type": doc_type})
+    await log(
+        db,
+        user_id=admin.id,
+        entity="project_attachment",
+        entity_id=pid,
+        action=AuditAction.CREATE,
+        after={
+            "link": meta["file_name"],
+            "url": meta["url"],
+            "label": body.label,
+            "doc_type": doc_type,
+        },
+    )
     await db.commit()
     await db.refresh(att)
     return _att_to_out(att)
@@ -982,6 +1078,7 @@ async def attach_project_link(
 
 class _ProjectAttachmentPatch(BaseModel):
     """Patch metadata attachment (label/doc_type). File tdk diganti."""
+
     label: str | None = None
     doc_type: str | None = None
 
@@ -1002,9 +1099,14 @@ async def patch_project_attachment(
         att.doc_type = _validate_doc_type(body.doc_type)
     if body.label is not None:
         att.label = body.label.strip() or None
-    await log(db, user_id=admin.id, entity="project_attachment", entity_id=pid,
-              action=AuditAction.UPDATE,
-              after={"label": att.label, "doc_type": att.doc_type})
+    await log(
+        db,
+        user_id=admin.id,
+        entity="project_attachment",
+        entity_id=pid,
+        action=AuditAction.UPDATE,
+        after={"label": att.label, "doc_type": att.doc_type},
+    )
     await db.commit()
     await db.refresh(att)
     return _att_to_out(att)
@@ -1021,6 +1123,12 @@ async def delete_project_attachment(
     if not att or att.project_id != pid or att.deleted_at is not None:
         raise HTTPException(404, "not_found")
     await db.delete(att)
-    await log(db, user_id=admin.id, entity="project_attachment", entity_id=pid,
-              action=AuditAction.DELETE, before={"file": att.file_name, "label": att.label})
+    await log(
+        db,
+        user_id=admin.id,
+        entity="project_attachment",
+        entity_id=pid,
+        action=AuditAction.DELETE,
+        before={"file": att.file_name, "label": att.label},
+    )
     await db.commit()

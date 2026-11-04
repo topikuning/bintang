@@ -6,6 +6,7 @@ Audit 2026-06-02: dipanggil dari api/v1/telegram.py & whatsapp.py saat
 foto + caption command terdeteksi. Mengisolasi logic supaya kedua
 webhook handler tipis & symmetric.
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,15 +27,15 @@ logger = logging.getLogger(__name__)
 # alias itu TIDAK PERNAH bisa cocok. Ketahuan saat test suite akhirnya
 # dijalankan; test-nya sendiri sudah lama ada dan sudah lama gagal.
 _DOC_CMDS: dict[str, dict] = {
-    "/po":          {"entity": "PO"},
-    "/buatpo":      {"entity": "PO"},
-    "/buat-po":     {"entity": "PO"},
-    "/invoice":     {"entity": "INVOICE", "type": "IN"},
-    "/invoice-in":  {"entity": "INVOICE", "type": "IN"},
-    "/invoicein":   {"entity": "INVOICE", "type": "IN"},
+    "/po": {"entity": "PO"},
+    "/buatpo": {"entity": "PO"},
+    "/buat-po": {"entity": "PO"},
+    "/invoice": {"entity": "INVOICE", "type": "IN"},
+    "/invoice-in": {"entity": "INVOICE", "type": "IN"},
+    "/invoicein": {"entity": "INVOICE", "type": "IN"},
     "/invoice-out": {"entity": "INVOICE", "type": "OUT"},
-    "/invoiceout":  {"entity": "INVOICE", "type": "OUT"},
-    "/inv":         {"entity": "INVOICE", "type": "IN"},
+    "/invoiceout": {"entity": "INVOICE", "type": "OUT"},
+    "/inv": {"entity": "INVOICE", "type": "IN"},
 }
 
 # Stop pattern: keyword berikutnya supaya vendor tdk nyebrang ke proyek/
@@ -43,7 +44,8 @@ _NEXT_KW = r"(?=\s+(?:proyek|projek|vendor|konteks|catatan|keterangan|note|notes
 # Project code: alfanumerik + dash/underscore (mis. BMJ1, PRJ-001). Tdk
 # perlu lookahead karena character class sudah strict.
 _PROJ_HINT_RE = re.compile(
-    r"\bproyek\s*[:\-]?\s*([A-Za-z0-9_\-\.]{2,40})", re.IGNORECASE,
+    r"\bproyek\s*[:\-]?\s*([A-Za-z0-9_\-\.]{2,40})",
+    re.IGNORECASE,
 )
 # Vendor: nama bisa multi-word ("PT Sumber Besi"). Lazy + lookahead supaya
 # stop di keyword berikutnya.
@@ -62,11 +64,12 @@ _CONTEXT_RE = re.compile(
 
 @dataclass
 class DocCmdSpec:
-    entity: str                    # "PO" | "INVOICE"
+    entity: str  # "PO" | "INVOICE"
     invoice_type: InvoiceType | None
     project_hint: str | None
     vendor_hint: str | None
     context: str | None
+
     # Backward-compat alias (notes = context).
     @property
     def notes(self) -> str | None:
@@ -136,8 +139,10 @@ def parse_doc_cmd(caption: str) -> DocCmdSpec | None:
     return DocCmdSpec(
         entity=spec["entity"],
         invoice_type=(
-            InvoiceType.IN if spec.get("type") == "IN"
-            else InvoiceType.OUT if spec.get("type") == "OUT"
+            InvoiceType.IN
+            if spec.get("type") == "IN"
+            else InvoiceType.OUT
+            if spec.get("type") == "OUT"
             else None
         ),
         project_hint=project_hint,
@@ -164,6 +169,7 @@ async def handle_doc_photo(
     try:
         if spec.entity == "PO":
             from app.services.bot_po_assistant import parse_photo_and_save
+
             return await parse_photo_and_save(
                 db,
                 user=user,
@@ -178,6 +184,7 @@ async def handle_doc_photo(
             )
         elif spec.entity == "INVOICE":
             from app.services.bot_invoice_assistant import parse_photo_and_save
+
             return await parse_photo_and_save(
                 db,
                 user=user,
@@ -193,6 +200,7 @@ async def handle_doc_photo(
     except Exception as e:  # noqa: BLE001
         # BotDocError + lainnya. Logged untuk debug.
         from app.services.bot_doc_session import BotDocError
+
         if isinstance(e, BotDocError):
             return f"❌ {e}"
         logger.exception("handle_doc_photo failed")
@@ -221,11 +229,12 @@ async def handle_session_reply(
     (caller akan lanjut ke dispatcher biasa).
     """
     from app.services.bot_doc_session import (
-        BotDocError,
         SESSION_TTL_MINUTES,
+        BotDocError,
         delete_session,
         load_active_session,
     )
+
     t = text.strip().lower()
     is_yes = t in _YES_TOKENS
     is_no = t in _NO_TOKENS
@@ -246,6 +255,7 @@ async def handle_session_reply(
         try:
             if session.entity_type == "PO":
                 from app.services.bot_po_assistant import confirm_create as create_po
+
                 po = await create_po(db, user=user, session=session)
                 return (
                     f"✅ PO dibuat sbg DRAFT: `{po.number}`\n"
@@ -254,6 +264,7 @@ async def handle_session_reply(
                 )
             elif session.entity_type == "INVOICE":
                 from app.services.bot_invoice_assistant import confirm_create as create_inv
+
                 inv = await create_inv(db, user=user, session=session)
                 return (
                     f"✅ Invoice dibuat sbg DRAFT: `{inv.number}`\n"

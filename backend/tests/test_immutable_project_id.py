@@ -10,9 +10,9 @@ silent-ignored), lalu endpoint reject explisit kalau payload kirim
 project_id BEDA dari current dgn 400 "project_change_forbidden".
 Sama untuk current value -> no-op (no error).
 """
+
 from __future__ import annotations
 
-from datetime import date
 from decimal import Decimal
 
 from app.schemas.finance import InvoiceUpdate, TransactionUpdate

@@ -32,7 +32,9 @@ async def project_totals(db: AsyncSession, project_id: int) -> dict[str, Decimal
     total_in = Decimal((await db.execute(_sum_q(TxnType.IN, ACTIVE_STATUSES))).scalar_one() or 0)
     total_out = Decimal((await db.execute(_sum_q(TxnType.OUT, ACTIVE_STATUSES))).scalar_one() or 0)
     pending_in = Decimal((await db.execute(_sum_q(TxnType.IN, PENDING_STATUSES))).scalar_one() or 0)
-    pending_out = Decimal((await db.execute(_sum_q(TxnType.OUT, PENDING_STATUSES))).scalar_one() or 0)
+    pending_out = Decimal(
+        (await db.execute(_sum_q(TxnType.OUT, PENDING_STATUSES))).scalar_one() or 0
+    )
 
     return {
         "total_in": total_in,
@@ -44,8 +46,10 @@ async def project_totals(db: AsyncSession, project_id: int) -> dict[str, Decimal
 
 
 async def project_marketing_actual(
-    db: AsyncSession, project_id: int,
-    *, statuses: tuple = ACTIVE_STATUSES,
+    db: AsyncSession,
+    project_id: int,
+    *,
+    statuses: tuple = ACTIVE_STATUSES,
 ) -> Decimal:
     """SUM TX OUT (statuses) di proyek yg category.is_marketing=True.
 
@@ -68,8 +72,10 @@ async def project_marketing_actual(
 
 
 async def project_expense_breakdown(
-    db: AsyncSession, project_id: int,
-    *, statuses: tuple = ACTIVE_STATUSES,
+    db: AsyncSession,
+    project_id: int,
+    *,
+    statuses: tuple = ACTIVE_STATUSES,
 ) -> dict[str, Decimal]:
     """Komposisi biaya OUT proyek per peran akuntansi.
 
@@ -87,6 +93,7 @@ async def project_expense_breakdown(
     Sum 4 buckets = total (kecuali bug data).
     """
     from sqlalchemy import case
+
     # Single GROUP BY w/ CASE: efisien 1 query.
     flag_expr = case(
         (Category.is_marketing.is_(True), "marketing"),
@@ -94,20 +101,22 @@ async def project_expense_breakdown(
         (Category.is_profit_share.is_(True), "profit_share"),
         else_="operating",
     )
-    rows = (await db.execute(
-        select(
-            flag_expr.label("bucket"),
-            func.coalesce(func.sum(Transaction.amount), 0).label("amt"),
+    rows = (
+        await db.execute(
+            select(
+                flag_expr.label("bucket"),
+                func.coalesce(func.sum(Transaction.amount), 0).label("amt"),
+            )
+            .outerjoin(Category, Category.id == Transaction.category_id)
+            .where(
+                Transaction.project_id == project_id,
+                Transaction.type == TxnType.OUT,
+                Transaction.status.in_(statuses),
+                Transaction.deleted_at.is_(None),
+            )
+            .group_by("bucket")
         )
-        .outerjoin(Category, Category.id == Transaction.category_id)
-        .where(
-            Transaction.project_id == project_id,
-            Transaction.type == TxnType.OUT,
-            Transaction.status.in_(statuses),
-            Transaction.deleted_at.is_(None),
-        )
-        .group_by("bucket")
-    )).all()
+    ).all()
     out = {
         "marketing": Decimal("0"),
         "penalty": Decimal("0"),

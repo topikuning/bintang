@@ -12,19 +12,20 @@ Flow:
 Session pakai BotPendingDocSession (entity_type="PO"), shared dgn
 Invoice assistant via bot_doc_session module.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import (
     BotPendingDocSession,
+    POItem,
     POStatus,
     Project,
     PurchaseOrder,
-    POItem,
     User,
 )
 from app.services.ai.features.po_chat_parser import parse as ai_parse
@@ -39,7 +40,6 @@ from app.services.bot_doc_session import (
     save_session,
 )
 
-
 # Backward-compat alias.
 BotPOError = BotDocError
 
@@ -48,8 +48,14 @@ ENTITY_TYPE = "PO"
 
 # ---------- Text path (AI parser) ----------
 
+
 async def parse_text_and_save(
-    db: AsyncSession, *, user: User, channel: str, chat_id: str, text: str,
+    db: AsyncSession,
+    *,
+    user: User,
+    channel: str,
+    chat_id: str,
+    text: str,
 ) -> str:
     """Audit 2026-05-30: /po + multi-line text body."""
     parsed = await ai_parse(db, user_id=user.id, text=text)
@@ -89,19 +95,26 @@ async def parse_text_and_save(
         source="chat_text",
     )
     session_id = await save_session(
-        db, channel=channel, chat_id=chat_id, user_id=user.id,
-        entity_type=ENTITY_TYPE, payload=payload,
+        db,
+        channel=channel,
+        chat_id=chat_id,
+        user_id=user.id,
+        entity_type=ENTITY_TYPE,
+        payload=payload,
     )
     # Reminder 1 menit sebelum expired (fire-and-forget).
     from app.services.bot_doc_session import schedule_reminder
+
     schedule_reminder(channel=channel, chat_id=chat_id, session_id=session_id)
     return _format_preview(payload)
 
 
 # ---------- Photo path (OCR) ----------
 
+
 async def parse_photo_and_save(
-    db: AsyncSession, *,
+    db: AsyncSession,
+    *,
     user: User,
     channel: str,
     chat_id: str,
@@ -116,24 +129,29 @@ async def parse_photo_and_save(
     invoice + po -- struktur items + total mirip). project_hint dari
     caption user; vendor dari OCR vendor_name (atau override caption)."""
     # Simpan foto -> URL utk web visibility di Asisten OCR.
-    from app.services.storage.local import save_bytes
     from app.services.bot_invoice_assistant import (
         _create_ai_extraction,
         _ext_from_media_type,
     )
+    from app.services.storage.local import save_bytes
+
     ext = _ext_from_media_type(media_type)
     saved = await save_bytes(
         content,
-        original_name=f"wa-{chat_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}.{ext}",
+        original_name=f"wa-{chat_id}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}.{ext}",
         subdir="ocr",
         mime_hint=media_type,
     )
     public_url = saved["url"]
 
     from app.services.ocr.pipeline import run_extraction
+
     ocr = await run_extraction(
-        db, content=content, media_type=media_type,
-        source_url=public_url, engine=None,
+        db,
+        content=content,
+        media_type=media_type,
+        source_url=public_url,
+        engine=None,
         # Audit 2026-06-02: user context (caption "konteks: ...") di-inject
         # ke OCR system prompt utk disambiguasi handwriting/items.
         user_context=notes,
@@ -150,15 +168,13 @@ async def parse_photo_and_save(
         project = await resolve_project(db, user, project_hint)
         if project is None:
             raise BotDocError(
-                f"Proyek '{project_hint}' tidak ketemu atau kamu tidak "
-                f"punya akses. Cek /proyek.",
+                f"Proyek '{project_hint}' tidak ketemu atau kamu tidak punya akses. Cek /proyek.",
             )
     if project is None:
         project = await first_accessible_project(db, user)
     if project is None:
         raise BotDocError(
-            "Tidak ada proyek aktif yg bisa kamu akses -- minta admin "
-            "tambahkan akses dulu.",
+            "Tidak ada proyek aktif yg bisa kamu akses -- minta admin tambahkan akses dulu.",
         )
 
     vendor_hint = vendor_hint_override or (ocr.get("vendor_name") or None)
@@ -184,16 +200,22 @@ async def parse_photo_and_save(
     payload["ai_extraction_id"] = extraction_id
 
     session_id = await save_session(
-        db, channel=channel, chat_id=chat_id, user_id=user.id,
-        entity_type=ENTITY_TYPE, payload=payload,
+        db,
+        channel=channel,
+        chat_id=chat_id,
+        user_id=user.id,
+        entity_type=ENTITY_TYPE,
+        payload=payload,
     )
     # Reminder 1 menit sebelum expired (fire-and-forget).
     from app.services.bot_doc_session import schedule_reminder
+
     schedule_reminder(channel=channel, chat_id=chat_id, session_id=session_id)
     return _format_preview(payload)
 
 
 # ---------- Helpers ----------
+
 
 def _ocr_items_to_payload(ocr_items: list[dict]) -> list[dict]:
     """Normalisasi OCR items ke format payload (description, quantity, unit,
@@ -217,19 +239,25 @@ def _ocr_items_to_payload(ocr_items: list[dict]) -> list[dict]:
                 unit_price = float(amount_raw) / qty
             else:
                 unit_price = None
-        out.append({
-            "description": desc,
-            "quantity": qty,
-            "unit": (it.get("unit") or None),
-            "unit_price": unit_price,
-        })
+        out.append(
+            {
+                "description": desc,
+                "quantity": qty,
+                "unit": (it.get("unit") or None),
+                "unit_price": unit_price,
+            }
+        )
     return out
 
 
 async def _build_payload(
-    *, project: Project, items: list[dict],
-    vendor_id: int | None, vendor_name: str | None,
-    notes: str | None, source: str,
+    *,
+    project: Project,
+    items: list[dict],
+    vendor_id: int | None,
+    vendor_name: str | None,
+    notes: str | None,
+    source: str,
     ocr_meta: dict | None = None,
 ) -> dict:
     return {
@@ -279,9 +307,7 @@ def _format_preview(payload: dict) -> str:
     if payload.get("notes"):
         lines.append(f"💬 Konteks: _{payload['notes']}_")
     if payload.get("ai_extraction_id"):
-        lines.append(
-            f"🔍 Cek hasil OCR di web: /ocr (cari #{payload['ai_extraction_id']})"
-        )
+        lines.append(f"🔍 Cek hasil OCR di web: /ocr (cari #{payload['ai_extraction_id']})")
     meta = payload.get("ocr_meta")
     if meta:
         conf = meta.get("confidence_score")
@@ -294,8 +320,12 @@ def _format_preview(payload: dict) -> str:
 
 # ---------- Confirm create ----------
 
+
 async def confirm_create(
-    db: AsyncSession, *, user: User, session: BotPendingDocSession,
+    db: AsyncSession,
+    *,
+    user: User,
+    session: BotPendingDocSession,
 ) -> PurchaseOrder:
     """Create PO DRAFT dari session payload. Caller harus commit."""
     from app.api.v1.purchase_orders import _compute_totals, _next_po_number
@@ -305,7 +335,7 @@ async def confirm_create(
     if project is None:
         raise BotDocError("Proyek tidak ditemukan (mungkin sudah dihapus).")
 
-    po_date = datetime.now(timezone.utc).date()
+    po_date = datetime.now(UTC).date()
     items_payload: list[dict] = payload.get("items") or []
     if not items_payload:
         raise BotDocError("Session tidak punya item -- silakan /po ulang.")
@@ -314,7 +344,10 @@ async def confirm_create(
     po: PurchaseOrder | None = None
     for attempt in range(MAX_ATTEMPTS):
         number = await _next_po_number(
-            db, payload["company_id"], project.code, po_date,
+            db,
+            payload["company_id"],
+            project.code,
+            po_date,
         )
         po = PurchaseOrder(
             number=number,
@@ -333,13 +366,15 @@ async def confirm_create(
         for it in items_payload:
             qty = Decimal(str(it.get("quantity") or 1))
             price = Decimal(str(it.get("unit_price") or 0))
-            po.items.append(POItem(
-                description=it["description"],
-                quantity=qty,
-                unit=it.get("unit"),
-                unit_price=price,
-                subtotal=qty * price,
-            ))
+            po.items.append(
+                POItem(
+                    description=it["description"],
+                    quantity=qty,
+                    unit=it.get("unit"),
+                    unit_price=price,
+                    subtotal=qty * price,
+                )
+            )
         subtotal, total = _compute_totals(po.items, po.tax, po.discount)
         po.subtotal = subtotal
         po.total = total
@@ -360,6 +395,7 @@ async def confirm_create(
     extraction_id = payload.get("ai_extraction_id")
     if extraction_id:
         from app.models.models import AIExtraction
+
         extraction = await db.get(AIExtraction, extraction_id)
         if extraction is not None:
             extraction.entity_id = po.id

@@ -104,7 +104,8 @@ async def get_hidden(db: AsyncSession, role: UserRole) -> set[str]:
         return cached[0]
     res = await db.execute(
         select(RoleMenuPolicy).where(
-            RoleMenuPolicy.role == role, RoleMenuPolicy.hidden.is_(True),
+            RoleMenuPolicy.role == role,
+            RoleMenuPolicy.hidden.is_(True),
         )
     )
     rows = res.scalars().all()
@@ -126,11 +127,11 @@ async def list_user_menus(db: AsyncSession, role: UserRole) -> list[str]:
 async def get_all_policies(db: AsyncSession) -> dict[str, set[str]]:
     """All hidden_map: role -> set of hidden menu_ids. Utk SUPERADMIN UI."""
     out: dict[str, set[str]] = {}
-    res = await db.execute(
-        select(RoleMenuPolicy).where(RoleMenuPolicy.hidden.is_(True))
-    )
+    res = await db.execute(select(RoleMenuPolicy).where(RoleMenuPolicy.hidden.is_(True)))
     for r in res.scalars().all():
-        out.setdefault(r.role.value if hasattr(r.role, "value") else str(r.role), set()).add(r.menu_id)
+        out.setdefault(r.role.value if hasattr(r.role, "value") else str(r.role), set()).add(
+            r.menu_id
+        )
     return out
 
 
@@ -150,16 +151,21 @@ async def set_policy(
         raise ValueError(f"menu_id_invalid: {menu_id}")
     res = await db.execute(
         select(RoleMenuPolicy).where(
-            RoleMenuPolicy.role == role, RoleMenuPolicy.menu_id == menu_id,
+            RoleMenuPolicy.role == role,
+            RoleMenuPolicy.menu_id == menu_id,
         )
     )
     row = res.scalar_one_or_none()
     if hidden:
         if row is None:
-            db.add(RoleMenuPolicy(
-                role=role, menu_id=menu_id, hidden=True,
-                updated_by_id=user_id,
-            ))
+            db.add(
+                RoleMenuPolicy(
+                    role=role,
+                    menu_id=menu_id,
+                    hidden=True,
+                    updated_by_id=user_id,
+                )
+            )
         else:
             row.hidden = True
             row.updated_by_id = user_id

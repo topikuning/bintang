@@ -4,22 +4,19 @@ Audit 2026-05-22 #M1: split dari models.py (1072 baris). Class-class
 di sini bisa pakai string forward-ref ("OtherClass") utk relationship
 ke modul lain -- SQLAlchemy resolve via Base.registry.
 """
+
 from __future__ import annotations
 
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import datetime
 
 from sqlalchemy import (
     JSON,
     Boolean,
-    CheckConstraint,
-    Date,
     DateTime,
     Enum,
     ForeignKey,
     Index,
     Integer,
-    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -27,7 +24,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
-from app.services.field_crypto import EncryptedString
 
 from ._enums import *  # noqa: F401, F403
 
@@ -42,9 +38,7 @@ class User(TimestampMixin, Base):
     # user lama tdk perlu di-backfill; mereka tetap login pakai email.
     # Lookup di endpoint login: deteksi '@' di input -> route ke email
     # vs username column. Backend force lowercase saat write.
-    username: Mapped[str | None] = mapped_column(
-        String(50), unique=True, nullable=True, index=True
-    )
+    username: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.PROJECT_ADMIN)
@@ -64,7 +58,9 @@ class User(TimestampMixin, Base):
         DateTime(timezone=True), nullable=True
     )
 
-    project_links: Mapped[list["ProjectUser"]] = relationship(back_populates="user", cascade="all,delete-orphan")
+    project_links: Mapped[list[ProjectUser]] = relationship(
+        back_populates="user", cascade="all,delete-orphan"
+    )
 
 
 class TelegramLinkCode(TimestampMixin, Base):
@@ -73,6 +69,7 @@ class TelegramLinkCode(TimestampMixin, Base):
     Server cocokkan kode -> isi telegram_chat_id user.
     Kode kadaluwarsa setelah `expires_at`.
     """
+
     __tablename__ = "telegram_link_codes"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -88,16 +85,20 @@ class TelegramPendingCommand(TimestampMixin, Base):
     masuk dalam jendela waktu pendek setelah command sukses akan otomatis
     di-attach ke transaksi terakhir.
     """
+
     __tablename__ = "telegram_pending_attachments"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     chat_id: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
-    transaction_id: Mapped[int] = mapped_column(ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False
+    )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class WhatsAppLinkCode(TimestampMixin, Base):
     """Mirror TelegramLinkCode untuk channel WhatsApp via WAHA."""
+
     __tablename__ = "whatsapp_link_codes"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -109,11 +110,14 @@ class WhatsAppLinkCode(TimestampMixin, Base):
 
 class WhatsAppPendingCommand(TimestampMixin, Base):
     """Mirror TelegramPendingCommand untuk channel WhatsApp."""
+
     __tablename__ = "whatsapp_pending_attachments"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     chat_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
-    transaction_id: Mapped[int] = mapped_column(ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False
+    )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
@@ -136,6 +140,7 @@ class BotPendingDocSession(TimestampMixin, Base):
     1 session aktif per chat -- /po atau /invoice kedua di chat yg sama
     overwrite session sebelumnya (unique constraint).
     """
+
     __tablename__ = "bot_pending_doc_sessions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -143,7 +148,8 @@ class BotPendingDocSession(TimestampMixin, Base):
     channel: Mapped[str] = mapped_column(String(16), nullable=False)
     chat_id: Mapped[str] = mapped_column(String(64), nullable=False)
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
     )
     # "PO" | "INVOICE" -- audit 2026-06-02.
     entity_type: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -152,9 +158,7 @@ class BotPendingDocSession(TimestampMixin, Base):
     payload_json: Mapped[str] = mapped_column(String(16384), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    __table_args__ = (
-        UniqueConstraint("channel", "chat_id", name="uq_bot_pending_doc_chat"),
-    )
+    __table_args__ = (UniqueConstraint("channel", "chat_id", name="uq_bot_pending_doc_chat"),)
 
 
 # Backward-compat alias: existing code yang impor BotPendingPOSession
@@ -167,12 +171,12 @@ class MessagingConfig(TimestampMixin, Base):
     Detail koneksi (token, URL) tetap di env -- ini hanya master switch yg
     bisa diubah dari halaman Pengaturan tanpa redeploy.
     """
+
     __tablename__ = "messaging_config"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     telegram_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     whatsapp_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-
 
 
 class AuditLog(TimestampMixin, Base):
@@ -192,5 +196,3 @@ class AuditLog(TimestampMixin, Base):
     before: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     after: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-

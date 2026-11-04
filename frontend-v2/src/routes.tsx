@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react"
-import { createBrowserRouter, Navigate, useParams } from "react-router-dom"
+import { createBrowserRouter, Navigate, useParams } from "react-router"
 import { AppShell } from "@/components/layout/AppShell"
 import { RequireAuth } from "@/components/auth/RequireAuth"
 import { LoginPage } from "@/pages/Login"
@@ -13,6 +13,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 const DashboardPage = lazy(() =>
   import("@/pages/Dashboard").then((m) => ({ default: m.DashboardPage })),
+)
+const ActionCenterPage = lazy(() =>
+  import("@/pages/ActionCenter").then((m) => ({ default: m.ActionCenterPage })),
 )
 const TransactionsListPage = lazy(() =>
   import("@/pages/transactions/TransactionsListPage").then((m) => ({
@@ -196,6 +199,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
           { path: "dashboard", element: <L><DashboardPage /></L> },
+          { path: "action-center", element: <L><ActionCenterPage /></L> },
           { path: "transactions", element: <L><TransactionsListPage /></L> },
           { path: "transactions/cash-advances", element: <L><CashAdvancePage /></L> },
           { path: "invoices", element: <L><InvoicesListPage /></L> },

@@ -5,13 +5,15 @@ mengembalikan teks balasan, foto yang dikirim setelahnya di-attach via
 buffer pending. Format teks pakai gaya Markdown WhatsApp:
 *bold*, _italic_, ```mono```.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
-from typing import Awaitable, Callable
 
+from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,8 +33,6 @@ from app.models.models import (
     WhatsAppPendingCommand,
 )
 from app.services.budget import budget_status, project_totals
-from fastapi import HTTPException
-
 from app.services.storage.local import save_bytes
 from app.services.whatsapp import client as wa
 from app.services.whatsapp.linking import consume_code
@@ -60,6 +60,7 @@ def _is_admin(user: User) -> bool:
 # ---------------------------------------------------------------------------
 # Read commands
 # ---------------------------------------------------------------------------
+
 
 async def cmd_help(db, user, chat_id, args, msg) -> str:
     return (
@@ -169,7 +170,7 @@ async def cmd_proyek(db, user, chat_id, args, msg) -> str:
     for p in projects[:30]:
         lines.append(f"• `{p.code}` — {p.name} _({p.status.value})_")
     if len(projects) > 30:
-        lines.append(f"\n…dan {len(projects)-30} lagi.")
+        lines.append(f"\n…dan {len(projects) - 30} lagi.")
     return "\n".join(lines)
 
 
@@ -178,9 +179,11 @@ async def cmd_saldo(db, user, chat_id, args, msg) -> str:
         return "Akun belum ter-link."
     if args:
         code = args[0].upper()
-        proj = (await db.execute(
-            select(Project).where(Project.code == code, Project.deleted_at.is_(None))
-        )).scalar_one_or_none()
+        proj = (
+            await db.execute(
+                select(Project).where(Project.code == code, Project.deleted_at.is_(None))
+            )
+        ).scalar_one_or_none()
         if not proj:
             return f"Proyek dengan kode `{code}` tidak ditemukan."
         accessible = await _accessible_projects(db, user)
@@ -189,9 +192,11 @@ async def cmd_saldo(db, user, chat_id, args, msg) -> str:
         totals = await project_totals(db, proj.id)
         # Audit 2026-05-23: exclude marketing + bagi hasil dr budget bar.
         from app.services.budget import project_expense_breakdown
+
         exp_brk = await project_expense_breakdown(db, proj.id)
         bs = budget_status(
-            proj, totals["total_out"],
+            proj,
+            totals["total_out"],
             marketing_actual=exp_brk["marketing"],
             profit_share_actual=exp_brk["profit_share"],
         )
@@ -206,10 +211,8 @@ async def cmd_saldo(db, user, chat_id, args, msg) -> str:
     # Audit 2026-05-24: KONSISTEN dgn dashboard -- exclude DIBATALKAN.
     # SELESAI tetap ikut (real money).
     from app.models.models import ProjectStatus as _PS
-    projects = [
-        p for p in await _accessible_projects(db, user)
-        if p.status != _PS.DIBATALKAN
-    ]
+
+    projects = [p for p in await _accessible_projects(db, user) if p.status != _PS.DIBATALKAN]
     if not projects:
         return "Tidak ada proyek yang bisa diakses."
     total_in = total_out = Decimal("0")
@@ -235,6 +238,7 @@ async def cmd_pending(db, user, chat_id, args, msg) -> str:
     pids = await user_project_ids(db, user)
     # Audit 2026-05-24: KONSISTEN -- exclude SELESAI/DIBATALKAN.
     from app.services.project_guard import operational_project_ids
+
     op_pids = await operational_project_ids(db, pids)
     if not op_pids:
         return "Tidak ada transaksi pending."
@@ -267,6 +271,7 @@ async def cmd_invoice(db, user, chat_id, args, msg) -> str:
     # Audit 2026-05-24: KONSISTEN -- exclude SELESAI (tagihan clear) +
     # DIBATALKAN (soft-deleted).
     from app.services.project_guard import operational_project_ids
+
     op_pids = await operational_project_ids(db, pids)
     if not op_pids:
         return "Tidak ada invoice belum lunas."
@@ -284,7 +289,9 @@ async def cmd_invoice(db, user, chat_id, args, msg) -> str:
         .join(Project, Project.id == Invoice.project_id)
         .outerjoin(paid_sub, paid_sub.c.inv_id == Invoice.id)
         .where(
-            Invoice.status.in_([InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE]),
+            Invoice.status.in_(
+                [InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE]
+            ),
             Invoice.deleted_at.is_(None),
             Invoice.project_id.in_(op_pids),
         )
@@ -309,6 +316,7 @@ async def cmd_invoice(db, user, chat_id, args, msg) -> str:
 # Write commands
 # ---------------------------------------------------------------------------
 
+
 def _parse_amount(token: str) -> Decimal:
     s = token.strip().replace("Rp", "").replace("rp", "").replace(" ", "")
     if "," in s and "." in s:
@@ -327,22 +335,20 @@ def _parse_amount(token: str) -> Decimal:
     return Decimal(s)
 
 
-async def _make_transaction(
-    db, user, chat_id, args, ttype: TxnType, msg: dict
-) -> str:
+async def _make_transaction(db, user, chat_id, args, ttype: TxnType, msg: dict) -> str:
     if not user:
         return "Akun belum ter-link."
     if user.role == UserRole.EXECUTIVE:
         return "Role EXECUTIVE tidak bisa membuat transaksi."
     if len(args) < 3:
         return (
-            f"Cara pakai: ```/{'keluar' if ttype==TxnType.OUT else 'masuk'} "
+            f"Cara pakai: ```/{'keluar' if ttype == TxnType.OUT else 'masuk'} "
             "PRJ-001 5000000 deskripsi singkat```"
         )
     code = args[0].upper()
-    proj = (await db.execute(
-        select(Project).where(Project.code == code, Project.deleted_at.is_(None))
-    )).scalar_one_or_none()
+    proj = (
+        await db.execute(select(Project).where(Project.code == code, Project.deleted_at.is_(None)))
+    ).scalar_one_or_none()
     if not proj:
         return f"Proyek `{code}` tidak ditemukan."
     accessible = await _accessible_projects(db, user)
@@ -357,7 +363,7 @@ async def _make_transaction(
     description = " ".join(args[2:]).strip() or None
     tx = Transaction(
         project_id=proj.id,
-        tx_date=datetime.now(timezone.utc).date(),
+        tx_date=datetime.now(UTC).date(),
         type=ttype,
         amount=amount,
         description=description,
@@ -371,7 +377,7 @@ async def _make_transaction(
     pa = WhatsAppPendingCommand(
         chat_id=str(chat_id),
         transaction_id=tx.id,
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=ATTACH_WINDOW_MINUTES),
+        expires_at=datetime.now(UTC) + timedelta(minutes=ATTACH_WINDOW_MINUTES),
     )
     db.add(pa)
     sym = "−" if ttype == TxnType.OUT else "+"
@@ -422,9 +428,14 @@ async def cmd_po(db, user, chat_id, args, msg) -> str:
             "vendor PT Sumber Besi\n```"
         )
     from app.services.bot_po_assistant import BotPOError, parse_and_save
+
     try:
         return await parse_and_save(
-            db, user=user, channel="whatsapp", chat_id=chat_id, text=body,
+            db,
+            user=user,
+            channel="whatsapp",
+            chat_id=chat_id,
+            text=body,
         )
     except BotPOError as e:
         return f"❌ {e}"
@@ -442,8 +453,7 @@ async def cmd_buktitx(db, user, chat_id, args, msg) -> str:
         return "Akun belum ter-link."
     if not args:
         return (
-            "Cara pakai: ```/buktitx 123```\n"
-            "(_123_ = nomor/ID transaksi yang mau dilampiri bukti)"
+            "Cara pakai: ```/buktitx 123```\n(_123_ = nomor/ID transaksi yang mau dilampiri bukti)"
         )
     try:
         tid = int(args[0])
@@ -459,7 +469,7 @@ async def cmd_buktitx(db, user, chat_id, args, msg) -> str:
     pa = WhatsAppPendingCommand(
         chat_id=str(chat_id),
         transaction_id=tid,
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=ATTACH_WINDOW_MINUTES),
+        expires_at=datetime.now(UTC) + timedelta(minutes=ATTACH_WINDOW_MINUTES),
     )
     db.add(pa)
     sym = "−" if tx.type == TxnType.OUT else "+"
@@ -475,6 +485,7 @@ async def cmd_buktitx(db, user, chat_id, args, msg) -> str:
 # ---------------------------------------------------------------------------
 # Photo handler
 # ---------------------------------------------------------------------------
+
 
 async def handle_media(
     db,
@@ -493,7 +504,7 @@ async def handle_media(
     """
     if not user:
         return ""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     q = (
         select(WhatsAppPendingCommand)
         .where(
@@ -528,7 +539,8 @@ async def handle_media(
     if content is None:
         logger.warning(
             "whatsapp handle_media gagal — media_url=%s message_id=%s",
-            media_url, message_id,
+            media_url,
+            message_id,
         )
         return (
             "Gagal download foto dari WhatsApp. Pastikan WAHA dikonfigurasi "
@@ -547,8 +559,7 @@ async def handle_media(
         )
     except HTTPException as e:
         if e.status_code == 415:
-            return ("Jenis berkas itu tidak didukung. Kirim foto (JPG/PNG), "
-                    "PDF, atau video MP4.")
+            return "Jenis berkas itu tidak didukung. Kirim foto (JPG/PNG), PDF, atau video MP4."
         if e.status_code == 413:
             return "Berkas terlalu besar. Maksimal 20 MB."
         raise
@@ -565,22 +576,24 @@ async def handle_media(
 # Dispatcher
 # ---------------------------------------------------------------------------
 
+
 # Wrapper utk command workflow dr chat_workflow -- adapter signature.
 def _wrap_workflow(fn):
     async def _h(db, user, chat_id, args, msg) -> str:
         if not user:
             return "Akun belum ter-link. Ketik /link <kode> dulu."
         return await fn(db, user, args)
+
     return _h
 
 
 from app.services import chat_workflow as _wf  # noqa: E402
 
-
 # ============================================================
 # AI commands (audit 2026-05-23). Implementasi sama dgn Telegram --
 # format output pakai WhatsApp markdown (*bold*, _italic_) bukan HTML.
 # ============================================================
+
 
 async def cmd_tanya(db, user, chat_id, args, msg) -> str:
     """AI-6: tanya laporan natural language."""
@@ -597,6 +610,7 @@ async def cmd_tanya(db, user, chat_id, args, msg) -> str:
     question = " ".join(args).strip()
     try:
         from app.services.ai.features.ask_query import run as run_ask
+
         result = await run_ask(db, user=user, question=question)
         await db.commit()
     except Exception as e:  # noqa: BLE001
@@ -626,7 +640,7 @@ async def cmd_tanya(db, user, chat_id, args, msg) -> str:
                 formatted.append(str(cell))
         lines.append(" · ".join(formatted))
     if len(rows) > 10:
-        lines.append(f"\n_... +{len(rows)-10} baris lagi (buka web)_")
+        lines.append(f"\n_... +{len(rows) - 10} baris lagi (buka web)_")
     return "\n".join(lines)
 
 
@@ -638,6 +652,7 @@ async def cmd_ringkas(db, user, chat_id, args, msg) -> str:
         return "Hanya SUPERADMIN/CENTRAL_ADMIN yg bisa pakai /ringkas."
     try:
         from app.services.ai.features.daily_summary import run as run_summary
+
         result = await run_summary(db, user_id=user.id, target_date=None)
         await db.commit()
     except Exception as e:  # noqa: BLE001
@@ -709,9 +724,7 @@ def parse_command(text: str) -> tuple[str, list[str]] | None:
     return name, args
 
 
-async def dispatch_command(
-    db, user: User | None, chat_id: str, text: str, message: dict
-) -> str:
+async def dispatch_command(db, user: User | None, chat_id: str, text: str, message: dict) -> str:
     parsed = parse_command(text)
     if not parsed:
         return ""

@@ -6,6 +6,7 @@ budget, web_search, dst.
 Default selalu di code (services/ai/feature_settings.DEFAULTS). Override
 hanya kalau row di tabel `ai_feature_settings` ada.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -64,6 +65,7 @@ class FeatureSettingsListOut(BaseModel):
 
 class FeatureSettingsUpdateIn(BaseModel):
     """Semua field optional. Kirim null = reset field tsb ke default."""
+
     provider: str | None = None
     model: str | None = None
     max_tokens: int | None = Field(default=None, ge=1, le=200000)
@@ -74,14 +76,17 @@ class FeatureSettingsUpdateIn(BaseModel):
 
 
 async def _build_out(
-    db: AsyncSession, feature_key: str,
+    db: AsyncSession,
+    feature_key: str,
 ) -> FeatureSettingsOut:
     cfg = await get_effective(db, feature_key)
-    row = (await db.execute(
-        select(AIFeatureSettings).where(
-            AIFeatureSettings.feature_key == feature_key,
+    row = (
+        await db.execute(
+            select(AIFeatureSettings).where(
+                AIFeatureSettings.feature_key == feature_key,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     prompt_spec = PROMPT_FEATURES.get(feature_key)
     spend = await monthly_spend_usd(db, feature_key)
     return FeatureSettingsOut(
@@ -99,9 +104,7 @@ async def _build_out(
         overridden_fields=list(cfg.overridden_fields),
         monthly_spend_usd=spend,
         defaults=DEFAULTS.get(feature_key, {}),
-        required_capabilities=list(
-            FEATURE_REQUIRED_CAPABILITIES.get(feature_key, ())
-        ),
+        required_capabilities=list(FEATURE_REQUIRED_CAPABILITIES.get(feature_key, ())),
         updated_at=row.updated_at if row else None,
         updated_by_id=row.updated_by_id if row else None,
     )
@@ -114,7 +117,8 @@ async def list_settings(
 ) -> FeatureSettingsListOut:
     out = [await _build_out(db, k) for k in DEFAULTS.keys()]
     return FeatureSettingsListOut(
-        features=out, supported_models=SUPPORTED_MODELS,
+        features=out,
+        supported_models=SUPPORTED_MODELS,
     )
 
 
@@ -137,11 +141,13 @@ async def update_settings(
             raise HTTPException(400, "unknown_model")
         if payload.provider and payload.provider != m["provider"]:
             raise HTTPException(400, "model_provider_mismatch")
-    row = (await db.execute(
-        select(AIFeatureSettings).where(
-            AIFeatureSettings.feature_key == feature_key,
+    row = (
+        await db.execute(
+            select(AIFeatureSettings).where(
+                AIFeatureSettings.feature_key == feature_key,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if row is None:
         row = AIFeatureSettings(feature_key=feature_key)
         db.add(row)
@@ -166,11 +172,13 @@ async def reset_settings(
     """Reset ke default (hapus row override)."""
     if feature_key not in DEFAULTS:
         raise HTTPException(404, "feature_not_found")
-    row = (await db.execute(
-        select(AIFeatureSettings).where(
-            AIFeatureSettings.feature_key == feature_key,
+    row = (
+        await db.execute(
+            select(AIFeatureSettings).where(
+                AIFeatureSettings.feature_key == feature_key,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if row is not None:
         await db.delete(row)
         await db.commit()

@@ -1,11 +1,11 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user, require_admin, require_superadmin
+from app.core.deps import get_current_user, require_admin
 from app.db.session import get_db
 from app.models.models import (
     AuditAction,
@@ -41,14 +41,18 @@ async def list_categories(
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     stmt = stmt.order_by(Category.name).offset((page - 1) * size).limit(size)
     items = (await db.execute(stmt)).scalars().all()
-    return Page(items=[CategoryOut.model_validate(c) for c in items], total=total, page=page, size=size)
+    return Page(
+        items=[CategoryOut.model_validate(c) for c in items], total=total, page=page, size=size
+    )
 
 
 def _validate_accounting_flags(c: Category) -> None:
     """Audit 2026-05-23: max 1 dr is_marketing/is_penalty/is_profit_share
     boleh true (mutually exclusive). Raise 400 kalau lebih dr 1."""
     flags = [
-        bool(c.is_marketing), bool(c.is_penalty), bool(c.is_profit_share),
+        bool(c.is_marketing),
+        bool(c.is_penalty),
+        bool(c.is_profit_share),
     ]
     if sum(flags) > 1:
         raise HTTPException(
@@ -68,8 +72,14 @@ async def create_category(
     _validate_accounting_flags(c)
     db.add(c)
     await db.flush()
-    await log(db, user_id=admin.id, entity="category", entity_id=c.id,
-              action=AuditAction.CREATE, after=snapshot(c))
+    await log(
+        db,
+        user_id=admin.id,
+        entity="category",
+        entity_id=c.id,
+        action=AuditAction.CREATE,
+        after=snapshot(c),
+    )
     await db.commit()
     await db.refresh(c)
     return CategoryOut.model_validate(c)
@@ -89,8 +99,15 @@ async def update_category(
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(c, k, v)
     _validate_accounting_flags(c)
-    await log(db, user_id=admin.id, entity="category", entity_id=c.id,
-              action=AuditAction.UPDATE, before=before, after=snapshot(c))
+    await log(
+        db,
+        user_id=admin.id,
+        entity="category",
+        entity_id=c.id,
+        action=AuditAction.UPDATE,
+        before=before,
+        after=snapshot(c),
+    )
     await db.commit()
     await db.refresh(c)
     return CategoryOut.model_validate(c)
@@ -106,9 +123,15 @@ async def delete_category(
     if not c or c.deleted_at is not None:
         raise HTTPException(404, "not_found")
     before = snapshot(c)
-    c.deleted_at = datetime.utcnow()
-    await log(db, user_id=admin.id, entity="category", entity_id=c.id,
-              action=AuditAction.DELETE, before=before)
+    c.deleted_at = datetime.now(UTC)
+    await log(
+        db,
+        user_id=admin.id,
+        entity="category",
+        entity_id=c.id,
+        action=AuditAction.DELETE,
+        before=before,
+    )
     await db.commit()
 
 
@@ -139,11 +162,7 @@ async def _usage_counts(db: AsyncSession) -> dict[int, int]:
     """
     totals: dict[int, int] = {}
     for _Model, col in _FK_SOURCES:
-        stmt = (
-            select(col, func.count())
-            .where(col.is_not(None))
-            .group_by(col)
-        )
+        stmt = select(col, func.count()).where(col.is_not(None)).group_by(col)
         for cid, n in (await db.execute(stmt)).all():
             if cid is None:
                 continue
@@ -175,10 +194,15 @@ async def list_with_usage(
     `only_unused=true` -> filter yg usage_count=0 saja (utk dialog
     bulk-cleanup).
     """
-    cats = (await db.execute(
-        select(Category).where(Category.deleted_at.is_(None))
-        .order_by(Category.name)
-    )).scalars().all()
+    cats = (
+        (
+            await db.execute(
+                select(Category).where(Category.deleted_at.is_(None)).order_by(Category.name)
+            )
+        )
+        .scalars()
+        .all()
+    )
     counts = await _usage_counts(db)
     items: list[CategoryUsageOut] = []
     unused_count = 0
@@ -188,13 +212,18 @@ async def list_with_usage(
             unused_count += 1
         if only_unused and n > 0:
             continue
-        items.append(CategoryUsageOut(
-            id=c.id, name=c.name,
-            type=c.type.value if hasattr(c.type, "value") else str(c.type),
-            usage_count=n,
-        ))
+        items.append(
+            CategoryUsageOut(
+                id=c.id,
+                name=c.name,
+                type=c.type.value if hasattr(c.type, "value") else str(c.type),
+                usage_count=n,
+            )
+        )
     return CategoryUsageListOut(
-        items=items, total=len(cats), unused_count=unused_count,
+        items=items,
+        total=len(cats),
+        unused_count=unused_count,
     )
 
 
@@ -227,14 +256,12 @@ async def bulk_delete_categories(
         raise HTTPException(400, "max_500_per_batch")
 
     counts = await _usage_counts(db)
-    res = await db.execute(
-        select(Category).where(Category.id.in_(payload.ids))
-    )
+    res = await db.execute(select(Category).where(Category.id.in_(payload.ids)))
     cats_map = {c.id: c for c in res.scalars().all()}
 
     success: list[int] = []
     skipped: list[dict] = []
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     for cid in payload.ids:
         c = cats_map.get(cid)
         if c is None:
@@ -245,15 +272,22 @@ async def bulk_delete_categories(
             continue
         used = counts.get(cid, 0)
         if used > 0:
-            skipped.append({
-                "id": cid, "reason": f"in_use ({used} record)",
-            })
+            skipped.append(
+                {
+                    "id": cid,
+                    "reason": f"in_use ({used} record)",
+                }
+            )
             continue
         before = snapshot(c)
         c.deleted_at = now
         await log(
-            db, user_id=admin.id, entity="category", entity_id=c.id,
-            action=AuditAction.DELETE, before=before,
+            db,
+            user_id=admin.id,
+            entity="category",
+            entity_id=c.id,
+            action=AuditAction.DELETE,
+            before=before,
             note="bulk delete unused category",
         )
         success.append(cid)

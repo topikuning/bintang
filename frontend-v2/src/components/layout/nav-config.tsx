@@ -2,14 +2,8 @@
  * Definisi navigasi sekali, dipakai oleh Sidebar (desktop), NavRail
  * (tablet), dan BottomNav (mobile).
  *
- * Audit 2026-05-24: tata letak menu di-redesign. Group baru:
- * - Beranda (entry point)
- * - Operasional (harian, frequent) -- OCR pindah ke sini
- * - Laporan (read-only) -- audit/bulk tools pindah keluar
- * - Admin Tools (mingguan, admin-only) -- baru: Mass Action, Audit
- *   Kategorisasi, Auto-Kategori, Import Data
- * - Master Data
- * - Pengaturan (settings only) -- rename dari "Sistem"
+ * Information architecture 2026-09-04: modules are grouped by the
+ * financial decision they support instead of their technical entity type.
  */
 import {
   ArrowLeftRight,
@@ -17,6 +11,7 @@ import {
   BarChart3,
   Building2,
   CheckCheck,
+  CircleGauge,
   ClipboardList,
   Database,
   FileText,
@@ -27,6 +22,7 @@ import {
   KeyRound,
   type LucideIcon,
   MoreHorizontal,
+  ListTodo,
   Notebook,
   Receipt,
   FileSpreadsheet,
@@ -60,45 +56,57 @@ export interface NavGroup {
 /** Sidebar desktop -- menu lengkap, dikelompokkan. */
 export const DESKTOP_NAV: NavGroup[] = [
   {
-    label: "Beranda",
+    label: "Command Center",
     items: [
-      { id: "dashboard", label: "Dashboard", to: "/dashboard", icon: Home },
-      { id: "projects", label: "Proyek", to: "/projects", icon: FolderKanban },
+      { id: "dashboard", label: "Posisi Keuangan", to: "/dashboard", icon: CircleGauge },
+      { id: "dashboard", label: "Pusat Tindakan", to: "/action-center", icon: ListTodo },
     ],
   },
   {
-    label: "Operasional",
+    label: "Arus Kas",
     items: [
       { id: "transactions", label: "Transaksi", to: "/transactions", icon: ArrowLeftRight },
       { id: "cash-advances", label: "Dana Operasional", to: "/transactions/cash-advances", icon: Wallet },
-      { id: "cash-requests", label: "Pengajuan Dana", to: "/cash-requests", icon: FileText },
       { id: "invoices", label: "Invoice", to: "/invoices", icon: Receipt },
-      { id: "purchase-orders", label: "Purchase Order", to: "/purchase-orders", icon: ShoppingCart },
-      { id: "budget", label: "Budget", to: "/budget", icon: BadgeDollarSign },
-      { id: "non-project", label: "Catatan Non-Proyek", to: "/non-project", icon: Notebook },
-      { id: "ocr", label: "Asisten OCR", to: "/ocr", icon: ScanLine },
     ],
   },
   {
-    label: "Laporan",
+    label: "Kendali Belanja",
+    items: [
+      { id: "cash-requests", label: "Pengajuan Dana", to: "/cash-requests", icon: FileText },
+      { id: "purchase-orders", label: "Purchase Order", to: "/purchase-orders", icon: ShoppingCart },
+      { id: "budget", label: "Budget vs Aktual", to: "/budget", icon: BadgeDollarSign },
+    ],
+  },
+  {
+    label: "Portofolio",
+    items: [
+      { id: "projects", label: "Kesehatan Proyek", to: "/projects", icon: FolderKanban },
+      { id: "projects", label: "Persetujuan Proyek", to: "/projects/approval-queue", icon: CheckCheck },
+      { id: "non-project", label: "Catatan Non-Proyek", to: "/non-project", icon: Notebook },
+    ],
+  },
+  {
+    label: "Analisis",
     items: [
       { id: "reports", label: "Laporan", to: "/reports", icon: BarChart3 },
       { id: "reports-invoice-items", label: "Detail Invoice", to: "/reports/invoice-items", icon: Receipt },
-      { id: "spreadsheet", label: "Tampilan Spreadsheet", to: "/spreadsheet", icon: FileSpreadsheet },
-      { id: "audit-log", label: "Audit Log", to: "/audit-log", icon: History },
+      { id: "spreadsheet", label: "Eksplorasi Data", to: "/spreadsheet", icon: FileSpreadsheet },
     ],
   },
   {
-    label: "Admin Tools",
+    label: "Otomasi & Kontrol",
     items: [
-      { id: "admin-bulk-approval", label: "Mass Action", to: "/admin/bulk-approval", icon: CheckCheck },
+      { id: "ocr", label: "Inbox Dokumen", to: "/ocr", icon: ScanLine },
+      { id: "imports", label: "Import Data", to: "/imports", icon: Database },
+      { id: "admin-bulk-approval", label: "Persetujuan Massal", to: "/admin/bulk-approval", icon: CheckCheck },
       { id: "admin-category-audit", label: "Audit Kategorisasi", to: "/admin/category-audit", icon: Tag },
       { id: "admin-bulk-invoice-categorize", label: "Auto-Kategori Invoice", to: "/admin/bulk-invoice-categorize", icon: Sparkles },
-      { id: "imports", label: "Import Data", to: "/imports", icon: Database },
+      { id: "audit-log", label: "Jejak Audit", to: "/audit-log", icon: History },
     ],
   },
   {
-    label: "Master Data",
+    label: "Organisasi",
     items: [
       { id: "master-projects", label: "Proyek", to: "/master/projects", icon: FolderKanban },
       { id: "master-companies", label: "Perusahaan", to: "/master/companies", icon: Building2 },
@@ -110,7 +118,7 @@ export const DESKTOP_NAV: NavGroup[] = [
     ],
   },
   {
-    label: "Pengaturan",
+    label: "Sistem",
     items: [
       { id: "settings", label: "Profil Saya", to: "/settings", icon: UserCircle },
       { id: "settings-system", label: "API Keys & Provider", to: "/settings/system", icon: KeyRound },
@@ -126,9 +134,9 @@ export const DESKTOP_NAV: NavGroup[] = [
 /** Bottom nav mobile -- max 5 item utama, sisanya di /more. */
 export const MOBILE_BOTTOM_NAV: NavItem[] = [
   { id: "dashboard", label: "Beranda", to: "/dashboard", icon: Home },
+  { id: "dashboard", label: "Tindakan", to: "/action-center", icon: ListTodo },
   { id: "projects", label: "Proyek", to: "/projects", icon: FolderKanban },
   { id: "transactions", label: "Transaksi", to: "/transactions", icon: ArrowLeftRight },
-  { id: "invoices", label: "Invoice", to: "/invoices", icon: Receipt },
   { label: "Lainnya", to: "/more", icon: MoreHorizontal },
 ]
 
@@ -137,36 +145,48 @@ export const MOBILE_BOTTOM_NAV: NavItem[] = [
  *  transactions, invoices). */
 export const MOBILE_MORE_NAV: NavGroup[] = [
   {
-    label: "Operasional",
+    label: "Arus Kas",
     items: [
       { id: "cash-advances", label: "Dana Operasional", to: "/transactions/cash-advances", icon: Wallet },
-      { id: "cash-requests", label: "Pengajuan Dana", to: "/cash-requests", icon: FileText },
-      { id: "purchase-orders", label: "Purchase Order", to: "/purchase-orders", icon: ShoppingCart },
-      { id: "budget", label: "Budget", to: "/budget", icon: BadgeDollarSign },
-      { id: "non-project", label: "Catatan Non-Proyek", to: "/non-project", icon: Notebook },
-      { id: "ocr", label: "Asisten OCR", to: "/ocr", icon: ScanLine },
+      { id: "invoices", label: "Invoice", to: "/invoices", icon: Receipt },
     ],
   },
   {
-    label: "Laporan",
+    label: "Kendali Belanja",
+    items: [
+      { id: "cash-requests", label: "Pengajuan Dana", to: "/cash-requests", icon: FileText },
+      { id: "purchase-orders", label: "Purchase Order", to: "/purchase-orders", icon: ShoppingCart },
+      { id: "budget", label: "Budget vs Aktual", to: "/budget", icon: BadgeDollarSign },
+    ],
+  },
+  {
+    label: "Portofolio",
+    items: [
+      { id: "projects", label: "Persetujuan Proyek", to: "/projects/approval-queue", icon: CheckCheck },
+      { id: "non-project", label: "Catatan Non-Proyek", to: "/non-project", icon: Notebook },
+    ],
+  },
+  {
+    label: "Analisis",
     items: [
       { id: "reports", label: "Laporan", to: "/reports", icon: BarChart3 },
       { id: "reports-invoice-items", label: "Detail Invoice", to: "/reports/invoice-items", icon: Receipt },
-      { id: "spreadsheet", label: "Tampilan Spreadsheet", to: "/spreadsheet", icon: FileSpreadsheet },
-      { id: "audit-log", label: "Audit Log", to: "/audit-log", icon: History },
+      { id: "spreadsheet", label: "Eksplorasi Data", to: "/spreadsheet", icon: FileSpreadsheet },
     ],
   },
   {
-    label: "Admin Tools",
+    label: "Otomasi & Kontrol",
     items: [
-      { id: "admin-bulk-approval", label: "Mass Action", to: "/admin/bulk-approval", icon: CheckCheck },
+      { id: "ocr", label: "Inbox Dokumen", to: "/ocr", icon: ScanLine },
+      { id: "imports", label: "Import Data", to: "/imports", icon: Database },
+      { id: "admin-bulk-approval", label: "Persetujuan Massal", to: "/admin/bulk-approval", icon: CheckCheck },
       { id: "admin-category-audit", label: "Audit Kategorisasi", to: "/admin/category-audit", icon: Tag },
       { id: "admin-bulk-invoice-categorize", label: "Auto-Kategori Invoice", to: "/admin/bulk-invoice-categorize", icon: Sparkles },
-      { id: "imports", label: "Import Data", to: "/imports", icon: Database },
+      { id: "audit-log", label: "Jejak Audit", to: "/audit-log", icon: History },
     ],
   },
   {
-    label: "Master Data",
+    label: "Organisasi",
     items: [
       { id: "master-projects", label: "Proyek (CRUD)", to: "/master/projects", icon: FolderKanban },
       { id: "master-companies", label: "Perusahaan", to: "/master/companies", icon: Building2 },
@@ -178,7 +198,7 @@ export const MOBILE_MORE_NAV: NavGroup[] = [
     ],
   },
   {
-    label: "Pengaturan",
+    label: "Sistem",
     items: [
       { id: "settings", label: "Profil Saya", to: "/settings", icon: UserCircle },
       { id: "settings-system", label: "API Keys & Provider", to: "/settings/system", icon: KeyRound },

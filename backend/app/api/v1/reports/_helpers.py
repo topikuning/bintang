@@ -3,6 +3,7 @@
 Audit 2026-05-22 #M2: ekstraksi dari reports.py (1290 baris) supaya
 endpoint files lebih fokus & helpers reusable.
 """
+
 from datetime import datetime
 from pathlib import Path
 
@@ -50,12 +51,34 @@ def _fmt_idr(v) -> str:
 
 
 _BULAN_ID_SHORT = (
-    "", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
-    "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
+    "",
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "Mei",
+    "Jun",
+    "Jul",
+    "Agu",
+    "Sep",
+    "Okt",
+    "Nov",
+    "Des",
 )
 _BULAN_ID_FULL = (
-    "", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-    "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+    "",
+    "Januari",
+    "Februari",
+    "Maret",
+    "April",
+    "Mei",
+    "Juni",
+    "Juli",
+    "Agustus",
+    "September",
+    "Oktober",
+    "November",
+    "Desember",
 )
 
 
@@ -102,15 +125,11 @@ async def _resolve_company(db: AsyncSession, project_id: int | None) -> Company 
     return res.scalar_one_or_none()
 
 
-async def _project_map_for_ids(
-    db: AsyncSession, project_ids: set[int]
-) -> dict[int, Project]:
+async def _project_map_for_ids(db: AsyncSession, project_ids: set[int]) -> dict[int, Project]:
     """Hanya load Project yang id-nya ada di set; hindari SELECT * di reports."""
     if not project_ids:
         return {}
-    res = await db.execute(
-        select(Project).where(Project.id.in_(project_ids))
-    )
+    res = await db.execute(select(Project).where(Project.id.in_(project_ids)))
     return {p.id: p for p in res.scalars().all()}
 
 
@@ -168,15 +187,21 @@ async def _output(
     """
     if format == "xlsx":
         data = build_xlsx(
-            title, headers, rows,
-            filters=filters, totals=totals, cols=cols,
+            title,
+            headers,
+            rows,
+            filters=filters,
+            totals=totals,
+            cols=cols,
         )
         return Response(
             data,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f'attachment; filename="{title}.xlsx"'},
         )
-    base_css = (Path(__file__).parent.parent.parent.parent / "services/pdf/templates/_base.css").read_text(encoding="utf-8")
+    base_css = (
+        Path(__file__).parent.parent.parent.parent / "services/pdf/templates/_base.css"
+    ).read_text(encoding="utf-8")
     # Override @page utk laporan saja (page-numbering + confidential footer).
     base_css += _REPORT_PAGE_CSS_TEMPLATE.format(
         orientation="landscape" if landscape else "portrait"
@@ -184,13 +209,21 @@ async def _output(
     logo_data = inline_image(company.logo_url) if company else None
     html = render_html(
         "report.html",
-        title=title, subtitle=subtitle,
-        headers=headers, rows=rows, cols=cols or [],
-        filters=filters, totals=totals,
-        summary=summary or [], scope_line=scope_line,
-        detail_label=detail_label, footer_row=footer_row,
-        doc_no=doc_no, diagnostic=diagnostic,
-        company=company, app_name="Bintang",
+        title=title,
+        subtitle=subtitle,
+        headers=headers,
+        rows=rows,
+        cols=cols or [],
+        filters=filters,
+        totals=totals,
+        summary=summary or [],
+        scope_line=scope_line,
+        detail_label=detail_label,
+        footer_row=footer_row,
+        doc_no=doc_no,
+        diagnostic=diagnostic,
+        company=company,
+        app_name="Bintang",
         logo_data=logo_data,
         printed_at=_fmt_datetime(datetime.now()),
         printed_by=printed_by,

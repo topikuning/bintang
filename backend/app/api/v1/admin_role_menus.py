@@ -75,7 +75,8 @@ async def update_role_menus(
     for item in payload.items:
         if item.role not in valid_roles:
             raise HTTPException(
-                400, f"role_invalid_or_protected: {item.role}",
+                400,
+                f"role_invalid_or_protected: {item.role}",
             )
         try:
             role_enum = UserRole(item.role)
@@ -83,17 +84,29 @@ async def update_role_menus(
             raise HTTPException(400, f"role_invalid: {item.role}")
         try:
             await set_policy(
-                db, role_enum, item.menu_id, item.hidden,
-                user_id=admin.id, commit=False,
+                db,
+                role_enum,
+                item.menu_id,
+                item.hidden,
+                user_id=admin.id,
+                commit=False,
             )
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
-        changes.append({
-            "role": item.role, "menu_id": item.menu_id, "hidden": item.hidden,
-        })
+        changes.append(
+            {
+                "role": item.role,
+                "menu_id": item.menu_id,
+                "hidden": item.hidden,
+            }
+        )
     await log(
-        db, user_id=admin.id, entity="role_menu_policy", entity_id=0,
-        action=AuditAction.UPDATE, after={"changes": changes},
+        db,
+        user_id=admin.id,
+        entity="role_menu_policy",
+        entity_id=0,
+        action=AuditAction.UPDATE,
+        after={"changes": changes},
     )
     await db.commit()
     return {"updated": len(changes), "changes": changes}

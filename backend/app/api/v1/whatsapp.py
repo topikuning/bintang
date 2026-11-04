@@ -13,6 +13,7 @@ Integrasi config (toggle):
   GET  /api/v1/messaging/config          — baca toggle TG/WA
   PATCH /api/v1/messaging/config         — ubah toggle (admin)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -28,7 +29,7 @@ from app.core.config import settings
 from app.core.deps import get_current_user, require_admin, require_superadmin
 from app.core.rate_limit import telegram_link_limiter as _link_limiter
 from app.db.session import get_db
-from app.models.models import MessagingConfig, User
+from app.models.models import User
 from app.services import messaging
 from app.services.app_settings import get_setting
 from app.services.whatsapp import client as wa
@@ -41,18 +42,27 @@ router = APIRouter()
 
 
 async def _handle_doc_session_reply(
-    db: AsyncSession, user: User, chat_id: str, text: str,
+    db: AsyncSession,
+    user: User,
+    chat_id: str,
+    text: str,
 ) -> str:
     """Handle "ya"/"batal" utk PO/Invoice session WA. Audit 2026-06-02."""
     from app.services.bot_doc_photo import handle_session_reply
+
     return await handle_session_reply(
-        db, user=user, channel="whatsapp", chat_id=chat_id, text=text,
+        db,
+        user=user,
+        channel="whatsapp",
+        chat_id=chat_id,
+        text=text,
     )
 
 
 # ---------------------------------------------------------------------------
 # Health & session admin endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.get("/health")
 async def health(
@@ -134,10 +144,7 @@ async def whatsapp_test(
         session_data = await wa.session_status()
         if session_data is not None:
             result["waha_reachable"] = True
-            result["session_status"] = (
-                session_data.get("status")
-                or session_data.get("state")
-            )
+            result["session_status"] = session_data.get("status") or session_data.get("state")
             result["engine"] = session_data.get("engine") or (
                 (session_data.get("config") or {}).get("engine")
             )
@@ -149,9 +156,8 @@ async def whatsapp_test(
 # Webhook receiver
 # ---------------------------------------------------------------------------
 
-async def _verify_webhook_signature(
-    db: AsyncSession, raw_body: bytes, header: str | None
-) -> bool:
+
+async def _verify_webhook_signature(db: AsyncSession, raw_body: bytes, header: str | None) -> bool:
     """Verifikasi HMAC-SHA512 di header `X-Webhook-Hmac` dari WAHA.
 
     Audit 2026-06-13 #S-04: secret sekarang dibaca lewat app_settings
@@ -294,35 +300,37 @@ async def webhook(
     if not chat_id:
         return {"ok": True, "skipped": "no chat_id"}
 
-    user = (await db.execute(
-        select(User).where(User.whatsapp_chat_id == chat_id)
-    )).scalar_one_or_none()
+    user = (
+        await db.execute(select(User).where(User.whatsapp_chat_id == chat_id))
+    ).scalar_one_or_none()
 
     text = _extract_text(payload)
     reply: str = ""
 
     msg_id = (
-        payload.get("id")
-        or payload.get("messageId")
-        or (payload.get("key") or {}).get("id")
+        payload.get("id") or payload.get("messageId") or (payload.get("key") or {}).get("id")
         if isinstance(payload, dict)
         else None
     )
     media = _extract_media(payload)
-    is_media_msg = bool(media or payload.get("hasMedia") or payload.get("type") in (
-        "image", "video", "document", "audio"
-    ))
+    is_media_msg = bool(
+        media
+        or payload.get("hasMedia")
+        or payload.get("type") in ("image", "video", "document", "audio")
+    )
     # `text` di WAHA pas message punya media biasanya = caption.
     caption = text
 
     # Audit 2026-06-02: foto + caption /po atau /invoice -> OCR flow.
     from app.services.bot_doc_photo import parse_doc_cmd
+
     doc_cmd_spec = parse_doc_cmd(caption) if is_media_msg else None
 
     if doc_cmd_spec is not None and is_media_msg and media:
         url, mime_hint, _fname = media
-        from app.services.whatsapp import client as wa_client
         from app.services.bot_doc_photo import handle_doc_photo
+        from app.services.whatsapp import client as wa_client
+
         dl = await wa_client.download_media(url)
         if dl is None:
             reply = "Gagal download foto dari WhatsApp. Coba kirim ulang."
@@ -330,9 +338,14 @@ async def webhook(
             content, mime = dl
             media_type = mime or mime_hint or "image/jpeg"
             reply = await handle_doc_photo(
-                db, user=user, channel="whatsapp", chat_id=chat_id,
-                content=content, media_type=media_type,
-                source_url=url, spec=doc_cmd_spec,
+                db,
+                user=user,
+                channel="whatsapp",
+                chat_id=chat_id,
+                content=content,
+                media_type=media_type,
+                source_url=url,
+                spec=doc_cmd_spec,
             )
     else:
         # Audit 2026-05-30: intercept "ya"/"batal" kalau ada session.
@@ -343,11 +356,12 @@ async def webhook(
             reply = await dispatch_command(db, user, chat_id, text, payload)
 
         if is_media_msg:
-            url, mime, fname = (media if media else (None, None, None))
+            url, mime, fname = media if media else (None, None, None)
             if not media:
                 logger.warning(
                     "WAHA webhook media without url; msg_id=%s payload=%s",
-                    msg_id, _sanitize_for_log(payload),
+                    msg_id,
+                    _sanitize_for_log(payload),
                 )
             media_reply = await handle_media(
                 db, user, chat_id, url, mime, fname, message_id=str(msg_id) if msg_id else None
@@ -367,6 +381,7 @@ async def webhook(
 # ---------------------------------------------------------------------------
 # Linking (per-user)
 # ---------------------------------------------------------------------------
+
 
 @router.post("/me/link-code")
 async def issue_my_link_code(

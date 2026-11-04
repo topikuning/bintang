@@ -4,14 +4,13 @@ Audit 2026-05-22 #M1: split dari models.py (1072 baris). Class-class
 di sini bisa pakai string forward-ref ("OtherClass") utk relationship
 ke modul lain -- SQLAlchemy resolve via Base.registry.
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
-    JSON,
-    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -62,7 +61,9 @@ class Transaction(TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True, index=True)
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id"), nullable=True, index=True
+    )
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     # Untuk kind=CASH_ADVANCE -- penerima uang muka (hybrid: bisa FK ke
     # User akun, atau hanya string nama bebas utk staff yg belum punya akun).
@@ -109,13 +110,13 @@ class Transaction(TimestampMixin, Base):
         back_populates="transaction", cascade="all,delete-orphan"
     )
     # Multi-line breakdown utk DIRECT_EXPENSE (rincian pengeluaran per item).
-    items: Mapped[list["TransactionItem"]] = relationship(
+    items: Mapped[list[TransactionItem]] = relationship(
         back_populates="transaction",
         cascade="all,delete-orphan",
         order_by="TransactionItem.id",
     )
     # Settlement utk CASH_ADVANCE. 1 advance = max 1 settlement (unique).
-    settlement: Mapped["CashAdvanceSettlement | None"] = relationship(
+    settlement: Mapped[CashAdvanceSettlement | None] = relationship(
         back_populates="cash_advance",
         cascade="all,delete-orphan",
         uselist=False,
@@ -126,32 +127,26 @@ class Transaction(TimestampMixin, Base):
 class TransactionItem(TimestampMixin, Base):
     """Multi-line item breakdown utk transaksi (terutama DIRECT_EXPENSE).
     Total transaksi = SUM(items.amount). Validasi di endpoint."""
+
     __tablename__ = "transaction_items"
-    __table_args__ = (
-        CheckConstraint("amount > 0", name="ck_transaction_items_amount_positive"),
-    )
+    __table_args__ = (CheckConstraint("amount > 0", name="ck_transaction_items_amount_positive"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     transaction_id: Mapped[int] = mapped_column(
         ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    category_id: Mapped[int | None] = mapped_column(
-        ForeignKey("categories.id"), nullable=True
-    )
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
     description: Mapped[str] = mapped_column(String(300), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
 
     transaction: Mapped[Transaction] = relationship(back_populates="items")
 
 
-
 class TransactionAttachment(TimestampMixin, Base):
     __tablename__ = "transaction_attachments"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    transaction_id: Mapped[int] = mapped_column(
-        ForeignKey("transactions.id", ondelete="CASCADE")
-    )
+    transaction_id: Mapped[int] = mapped_column(ForeignKey("transactions.id", ondelete="CASCADE"))
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -162,6 +157,7 @@ class TransactionAttachment(TimestampMixin, Base):
 
 
 # --- Invoice ---
+
 
 class Invoice(TimestampMixin, Base):
     __tablename__ = "invoices"
@@ -199,7 +195,9 @@ class Invoice(TimestampMixin, Base):
     tax: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
     total: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
 
-    status: Mapped[InvoiceStatus] = mapped_column(Enum(InvoiceStatus), default=InvoiceStatus.DRAFT, index=True)
+    status: Mapped[InvoiceStatus] = mapped_column(
+        Enum(InvoiceStatus), default=InvoiceStatus.DRAFT, index=True
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
@@ -210,10 +208,11 @@ class Invoice(TimestampMixin, Base):
     items: Mapped[list[InvoiceItem]] = relationship(
         back_populates="invoice", cascade="all,delete-orphan", order_by="InvoiceItem.id"
     )
-    allocations: Mapped[list["InvoiceAllocation"]] = relationship(
-        back_populates="invoice", cascade="all,delete-orphan",
+    allocations: Mapped[list[InvoiceAllocation]] = relationship(
+        back_populates="invoice",
+        cascade="all,delete-orphan",
         primaryjoin="and_(Invoice.id==InvoiceAllocation.invoice_id, "
-                    "InvoiceAllocation.deleted_at.is_(None))",
+        "InvoiceAllocation.deleted_at.is_(None))",
         order_by="InvoiceAllocation.id",
     )
 
@@ -228,10 +227,10 @@ class InvoiceAllocation(TimestampMixin, Base):
         untuk menambah jumlah, update baris yang sama, jangan duplikat.
     Sumber kebenaran tunggal untuk paid_amount/outstanding/remaining.
     """
+
     __tablename__ = "invoice_allocations"
     __table_args__ = (
-        UniqueConstraint("transaction_id", "invoice_id", "deleted_at",
-                         name="uq_alloc_pair"),
+        UniqueConstraint("transaction_id", "invoice_id", "deleted_at", name="uq_alloc_pair"),
         CheckConstraint("allocated_amount > 0", name="ck_alloc_positive"),
         Index("ix_alloc_txn", "transaction_id"),
         Index("ix_alloc_inv", "invoice_id"),
@@ -249,7 +248,7 @@ class InvoiceAllocation(TimestampMixin, Base):
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
 
     invoice: Mapped[Invoice] = relationship(back_populates="allocations")
-    transaction: Mapped["Transaction"] = relationship()
+    transaction: Mapped[Transaction] = relationship()
 
 
 class InvoiceItem(TimestampMixin, Base):
@@ -271,7 +270,9 @@ class InvoiceItem(TimestampMixin, Base):
     # Audit 2026-05-24: per-item kategori (sebelumnya hanya di invoice
     # level -- terlalu coarse, item-item campur aduk).
     category_id: Mapped[int | None] = mapped_column(
-        ForeignKey("categories.id"), nullable=True, index=True,
+        ForeignKey("categories.id"),
+        nullable=True,
+        index=True,
     )
 
     invoice: Mapped[Invoice] = relationship(back_populates="items")
@@ -292,6 +293,7 @@ class InvoiceAttachment(TimestampMixin, Base):
 
 
 # --- Purchase Order ---
+
 
 class PurchaseOrder(TimestampMixin, Base):
     __tablename__ = "purchase_orders"

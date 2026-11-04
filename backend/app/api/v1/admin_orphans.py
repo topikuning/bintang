@@ -171,7 +171,10 @@ async def delete_orphans(
             skipped.append({"path": rel, "reason": f"unlink_failed: {e}"})
     if deleted:
         await audit_log(
-            db, user_id=admin.id, entity="orphan_files", entity_id=0,
+            db,
+            user_id=admin.id,
+            entity="orphan_files",
+            entity_id=0,
             action=AuditAction.DELETE,
             before={"count": len(deleted), "paths": deleted[:50]},
         )

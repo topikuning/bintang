@@ -5,6 +5,7 @@ Fernet key utk app_settings di-derive dari SECRET_KEY -- kalau default
 terpakai di prod, siapa pun yg tahu default bisa decrypt semua secret
 (API key, TG/WA token) -> compromise penuh.
 """
+
 from __future__ import annotations
 
 import pytest

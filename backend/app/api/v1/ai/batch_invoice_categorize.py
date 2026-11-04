@@ -15,6 +15,7 @@ Hasil per invoice di-aggregate kembali utk FE display.
 
 Apply endpoint sama spt sebelumnya: bulk update + audit log.
 """
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -28,8 +29,17 @@ from sqlalchemy.orm import selectinload
 from app.core.deps import ensure_project_access, require_admin
 from app.db.session import get_db
 from app.models.models import (
-    AuditAction, Category, CategoryType, Invoice, InvoiceItem,
-    InvoiceStatus, InvoiceType, Project, Transaction, TxnStatus, User,
+    AuditAction,
+    Category,
+    CategoryType,
+    Invoice,
+    InvoiceItem,
+    InvoiceStatus,
+    InvoiceType,
+    Project,
+    Transaction,
+    TxnStatus,
+    User,
 )
 from app.services.ai import chat
 from app.services.ai.prompt_registry import get_prompt
@@ -156,9 +166,7 @@ async def _fetch_vendor_patterns(
         )
         rows = (await db.execute(stmt)).all()
         if rows:
-            out[v_clean.lower()] = [
-                ((d or "")[:50], c or "—") for d, c in rows
-            ]
+            out[v_clean.lower()] = [((d or "")[:50], c or "—") for d, c in rows]
     return out
 
 
@@ -185,34 +193,25 @@ async def _ai_categorize_chunk(
     for inv_id, items in grouped.items():
         inv = inv_by_id[inv_id]
         inv_kind = (
-            "HUTANG (vendor->kita = pengeluaran)" if inv.type == InvoiceType.IN
+            "HUTANG (vendor->kita = pengeluaran)"
+            if inv.type == InvoiceType.IN
             else "PIUTANG (kita->klien = pemasukan)"
         )
         lines_invoices.append(
-            f"\n[Invoice {inv.number}] · Vendor: {inv.party_name or '-'} · "
-            f"Tipe: {inv_kind}"
+            f"\n[Invoice {inv.number}] · Vendor: {inv.party_name or '-'} · Tipe: {inv_kind}"
         )
         for it in items:
             qty = f" qty={it.quantity}" if it.quantity else ""
             unit = f" {it.unit}" if it.unit else ""
             price = f" @Rp{it.unit_price}" if it.unit_price else ""
-            lines_invoices.append(
-                f"  item_id={it.id}: {it.description}{qty}{unit}{price}"
-            )
+            lines_invoices.append(f"  item_id={it.id}: {it.description}{qty}{unit}{price}")
 
     # Section 2: vendor history (filter ke vendor yg ada di chunk ini)
-    chunk_vendors = {
-        (inv.party_name or "").strip().lower()
-        for inv, _ in chunk if inv.party_name
-    }
+    chunk_vendors = {(inv.party_name or "").strip().lower() for inv, _ in chunk if inv.party_name}
     lines_history: list[str] = []
-    relevant_patterns = {
-        k: v for k, v in vendor_patterns.items() if k in chunk_vendors
-    }
+    relevant_patterns = {k: v for k, v in vendor_patterns.items() if k in chunk_vendors}
     if relevant_patterns:
-        lines_history.append(
-            "\nHISTORY VENDOR (referensi pattern -- 15 tx terakhir per vendor):"
-        )
+        lines_history.append("\nHISTORY VENDOR (referensi pattern -- 15 tx terakhir per vendor):")
         for vname_lower, rows in relevant_patterns.items():
             display_name = next(
                 (v for v in unique_vendors if v.lower() == vname_lower),
@@ -232,30 +231,23 @@ async def _ai_categorize_chunk(
     if chunk_invoice_types == {InvoiceType.IN}:
         # all hutang -> hanya kategori pengeluaran
         relevant_cats = [
-            (cid, name, ctype) for cid, name, ctype in cats_rows
-            if ctype == CategoryType.OUT
+            (cid, name, ctype) for cid, name, ctype in cats_rows if ctype == CategoryType.OUT
         ]
         cat_section_header = (
-            "\nKATEGORI VALID (hanya tipe PENGELUARAN -- semua invoice "
-            "di chunk ini adalah HUTANG):"
+            "\nKATEGORI VALID (hanya tipe PENGELUARAN -- semua invoice di chunk ini adalah HUTANG):"
         )
     elif chunk_invoice_types == {InvoiceType.OUT}:
         # all piutang -> hanya kategori pemasukan
         relevant_cats = [
-            (cid, name, ctype) for cid, name, ctype in cats_rows
-            if ctype == CategoryType.IN
+            (cid, name, ctype) for cid, name, ctype in cats_rows if ctype == CategoryType.IN
         ]
         cat_section_header = (
-            "\nKATEGORI VALID (hanya tipe PEMASUKAN -- semua invoice "
-            "di chunk ini adalah PIUTANG):"
+            "\nKATEGORI VALID (hanya tipe PEMASUKAN -- semua invoice di chunk ini adalah PIUTANG):"
         )
     else:
         # mixed -> kirim semua dgn tag jelas
         relevant_cats = list(cats_rows)
-        cat_section_header = (
-            "\nKATEGORI VALID (campuran -- pilih sesuai tipe invoice "
-            "per item):"
-        )
+        cat_section_header = "\nKATEGORI VALID (campuran -- pilih sesuai tipe invoice per item):"
 
     lines_cats: list[str] = [cat_section_header]
     for cid, name, ctype in relevant_cats:
@@ -288,8 +280,12 @@ async def _ai_categorize_chunk(
     # output 150 item JSON bisa 30-60 detik). Default 30s tdk cukup.
     try:
         resp = await chat(
-            db, user_id=admin.id, feature="ai:categorize_items_batch",
-            system=sys_prompt, prompt=prompt_body, json_schema=_AI_SCHEMA,
+            db,
+            user_id=admin.id,
+            feature="ai:categorize_items_batch",
+            system=sys_prompt,
+            prompt=prompt_body,
+            json_schema=_AI_SCHEMA,
             feature_key="categorize_items",
             max_tokens=8192,  # 150 item ~ 5K token output, buffer aman
             timeout=180.0,
@@ -351,7 +347,8 @@ async def batch_categorize_project_invoices(
     invoices_skipped = 0
     for inv in invoices:
         candidates = [
-            it for it in (inv.items or [])
+            it
+            for it in (inv.items or [])
             if not payload.only_uncategorized or it.category_id is None
         ]
         if not candidates:
@@ -366,11 +363,13 @@ async def batch_categorize_project_invoices(
             break
 
     # Build cat name lookup
-    cats_rows = (await db.execute(
-        select(Category.id, Category.name, Category.type).where(
-            Category.deleted_at.is_(None),
+    cats_rows = (
+        await db.execute(
+            select(Category.id, Category.name, Category.type).where(
+                Category.deleted_at.is_(None),
+            )
         )
-    )).all()
+    ).all()
     cat_name_by_id = {cid: name for cid, name, _ in cats_rows}
     # valid_ids: cek per-direction di response loop (audit 2026-05-24).
 
@@ -403,8 +402,7 @@ async def batch_categorize_project_invoices(
                 pair_chunks.append(chunk)
 
     # Fetch vendor patterns sekali utk SEMUA vendor di batch
-    unique_vendors = {(inv.party_name or "").strip()
-                      for inv, _ in target_pairs if inv.party_name}
+    unique_vendors = {(inv.party_name or "").strip() for inv, _ in target_pairs if inv.party_name}
     vendor_patterns = await _fetch_vendor_patterns(db, unique_vendors)
 
     # Aggregate result across chunks
@@ -412,8 +410,11 @@ async def batch_categorize_project_invoices(
     ai_calls = 0
     for chunk in pair_chunks:
         chunk_response = await _ai_categorize_chunk(
-            db=db, admin=admin, chunk=chunk,
-            cats_rows=cats_rows, proj_label=proj_label,
+            db=db,
+            admin=admin,
+            chunk=chunk,
+            cats_rows=cats_rows,
+            proj_label=proj_label,
             vendor_patterns=vendor_patterns,
             unique_vendors=unique_vendors,
         )
@@ -437,9 +438,7 @@ async def batch_categorize_project_invoices(
     for inv_id, items in grouped_by_inv.items():
         inv = inv_by_id[inv_id]
         # Expected direction utk item-item invoice ini.
-        expected_ids = (
-            valid_ids_out if inv.type == InvoiceType.IN else valid_ids_in
-        )
+        expected_ids = valid_ids_out if inv.type == InvoiceType.IN else valid_ids_in
         item_suggestions: list[ItemSuggestion] = []
         high_conf = 0
         for it in items:
@@ -453,28 +452,38 @@ async def batch_categorize_project_invoices(
             conf = float(s.get("confidence") or 0)
             if conf >= 0.7 and sug_cid is not None:
                 high_conf += 1
-            item_suggestions.append(ItemSuggestion(
-                item_id=it.id,
-                description=it.description,
-                quantity=str(it.quantity) if it.quantity is not None else None,
-                unit=it.unit,
-                unit_price=str(it.unit_price) if it.unit_price is not None else None,
-                current_category_id=it.category_id,
-                current_category_name=cat_name_by_id.get(it.category_id) if it.category_id else None,
-                suggested_category_id=sug_cid,
-                suggested_category_name=cat_name_by_id.get(sug_cid) if sug_cid else None,
-                confidence=conf,
-                reason=s.get("reason") or (
-                    "AI tdk return suggestion utk item ini."
-                    if it.id not in ai_by_item_id else ""
-                ),
-            ))
-        result_invoices.append(InvoiceSuggestion(
-            invoice_id=inv.id, invoice_number=inv.number,
-            invoice_type=inv.type.value,
-            party_name=inv.party_name, items=item_suggestions,
-            high_confidence_count=high_conf,
-        ))
+            item_suggestions.append(
+                ItemSuggestion(
+                    item_id=it.id,
+                    description=it.description,
+                    quantity=str(it.quantity) if it.quantity is not None else None,
+                    unit=it.unit,
+                    unit_price=str(it.unit_price) if it.unit_price is not None else None,
+                    current_category_id=it.category_id,
+                    current_category_name=cat_name_by_id.get(it.category_id)
+                    if it.category_id
+                    else None,
+                    suggested_category_id=sug_cid,
+                    suggested_category_name=cat_name_by_id.get(sug_cid) if sug_cid else None,
+                    confidence=conf,
+                    reason=s.get("reason")
+                    or (
+                        "AI tdk return suggestion utk item ini."
+                        if it.id not in ai_by_item_id
+                        else ""
+                    ),
+                )
+            )
+        result_invoices.append(
+            InvoiceSuggestion(
+                invoice_id=inv.id,
+                invoice_number=inv.number,
+                invoice_type=inv.type.value,
+                party_name=inv.party_name,
+                items=item_suggestions,
+                high_confidence_count=high_conf,
+            )
+        )
 
     await db.commit()
 
@@ -497,6 +506,7 @@ async def batch_categorize_project_invoices(
 
 
 # ---------- Apply (sama spt sebelumnya, unchanged) ----------
+
 
 class ApplyItem(BaseModel):
     item_id: int
@@ -530,20 +540,21 @@ async def apply_item_categories(
 
     cat_ids = set(new_cat_by_id.values())
     valid_cats = {
-        c for (c,) in (await db.execute(
-            select(Category.id).where(
-                Category.id.in_(cat_ids),
-                Category.deleted_at.is_(None),
+        c
+        for (c,) in (
+            await db.execute(
+                select(Category.id).where(
+                    Category.id.in_(cat_ids),
+                    Category.deleted_at.is_(None),
+                )
             )
-        )).all()
+        ).all()
     }
     invalid = cat_ids - valid_cats
     if invalid:
         raise HTTPException(400, f"invalid_category_ids: {sorted(invalid)}")
 
-    res = await db.execute(
-        select(InvoiceItem).where(InvoiceItem.id.in_(item_ids))
-    )
+    res = await db.execute(select(InvoiceItem).where(InvoiceItem.id.in_(item_ids)))
     items_map = {it.id: it for it in res.scalars().all()}
 
     # Audit 2026-06-13 #S-09: item ditarget lewat item_id polos, jadi
@@ -552,11 +563,14 @@ async def apply_item_categories(
     # proyek (bukan per item) supaya tetap satu query ringan.
     if items_map:
         project_ids = {
-            pid for (pid,) in (await db.execute(
-                select(Invoice.project_id).where(
-                    Invoice.id.in_({it.invoice_id for it in items_map.values()})
-                ).distinct()
-            )).all()
+            pid
+            for (pid,) in (
+                await db.execute(
+                    select(Invoice.project_id)
+                    .where(Invoice.id.in_({it.invoice_id for it in items_map.values()}))
+                    .distinct()
+                )
+            ).all()
         }
         for pid in project_ids:
             await ensure_project_access(db, admin, pid)
@@ -579,8 +593,12 @@ async def apply_item_categories(
     for inv_id, changes in by_invoice.items():
         note = f"AI bulk categorize: {len(changes)} item updated"
         await log(
-            db, user_id=admin.id, entity="invoice", entity_id=inv_id,
-            action=AuditAction.UPDATE, note=note,
+            db,
+            user_id=admin.id,
+            entity="invoice",
+            entity_id=inv_id,
+            action=AuditAction.UPDATE,
+            note=note,
         )
 
     await db.commit()

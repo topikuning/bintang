@@ -8,6 +8,7 @@ Audit 2026-05-22 #M2: dipecah dari reports.py (1290 baris) jadi:
 Import path tetap `app.api.v1.reports` -- caller `app.api.v1.__init__`
 tdk perlu berubah.
 """
+
 from fastapi import APIRouter
 
 from . import documents, finance, governance

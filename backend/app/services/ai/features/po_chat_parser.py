@@ -7,13 +7,13 @@ Output: dict dgn schema -- items[], project_hint, vendor_hint, notes.
 Resolver di `app.services.bot_po_assistant` yang match project_hint ke
 Project nyata + vendor_hint ke VendorClient (atau pakai string as-is).
 """
+
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.ai import chat
 from app.services.ai.prompt_registry import get_prompt
-
 
 # JSON schema strict utk structured output. Provider (Claude/Mistral)
 # enforce schema -- response.structured guaranteed match shape (atau
@@ -71,15 +71,16 @@ async def parse(db: AsyncSession, *, user_id: int, text: str) -> dict:
         desc = (it.get("description") or "").strip()
         if not desc:
             continue
-        items.append({
-            "description": desc,
-            "quantity": float(it.get("quantity") or 1),
-            "unit": (it.get("unit") or None),
-            "unit_price": (
-                float(it["unit_price"])
-                if it.get("unit_price") is not None else None
-            ),
-        })
+        items.append(
+            {
+                "description": desc,
+                "quantity": float(it.get("quantity") or 1),
+                "unit": (it.get("unit") or None),
+                "unit_price": (
+                    float(it["unit_price"]) if it.get("unit_price") is not None else None
+                ),
+            }
+        )
     return {
         "items": items,
         "project_hint": (parsed.get("project_hint") or None),

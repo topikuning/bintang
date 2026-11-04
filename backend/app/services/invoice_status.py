@@ -2,6 +2,7 @@
 Tabel `transactions.invoice_id` lama tetap ada tapi tidak lagi
 diperhitungkan di sini -- semua jalur baru harus menulis allocation.
 """
+
 from __future__ import annotations
 
 from datetime import date

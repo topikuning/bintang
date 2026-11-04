@@ -5,6 +5,7 @@ dashboard: exclude proyek SELESAI (tagihan dianggap clear) + DIBATALKAN
 Audit 2026-05-24: user complaint "kenapa notifikasi masih muncul invoice
 overdue atas proyek selesai!".
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -35,55 +36,86 @@ from app.models.models import (
 
 
 async def _seed(db):
-    co = Company(name="C"); db.add(co); await db.flush()
+    co = Company(name="C")
+    db.add(co)
+    await db.flush()
     p_aktif = Project(
-        code="P-A", name="Aktif", company_id=co.id,
-        status=ProjectStatus.AKTIF, kind=ProjectKind.REGULAR.value,
+        code="P-A",
+        name="Aktif",
+        company_id=co.id,
+        status=ProjectStatus.AKTIF,
+        kind=ProjectKind.REGULAR.value,
     )
     p_selesai = Project(
-        code="P-S", name="Selesai", company_id=co.id,
-        status=ProjectStatus.SELESAI, kind=ProjectKind.REGULAR.value,
+        code="P-S",
+        name="Selesai",
+        company_id=co.id,
+        status=ProjectStatus.SELESAI,
+        kind=ProjectKind.REGULAR.value,
     )
     p_cancel = Project(
-        code="P-X", name="Batal", company_id=co.id,
-        status=ProjectStatus.DIBATALKAN, kind=ProjectKind.REGULAR.value,
+        code="P-X",
+        name="Batal",
+        company_id=co.id,
+        status=ProjectStatus.DIBATALKAN,
+        kind=ProjectKind.REGULAR.value,
     )
-    db.add_all([p_aktif, p_selesai, p_cancel]); await db.flush()
+    db.add_all([p_aktif, p_selesai, p_cancel])
+    await db.flush()
     admin = User(
-        email="a@x", name="A", password_hash=hash_password("x"),
-        role=UserRole.SUPERADMIN, scope_all_projects=True,
+        email="a@x",
+        name="A",
+        password_hash=hash_password("x"),
+        role=UserRole.SUPERADMIN,
+        scope_all_projects=True,
     )
-    db.add(admin); await db.flush()
+    db.add(admin)
+    await db.flush()
     # Overdue invoice di ke-3 proyek
     today = date.today()
     long_ago = date(today.year - 1, 1, 1)
     for proj in (p_aktif, p_selesai, p_cancel):
-        db.add(Invoice(
-            number=f"INV-OD-{proj.code}", project_id=proj.id,
-            type=InvoiceType.IN, invoice_date=long_ago,
-            due_date=long_ago, total=Decimal("100"),
-            status=InvoiceStatus.OVERDUE, created_by_id=admin.id,
-        ))
+        db.add(
+            Invoice(
+                number=f"INV-OD-{proj.code}",
+                project_id=proj.id,
+                type=InvoiceType.IN,
+                invoice_date=long_ago,
+                due_date=long_ago,
+                total=Decimal("100"),
+                status=InvoiceStatus.OVERDUE,
+                created_by_id=admin.id,
+            )
+        )
     # SUBMITTED tx di ke-3 proyek
     for proj in (p_aktif, p_selesai, p_cancel):
-        db.add(Transaction(
-            project_id=proj.id, tx_date=today, type=TxnType.OUT,
-            kind=TxnKind.DIRECT_EXPENSE.value, amount=Decimal("50"),
-            payment_method=PaymentMethod.CASH,
-            status=TxnStatus.SUBMITTED, created_by_id=admin.id,
-        ))
+        db.add(
+            Transaction(
+                project_id=proj.id,
+                tx_date=today,
+                type=TxnType.OUT,
+                kind=TxnKind.DIRECT_EXPENSE.value,
+                amount=Decimal("50"),
+                payment_method=PaymentMethod.CASH,
+                status=TxnStatus.SUBMITTED,
+                created_by_id=admin.id,
+            )
+        )
     await db.commit()
     return co, p_aktif, p_selesai, p_cancel, admin
 
 
 def _hdr(user):
-    return {"Authorization": f"Bearer {create_access_token(user.id, extra={'role': user.role.value})}"}
+    return {
+        "Authorization": f"Bearer {create_access_token(user.id, extra={'role': user.role.value})}"
+    }
 
 
 @pytest.fixture
 def override_db(db):
     async def _gen():
         yield db
+
     app.dependency_overrides[get_db] = _gen
     yield
     app.dependency_overrides.pop(get_db, None)
@@ -114,18 +146,29 @@ async def test_notifications_summary_excludes_non_project(db, override_db):
     exclude NP -> klik notif = list kosong = user bingung."""
     co, p_aktif, _, _, admin = await _seed(db)
     p_np = Project(
-        code="NP-1", name="Catatan Non-Proyek", company_id=co.id,
-        status=ProjectStatus.AKTIF, kind=ProjectKind.NON_PROJECT.value,
+        code="NP-1",
+        name="Catatan Non-Proyek",
+        company_id=co.id,
+        status=ProjectStatus.AKTIF,
+        kind=ProjectKind.NON_PROJECT.value,
     )
-    db.add(p_np); await db.flush()
+    db.add(p_np)
+    await db.flush()
     # Tambah TX SUBMITTED di NP (harusnya tdk muncul di notif counter)
     from datetime import date as _date
-    db.add(Transaction(
-        project_id=p_np.id, tx_date=_date.today(),
-        type=TxnType.OUT, kind=TxnKind.DIRECT_EXPENSE.value,
-        amount=Decimal("100"), payment_method=PaymentMethod.CASH,
-        status=TxnStatus.SUBMITTED, created_by_id=admin.id,
-    ))
+
+    db.add(
+        Transaction(
+            project_id=p_np.id,
+            tx_date=_date.today(),
+            type=TxnType.OUT,
+            kind=TxnKind.DIRECT_EXPENSE.value,
+            amount=Decimal("100"),
+            payment_method=PaymentMethod.CASH,
+            status=TxnStatus.SUBMITTED,
+            created_by_id=admin.id,
+        )
+    )
     await db.commit()
 
     transport = ASGITransport(app=app)
@@ -141,6 +184,7 @@ async def test_notifications_summary_excludes_non_project(db, override_db):
 async def test_telegram_cmd_pending_excludes_closed(db):
     """Telegram /pending: exclude proyek closed dari list."""
     from app.services.telegram.commands import cmd_pending
+
     _, p_aktif, _, _, admin = await _seed(db)
     out = await cmd_pending(db, admin, chat_id=1, args=[], msg={})
     # Hanya 1 tx (di AKTIF) yg muncul, bukan 3.
@@ -153,6 +197,7 @@ async def test_telegram_cmd_pending_excludes_closed(db):
 async def test_telegram_cmd_invoice_excludes_closed(db):
     """Telegram /invoice: exclude proyek closed dari list."""
     from app.services.telegram.commands import cmd_invoice
+
     _, p_aktif, _, _, admin = await _seed(db)
     out = await cmd_invoice(db, admin, chat_id=1, args=[], msg={})
     # Hanya invoice di AKTIF muncul.
@@ -165,6 +210,7 @@ async def test_telegram_cmd_invoice_excludes_closed(db):
 async def test_ai_outstanding_debts_excludes_closed(db):
     """AI _q_outstanding_debts: KONSISTEN -- exclude proyek closed."""
     from app.services.ai.features.ask_query import _q_outstanding_debts
+
     _, _, _, _, admin = await _seed(db)
     result = await _q_outstanding_debts(db, pids=None)
     # Return shape: {columns, data: [[row...],...]}.

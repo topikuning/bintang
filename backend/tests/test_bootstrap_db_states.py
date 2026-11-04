@@ -15,15 +15,15 @@ Akibatnya ia memilih `upgrade head`, lalu mati di migrasi pertama:
 Test ini mengunci ketiga keadaan supaya keputusan stamp-vs-upgrade
 diambil dari SCHEMA SEBENARNYA, bukan dari isi alembic_version.
 """
+
 from __future__ import annotations
 
 import sqlite3
 
-import pytest
 from sqlalchemy import create_engine, inspect, text
 
-from app.db.base import Base
 import app.models.models  # noqa: F401  (registrasi tabel)
+from app.db.base import Base
 
 # Revisi lama yang tercatat di DB produksi saat insiden.
 STALE_REVISION = "f1a2b3c4d5e6"
@@ -53,16 +53,20 @@ def _write_stamp(path, revision: str) -> None:
 
 
 def _run_bootstrap(monkeypatch, path) -> None:
-    from app.core import config as config_mod
     from app import bootstrap_db
+    from app.core import config as config_mod
 
     monkeypatch.setattr(
-        config_mod.settings, "DATABASE_URL",
-        f"sqlite+aiosqlite:///{path}", raising=False,
+        config_mod.settings,
+        "DATABASE_URL",
+        f"sqlite+aiosqlite:///{path}",
+        raising=False,
     )
     monkeypatch.setattr(
-        bootstrap_db.settings, "DATABASE_URL",
-        f"sqlite+aiosqlite:///{path}", raising=False,
+        bootstrap_db.settings,
+        "DATABASE_URL",
+        f"sqlite+aiosqlite:///{path}",
+        raising=False,
     )
     assert bootstrap_db.main() == 0
 
@@ -79,6 +83,7 @@ def _current_revision(path) -> str | None:
 
 def _head_revision() -> str:
     from alembic.script import ScriptDirectory
+
     from app.bootstrap_db import _alembic_config
 
     return ScriptDirectory.from_config(_alembic_config()).get_current_head()
@@ -151,12 +156,8 @@ def test_migrasi_sah_tetap_dijalankan(tmp_path, monkeypatch):
 
     # Galat lain TIDAK boleh memicu fallback -- harus naik ke atas
     # supaya deploy gagal keras alih-alih diam-diam mem-stamp.
-    assert not bootstrap_db._already_exists_error(
-        Exception("connection refused")
-    )
-    assert not bootstrap_db._already_exists_error(
-        Exception('relation "projects" does not exist')
-    )
+    assert not bootstrap_db._already_exists_error(Exception("connection refused"))
+    assert not bootstrap_db._already_exists_error(Exception('relation "projects" does not exist'))
 
 
 def test_kolom_hilang_terdeteksi(tmp_path, monkeypatch):
@@ -167,16 +168,22 @@ def test_kolom_hilang_terdeteksi(tmp_path, monkeypatch):
     _build_schema(db)
 
     from app.core import config as config_mod
+
     monkeypatch.setattr(
-        config_mod.settings, "DATABASE_URL",
-        f"sqlite+aiosqlite:///{db}", raising=False,
+        config_mod.settings,
+        "DATABASE_URL",
+        f"sqlite+aiosqlite:///{db}",
+        raising=False,
     )
     monkeypatch.setattr(
-        bootstrap_db.settings, "DATABASE_URL",
-        f"sqlite+aiosqlite:///{db}", raising=False,
+        bootstrap_db.settings,
+        "DATABASE_URL",
+        f"sqlite+aiosqlite:///{db}",
+        raising=False,
     )
 
     import asyncio
+
     is_empty, missing = asyncio.run(bootstrap_db._schema_gap())
     assert not is_empty
     assert missing == [], "schema hasil create_all seharusnya lengkap"
@@ -194,3 +201,28 @@ def test_kolom_hilang_terdeteksi(tmp_path, monkeypatch):
     is_empty, missing = asyncio.run(bootstrap_db._schema_gap())
     assert not is_empty
     assert "projects.kind" in missing
+
+
+def test_index_hilang_terdeteksi(tmp_path, monkeypatch):
+    """Bootstrap tidak boleh menganggap schema aman jika indeks model hilang."""
+    import asyncio
+
+    from app import bootstrap_db
+    from app.core import config as config_mod
+
+    db = tmp_path / "index_hilang.db"
+    _build_schema(db)
+    database_url = f"sqlite+aiosqlite:///{db}"
+    monkeypatch.setattr(config_mod.settings, "DATABASE_URL", database_url, raising=False)
+    monkeypatch.setattr(bootstrap_db.settings, "DATABASE_URL", database_url, raising=False)
+
+    engine = create_engine(_sqlite_url(db))
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("DROP INDEX ix_ai_extractions_user_id"))
+    finally:
+        engine.dispose()
+
+    is_empty, missing = asyncio.run(bootstrap_db._schema_gap())
+    assert not is_empty
+    assert "ai_extractions:index(user_id;unique=false)" in missing
