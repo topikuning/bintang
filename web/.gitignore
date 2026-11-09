@@ -11,3 +11,4 @@ src/generated/
 .data/
 test-results/
 playwright-report/
+dist/

@@ -9,6 +9,7 @@ const eslintConfig = [
       "src/generated/**",
       "prisma/migrations/**",
       "test-results/**",
+      "dist/**",
     ],
   },
   ...next,

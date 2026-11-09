@@ -5,9 +5,9 @@ name: ci
 
 on:
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, dev3]
   push:
-    branches: [main, dev]
+    branches: [main, dev, dev3]
 
 permissions:
   contents: read
@@ -181,6 +181,10 @@ jobs:
       - name: Build image
         run: docker build -t bintang-web:ci web
 
-      # Image `alat` dipakai importer di server Lenovo – harus ikut terbukti.
-      - name: Build image alat (impor)
-        run: docker build --target alat -t bintang-web-alat:ci web
+      # Importer satu berkas di image (Railway: `railway ssh` → bintang-impor).
+      # Tanpa sumber, ia harus gagal dengan pesan sendiri – bukti bundelnya termuat.
+      - name: Importer di image termuat
+        run: |
+          out=$(docker run --rm --entrypoint node bintang-web:ci impor.mjs 2>&1 || true)
+          echo "$out"
+          echo "$out" | grep -q "Isi SUMBER_LAMA_URL"

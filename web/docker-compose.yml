@@ -89,10 +89,11 @@ services:
   #   docker compose --profile impor run --rm impor            # sungguhan
   impor:
     profiles: ["impor"]
-    build:
-      context: .
-      target: alat
-    image: bintang-web-alat:lokal
+    # Image yang sama dengan app; importer satu berkas di dalamnya.
+    build: .
+    image: bintang-web:lokal
+    entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/bintang-impor"]
+    command: []
     environment:
       APP_ENV: production
       DATABASE_URL: postgresql://bintang:${DB_PASSWORD}@db:5432/bintang

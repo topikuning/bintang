@@ -418,7 +418,7 @@ arahkan CNAME sesuai instruksi Railway. Setelah aktif, perbarui
 
 ## Pindah ke Bintang v3 (server Lenovo)
 
-Bintang v3 (`web/`) menarik data **dan semua lampiran** dari
+Bintang v3 (`web/`, cabang `dev3`) menarik data **dan semua lampiran** dari
 layanan ini lewat API ekspor sekali pakai. Volume Railway tidak perlu diakses
 langsung dan tidak ada arsip raksasa yang harus diunduh manual.
 
