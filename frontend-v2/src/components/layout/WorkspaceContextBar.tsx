@@ -148,7 +148,7 @@ export function WorkspaceContextBar() {
                   className={cn(
                     "inline-flex h-9 items-center rounded-lg px-3 text-[12px] font-medium transition-colors",
                     isActive
-                      ? "bg-ink-900 text-white shadow-sm"
+                      ? "bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-200"
                       : "text-ink-500 hover:bg-ink-100 hover:text-ink-900",
                   )}
                 >
