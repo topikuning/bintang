@@ -25,7 +25,12 @@ Di proyek Railway → **+ New**:
 
 `railway.json` sudah mengatur: build dari `web/Dockerfile`, hanya deploy bila
 `web/**` berubah, `prisma migrate deploy` sebelum tiap deploy, healthcheck
-`/api/health`.
+`/api/health`. Bila Railway Config File tidak diisi, semua itu tidak berlaku –
+migrasi tetap jalan karena container juga menjalankannya tiap start, tapi
+healthcheck dan watch path tidak, dan tiap push ke `dev3` memicu deploy.
+
+Cek: Deployments → deploy terakhir → log harus memuat
+`[entrypoint] prisma migrate deploy…` lalu `All migrations have been successfully applied`.
 
 3. Klik kanan layanan → **Attach Volume** → mount path **`/data`**. Lampiran
    (`/data/berkas`) dan cermin impor (`/data/impor-cermin`) tinggal di sini.
