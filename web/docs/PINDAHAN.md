@@ -23,12 +23,15 @@ yang akan dipensiunkan.
 
 ## 1. Aplikasi lama: aktifkan API ekspor
 
-API ekspor ada di cabang **`dev`** aplikasi lama (`/api/v1/ekspor-v3/*`).
-Ia harus berjalan di **layanan Railway yang memegang data & volume produksi**
-– layanan uji dengan volume lain tidak membawa lampiran yang sebenarnya.
+API ekspor (`/api/v1/ekspor-v3/*`) sudah di `main` – cabang yang dideploy
+layanan produksi. Ia harus berjalan di **layanan Railway yang memegang data &
+volume produksi** – layanan uji dengan volume lain tidak membawa lampiran yang
+sebenarnya.
 
-1. Gabungkan `dev` ke cabang yang dideploy layanan produksi (atau arahkan
-   layanan produksi ke `dev`), tunggu deploy hijau.
+1. Pastikan deploy produksi dari commit `041ce36` (merge topikuning/bintang#141)
+   atau sesudahnya hijau. Merge itu juga membawa perombakan UI dan perbaikan
+   audit dari `dev` ke produksi, bukan hanya API ekspor – cek layar lama masih
+   normal; bila tidak, rollback deploy di Railway dulu.
 2. Railway → layanan produksi → Variables → `EKSPOR_V3_TOKEN` =
    `python -c 'import secrets; print(secrets.token_urlsafe(48))'` → redeploy.
 3. Cek dari mana saja:
@@ -45,7 +48,7 @@ password dan nomor rekening. Jangan kirim lewat chat; kosongkan setelah selesai.
 ```bash
 sudo apt install -y docker.io docker-compose-v2 git   # atau Docker resmi
 sudo systemctl enable --now docker
-sudo git clone -b dev3 https://github.com/topikuning/bintang /opt/bintang
+sudo git clone https://github.com/topikuning/bintang /opt/bintang   # cabang main
 cd /opt/bintang/web
 sudo cp .env.lenovo.example .env && sudo chmod 600 .env
 sudo nano .env      # DB_PASSWORD, SESSION_SECRET, KUNCI_DATA, DATA_DIR=/srv/bintang

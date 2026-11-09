@@ -91,10 +91,11 @@ pnpm build
 
 ## Server Lenovo (produksi)
 
-v3 berjalan di server sendiri (Linux + Docker), **bukan Railway**. Cabang: `dev3`.
+v3 berjalan di server sendiri (Linux + Docker), **bukan Railway**. Cabang: `main`
+(satu repo dengan aplikasi lama; image Railway tidak menyalin `web/`).
 
 ```bash
-git clone -b dev3 https://github.com/topikuning/bintang /opt/bintang
+git clone https://github.com/topikuning/bintang /opt/bintang
 cd /opt/bintang/web
 cp .env.lenovo.example .env && chmod 600 .env   # isi DB_PASSWORD, SESSION_SECRET, KUNCI_DATA, DATA_DIR
 docker compose up -d --build                   # db + app + cadangan harian
@@ -122,7 +123,7 @@ Pulihkan DB: `pg_restore --clean --if-exists -d bintang <dump>`.
 Runbook lengkap (gladi, hari pindah, setelahnya): [`docs/PINDAHAN.md`](./docs/PINDAHAN.md).
 
 Singkatnya, v3 **menarik** data + semua lampiran dari aplikasi lama lewat API
-ekspor sekali pakai (cabang `dev` aplikasi lama, `EKSPOR_V3_TOKEN`):
+ekspor sekali pakai (`backend/app/api/v1/ekspor_v3.py`, aktif bila `EKSPOR_V3_TOKEN` terisi):
 
 ```bash
 # di .env Lenovo: SUMBER_LAMA_URL=https://<app-lama> dan EKSPOR_V3_TOKEN=<token sama>
