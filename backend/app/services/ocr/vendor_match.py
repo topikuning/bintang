@@ -11,6 +11,7 @@ Algoritma:
 
 Difflib built-in (no dep). Untuk skala >500 vendor, swap ke rapidfuzz.
 """
+
 from __future__ import annotations
 
 import logging
@@ -74,11 +75,13 @@ async def match_vendor(
     if not target:
         return None
 
-    rows = (await db.execute(
-        select(VendorClient.id, VendorClient.name).where(
-            VendorClient.deleted_at.is_(None),
+    rows = (
+        await db.execute(
+            select(VendorClient.id, VendorClient.name).where(
+                VendorClient.deleted_at.is_(None),
+            )
         )
-    )).all()
+    ).all()
     if not rows:
         return None
 
@@ -101,6 +104,5 @@ async def match_vendor(
     if best is None or best_score < min_score:
         return None
     vid, vname = best
-    log.info("ocr.vendor_match: '%s' -> '%s' (score=%.2f)",
-             extracted_name, vname, best_score)
+    log.info("ocr.vendor_match: '%s' -> '%s' (score=%.2f)", extracted_name, vname, best_score)
     return {"id": vid, "name": vname, "score": round(best_score, 3)}

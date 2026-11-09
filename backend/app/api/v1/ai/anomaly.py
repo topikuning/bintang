@@ -1,11 +1,12 @@
 """Endpoint AI-5: anomaly detection."""
+
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import ensure_project_access, get_current_user, require_admin
+from app.core.deps import ensure_project_access, require_admin
 from app.db.session import get_db
 from app.models.models import User
 from app.services.ai.features.anomaly import run as run_anomaly
@@ -38,8 +39,10 @@ async def scan_anomalies(
         await ensure_project_access(db, user, payload.project_id)
     try:
         result = await run_anomaly(
-            db, user_id=user.id,
-            date_from=payload.date_from, date_to=payload.date_to,
+            db,
+            user_id=user.id,
+            date_from=payload.date_from,
+            date_to=payload.date_to,
             project_id=payload.project_id,
         )
     except RuntimeError as e:

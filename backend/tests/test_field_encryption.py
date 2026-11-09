@@ -3,6 +3,7 @@
 Gradual rollout: write encrypt selalu, read tolerant ke legacy plain
 text (pass-through).
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -64,14 +65,17 @@ def test_decrypt_passthrough_legacy_plain():
 async def test_company_bank_account_persisted_encrypted(db):
     """Verifikasi ORM auto-encrypt: raw DB row punya prefix, attr Python plain."""
     co = Company(name="C1", bank_account="BCA 9876543210 a.n. PT X")
-    db.add(co); await db.flush()
+    db.add(co)
+    await db.flush()
     # ORM attribute = plaintext
     assert co.bank_account == "BCA 9876543210 a.n. PT X"
     # Raw DB row = encrypted
-    raw = (await db.execute(
-        text("SELECT bank_account FROM companies WHERE id = :id"),
-        {"id": co.id},
-    )).scalar_one()
+    raw = (
+        await db.execute(
+            text("SELECT bank_account FROM companies WHERE id = :id"),
+            {"id": co.id},
+        )
+    ).scalar_one()
     assert raw.startswith("enc:v1:")
     assert raw != "BCA 9876543210 a.n. PT X"
 
@@ -79,36 +83,49 @@ async def test_company_bank_account_persisted_encrypted(db):
 @pytest.mark.asyncio
 async def test_vendor_bank_account_encrypted(db):
     v = VendorClient(name="V1", type=VendorClientType.VENDOR, bank_account="Mandiri 1112223334")
-    db.add(v); await db.flush()
+    db.add(v)
+    await db.flush()
     assert v.bank_account == "Mandiri 1112223334"
-    raw = (await db.execute(
-        text("SELECT bank_account FROM vendors_clients WHERE id = :id"),
-        {"id": v.id},
-    )).scalar_one()
+    raw = (
+        await db.execute(
+            text("SELECT bank_account FROM vendors_clients WHERE id = :id"),
+            {"id": v.id},
+        )
+    ).scalar_one()
     assert raw.startswith("enc:v1:")
 
 
 @pytest.mark.asyncio
 async def test_transaction_party_account_encrypted(db):
-    co = Company(name="C"); db.add(co); await db.flush()
+    co = Company(name="C")
+    db.add(co)
+    await db.flush()
     p = Project(code="P", name="P", company_id=co.id, status=ProjectStatus.AKTIF)
-    db.add(p); await db.flush()
+    db.add(p)
+    await db.flush()
     u = User(name="U", email="u@x", password_hash="x", role=UserRole.PROJECT_ADMIN)
-    db.add(u); await db.flush()
+    db.add(u)
+    await db.flush()
     tx = Transaction(
-        project_id=p.id, tx_date=date(2026, 5, 22),
-        type=TxnType.OUT, kind=TxnKind.INVOICE_PAYMENT.value,
+        project_id=p.id,
+        tx_date=date(2026, 5, 22),
+        type=TxnType.OUT,
+        kind=TxnKind.INVOICE_PAYMENT.value,
         amount=Decimal("100"),
         party_account="BNI 555 a.n. CV Test",
         payment_method=PaymentMethod.TRANSFER,
-        status=TxnStatus.DRAFT, created_by_id=u.id,
+        status=TxnStatus.DRAFT,
+        created_by_id=u.id,
     )
-    db.add(tx); await db.flush()
+    db.add(tx)
+    await db.flush()
     assert tx.party_account == "BNI 555 a.n. CV Test"
-    raw = (await db.execute(
-        text("SELECT party_account FROM transactions WHERE id = :id"),
-        {"id": tx.id},
-    )).scalar_one()
+    raw = (
+        await db.execute(
+            text("SELECT party_account FROM transactions WHERE id = :id"),
+            {"id": tx.id},
+        )
+    ).scalar_one()
     assert raw.startswith("enc:v1:")
 
 
@@ -116,7 +133,9 @@ async def test_transaction_party_account_encrypted(db):
 async def test_legacy_plain_row_readable(db):
     """Row legacy plain text (mis. dari production sebelum migrasi #C3)
     tetap dapat dibaca via ORM."""
-    co = Company(name="C"); db.add(co); await db.flush()
+    co = Company(name="C")
+    db.add(co)
+    await db.flush()
     # Inject row legacy plain via raw UPDATE (bypass TypeDecorator)
     await db.execute(
         text("UPDATE companies SET bank_account = :v WHERE id = :id"),
@@ -130,8 +149,10 @@ async def test_legacy_plain_row_readable(db):
     # Next write -> ter-encrypt
     co.bank_account = "BCA 12345"
     await db.flush()
-    raw = (await db.execute(
-        text("SELECT bank_account FROM companies WHERE id = :id"),
-        {"id": co.id},
-    )).scalar_one()
+    raw = (
+        await db.execute(
+            text("SELECT bank_account FROM companies WHERE id = :id"),
+            {"id": co.id},
+        )
+    ).scalar_one()
     assert raw.startswith("enc:v1:")

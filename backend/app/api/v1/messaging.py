@@ -4,6 +4,7 @@ Detail koneksi (token, URL, secret) tetap di env. Endpoint ini hanya
 mengelola toggle on/off + tampilkan ringkasan status integrasi sehingga
 admin tahu apakah bot Telegram dan WAHA siap dipakai.
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends

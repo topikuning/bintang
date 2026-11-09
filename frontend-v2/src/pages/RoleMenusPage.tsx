@@ -62,17 +62,15 @@ export function RoleMenusPage() {
   }, [q.data])
 
   // Group registry by 'group' utk render sections
+  const registry = q.data?.registry
   const groupedRegistry = useMemo(() => {
-    const groups: Record<string, typeof q.data extends { registry: infer R } ? R : never> =
-      {} as never
     const out: Record<string, { id: string; label: string }[]> = {}
-    if (!q.data) return out
-    for (const item of q.data.registry) {
+    if (!registry) return out
+    for (const item of registry) {
       ;(out[item.group] ??= []).push(item)
     }
-    void groups
     return out
-  }, [q.data])
+  }, [registry])
 
   if (!isSuper) {
     return (

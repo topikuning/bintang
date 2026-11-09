@@ -23,9 +23,9 @@ from urllib.parse import parse_qs, urlparse
 import anthropic
 import httpx
 
-from app.services.storage.paths import is_local_file_url, resolve_upload_path
 from app.services.ocr.adapter import OCRAdapter
 from app.services.ocr.schema import INVOICE_SCHEMA, INVOICE_SYSTEM_PROMPT
+from app.services.storage.paths import is_local_file_url, resolve_upload_path
 
 log = logging.getLogger(__name__)
 
@@ -44,8 +44,7 @@ EXTRACT_TOOL = {
 
 # Tambahan instruksi khusus Claude (mandate tool call).
 SYSTEM_PROMPT = INVOICE_SYSTEM_PROMPT + (
-    "\n8. WAJIB call tool save_invoice_extraction dengan semua field. "
-    "Jangan jawab teks bebas."
+    "\n8. WAJIB call tool save_invoice_extraction dengan semua field. Jangan jawab teks bebas."
 )
 
 
@@ -181,10 +180,7 @@ class ClaudeVisionOCRAdapter(OCRAdapter):
                 r = await hx.get(normalized)
                 r.raise_for_status()
                 content = r.content
-                media_type = (
-                    r.headers.get("content-type", "").split(";")[0].strip()
-                    or "image/jpeg"
-                )
+                media_type = r.headers.get("content-type", "").split(";")[0].strip() or "image/jpeg"
                 if media_type == "text/html":
                     raise ValueError(
                         "url_returned_html: URL mengembalikan halaman web, bukan file. "
@@ -192,15 +188,9 @@ class ClaudeVisionOCRAdapter(OCRAdapter):
                         "-- adapter auto-konversi ke direct download. "
                         "Untuk Dropbox: ganti '?dl=0' di akhir URL jadi '?dl=1'."
                     )
-                if not (
-                    media_type.startswith("image/") or media_type == "application/pdf"
-                ):
-                    raise ValueError(
-                        f"unsupported_media_type: {media_type} (URL bukan gambar/PDF)"
-                    )
-        return await self.extract_from_bytes(
-            content, media_type, source_url=file_url
-        )
+                if not (media_type.startswith("image/") or media_type == "application/pdf"):
+                    raise ValueError(f"unsupported_media_type: {media_type} (URL bukan gambar/PDF)")
+        return await self.extract_from_bytes(content, media_type, source_url=file_url)
 
     async def extract_from_bytes(
         self,
@@ -259,9 +249,7 @@ class ClaudeVisionOCRAdapter(OCRAdapter):
             )
         except anthropic.AuthenticationError as e:
             log.error("ocr.claude.auth_error: %s", e)
-            raise RuntimeError(
-                "anthropic_auth_failed: cek ANTHROPIC_API_KEY di env"
-            ) from e
+            raise RuntimeError("anthropic_auth_failed: cek ANTHROPIC_API_KEY di env") from e
         except anthropic.RateLimitError as e:
             log.error("ocr.claude.rate_limited: %s", e)
             raise RuntimeError("anthropic_rate_limited: coba lagi sebentar") from e
@@ -299,9 +287,7 @@ class ClaudeVisionOCRAdapter(OCRAdapter):
                 (b for b in response.content if getattr(b, "type", None) == "text"),
                 None,
             )
-            text_excerpt = (
-                getattr(text_block, "text", "")[:200] if text_block else ""
-            )
+            text_excerpt = getattr(text_block, "text", "")[:200] if text_block else ""
             raise RuntimeError(
                 f"claude_no_tool_use stop={response.stop_reason} text={text_excerpt!r}"
             )
@@ -325,8 +311,7 @@ class ClaudeVisionOCRAdapter(OCRAdapter):
             "items": data.get("items") or [],
             "is_handwritten": bool(data.get("is_handwritten", False)),
             "notes": data.get("notes") or None,
-            "confidence_score": _to_decimal(data.get("confidence_score"))
-            or Decimal("0"),
+            "confidence_score": _to_decimal(data.get("confidence_score")) or Decimal("0"),
             "field_confidences": data.get("field_confidences") or {},
             "raw_response": {
                 "engine": f"claude:{self._model}",

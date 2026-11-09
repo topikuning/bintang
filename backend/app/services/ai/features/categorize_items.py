@@ -10,6 +10,7 @@ vendor history (akan auto-fetch kalau context.party_name diset).
 
 Output per item: category_id + confidence + reason (+ alternatif kalau ragu).
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -20,7 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.models import Category, CategoryType, Project, Transaction, TxnStatus
 from app.services.ai import chat
 from app.services.ai.prompt_registry import get_prompt
-
 
 SCHEMA = {
     "type": "object",
@@ -108,8 +108,10 @@ async def run(
         return {
             "items": [
                 {
-                    "index": i, "category_id": None,
-                    "category_name": None, "confidence": 0,
+                    "index": i,
+                    "category_id": None,
+                    "category_name": None,
+                    "confidence": 0,
                     "reason": "Tdk ada kategori di database.",
                 }
                 for i in range(len(items))
@@ -136,9 +138,7 @@ async def run(
     vendor_pattern = await _fetch_vendor_pattern(db, party_name, direction)
     if vendor_pattern:
         ctx_lines.append("")
-        ctx_lines.append(
-            f"Pattern history 20 tx vendor '{party_name}':"
-        )
+        ctx_lines.append(f"Pattern history 20 tx vendor '{party_name}':")
         for desc, cat in vendor_pattern:
             ctx_lines.append(f"  - {desc} → {cat}")
 
@@ -151,14 +151,10 @@ async def run(
         price = it.get("unit_price")
         qty_str = f"{qty} {unit}".strip() if qty else ""
         price_str = f"@ Rp {price}" if price else ""
-        items_lines.append(
-            f"[{i}] {desc} {qty_str} {price_str}".strip()
-        )
+        items_lines.append(f"[{i}] {desc} {qty_str} {price_str}".strip())
     items_block = "\n".join(items_lines)
 
-    cats_block = "\n".join(
-        f"- ID {cid}: {name} ({ctype.value})" for cid, name, ctype in cats
-    )
+    cats_block = "\n".join(f"- ID {cid}: {name} ({ctype.value})" for cid, name, ctype in cats)
 
     ctx_block = "\n".join(ctx_lines)
 
@@ -171,8 +167,12 @@ async def run(
     )
 
     resp = await chat(
-        db, user_id=user_id, feature="ai:categorize_items",
-        system=p.system, prompt=prompt, json_schema=SCHEMA,
+        db,
+        user_id=user_id,
+        feature="ai:categorize_items",
+        system=p.system,
+        prompt=prompt,
+        json_schema=SCHEMA,
         feature_key="categorize_items",
     )
     structured = resp.structured or {"items": []}
@@ -197,13 +197,18 @@ async def run(
     # Pastikan semua items punya output (kalau AI lupa some, fill blank)
     enriched: list[dict] = []
     for i in range(len(items)):
-        enriched.append(out_by_idx.get(i, {
-            "index": i,
-            "category_id": None,
-            "category_name": None,
-            "confidence": 0,
-            "reason": "AI tdk return suggestion utk item ini.",
-        }))
+        enriched.append(
+            out_by_idx.get(
+                i,
+                {
+                    "index": i,
+                    "category_id": None,
+                    "category_name": None,
+                    "confidence": 0,
+                    "reason": "AI tdk return suggestion utk item ini.",
+                },
+            )
+        )
 
     return {
         "items": enriched,

@@ -4,12 +4,13 @@ Tampilkan realisasi anggaran per-proyek (+ optional per-category
 breakdown). Pakai `services.budget.budget_status` supaya threshold
 status (aman/mendekati_batas/overbudget) konsisten dgn Dashboard.
 """
+
 from __future__ import annotations
 
 from datetime import date as date_type
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,6 +49,7 @@ class BudgetRow(BaseModel):
 
 class BudgetCategoryRow(BaseModel):
     """Spending per kategori (untuk drilldown 1 proyek)."""
+
     project_id: int
     category_id: int | None
     category_name: str
@@ -110,9 +112,14 @@ async def budget_summary(
             return BudgetSummaryResponse(
                 rows=[],
                 totals=BudgetTotals(
-                    budget=Decimal("0"), spent=Decimal("0"),
-                    remaining=Decimal("0"), usage_pct=Decimal("0"),
-                    n_aman=0, n_mendekati=0, n_overbudget=0, n_no_budget=0,
+                    budget=Decimal("0"),
+                    spent=Decimal("0"),
+                    remaining=Decimal("0"),
+                    usage_pct=Decimal("0"),
+                    n_aman=0,
+                    n_mendekati=0,
+                    n_overbudget=0,
+                    n_no_budget=0,
                 ),
             )
         stmt = stmt.where(Project.id.in_(pids))
@@ -143,6 +150,7 @@ async def budget_summary(
         if date_to:
             spend_q = spend_q.where(Transaction.tx_date <= date_to)
         spent = Decimal((await db.execute(spend_q)).scalar_one() or 0)
+
         # Audit 2026-05-23: exclude marketing + bagi hasil dr budget.
         # SUM TX OUT ACTIVE dgn category flag relevan.
         def _flag_sum(flag_col):
@@ -162,10 +170,14 @@ async def budget_summary(
             if date_to:
                 q = q.where(Transaction.tx_date <= date_to)
             return q
+
         mkt_actual = Decimal((await db.execute(_flag_sum(Category.is_marketing))).scalar_one() or 0)
-        ps_actual = Decimal((await db.execute(_flag_sum(Category.is_profit_share))).scalar_one() or 0)
+        ps_actual = Decimal(
+            (await db.execute(_flag_sum(Category.is_profit_share))).scalar_one() or 0
+        )
         bs = budget_status(
-            p, spent,
+            p,
+            spent,
             marketing_actual=mkt_actual,
             profit_share_actual=ps_actual,
         )
@@ -177,22 +189,25 @@ async def budget_summary(
                 company_name = company_cache[p.company_id]
             else:
                 from app.models.models import Company
+
                 co = await db.get(Company, p.company_id)
                 if co:
                     company_name = co.name
                     company_cache[p.company_id] = co.name
 
-        rows.append(BudgetRow(
-            project_id=p.id,
-            project_code=p.code,
-            project_name=p.name,
-            company_name=company_name,
-            budget_amount=bs["budget_amount"],
-            spent=bs["spent"],
-            remaining=bs["remaining"],
-            usage_pct=bs["usage_pct"],
-            status=bs["status"],
-        ))
+        rows.append(
+            BudgetRow(
+                project_id=p.id,
+                project_code=p.code,
+                project_name=p.name,
+                company_name=company_name,
+                budget_amount=bs["budget_amount"],
+                spent=bs["spent"],
+                remaining=bs["remaining"],
+                usage_pct=bs["usage_pct"],
+                status=bs["status"],
+            )
+        )
 
     # 3) Totals
     total_budget = sum((r.budget_amount for r in rows), Decimal("0"))
@@ -200,7 +215,8 @@ async def budget_summary(
     total_remaining = total_budget - total_spent
     total_pct = (
         (total_spent / total_budget * Decimal("100")).quantize(Decimal("0.01"))
-        if total_budget > 0 else Decimal("0")
+        if total_budget > 0
+        else Decimal("0")
     )
     totals = BudgetTotals(
         budget=total_budget,
@@ -249,18 +265,25 @@ async def budget_summary(
             sval = Decimal(spent_val or 0)
             pct = (
                 (sval / project_spent * Decimal("100")).quantize(Decimal("0.01"))
-                if project_spent > 0 else Decimal("0")
+                if project_spent > 0
+                else Decimal("0")
             )
-            by_category.append(BudgetCategoryRow(
-                project_id=pid,
-                category_id=cid,
-                category_name=cat_names.get(cid, "(Tanpa kategori)") if cid else "(Tanpa kategori)",
-                spent=sval,
-                pct_of_project_spent=pct,
-            ))
+            by_category.append(
+                BudgetCategoryRow(
+                    project_id=pid,
+                    category_id=cid,
+                    category_name=cat_names.get(cid, "(Tanpa kategori)")
+                    if cid
+                    else "(Tanpa kategori)",
+                    spent=sval,
+                    pct_of_project_spent=pct,
+                )
+            )
         # Sort desc by spent
         by_category.sort(key=lambda x: x.spent, reverse=True)
 
     return BudgetSummaryResponse(
-        rows=rows, totals=totals, by_category=by_category,
+        rows=rows,
+        totals=totals,
+        by_category=by_category,
     )

@@ -17,10 +17,11 @@ Existing OCR (services/ocr/) berdiri sendiri utk sekarang -- migrasi ke
 services/ai/ di masa depan kalau ada nilai (saat ini OCR sudah established).
 """
 
-from app.services.ai.llm import LLMResponse, chat
-from app.services.ai.cache import lookup as cache_lookup, store as cache_store
-from app.services.ai.rate_limit import get_limiter
 from app.services.ai.audit import log_call
+from app.services.ai.cache import lookup as cache_lookup
+from app.services.ai.cache import store as cache_store
+from app.services.ai.llm import LLMResponse, chat
+from app.services.ai.rate_limit import get_limiter
 
 __all__ = [
     "LLMResponse",

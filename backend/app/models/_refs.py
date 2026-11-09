@@ -4,15 +4,14 @@ Audit 2026-05-22 #M1: split dari models.py (1072 baris). Class-class
 di sini bisa pakai string forward-ref ("OtherClass") utk relationship
 ke modul lain -- SQLAlchemy resolve via Base.registry.
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
-    JSON,
     Boolean,
-    CheckConstraint,
     Date,
     DateTime,
     Enum,
@@ -77,8 +76,12 @@ class Project(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # budget control
-    project_value: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))   # nilai proyek (kontrak/SPK)
-    budget_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))   # target pengeluaran (default 70% project_value)
+    project_value: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), default=Decimal("0")
+    )  # nilai proyek (kontrak/SPK)
+    budget_amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), default=Decimal("0")
+    )  # target pengeluaran (default 70% project_value)
     currency: Mapped[str] = mapped_column(String(8), default="IDR")
     overbudget_tolerance_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"))
 
@@ -97,11 +100,12 @@ class Project(TimestampMixin, Base):
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     company: Mapped[Company] = relationship(back_populates="projects")
-    user_links: Mapped[list["ProjectUser"]] = relationship(
+    user_links: Mapped[list[ProjectUser]] = relationship(
         back_populates="project", cascade="all,delete-orphan"
     )
-    attachments: Mapped[list["ProjectAttachment"]] = relationship(
-        back_populates="project", cascade="all,delete-orphan",
+    attachments: Mapped[list[ProjectAttachment]] = relationship(
+        back_populates="project",
+        cascade="all,delete-orphan",
         order_by="ProjectAttachment.id",
     )
 
@@ -109,13 +113,16 @@ class Project(TimestampMixin, Base):
 class ProjectAttachment(TimestampMixin, Base):
     """Lampiran dokumen proyek (kontrak, surat penunjukan, BAST, dll).
     Opsional, bisa banyak per proyek."""
+
     __tablename__ = "project_attachments"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
     )
-    label: Mapped[str | None] = mapped_column(String(100), nullable=True)  # judul bebas: "Kontrak no. xxx", dll
+    label: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )  # judul bebas: "Kontrak no. xxx", dll
     # Kategorisasi dokumen utk audit (SPK/BAST/dll). Disimpan sbg string
     # supaya bisa nambah enum value tanpa migration. Nullable utk dok lama.
     doc_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
@@ -147,6 +154,7 @@ class NonProjectYearSetting(TimestampMixin, Base):
     - Tahun yg belum ada baris di tabel ini -> default OFF (tidak masuk)
     - Modify setting hanya boleh SUPERADMIN (audit-sensitive).
     """
+
     __tablename__ = "non_project_year_settings"
     __table_args__ = (
         UniqueConstraint("company_id", "year", name="uq_non_project_year"),
@@ -175,8 +183,8 @@ class ProjectUser(TimestampMixin, Base):
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
 
-    project: Mapped["Project"] = relationship(back_populates="user_links")
-    user: Mapped["User"] = relationship(back_populates="project_links")
+    project: Mapped[Project] = relationship(back_populates="user_links")
+    user: Mapped[User] = relationship(back_populates="project_links")
 
 
 class Category(TimestampMixin, Base):
@@ -196,13 +204,22 @@ class Category(TimestampMixin, Base):
     #   - is_profit_share: TX bagi hasil. Sama dgn penalty -- masuk budget
     #     bar tapi display terpisah.
     is_marketing: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, server_default="0",
+        Boolean,
+        default=False,
+        nullable=False,
+        server_default="0",
     )
     is_penalty: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, server_default="0",
+        Boolean,
+        default=False,
+        nullable=False,
+        server_default="0",
     )
     is_profit_share: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, server_default="0",
+        Boolean,
+        default=False,
+        nullable=False,
+        server_default="0",
     )
 
 

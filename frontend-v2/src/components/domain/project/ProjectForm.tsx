@@ -12,7 +12,7 @@
 import { useEffect } from "react"
 import { Controller, useForm } from "react-hook-form"
 import { Loader2 } from "lucide-react"
-import { Link as RouterLink } from "react-router-dom"
+import { Link as RouterLink } from "react-router"
 import { z } from "zod"
 import {
   useCreateProject,

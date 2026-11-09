@@ -9,12 +9,14 @@ Cover happy path:
 Tidak pakai HTTP layer -- panggil endpoint function langsung dgn db
 fixture. Cukup utk regression invariant utama.
 """
+
 from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
 
 import pytest
+from fastapi import HTTPException
 
 from app.api.v1.cash_requests import (
     approve_cash_request,
@@ -35,7 +37,6 @@ from app.models.models import (
     User,
     UserRole,
 )
-from fastapi import HTTPException
 from app.schemas.cash_requests import (
     CashRequestCreate,
     CashRequestItemIn,
@@ -44,21 +45,31 @@ from app.schemas.cash_requests import (
 
 
 async def _seed(db):
-    co = Company(name="C1"); db.add(co); await db.flush()
+    co = Company(name="C1")
+    db.add(co)
+    await db.flush()
     proj = Project(
-        code="P1", name="Proj 1", company_id=co.id,
+        code="P1",
+        name="Proj 1",
+        company_id=co.id,
         status=ProjectStatus.AKTIF,
     )
-    db.add(proj); await db.flush()
+    db.add(proj)
+    await db.flush()
     requester = User(
-        name="Mandor", email="mandor@x", password_hash="x",
+        name="Mandor",
+        email="mandor@x",
+        password_hash="x",
         role=UserRole.PROJECT_ADMIN,
     )
     admin = User(
-        name="CentralAdm", email="ca@x", password_hash="x",
+        name="CentralAdm",
+        email="ca@x",
+        password_hash="x",
         role=UserRole.CENTRAL_ADMIN,
     )
-    db.add_all([requester, admin]); await db.flush()
+    db.add_all([requester, admin])
+    await db.flush()
     # PROJECT_ADMIN tdk punya global access -- assign ke proyek lewat
     # ProjectUser supaya ensure_project_access lulus.
     db.add(ProjectUser(project_id=proj.id, user_id=requester.id))
@@ -116,7 +127,8 @@ async def test_reject_blocks_tx_creation(db):
     rejected = await reject_cash_request(
         cr_id=out.id,
         payload=CashRequestRejectIn(reason="Bukan prioritas"),
-        db=db, admin=admin,
+        db=db,
+        admin=admin,
     )
     assert rejected.status == CashRequestStatus.REJECTED.value
     assert rejected.rejection_reason == "Bukan prioritas"
@@ -127,10 +139,13 @@ async def test_reject_blocks_tx_creation(db):
 async def test_approve_uses_recipient_when_set(db):
     _, proj, requester, admin = await _seed(db)
     recipient = User(
-        name="Mandor B", email="mb@x", password_hash="x",
+        name="Mandor B",
+        email="mb@x",
+        password_hash="x",
         role=UserRole.PROJECT_ADMIN,
     )
-    db.add(recipient); await db.flush()
+    db.add(recipient)
+    await db.flush()
     payload = CashRequestCreate(
         project_id=proj.id,
         recipient_user_id=recipient.id,
@@ -157,11 +172,14 @@ async def test_cannot_request_against_non_project(db):
     SUPERADMIN tetap di-block di endpoint explicit NP-check (400)."""
     co, _, requester, _admin = await _seed(db)
     np_proj = Project(
-        code=f"NON-PROJECT-{co.id}", name="Catatan Non-Proyek",
-        company_id=co.id, status=ProjectStatus.AKTIF,
+        code=f"NON-PROJECT-{co.id}",
+        name="Catatan Non-Proyek",
+        company_id=co.id,
+        status=ProjectStatus.AKTIF,
         kind=ProjectKind.NON_PROJECT.value,
     )
-    db.add(np_proj); await db.flush()
+    db.add(np_proj)
+    await db.flush()
     db.add(ProjectUser(project_id=np_proj.id, user_id=requester.id))
     await db.flush()
 
@@ -181,10 +199,13 @@ async def test_cannot_request_against_non_project(db):
     # SUPERADMIN -> 400 cannot_request_against_non_project (visible tapi
     # tetap reject scopa pengajuan ke NP).
     super_user = User(
-        name="Super", email="su@x", password_hash="x",
+        name="Super",
+        email="su@x",
+        password_hash="x",
         role=UserRole.SUPERADMIN,
     )
-    db.add(super_user); await db.flush()
+    db.add(super_user)
+    await db.flush()
     with pytest.raises(HTTPException) as exc2:
         await create_cash_request(payload=payload, db=db, user=super_user)
     assert exc2.value.status_code == 400

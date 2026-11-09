@@ -3,9 +3,10 @@
 Audit 2026-05-23: bug user lapor -- `PO/2026/05/GEO1/0001 already exists`
 saat scan-and-save di company B karena company A pernah pakai number itu.
 """
+
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date
 from decimal import Decimal
 
 import pytest
@@ -14,11 +15,10 @@ from app.api.v1.purchase_orders import _next_po_number
 from app.core.security import hash_password
 from app.models.models import (
     Company,
-    POItem,
+    POStatus,
     Project,
     ProjectKind,
     ProjectStatus,
-    POStatus,
     PurchaseOrder,
     User,
     UserRole,
@@ -26,16 +26,18 @@ from app.models.models import (
 
 
 async def _make_user(db):
-    u = User(email="x@x", name="X", password_hash=hash_password("x"),
-             role=UserRole.SUPERADMIN)
-    db.add(u); await db.flush()
+    u = User(email="x@x", name="X", password_hash=hash_password("x"), role=UserRole.SUPERADMIN)
+    db.add(u)
+    await db.flush()
     return u
 
 
 @pytest.mark.asyncio
 async def test_next_po_number_starts_at_0001(db):
-    u = await _make_user(db)
-    co = Company(name="C1"); db.add(co); await db.flush()
+    await _make_user(db)
+    co = Company(name="C1")
+    db.add(co)
+    await db.flush()
     n = await _next_po_number(db, co.id, "PRJ1", date(2026, 5, 22))
     assert n == "PO/2026/05/PRJ1/0001"
 
@@ -43,18 +45,31 @@ async def test_next_po_number_starts_at_0001(db):
 @pytest.mark.asyncio
 async def test_next_po_number_increments_max_sequence(db):
     u = await _make_user(db)
-    co = Company(name="C1"); db.add(co); await db.flush()
-    p = Project(code="PRJ", name="P", company_id=co.id,
-                status=ProjectStatus.AKTIF, kind=ProjectKind.REGULAR.value)
-    db.add(p); await db.flush()
+    co = Company(name="C1")
+    db.add(co)
+    await db.flush()
+    p = Project(
+        code="PRJ",
+        name="P",
+        company_id=co.id,
+        status=ProjectStatus.AKTIF,
+        kind=ProjectKind.REGULAR.value,
+    )
+    db.add(p)
+    await db.flush()
     # Buat 3 PO
     for seq in (1, 2, 3):
-        db.add(PurchaseOrder(
-            number=f"PO/2026/05/PRJ/{seq:04d}",
-            project_id=p.id, company_id=co.id,
-            po_date=date(2026, 5, 22), total=Decimal("100"),
-            status=POStatus.DRAFT, created_by_id=u.id,
-        ))
+        db.add(
+            PurchaseOrder(
+                number=f"PO/2026/05/PRJ/{seq:04d}",
+                project_id=p.id,
+                company_id=co.id,
+                po_date=date(2026, 5, 22),
+                total=Decimal("100"),
+                status=POStatus.DRAFT,
+                created_by_id=u.id,
+            )
+        )
     await db.commit()
     n = await _next_po_number(db, co.id, "PRJ", date(2026, 5, 22))
     assert n == "PO/2026/05/PRJ/0004"
@@ -64,18 +79,31 @@ async def test_next_po_number_increments_max_sequence(db):
 async def test_next_po_number_skips_gaps(db):
     """Kalau PO/0001 di-hard-delete (rare), max=0003 -> next=0004 (bukan 0002)."""
     u = await _make_user(db)
-    co = Company(name="C1"); db.add(co); await db.flush()
-    p = Project(code="PRJ", name="P", company_id=co.id,
-                status=ProjectStatus.AKTIF, kind=ProjectKind.REGULAR.value)
-    db.add(p); await db.flush()
+    co = Company(name="C1")
+    db.add(co)
+    await db.flush()
+    p = Project(
+        code="PRJ",
+        name="P",
+        company_id=co.id,
+        status=ProjectStatus.AKTIF,
+        kind=ProjectKind.REGULAR.value,
+    )
+    db.add(p)
+    await db.flush()
     # PO 0002 & 0003 exist (anggap 0001 dihapus)
     for seq in (2, 3):
-        db.add(PurchaseOrder(
-            number=f"PO/2026/05/PRJ/{seq:04d}",
-            project_id=p.id, company_id=co.id,
-            po_date=date(2026, 5, 22), total=Decimal("100"),
-            status=POStatus.DRAFT, created_by_id=u.id,
-        ))
+        db.add(
+            PurchaseOrder(
+                number=f"PO/2026/05/PRJ/{seq:04d}",
+                project_id=p.id,
+                company_id=co.id,
+                po_date=date(2026, 5, 22),
+                total=Decimal("100"),
+                status=POStatus.DRAFT,
+                created_by_id=u.id,
+            )
+        )
     await db.commit()
     n = await _next_po_number(db, co.id, "PRJ", date(2026, 5, 22))
     assert n == "PO/2026/05/PRJ/0004"
@@ -94,18 +122,31 @@ async def test_next_po_number_handles_cross_company_collision(db):
     Fix: scan lintas-company.
     """
     u = await _make_user(db)
-    co_a = Company(name="A"); co_b = Company(name="B")
-    db.add_all([co_a, co_b]); await db.flush()
-    p = Project(code="GEO1", name="Geo", company_id=co_a.id,
-                status=ProjectStatus.AKTIF, kind=ProjectKind.REGULAR.value)
-    db.add(p); await db.flush()
+    co_a = Company(name="A")
+    co_b = Company(name="B")
+    db.add_all([co_a, co_b])
+    await db.flush()
+    p = Project(
+        code="GEO1",
+        name="Geo",
+        company_id=co_a.id,
+        status=ProjectStatus.AKTIF,
+        kind=ProjectKind.REGULAR.value,
+    )
+    db.add(p)
+    await db.flush()
     # PO existing dibuat dgn company A
-    db.add(PurchaseOrder(
-        number="PO/2026/05/GEO1/0001",
-        project_id=p.id, company_id=co_a.id,
-        po_date=date(2026, 5, 22), total=Decimal("100"),
-        status=POStatus.DRAFT, created_by_id=u.id,
-    ))
+    db.add(
+        PurchaseOrder(
+            number="PO/2026/05/GEO1/0001",
+            project_id=p.id,
+            company_id=co_a.id,
+            po_date=date(2026, 5, 22),
+            total=Decimal("100"),
+            status=POStatus.DRAFT,
+            created_by_id=u.id,
+        )
+    )
     await db.commit()
 
     # User submit PO baru dgn company B (project sama)
@@ -119,18 +160,32 @@ async def test_next_po_number_handles_cross_company_collision(db):
 async def test_next_po_number_includes_soft_deleted(db):
     """Soft-deleted PO tetap counted (number tdk recycled)."""
     u = await _make_user(db)
-    co = Company(name="C"); db.add(co); await db.flush()
-    p = Project(code="PRJ", name="P", company_id=co.id,
-                status=ProjectStatus.AKTIF, kind=ProjectKind.REGULAR.value)
-    db.add(p); await db.flush()
-    from datetime import datetime, timezone
-    db.add(PurchaseOrder(
-        number="PO/2026/05/PRJ/0001",
-        project_id=p.id, company_id=co.id,
-        po_date=date(2026, 5, 22), total=Decimal("100"),
-        status=POStatus.CANCELLED, created_by_id=u.id,
-        deleted_at=datetime.now(timezone.utc),
-    ))
+    co = Company(name="C")
+    db.add(co)
+    await db.flush()
+    p = Project(
+        code="PRJ",
+        name="P",
+        company_id=co.id,
+        status=ProjectStatus.AKTIF,
+        kind=ProjectKind.REGULAR.value,
+    )
+    db.add(p)
+    await db.flush()
+    from datetime import datetime
+
+    db.add(
+        PurchaseOrder(
+            number="PO/2026/05/PRJ/0001",
+            project_id=p.id,
+            company_id=co.id,
+            po_date=date(2026, 5, 22),
+            total=Decimal("100"),
+            status=POStatus.CANCELLED,
+            created_by_id=u.id,
+            deleted_at=datetime.now(UTC),
+        )
+    )
     await db.commit()
     n = await _next_po_number(db, co.id, "PRJ", date(2026, 5, 22))
     assert n == "PO/2026/05/PRJ/0002"

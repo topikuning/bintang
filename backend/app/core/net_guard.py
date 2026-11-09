@@ -34,9 +34,9 @@ class BlockedURL(ValueError):
 def _ip_is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     """Tolak semua yang bukan alamat publik routable."""
     return (
-        ip.is_private          # 10/8, 172.16/12, 192.168/16, fc00::/7
-        or ip.is_loopback      # 127/8, ::1
-        or ip.is_link_local    # 169.254/16 -- metadata cloud AWS/GCP/Azure
+        ip.is_private  # 10/8, 172.16/12, 192.168/16, fc00::/7
+        or ip.is_loopback  # 127/8, ::1
+        or ip.is_link_local  # 169.254/16 -- metadata cloud AWS/GCP/Azure
         or ip.is_multicast
         or ip.is_reserved
         or ip.is_unspecified

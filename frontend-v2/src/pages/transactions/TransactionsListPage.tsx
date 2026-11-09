@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useSearchParams } from "react-router"
 import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Plus, Search, Wallet, X } from "lucide-react"
 import { useTransaction, useTransactions, type TransactionListParams } from "@/hooks/useTransactions"
 import { useProjects } from "@/hooks/useProjects"
@@ -68,6 +68,15 @@ export function TransactionsListPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Transaction | null>(null)
+
+  useEffect(() => {
+    if (searchParams.get("new") !== "1") return
+    setEditTarget(null)
+    setFormOpen(true)
+    const next = new URLSearchParams(searchParams)
+    next.delete("new")
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
 
   // Deep link: ?id=N auto-open detail. Pakai pattern sama dgn POListPage
   // dan InvoicesListPage -- baca sekali di mount, strip dari URL supaya

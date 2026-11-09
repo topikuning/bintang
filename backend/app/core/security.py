@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import bcrypt
@@ -22,7 +22,7 @@ def create_access_token(subject: str | int, extra: dict[str, Any] | None = None)
     """Issue JWT. Selalu include `iat` (issued at) supaya revocation
     server-side bisa check 'invalidate all tokens issued before X' --
     lihat User.tokens_revoked_after di get_current_user."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     payload: dict[str, Any] = {
         "sub": str(subject),

@@ -28,13 +28,11 @@ from app.models.models import (
     TxnStatus,
     TxnType,
     User,
-    UserRole,
 )
 from app.services.budget import (
     budget_status,
     health_status,
     project_expense_breakdown,
-    project_marketing_actual,
     project_totals,
 )
 from app.services.non_project import transaction_eligibility_clause
@@ -107,8 +105,8 @@ def _project_finance_breakdown(
     # Bagi hasil JANGAN kurangi profit operating (audit user req).
     biaya_excl_share = max(biaya_aktual - profit_share_used, Decimal("0"))
 
-    profit_now = cair - biaya_excl_share          # operating, sebelum bagi hasil
-    profit_net = cair - biaya_aktual              # net, setelah bagi hasil
+    profit_now = cair - biaya_excl_share  # operating, sebelum bagi hasil
+    profit_net = cair - biaya_aktual  # net, setelah bagi hasil
     marketing_reserve = max(marketing_budget, marketing_used)
     profit_proj = cair - marketing_reserve - biaya_proyeksi
 
@@ -130,8 +128,8 @@ def _project_finance_breakdown(
         "biaya_aktual_non_marketing": float(biaya_aktual_non_marketing),
         "biaya_proyeksi": float(biaya_proyeksi),
         # Profit fields:
-        "profit_now": float(profit_now),                # operating
-        "profit_net": float(profit_net),                # after profit_share
+        "profit_now": float(profit_now),  # operating
+        "profit_net": float(profit_net),  # after profit_share
         "profit_share_paid": float(profit_share_used),  # info distribusi
         "profit_proj": float(profit_proj),
     }
@@ -230,12 +228,16 @@ async def global_dashboard(
         from app.models.models import ProjectUser as _PU
         from app.models.models import User as _User
         from app.models.models import UserRole as _UR
-        proj_q = proj_q.join(_PU, _PU.project_id == Project.id).join(
-            _User, _User.id == _PU.user_id
-        ).where(
-            _PU.user_id.in_(funder_id),
-            _User.role == _UR.EXECUTIVE,
-        ).distinct()
+
+        proj_q = (
+            proj_q.join(_PU, _PU.project_id == Project.id)
+            .join(_User, _User.id == _PU.user_id)
+            .where(
+                _PU.user_id.in_(funder_id),
+                _User.role == _UR.EXECUTIVE,
+            )
+            .distinct()
+        )
     projects = (await db.execute(proj_q)).scalars().all()
     project_ids = [p.id for p in projects]
 
@@ -276,23 +278,35 @@ async def global_dashboard(
         monthly_q = (
             select(
                 _ym_expr().label("ym"),
-                func.coalesce(func.sum(case((Transaction.type == TxnType.IN, Transaction.amount), else_=0)), 0).label("in_"),
-                func.coalesce(func.sum(case((Transaction.type == TxnType.OUT, Transaction.amount), else_=0)), 0).label("out_"),
+                func.coalesce(
+                    func.sum(case((Transaction.type == TxnType.IN, Transaction.amount), else_=0)), 0
+                ).label("in_"),
+                func.coalesce(
+                    func.sum(case((Transaction.type == TxnType.OUT, Transaction.amount), else_=0)),
+                    0,
+                ).label("out_"),
             )
             .select_from(Transaction)
             .join(Project, Project.id == Transaction.project_id)
             .where(*monthly_filters, elig_clause)
-            .group_by("ym").order_by("ym")
+            .group_by("ym")
+            .order_by("ym")
         )
     else:
         monthly_q = (
             select(
                 _ym_expr().label("ym"),
-                func.coalesce(func.sum(case((Transaction.type == TxnType.IN, Transaction.amount), else_=0)), 0).label("in_"),
-                func.coalesce(func.sum(case((Transaction.type == TxnType.OUT, Transaction.amount), else_=0)), 0).label("out_"),
+                func.coalesce(
+                    func.sum(case((Transaction.type == TxnType.IN, Transaction.amount), else_=0)), 0
+                ).label("in_"),
+                func.coalesce(
+                    func.sum(case((Transaction.type == TxnType.OUT, Transaction.amount), else_=0)),
+                    0,
+                ).label("out_"),
             )
             .where(*monthly_filters)
-            .group_by("ym").order_by("ym")
+            .group_by("ym")
+            .order_by("ym")
         )
     rows = (await db.execute(monthly_q)).all()
     monthly = [{"month": r.ym, "in": float(r.in_), "out": float(r.out_)} for r in rows[-12:]]
@@ -304,10 +318,14 @@ async def global_dashboard(
         pending_count, pending_total = 0, Decimal("0")
         unlinked_out_count, unlinked_out_total = 0, Decimal("0")
     else:
-        overdue_count_q = select(func.count()).select_from(Invoice).where(
-            Invoice.project_id.in_(operational_project_ids),
-            Invoice.status == InvoiceStatus.OVERDUE,
-            Invoice.deleted_at.is_(None),
+        overdue_count_q = (
+            select(func.count())
+            .select_from(Invoice)
+            .where(
+                Invoice.project_id.in_(operational_project_ids),
+                Invoice.status == InvoiceStatus.OVERDUE,
+                Invoice.deleted_at.is_(None),
+            )
         )
         overdue_count = (await db.execute(overdue_count_q)).scalar_one()
 
@@ -357,15 +375,20 @@ async def global_dashboard(
         # bagi hasil (keduanya bukan biaya operasi).
         exp_brk = await project_expense_breakdown(db, p.id)
         bs = budget_status(
-            p, totals["total_out"],
+            p,
+            totals["total_out"],
             marketing_actual=exp_brk["marketing"],
             profit_share_actual=exp_brk["profit_share"],
         )
         # any overdue invoice for this project?
-        ovq = select(func.count()).select_from(Invoice).where(
-            Invoice.project_id == p.id,
-            Invoice.status == InvoiceStatus.OVERDUE,
-            Invoice.deleted_at.is_(None),
+        ovq = (
+            select(func.count())
+            .select_from(Invoice)
+            .where(
+                Invoice.project_id == p.id,
+                Invoice.status == InvoiceStatus.OVERDUE,
+                Invoice.deleted_at.is_(None),
+            )
         )
         has_overdue = ((await db.execute(ovq)).scalar_one() or 0) > 0
         hs = health_status(totals["balance"], has_overdue)
@@ -378,29 +401,33 @@ async def global_dashboard(
         if engaged > biggest["total"]:
             biggest = {"id": p.id, "name": p.name, "total": engaged}
 
-        proj_summary.append({
-            "id": p.id,
-            "code": p.code,
-            "name": p.name,
-            "company": company_map.get(p.company_id).name if company_map.get(p.company_id) else None,
-            "status": p.status.value,
-            "currency": p.currency,
-            "total_in": float(totals["total_in"]),
-            "total_out": float(totals["total_out"]),
-            "balance": float(totals["balance"]),
-            "pending_in": float(totals["pending_in"]),
-            "pending_out": float(totals["pending_out"]),
-            "budget": {
-                "amount": float(bs["budget_amount"]),
-                "spent": float(bs["spent"]),
-                "spent_total": float(bs.get("spent_total", bs["spent"])),
-                "marketing_actual": float(bs.get("marketing_actual", 0)),
-                "remaining": float(bs["remaining"]),
-                "usage_pct": float(bs["usage_pct"]),
-                "status": bs["status"],
-            },
-            "health": hs,
-        })
+        proj_summary.append(
+            {
+                "id": p.id,
+                "code": p.code,
+                "name": p.name,
+                "company": company_map.get(p.company_id).name
+                if company_map.get(p.company_id)
+                else None,
+                "status": p.status.value,
+                "currency": p.currency,
+                "total_in": float(totals["total_in"]),
+                "total_out": float(totals["total_out"]),
+                "balance": float(totals["balance"]),
+                "pending_in": float(totals["pending_in"]),
+                "pending_out": float(totals["pending_out"]),
+                "budget": {
+                    "amount": float(bs["budget_amount"]),
+                    "spent": float(bs["spent"]),
+                    "spent_total": float(bs.get("spent_total", bs["spent"])),
+                    "marketing_actual": float(bs.get("marketing_actual", 0)),
+                    "remaining": float(bs["remaining"]),
+                    "usage_pct": float(bs["usage_pct"]),
+                    "status": bs["status"],
+                },
+                "health": hs,
+            }
+        )
 
     proj_summary.sort(key=lambda x: x["balance"])
 
@@ -450,11 +477,9 @@ async def global_dashboard(
     for name, total in cat_rows_inv:
         cat_totals[name] = cat_totals.get(name, 0.0) + float(total)
     spending_by_category = sorted(
-        [
-            {"category": (n or "Tanpa Kategori"), "total": v}
-            for n, v in cat_totals.items() if v > 0
-        ],
-        key=lambda x: x["total"], reverse=True,
+        [{"category": (n or "Tanpa Kategori"), "total": v} for n, v in cat_totals.items() if v > 0],
+        key=lambda x: x["total"],
+        reverse=True,
     )
 
     # spending by project (OUT, verified) -- already collected via proj_summary.
@@ -478,13 +503,15 @@ async def global_dashboard(
         warnings.append(f"{overdue_count} invoice overdue")
     # Audit 2026-05-24: budget warning hanya utk operational project.
     over_budget = [
-        p for p in proj_summary
+        p
+        for p in proj_summary
         if p["budget"]["status"] == "overbudget" and p["id"] in operational_set
     ]
     if over_budget:
         warnings.append(f"{len(over_budget)} proyek overbudget")
     near_budget = [
-        p for p in proj_summary
+        p
+        for p in proj_summary
         if p["budget"]["status"] == "mendekati_batas" and p["id"] in operational_set
     ]
     if near_budget:
@@ -492,7 +519,11 @@ async def global_dashboard(
     if pending_count:
         warnings.append(f"{pending_count} transaksi belum diverifikasi")
     if unlinked_out_count:
-        warnings.append(f"{unlinked_out_count} pengeluaran masih punya sisa belum dialokasi (Rp{unlinked_out_total:,.0f})".replace(",", "."))
+        warnings.append(
+            f"{unlinked_out_count} pengeluaran masih punya sisa belum dialokasi (Rp{unlinked_out_total:,.0f})".replace(
+                ",", "."
+            )
+        )
 
     active = sum(1 for p in projects if p.status == ProjectStatus.AKTIF)
 
@@ -508,8 +539,13 @@ async def global_dashboard(
     if np_pids and elig_clause is not None:
         np_totals_q = (
             select(
-                func.coalesce(func.sum(case((Transaction.type == TxnType.IN, Transaction.amount), else_=0)), 0),
-                func.coalesce(func.sum(case((Transaction.type == TxnType.OUT, Transaction.amount), else_=0)), 0),
+                func.coalesce(
+                    func.sum(case((Transaction.type == TxnType.IN, Transaction.amount), else_=0)), 0
+                ),
+                func.coalesce(
+                    func.sum(case((Transaction.type == TxnType.OUT, Transaction.amount), else_=0)),
+                    0,
+                ),
             )
             .select_from(Transaction)
             .join(Project, Project.id == Transaction.project_id)
@@ -531,10 +567,14 @@ async def global_dashboard(
     # tab "Aktif" tetap tahu "ada N proyek selesai" (utk hint discovery
     # ke tab "Semua"). Honors filter scope yg sama (pids, company, dst)
     # selain status.
-    closed_q = select(func.count()).select_from(Project).where(
-        Project.deleted_at.is_(None),
-        Project.kind != ProjectKind.NON_PROJECT.value,
-        Project.status == ProjectStatus.SELESAI,
+    closed_q = (
+        select(func.count())
+        .select_from(Project)
+        .where(
+            Project.deleted_at.is_(None),
+            Project.kind != ProjectKind.NON_PROJECT.value,
+            Project.status == ProjectStatus.SELESAI,
+        )
     )
     if pids is not None:
         closed_q = closed_q.where(Project.id.in_(pids))
@@ -543,7 +583,9 @@ async def global_dashboard(
     if location:
         closed_q = closed_q.where(func.lower(Project.location).in_([s.lower() for s in location]))
     if client_name:
-        closed_q = closed_q.where(func.lower(Project.client_name).in_([s.lower() for s in client_name]))
+        closed_q = closed_q.where(
+            func.lower(Project.client_name).in_([s.lower() for s in client_name])
+        )
     closed_count = (await db.execute(closed_q)).scalar_one() or 0
 
     return {
@@ -567,7 +609,13 @@ async def global_dashboard(
         "unlinked_out_count": int(unlinked_out_count),
         "unlinked_out_total": float(unlinked_out_total),
         "overdue_invoices": int(overdue_count),
-        "biggest_project": {"id": biggest["id"], "name": biggest["name"], "total": float(biggest["total"])} if biggest["id"] else None,
+        "biggest_project": {
+            "id": biggest["id"],
+            "name": biggest["name"],
+            "total": float(biggest["total"]),
+        }
+        if biggest["id"]
+        else None,
         "top_spender": top_spender,
         "spending_by_project": spending_by_project,
         "spending_by_category": spending_by_category,
@@ -602,7 +650,8 @@ async def project_dashboard(
     expense_breakdown = await project_expense_breakdown(db, pid)
     mkt_actual_for_budget = expense_breakdown["marketing"]
     bs = budget_status(
-        p, totals["total_out"],
+        p,
+        totals["total_out"],
         marketing_actual=mkt_actual_for_budget,
         profit_share_actual=expense_breakdown["profit_share"],
     )
@@ -644,7 +693,9 @@ async def project_dashboard(
     # invoice aggregates
     inv_open_q = select(func.coalesce(func.sum(Invoice.total), 0)).where(
         Invoice.project_id == pid,
-        Invoice.status.in_([InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE]),
+        Invoice.status.in_(
+            [InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE]
+        ),
         Invoice.deleted_at.is_(None),
     )
     inv_paid_q = select(func.coalesce(func.sum(Invoice.total), 0)).where(
@@ -660,16 +711,28 @@ async def project_dashboard(
     # bisa null. Kalau due_date tersedia, pakai due_date. Compute di Python
     # supaya portable (SQLite/Postgres).
     from datetime import date as _date_type
+
     aging_q = select(Invoice).where(
         Invoice.project_id == pid,
-        Invoice.status.in_([InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE]),
+        Invoice.status.in_(
+            [InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE]
+        ),
         Invoice.deleted_at.is_(None),
     )
     aging_invs = (await db.execute(aging_q)).scalars().all()
     today = _date_type.today()
+
     # Format: per-direction (IN=hutang/AP, OUT=piutang/AR), 4 bucket
     def _empty_aging():
-        return {"b0_30": 0.0, "b31_60": 0.0, "b61_90": 0.0, "b90_plus": 0.0, "total": 0.0, "count": 0}
+        return {
+            "b0_30": 0.0,
+            "b31_60": 0.0,
+            "b61_90": 0.0,
+            "b90_plus": 0.0,
+            "total": 0.0,
+            "count": 0,
+        }
+
     ap_aging = _empty_aging()  # IN -> hutang ke vendor
     ar_aging = _empty_aging()  # OUT -> piutang dr klien
     for inv in aging_invs:
@@ -682,9 +745,12 @@ async def project_dashboard(
         # langsung dr Invoice kalau ada method, atau hitung manual.
         outstanding = float(inv.total or 0)  # konservatif: pakai total
         bucket = (
-            "b0_30" if age <= 30
-            else "b31_60" if age <= 60
-            else "b61_90" if age <= 90
+            "b0_30"
+            if age <= 30
+            else "b31_60"
+            if age <= 60
+            else "b61_90"
+            if age <= 90
             else "b90_plus"
         )
         if inv.type == InvoiceType.IN:
@@ -747,26 +813,29 @@ async def project_dashboard(
     for name, total in cat_rows_inv:
         cat_totals[name] = cat_totals.get(name, 0.0) + float(total)
     by_category = sorted(
-        [
-            {"category": (n or "Tanpa Kategori"), "total": v}
-            for n, v in cat_totals.items() if v > 0
-        ],
-        key=lambda x: x["total"], reverse=True,
+        [{"category": (n or "Tanpa Kategori"), "total": v} for n, v in cat_totals.items() if v > 0],
+        key=lambda x: x["total"],
+        reverse=True,
     )
 
     # cashflow monthly
     cash_q = (
         select(
             _ym_expr().label("ym"),
-            func.coalesce(func.sum(case((Transaction.type == TxnType.IN, Transaction.amount), else_=0)), 0).label("in_"),
-            func.coalesce(func.sum(case((Transaction.type == TxnType.OUT, Transaction.amount), else_=0)), 0).label("out_"),
+            func.coalesce(
+                func.sum(case((Transaction.type == TxnType.IN, Transaction.amount), else_=0)), 0
+            ).label("in_"),
+            func.coalesce(
+                func.sum(case((Transaction.type == TxnType.OUT, Transaction.amount), else_=0)), 0
+            ).label("out_"),
         )
         .where(
             Transaction.project_id == pid,
             Transaction.status == TxnStatus.VERIFIED,
             Transaction.deleted_at.is_(None),
         )
-        .group_by("ym").order_by("ym")
+        .group_by("ym")
+        .order_by("ym")
     )
     rows = (await db.execute(cash_q)).all()
     monthly = [{"month": r.ym, "in": float(r.in_), "out": float(r.out_)} for r in rows[-12:]]
@@ -780,9 +849,13 @@ async def project_dashboard(
     recent_rows = (await db.execute(recent_q)).scalars().all()
     recent = [
         {
-            "id": t.id, "date": t.tx_date.isoformat(), "type": t.type.value,
-            "amount": float(t.amount), "party": t.party_name,
-            "description": t.description, "status": t.status.value,
+            "id": t.id,
+            "date": t.tx_date.isoformat(),
+            "type": t.type.value,
+            "amount": float(t.amount),
+            "party": t.party_name,
+            "description": t.description,
+            "status": t.status.value,
         }
         for t in recent_rows
     ]
@@ -810,21 +883,24 @@ async def project_dashboard(
     for inv, paid in inv_rows:
         total = float(inv.total or 0)
         paid_f = float(paid or 0)
-        invoices_list.append({
-            "id": inv.id,
-            "number": inv.number,
-            "type": inv.type.value,
-            "invoice_date": inv.invoice_date.isoformat(),
-            "due_date": inv.due_date.isoformat() if inv.due_date else None,
-            "party_name": inv.party_name,
-            "total": total,
-            "paid_amount": paid_f,
-            "outstanding_amount": max(total - paid_f, 0.0),
-            "status": inv.status.value,
-        })
+        invoices_list.append(
+            {
+                "id": inv.id,
+                "number": inv.number,
+                "type": inv.type.value,
+                "invoice_date": inv.invoice_date.isoformat(),
+                "due_date": inv.due_date.isoformat() if inv.due_date else None,
+                "party_name": inv.party_name,
+                "total": total,
+                "paid_amount": paid_f,
+                "outstanding_amount": max(total - paid_f, 0.0),
+                "status": inv.status.value,
+            }
+        )
 
     # PO list utk section "Purchase Order" di project dashboard
     from app.models.models import PurchaseOrder
+
     po_q = (
         select(PurchaseOrder)
         .where(PurchaseOrder.project_id == pid, PurchaseOrder.deleted_at.is_(None))
@@ -845,17 +921,25 @@ async def project_dashboard(
         for po in po_rows
     ]
 
-    has_overdue = inv_open > 0 and (
-        await db.execute(
-            select(func.count()).select_from(Invoice).where(
-                Invoice.project_id == pid,
-                Invoice.status == InvoiceStatus.OVERDUE,
-                Invoice.deleted_at.is_(None),
+    has_overdue = (
+        inv_open > 0
+        and (
+            await db.execute(
+                select(func.count())
+                .select_from(Invoice)
+                .where(
+                    Invoice.project_id == pid,
+                    Invoice.status == InvoiceStatus.OVERDUE,
+                    Invoice.deleted_at.is_(None),
+                )
             )
-        )
-    ).scalar_one() > 0
+        ).scalar_one()
+        > 0
+    )
     hs = health_status(totals["balance"], has_overdue)
-    ratio = float(totals["total_out"] / totals["total_in"] * 100) if totals["total_in"] > 0 else None
+    ratio = (
+        float(totals["total_out"] / totals["total_in"] * 100) if totals["total_in"] > 0 else None
+    )
 
     # Audit 2026-05-24: utk proyek SELESAI / DIBATALKAN, operational
     # warnings ditekan (snapshot final / sudah selesai). Banner di FE
@@ -874,7 +958,11 @@ async def project_dashboard(
         if pending_count:
             warnings.append(f"{pending_count} transaksi belum diverifikasi")
         if unlinked_out_count:
-            warnings.append(f"{unlinked_out_count} pengeluaran masih punya sisa belum dialokasi (Rp{unlinked_out_total:,.0f})".replace(",", "."))
+            warnings.append(
+                f"{unlinked_out_count} pengeluaran masih punya sisa belum dialokasi (Rp{unlinked_out_total:,.0f})".replace(
+                    ",", "."
+                )
+            )
 
     # Audit 2026-05-23: marketing_aktual reuse expense_breakdown supaya
     # konsisten dgn Biaya Aktual (sama-sama ACTIVE statuses, bukan
@@ -901,8 +989,12 @@ async def project_dashboard(
 
     return {
         "project": {
-            "id": p.id, "code": p.code, "name": p.name, "status": p.status.value,
-            "company_id": p.company_id, "currency": p.currency,
+            "id": p.id,
+            "code": p.code,
+            "name": p.name,
+            "status": p.status.value,
+            "company_id": p.company_id,
+            "currency": p.currency,
         },
         "totals": {
             "in": float(totals["total_in"]),

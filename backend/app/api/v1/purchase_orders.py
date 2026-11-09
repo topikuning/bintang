@@ -1,4 +1,5 @@
-from datetime import date as date_type, datetime, timezone
+from datetime import UTC, datetime
+from datetime import date as date_type
 from decimal import Decimal
 from pathlib import Path
 
@@ -37,7 +38,9 @@ from app.services.pdf.render import html_to_pdf_async, inline_image, render_html
 router = APIRouter()
 
 
-def _compute_totals(items: list[POItem], tax: Decimal, discount: Decimal) -> tuple[Decimal, Decimal]:
+def _compute_totals(
+    items: list[POItem], tax: Decimal, discount: Decimal
+) -> tuple[Decimal, Decimal]:
     subtotal = sum((Decimal(it.unit_price) * Decimal(it.quantity) for it in items), Decimal("0"))
     for it in items:
         it.subtotal = Decimal(it.unit_price) * Decimal(it.quantity)
@@ -45,7 +48,9 @@ def _compute_totals(items: list[POItem], tax: Decimal, discount: Decimal) -> tup
     return subtotal, total
 
 
-async def _next_po_number(db: AsyncSession, company_id: int, project_code: str, when: date_type) -> str:
+async def _next_po_number(
+    db: AsyncSession, company_id: int, project_code: str, when: date_type
+) -> str:
     """Generate nomor PO berikutnya untuk (company, project, year/month).
 
     Audit 2026-05-23 BUG FIX:
@@ -64,14 +69,20 @@ async def _next_po_number(db: AsyncSession, company_id: int, project_code: str, 
     Railway dgn concurrency rendah, MAX+1 + retry sudah cukup.
     """
     prefix = f"PO/{when.year}/{when.month:02d}/{project_code.upper()}/"
-    rows = (await db.execute(
-        select(PurchaseOrder.number).where(
-            PurchaseOrder.number.like(f"{prefix}%"),
+    rows = (
+        (
+            await db.execute(
+                select(PurchaseOrder.number).where(
+                    PurchaseOrder.number.like(f"{prefix}%"),
+                )
+            )
         )
-    )).scalars().all()
+        .scalars()
+        .all()
+    )
     max_seq = 0
     for n in rows:
-        suffix = n[len(prefix):]
+        suffix = n[len(prefix) :]
         # Parse leading digit segment (toleran kalau ada slash/suffix)
         digit_str = ""
         for ch in suffix:
@@ -136,7 +147,9 @@ async def list_pos(
         stmt = stmt.where(PurchaseOrder.po_date <= date_to)
     if q:
         like = f"%{q}%"
-        stmt = stmt.where((PurchaseOrder.number.ilike(like)) | (PurchaseOrder.vendor_name.ilike(like)))
+        stmt = stmt.where(
+            (PurchaseOrder.number.ilike(like)) | (PurchaseOrder.vendor_name.ilike(like))
+        )
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     stmt = (
         stmt.options(selectinload(PurchaseOrder.items))
@@ -150,14 +163,18 @@ async def list_pos(
     vc_map: dict[int, str] = {}
     if vc_ids:
         vc_map = {
-            vid: name for vid, name in (await db.execute(
-                select(VendorClient.id, VendorClient.name)
-                .where(VendorClient.id.in_(vc_ids))
-            )).all()
+            vid: name
+            for vid, name in (
+                await db.execute(
+                    select(VendorClient.id, VendorClient.name).where(VendorClient.id.in_(vc_ids))
+                )
+            ).all()
         }
     return Page(
         items=[_to_out(p, vc_map.get(p.vendor_client_id)) for p in items],
-        total=total, page=page, size=size,
+        total=total,
+        page=page,
+        size=size,
     )
 
 
@@ -172,8 +189,12 @@ async def create_po(
     # Audit 2026-05-24 Phase 1: project-status guard. Helper return
     # project juga -- skip db.get duplikat.
     from app.services.project_guard import assert_project_open
+
     project, forced = await assert_project_open(
-        db, payload.project_id, user=user, force=force,
+        db,
+        payload.project_id,
+        user=user,
+        force=force,
     )
     company = await db.get(Company, payload.company_id)
     if not company:
@@ -183,7 +204,6 @@ async def create_po(
     # safety net kalau cross-company collision sliced lewat.
     MAX_ATTEMPTS = 5
     po: PurchaseOrder | None = None
-    last_err: Exception | None = None
     for attempt in range(MAX_ATTEMPTS):
         number = await _next_po_number(db, company.id, project.code, payload.po_date)
         po = PurchaseOrder(
@@ -202,13 +222,15 @@ async def create_po(
             created_by_id=user.id,
         )
         for it in payload.items:
-            po.items.append(POItem(
-                description=it.description,
-                quantity=it.quantity,
-                unit=it.unit,
-                unit_price=it.unit_price,
-                subtotal=Decimal(it.unit_price) * Decimal(it.quantity),
-            ))
+            po.items.append(
+                POItem(
+                    description=it.description,
+                    quantity=it.quantity,
+                    unit=it.unit,
+                    unit_price=it.unit_price,
+                    subtotal=Decimal(it.unit_price) * Decimal(it.quantity),
+                )
+            )
         subtotal, total = _compute_totals(po.items, po.tax, po.discount)
         po.subtotal = subtotal
         po.total = total
@@ -218,7 +240,6 @@ async def create_po(
             await db.flush()
             break  # success
         except IntegrityError as e:
-            last_err = e
             await db.rollback()
             # Re-fetch project+company krn rollback clear session state.
             project = await db.get(Project, payload.project_id)
@@ -230,12 +251,20 @@ async def create_po(
                 ) from e
             # else: loop continues, _next_po_number re-scan & try again
     assert po is not None  # appease type checker
-    await log(db, user_id=user.id, entity="purchase_order", entity_id=po.id,
-              action=AuditAction.CREATE, after=snapshot(po),
-              note="FORCE bypass closed project" if forced else None)
+    await log(
+        db,
+        user_id=user.id,
+        entity="purchase_order",
+        entity_id=po.id,
+        action=AuditAction.CREATE,
+        after=snapshot(po),
+        note="FORCE bypass closed project" if forced else None,
+    )
     await db.commit()
     res = await db.execute(
-        select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == po.id)
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id == po.id)
     )
     return await _to_out_async(db, res.scalar_one())
 
@@ -247,7 +276,9 @@ async def get_po(
     user: User = Depends(get_current_user),
 ) -> POOut:
     res = await db.execute(
-        select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == pid)
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id == pid)
     )
     po = res.scalar_one_or_none()
     if not po or po.deleted_at is not None:
@@ -267,7 +298,8 @@ async def get_po_linked_transactions(
     Plus: via tx allocations -> invoice yg dibayar -> drilldown lengkap
     PO -> TX -> Invoice. Standar finance pro: procurement audit trail.
     """
-    from app.models.models import Transaction, InvoiceAllocation, Invoice
+    from app.models.models import Invoice, InvoiceAllocation, Transaction
+
     po = await db.get(PurchaseOrder, pid)
     if not po or po.deleted_at is not None:
         raise HTTPException(404, "not_found")
@@ -299,13 +331,17 @@ async def get_po_linked_transactions(
         )
         for alloc, inv in alloc_res.all():
             inv_map[inv.id] = inv
-            alloc_map.setdefault(alloc.transaction_id, []).append({
-                "allocation_id": alloc.id,
-                "invoice_id": inv.id,
-                "invoice_number": inv.number,
-                "invoice_status": inv.status.value if hasattr(inv.status, "value") else str(inv.status),
-                "allocated_amount": float(alloc.allocated_amount or 0),
-            })
+            alloc_map.setdefault(alloc.transaction_id, []).append(
+                {
+                    "allocation_id": alloc.id,
+                    "invoice_id": inv.id,
+                    "invoice_number": inv.number,
+                    "invoice_status": inv.status.value
+                    if hasattr(inv.status, "value")
+                    else str(inv.status),
+                    "allocated_amount": float(alloc.allocated_amount or 0),
+                }
+            )
 
     txs_out = [
         {
@@ -359,7 +395,9 @@ async def update_po(
       (PO/YYYY/MM/<NEW_CODE>/NNNN). Audit log catat old + new number.
     """
     res = await db.execute(
-        select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == pid)
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id == pid)
     )
     po = res.scalar_one_or_none()
     if not po or po.deleted_at is not None:
@@ -384,12 +422,14 @@ async def update_po(
     new_project: Project | None = None
     if new_project_id is not None and new_project_id != po.project_id:
         await ensure_project_access(db, user, new_project_id)
-        new_project = (await db.execute(
-            select(Project).where(
-                Project.id == new_project_id,
-                Project.deleted_at.is_(None),
+        new_project = (
+            await db.execute(
+                select(Project).where(
+                    Project.id == new_project_id,
+                    Project.deleted_at.is_(None),
+                )
             )
-        )).scalar_one_or_none()
+        ).scalar_one_or_none()
         if new_project is None:
             raise HTTPException(400, "target_project_not_found")
 
@@ -417,9 +457,11 @@ async def update_po(
         # spt create_po utk safety race.
         for _attempt in range(5):
             new_num = await _next_po_number(
-                db, po.company_id, new_project.code, po.po_date,
+                db,
+                po.company_id,
+                new_project.code,
+                po.po_date,
             )
-            old_num = po.number
             po.number = new_num
             try:
                 await db.flush()
@@ -447,21 +489,32 @@ async def update_po(
         po.items.clear()
         await db.flush()
         for it in items:
-            po.items.append(POItem(
-                description=it["description"],
-                quantity=it.get("quantity", 1),
-                unit=it.get("unit"),
-                unit_price=it.get("unit_price", 0),
-                subtotal=Decimal(it.get("unit_price", 0)) * Decimal(it.get("quantity", 1)),
-            ))
+            po.items.append(
+                POItem(
+                    description=it["description"],
+                    quantity=it.get("quantity", 1),
+                    unit=it.get("unit"),
+                    unit_price=it.get("unit_price", 0),
+                    subtotal=Decimal(it.get("unit_price", 0)) * Decimal(it.get("quantity", 1)),
+                )
+            )
     subtotal, total = _compute_totals(po.items, po.tax, po.discount)
     po.subtotal = subtotal
     po.total = total
-    await log(db, user_id=user.id, entity="purchase_order", entity_id=po.id,
-              action=AuditAction.UPDATE, before=before, after=snapshot(po))
+    await log(
+        db,
+        user_id=user.id,
+        entity="purchase_order",
+        entity_id=po.id,
+        action=AuditAction.UPDATE,
+        before=before,
+        after=snapshot(po),
+    )
     await db.commit()
     res = await db.execute(
-        select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == po.id)
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id == po.id)
     )
     return await _to_out_async(db, res.scalar_one())
 
@@ -506,8 +559,12 @@ async def bulk_issue_pos(
             continue
         p.status = POStatus.ISSUED
         await log(
-            db, user_id=user.id, entity="purchase_order", entity_id=p.id,
-            action=AuditAction.UPDATE, note="bulk issued",
+            db,
+            user_id=user.id,
+            entity="purchase_order",
+            entity_id=p.id,
+            action=AuditAction.UPDATE,
+            note="bulk issued",
         )
         success_ids.append(pid)
     await db.commit()
@@ -541,7 +598,7 @@ async def bulk_approve_pos(
     pos = {p.id: p for p in res.scalars().all()}
     success_ids: list[int] = []
     skipped: list[dict] = []
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for pid in ids:
         p = pos.get(pid)
         if p is None or p.deleted_at is not None:
@@ -554,8 +611,12 @@ async def bulk_approve_pos(
         p.approved_by_id = admin.id
         p.approved_at = now
         await log(
-            db, user_id=admin.id, entity="purchase_order", entity_id=p.id,
-            action=AuditAction.APPROVE, note="bulk approve",
+            db,
+            user_id=admin.id,
+            entity="purchase_order",
+            entity_id=p.id,
+            action=AuditAction.APPROVE,
+            note="bulk approve",
         )
         success_ids.append(pid)
     await db.commit()
@@ -594,14 +655,12 @@ async def bulk_delete_pos(
 
     god = admin.role == UserRole.SUPERADMIN
 
-    res = await db.execute(
-        select(PurchaseOrder).where(PurchaseOrder.id.in_(ids))
-    )
+    res = await db.execute(select(PurchaseOrder).where(PurchaseOrder.id.in_(ids)))
     pos = {p.id: p for p in res.scalars().all()}
 
     success_ids: list[int] = []
     skipped: list[dict] = []
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
 
     for pid in ids:
         p = pos.get(pid)
@@ -609,27 +668,27 @@ async def bulk_delete_pos(
             skipped.append({"id": pid, "reason": "not_found"})
             continue
         if not god and p.status not in (POStatus.DRAFT, POStatus.CANCELLED):
-            skipped.append({"id": pid, "reason": f"invalid_state_{p.status.value}_must_cancel_first"})
+            skipped.append(
+                {"id": pid, "reason": f"invalid_state_{p.status.value}_must_cancel_first"}
+            )
             continue
 
         # God-mode: unlink TX yg punya purchase_order_id = pid.
         unlinked = 0
         if god:
-            res_t = await db.execute(
-                select(TxnModel).where(TxnModel.purchase_order_id == p.id)
-            )
+            res_t = await db.execute(select(TxnModel).where(TxnModel.purchase_order_id == p.id))
             for t in res_t.scalars().all():
                 t.purchase_order_id = None
                 unlinked += 1
 
         p.deleted_at = now
         await log(
-            db, user_id=admin.id, entity="purchase_order", entity_id=p.id,
+            db,
+            user_id=admin.id,
+            entity="purchase_order",
+            entity_id=p.id,
             action=AuditAction.DELETE,
-            note=(
-                f"bulk delete (god-mode, {unlinked} tx unlinked)"
-                if god else "bulk delete"
-            ),
+            note=(f"bulk delete (god-mode, {unlinked} tx unlinked)" if god else "bulk delete"),
         )
         success_ids.append(pid)
 
@@ -655,11 +714,19 @@ async def issue_po(
     if po.status != POStatus.DRAFT:
         raise HTTPException(409, "invalid_state")
     po.status = POStatus.ISSUED
-    await log(db, user_id=user.id, entity="purchase_order", entity_id=po.id,
-              action=AuditAction.UPDATE, note="issued")
+    await log(
+        db,
+        user_id=user.id,
+        entity="purchase_order",
+        entity_id=po.id,
+        action=AuditAction.UPDATE,
+        note="issued",
+    )
     await db.commit()
     res = await db.execute(
-        select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == po.id)
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id == po.id)
     )
     return await _to_out_async(db, res.scalar_one())
 
@@ -677,12 +744,15 @@ async def approve_po(
         raise HTTPException(409, "invalid_state")
     po.status = POStatus.APPROVED
     po.approved_by_id = admin.id
-    po.approved_at = datetime.now(timezone.utc)
-    await log(db, user_id=admin.id, entity="purchase_order", entity_id=po.id,
-              action=AuditAction.APPROVE)
+    po.approved_at = datetime.now(UTC)
+    await log(
+        db, user_id=admin.id, entity="purchase_order", entity_id=po.id, action=AuditAction.APPROVE
+    )
     await db.commit()
     res = await db.execute(
-        select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == po.id)
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id == po.id)
     )
     return await _to_out_async(db, res.scalar_one())
 
@@ -699,11 +769,19 @@ async def cancel_po(
         raise HTTPException(404, "not_found")
     po.status = POStatus.CANCELLED
     po.cancel_reason = body.reason
-    await log(db, user_id=admin.id, entity="purchase_order", entity_id=po.id,
-              action=AuditAction.CANCEL, note=body.reason)
+    await log(
+        db,
+        user_id=admin.id,
+        entity="purchase_order",
+        entity_id=po.id,
+        action=AuditAction.CANCEL,
+        note=body.reason,
+    )
     await db.commit()
     res = await db.execute(
-        select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == po.id)
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id == po.id)
     )
     return await _to_out_async(db, res.scalar_one())
 
@@ -719,9 +797,10 @@ async def delete_po(
         raise HTTPException(404, "not_found")
     if po.status not in (POStatus.DRAFT, POStatus.CANCELLED):
         raise HTTPException(409, "approved_must_be_cancelled")
-    po.deleted_at = datetime.utcnow()
-    await log(db, user_id=admin.id, entity="purchase_order", entity_id=po.id,
-              action=AuditAction.DELETE)
+    po.deleted_at = datetime.now(UTC)
+    await log(
+        db, user_id=admin.id, entity="purchase_order", entity_id=po.id, action=AuditAction.DELETE
+    )
     await db.commit()
 
 
@@ -739,17 +818,22 @@ async def hard_delete_po(
         raise HTTPException(404, "not_found")
     # Unlink transactions yang masih menunjuk PO ini
     from app.models.models import Transaction as TxnModel
-    res = await db.execute(
-        select(TxnModel).where(TxnModel.purchase_order_id == pid)
-    )
+
+    res = await db.execute(select(TxnModel).where(TxnModel.purchase_order_id == pid))
     txs = res.scalars().all()
     for t in txs:
         t.purchase_order_id = None
     before = snapshot(po)
     await db.delete(po)  # cascade items via cascade="all,delete-orphan"
-    await log(db, user_id=god.id, entity="purchase_order", entity_id=pid,
-              action=AuditAction.DELETE, before=before,
-              note=f"HARD DELETE (god-mode), {len(txs)} transaksi di-unlink")
+    await log(
+        db,
+        user_id=god.id,
+        entity="purchase_order",
+        entity_id=pid,
+        action=AuditAction.DELETE,
+        before=before,
+        note=f"HARD DELETE (god-mode), {len(txs)} transaksi di-unlink",
+    )
     await db.commit()
 
 
@@ -765,7 +849,9 @@ async def po_pdf(
     """Cetak PO ke PDF. signatures + responsible_name dipakai utk
     customize signature block per dokumen (lihat invoice_pdf)."""
     res = await db.execute(
-        select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.id == pid)
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id == pid)
     )
     po = res.scalar_one_or_none()
     if not po or po.deleted_at is not None:
@@ -776,7 +862,9 @@ async def po_pdf(
     vendor = await db.get(VendorClient, po.vendor_client_id) if po.vendor_client_id else None
     created_by = await db.get(User, po.created_by_id) if po.created_by_id else None
     approved_by = await db.get(User, po.approved_by_id) if po.approved_by_id else None
-    base_css = (Path(__file__).parent.parent.parent / "services/pdf/templates/_base.css").read_text(encoding="utf-8")
+    base_css = (Path(__file__).parent.parent.parent / "services/pdf/templates/_base.css").read_text(
+        encoding="utf-8"
+    )
     logo_data = inline_image(company.logo_url) if company else None
     letterhead_data = inline_image(company.letterhead_url) if company else None
     # Default nama penanggung jawab: approved_by (kalau ada, dia yg meng-approve)
@@ -788,9 +876,14 @@ async def po_pdf(
         default_responsible = company.director_name
     html = render_html(
         "po.html",
-        po=po, project=project, company=company,
-        vendor=vendor, created_by=created_by, approved_by=approved_by,
-        logo_data=logo_data, letterhead_data=letterhead_data,
+        po=po,
+        project=project,
+        company=company,
+        vendor=vendor,
+        created_by=created_by,
+        approved_by=approved_by,
+        logo_data=logo_data,
+        letterhead_data=letterhead_data,
         base_css=base_css,
         sig_show_creator=signatures in ("both", "creator"),
         sig_show_approver=signatures in ("both", "approver"),

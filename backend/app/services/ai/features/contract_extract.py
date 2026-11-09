@@ -3,15 +3,15 @@
 Bukan invoice — dokumen legal/operasional yg ekstrak pasal, tanggal,
 nilai kontrak, pihak-pihak.
 """
+
 from __future__ import annotations
 
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.ai.vision import extract_from_image
 from app.services.ai.prompt_registry import get_prompt
-
+from app.services.ai.vision import extract_from_image
 
 SCHEMA = {
     "type": "object",
@@ -85,9 +85,13 @@ async def run(
     # Audit 2026-05-24: pakai prompt registry (admin override-able).
     p = await get_prompt(db, "contract_extract")
     return await extract_from_image(
-        db, user_id=user_id, feature="ai:contract_extract",
-        content=content, media_type=media_type,
-        system_prompt=p.system, schema=SCHEMA,
+        db,
+        user_id=user_id,
+        feature="ai:contract_extract",
+        content=content,
+        media_type=media_type,
+        system_prompt=p.system,
+        schema=SCHEMA,
         tool_name="save_contract_extraction",
         rate_limit_period=60.0,
         feature_key="contract_extract",

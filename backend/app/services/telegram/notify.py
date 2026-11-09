@@ -8,6 +8,7 @@ Audience-based broadcast (kerangka 4-eyes):
 Best-effort: tidak boleh menggagalkan transaksi DB. Semua call di-wrap
 try/except dan dijalankan setelah commit.
 """
+
 from __future__ import annotations
 
 import html

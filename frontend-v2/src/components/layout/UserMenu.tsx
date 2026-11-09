@@ -1,5 +1,5 @@
 import { LogOut, User as UserIcon } from "lucide-react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "react-router"
 import { useAuthStore } from "@/store/auth"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"

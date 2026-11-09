@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Link, useParams } from "react-router-dom"
+import { Link, useParams } from "react-router"
 import {
   AlertTriangle,
   ArrowLeft,
@@ -57,7 +57,7 @@ import { ProjectStatusBanner } from "@/components/domain/project/ProjectStatusBa
 import { ConfirmDeleteDialog } from "@/components/data/ConfirmDeleteDialog"
 import { useDeleteProject } from "@/hooks/useProjectMutations"
 import { usePageTitle } from "@/hooks/usePageTitle"
-import { useNavigate } from "react-router-dom"
+import { useNavigate } from "react-router"
 import { CashflowChart } from "@/components/charts/CashflowChart"
 import { SpendingBreakdown } from "@/components/domain/dashboard/SpendingBreakdown"
 import { FinanceBreakdown } from "@/components/domain/dashboard/FinanceBreakdown"

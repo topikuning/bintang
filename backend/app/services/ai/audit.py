@@ -4,6 +4,7 @@ Audit 2026-05-23 AI foundation.
 
 Tdk simpan full prompt/response (privacy + storage). Hanya metadata.
 """
+
 from __future__ import annotations
 
 import logging
@@ -30,20 +31,28 @@ async def log_call(
     error: str | None = None,
 ) -> None:
     """Tambahkan 1 baris audit log. Caller commit."""
-    db.add(AICallLog(
-        user_id=user_id,
-        feature=feature,
-        model=model,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        cost_usd=cost_usd,
-        latency_ms=latency_ms,
-        cached=cached,
-        success=success,
-        error=(error[:1000] if error else None),
-    ))
+    db.add(
+        AICallLog(
+            user_id=user_id,
+            feature=feature,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost_usd,
+            latency_ms=latency_ms,
+            cached=cached,
+            success=success,
+            error=(error[:1000] if error else None),
+        )
+    )
     log.info(
         "ai.call feature=%s model=%s tokens=%d/%d cost=$%s lat=%dms cached=%s ok=%s",
-        feature, model, input_tokens, output_tokens, cost_usd,
-        latency_ms, cached, success,
+        feature,
+        model,
+        input_tokens,
+        output_tokens,
+        cost_usd,
+        latency_ms,
+        cached,
+        success,
     )

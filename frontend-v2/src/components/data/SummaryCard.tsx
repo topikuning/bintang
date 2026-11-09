@@ -31,24 +31,24 @@ export function SummaryCard({
     warning: "text-warning-700",
   }[tone]
 
-  const Wrapper: any = onClick ? "button" : "div"
+  const Wrapper: React.ElementType = onClick ? "button" : "div"
   return (
     <Wrapper
       type={onClick ? "button" : undefined}
       onClick={onClick}
       className={cn(
-        "flex flex-col gap-1.5 rounded-md border bg-surface p-3 text-left sm:p-4",
-        onClick && "transition-colors hover:bg-surface-muted hover:border-border-strong",
+        "relative flex min-h-28 flex-col gap-2 overflow-hidden rounded-xl border border-white/80 bg-surface p-4 text-left shadow-[var(--app-shadow)] ring-1 ring-ink-200/60 sm:p-5",
+        onClick && "transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-lg",
         className,
       )}
     >
       <div className="flex items-center gap-2">
-        {Icon && <Icon className="h-3.5 w-3.5 text-ink-500" />}
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+        {Icon && <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-100"><Icon className="h-4 w-4 text-ink-600" /></span>}
+        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-ink-500">
           {label}
         </span>
       </div>
-      <div data-num className={cn("font-mono text-lg font-bold leading-tight sm:text-xl", toneClasses)}>
+      <div data-num className={cn("font-mono text-xl font-bold leading-tight tracking-tight sm:text-2xl", toneClasses)}>
         {value}
       </div>
       {hint && (

@@ -23,12 +23,14 @@ router = APIRouter()
 
 class SettingUpdateIn(BaseModel):
     """Update single setting. value=None / "" = hapus (fallback ke env)."""
+
     key: str
     value: str | None = None
 
 
 class BulkUpdateIn(BaseModel):
     """Update beberapa setting sekaligus dari form Settings UI."""
+
     items: list[SettingUpdateIn]
 
 
@@ -59,12 +61,11 @@ async def bulk_update(
     """Update beberapa setting sekaligus. Validate semua key whitelist
     sebelum tulis (all-or-nothing).
     """
-    invalid = [
-        i.key for i in payload.items if i.key not in SETTING_REGISTRY
-    ]
+    invalid = [i.key for i in payload.items if i.key not in SETTING_REGISTRY]
     if invalid:
         raise HTTPException(
-            400, f"setting_not_whitelisted: {invalid}",
+            400,
+            f"setting_not_whitelisted: {invalid}",
         )
     changes: list[dict] = []
     for it in payload.items:
@@ -72,14 +73,19 @@ async def bulk_update(
         # Treat empty string sbg 'hapus'
         await set_setting(db, it.key, val or None, user_id=admin.id, commit=False)
         meta = SETTING_REGISTRY[it.key]
-        changes.append({
-            "key": it.key,
-            "group": meta["group"],
-            "set": bool(val),
-            "is_secret": meta["secret"],
-        })
+        changes.append(
+            {
+                "key": it.key,
+                "group": meta["group"],
+                "set": bool(val),
+                "is_secret": meta["secret"],
+            }
+        )
     await log(
-        db, user_id=admin.id, entity="app_settings", entity_id=0,
+        db,
+        user_id=admin.id,
+        entity="app_settings",
+        entity_id=0,
         action=AuditAction.UPDATE,
         after={"changes": changes},
     )
@@ -98,7 +104,10 @@ async def delete_setting(
         raise HTTPException(400, "setting_not_whitelisted")
     await set_setting(db, key, None, user_id=admin.id, commit=False)
     await log(
-        db, user_id=admin.id, entity="app_settings", entity_id=0,
+        db,
+        user_id=admin.id,
+        entity="app_settings",
+        entity_id=0,
         action=AuditAction.DELETE,
         before={"key": key},
     )

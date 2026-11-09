@@ -1,4 +1,4 @@
-import { Link, useNavigate, useRouteError } from "react-router-dom"
+import { Link, useNavigate, useRouteError } from "react-router"
 import { AlertTriangle, ArrowLeft, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 

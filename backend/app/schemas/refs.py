@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.models.models import (
     CategoryType,
@@ -42,8 +42,7 @@ class CompanyUpdate(BaseModel):
 class CompanyOut(CompanyBase):
     id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Projects
@@ -125,8 +124,7 @@ class ProjectOut(ProjectBase):
     funder_ids: list[int] = []
     funder_names: list[str] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProjectProposalCreate(BaseModel):
@@ -135,6 +133,7 @@ class ProjectProposalCreate(BaseModel):
     Kolom yg perlu admin atur (tax/marketing/budget detail) di-set default --
     admin bisa edit setelah approve. Pengaju cukup isi info inti.
     """
+
     code: str
     name: str
     location: str | None = None
@@ -180,8 +179,7 @@ class CategoryUpdate(BaseModel):
 class CategoryOut(CategoryBase):
     id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Vendors / Clients
@@ -214,5 +212,4 @@ class VendorClientUpdate(BaseModel):
 class VendorClientOut(VendorClientBase):
     id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

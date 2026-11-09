@@ -1,7 +1,7 @@
 import type { ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
 import { Inbox } from "lucide-react"
-import { Link } from "react-router-dom"
+import { Link } from "react-router"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -77,7 +77,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center text-center rounded-md border border-dashed bg-surface",
+        "flex flex-col items-center justify-center rounded-xl border border-dashed border-ink-300 bg-white/75 text-center shadow-sm",
         compact ? "gap-2 p-5" : "gap-3 p-8",
         className,
       )}

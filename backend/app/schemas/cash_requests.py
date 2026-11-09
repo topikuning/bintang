@@ -1,15 +1,17 @@
 """Pydantic schemas utk Pengajuan Dana Operasional (CashRequest)."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ---------- Items ----------
 class CashRequestItemIn(BaseModel):
     """Input item saat create/update. Tdk ada id (server-generated)."""
+
     category_id: int | None = None
     description: str = Field(..., min_length=1, max_length=300)
     quantity: Decimal | None = None
@@ -26,8 +28,7 @@ class CashRequestItemOut(BaseModel):
     unit_price: Decimal | None
     amount: Decimal
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ---------- Header ----------
@@ -41,12 +42,14 @@ class CashRequestBase(BaseModel):
 
 class CashRequestCreate(CashRequestBase):
     """Items wajib min 1 baris (kalau cuma 1 entry, isi 1 item)."""
+
     items: list[CashRequestItemIn] = Field(..., min_length=1)
 
 
 class CashRequestUpdate(BaseModel):
     """Partial update. Hanya PENDING yg boleh diubah. items=None artinya
     tdk diubah; items=[] artinya hapus semua (validasi error)."""
+
     project_id: int | None = None
     recipient_user_id: int | None = None
     request_date: date | None = None
@@ -82,8 +85,7 @@ class CashRequestOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ---------- Action payloads ----------

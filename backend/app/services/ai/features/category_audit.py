@@ -15,13 +15,14 @@ Strategi (2-pass utk hemat AI):
 
 Output: list flagged + suggested category + confidence + reason.
 """
+
 from __future__ import annotations
 
 from collections import Counter
 from datetime import date
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import (
@@ -122,19 +123,21 @@ async def _candidates_by_vendor_majority(
         for r in vendor_rows:
             if r.category_id == top_cat_id:
                 continue
-            candidates.append({
-                "tx_id": r.id,
-                "tx_date": str(r.tx_date),
-                "party_name": r.party_name,
-                "description": (r.description or "")[:80],
-                "amount": str(r.amount),
-                "current_category_id": r.category_id,
-                "current_category_name": r.current_cat_name,
-                "majority_category_id": top_cat_id,
-                "majority_share": round(share, 2),
-                "vendor_history_size": len(vendor_rows),
-                "type": r.type.value if hasattr(r.type, "value") else str(r.type),
-            })
+            candidates.append(
+                {
+                    "tx_id": r.id,
+                    "tx_date": str(r.tx_date),
+                    "party_name": r.party_name,
+                    "description": (r.description or "")[:80],
+                    "amount": str(r.amount),
+                    "current_category_id": r.category_id,
+                    "current_category_name": r.current_cat_name,
+                    "majority_category_id": top_cat_id,
+                    "majority_share": round(share, 2),
+                    "vendor_history_size": len(vendor_rows),
+                    "type": r.type.value if hasattr(r.type, "value") else str(r.type),
+                }
+            )
             if len(candidates) >= cap:
                 return candidates
     return candidates
@@ -156,7 +159,11 @@ async def run(
     Berguna utk preview / cost-saving / atau saat budget habis.
     """
     candidates = await _candidates_by_vendor_majority(
-        db, project_id, date_from, date_to, direction,
+        db,
+        project_id,
+        date_from,
+        date_to,
+        direction,
     )
     if not candidates:
         return {
@@ -194,7 +201,7 @@ async def run(
                     "suggested_category_name": cat_name_by_id.get(c["majority_category_id"]),
                     "confidence": c["majority_share"],
                     "reason": (
-                        f"{int(c['majority_share']*100)}% tx vendor "
+                        f"{int(c['majority_share'] * 100)}% tx vendor "
                         f"'{c['party_name']}' ({c['vendor_history_size']} tx) "
                         f"masuk kategori "
                         f"'{cat_name_by_id.get(c['majority_category_id'])}'."
@@ -204,8 +211,7 @@ async def run(
                 for c in candidates
             ],
             "summary": (
-                f"{len(candidates)} kandidat di-flag berdasar pattern majority "
-                f"(SQL-only, AI skip)."
+                f"{len(candidates)} kandidat di-flag berdasar pattern majority (SQL-only, AI skip)."
             ),
             "candidates_count": len(candidates),
             "ai_used": False,
@@ -218,14 +224,12 @@ async def run(
         if p:
             proj_label = f"{p.name} ({p.code})"
 
-    cats_str = "\n".join(
-        f"- ID {cid}: {name} ({ctype.value})" for cid, name, ctype in cats
-    )
+    cats_str = "\n".join(f"- ID {cid}: {name} ({ctype.value})" for cid, name, ctype in cats)
     cand_str = "\n".join(
         f"- tx_id={c['tx_id']} tanggal={c['tx_date']} amount=Rp {c['amount']} "
         f"vendor='{c['party_name']}' deskripsi='{c['description']}'\n"
         f"  current_category={c['current_category_name']} (ID {c['current_category_id']})\n"
-        f"  vendor history pattern: {int(c['majority_share']*100)}% dari "
+        f"  vendor history pattern: {int(c['majority_share'] * 100)}% dari "
         f"{c['vendor_history_size']} tx masuk ke "
         f"{cat_name_by_id.get(c['majority_category_id'])} (ID {c['majority_category_id']})"
         for c in candidates
@@ -242,8 +246,12 @@ async def run(
     # Audit 2026-05-24: pakai prompt registry (admin override-able).
     p = await get_prompt(db, "category_audit")
     resp = await chat(
-        db, user_id=user_id, feature="ai:category_audit",
-        system=p.system, prompt=prompt, json_schema=SCHEMA,
+        db,
+        user_id=user_id,
+        feature="ai:category_audit",
+        system=p.system,
+        prompt=prompt,
+        json_schema=SCHEMA,
         feature_key="category_audit",
     )
     structured = resp.structured or {"flagged": [], "summary": "(no output)"}
@@ -259,20 +267,22 @@ async def run(
         sid = f.get("suggested_category_id")
         if sid is not None and sid not in valid_cat_ids:
             sid = None
-        flagged_out.append({
-            "tx_id": tid,
-            "tx_date": cand["tx_date"],
-            "party_name": cand["party_name"],
-            "description": cand["description"],
-            "amount": cand["amount"],
-            "current_category_id": cand["current_category_id"],
-            "current_category_name": cand["current_category_name"],
-            "suggested_category_id": sid,
-            "suggested_category_name": cat_name_by_id.get(sid) if sid else None,
-            "confidence": float(f.get("confidence") or 0),
-            "reason": f.get("reason") or "",
-            "is_miscategorized": bool(f.get("is_miscategorized")),
-        })
+        flagged_out.append(
+            {
+                "tx_id": tid,
+                "tx_date": cand["tx_date"],
+                "party_name": cand["party_name"],
+                "description": cand["description"],
+                "amount": cand["amount"],
+                "current_category_id": cand["current_category_id"],
+                "current_category_name": cand["current_category_name"],
+                "suggested_category_id": sid,
+                "suggested_category_name": cat_name_by_id.get(sid) if sid else None,
+                "confidence": float(f.get("confidence") or 0),
+                "reason": f.get("reason") or "",
+                "is_miscategorized": bool(f.get("is_miscategorized")),
+            }
+        )
 
     return {
         "flagged": flagged_out,

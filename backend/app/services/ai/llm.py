@@ -25,6 +25,7 @@ Pemakaian:
     )
     # resp.structured (dict kalau json_schema), resp.text, resp.cost_usd, dst.
 """
+
 from __future__ import annotations
 
 import logging
@@ -46,15 +47,16 @@ log = logging.getLogger(__name__)
 @dataclass
 class LLMResponse:
     """Response dari chat()."""
-    text: str                       # Hasil teks (kosong kalau structured only)
-    structured: dict | None         # Hasil JSON kalau json_schema disediakan
+
+    text: str  # Hasil teks (kosong kalau structured only)
+    structured: dict | None  # Hasil JSON kalau json_schema disediakan
     model: str
     input_tokens: int
     output_tokens: int
     cost_usd: Decimal
     latency_ms: int
     cached: bool
-    cache_key: str | None = None    # Utk debug
+    cache_key: str | None = None  # Utk debug
 
 
 # Model hint -> resolution rule.
@@ -62,7 +64,7 @@ class LLMResponse:
 # Urutan candidates di-tweak runtime berdasar AI_DEFAULT_PROVIDER setting.
 # Default 'mistral' (lebih murah) per user req 2026-05-23.
 _MODEL_HINTS = {
-    "fast":  ["mistral-small-latest", "claude-haiku-4-5"],
+    "fast": ["mistral-small-latest", "claude-haiku-4-5"],
     "smart": ["mistral-large-latest", "claude-sonnet-4-6"],
 }
 
@@ -94,15 +96,11 @@ def _resolve_model(hint: str | None) -> tuple[str, str]:
     )
     for model in candidates:
         provider = "claude" if model.startswith("claude-") else "mistral"
-        key_setting = (
-            "ANTHROPIC_API_KEY" if provider == "claude" else "MISTRAL_API_KEY"
-        )
+        key_setting = "ANTHROPIC_API_KEY" if provider == "claude" else "MISTRAL_API_KEY"
         if get_setting(key_setting):
             return model, provider
     # Tdk ada key tersedia -> raise utk fail-loudly (vs silent stub)
-    raise RuntimeError(
-        "ai_no_provider_configured: set ANTHROPIC_API_KEY atau MISTRAL_API_KEY"
-    )
+    raise RuntimeError("ai_no_provider_configured: set ANTHROPIC_API_KEY atau MISTRAL_API_KEY")
 
 
 async def _call_claude(
@@ -116,9 +114,12 @@ async def _call_claude(
 ) -> tuple[str, dict | None, int, int]:
     """Return (text, structured, input_tokens, output_tokens)."""
     import anthropic
+
     api_key = get_setting("ANTHROPIC_API_KEY")
     client = anthropic.AsyncAnthropic(
-        api_key=api_key, timeout=timeout, max_retries=0,
+        api_key=api_key,
+        timeout=timeout,
+        max_retries=0,
     )
     kwargs: dict[str, Any] = {
         "model": model,
@@ -164,15 +165,19 @@ async def _call_mistral(
     'json_object' + instruksi schema di system prompt -- kurang strict.
     Reference: https://docs.mistral.ai/capabilities/structured_output/custom
     """
-    import httpx
     import json as _json
+
+    import httpx
+
     api_key = get_setting("MISTRAL_API_KEY")
     msgs: list[dict] = []
     if system:
         msgs.append({"role": "system", "content": system})
     msgs.append({"role": "user", "content": prompt})
     payload: dict[str, Any] = {
-        "model": model, "messages": msgs, "max_tokens": max_tokens,
+        "model": model,
+        "messages": msgs,
+        "max_tokens": max_tokens,
         "temperature": 0,  # deterministic utk structured output
     }
     if json_schema:
@@ -192,8 +197,7 @@ async def _call_mistral(
         r = await hx.post(
             "https://api.mistral.ai/v1/chat/completions",
             json=payload,
-            headers={"Authorization": f"Bearer {api_key}",
-                     "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         )
         r.raise_for_status()
         data = r.json()
@@ -236,8 +240,10 @@ async def chat(
     # Per-feature config overlay (audit 2026-05-24).
     if feature_key:
         from app.services.ai.feature_settings import (
-            assert_within_budget, get_effective,
+            assert_within_budget,
+            get_effective,
         )
+
         _cfg = await get_effective(db, feature_key)
         await assert_within_budget(db, feature_key, _cfg)
         # Explicit caller args TIDAK di-override -- config cuma fill defaults.
@@ -269,26 +275,44 @@ async def chat(
     # Cache lookup (opsional).
     cache_key: str | None = None
     if cache_ttl_days > 0:
-        cache_key = cache.make_key({
-            "feature": feature, "model": model,
-            "system": system, "prompt": prompt,
-            "schema": json_schema,
-        })
+        cache_key = cache.make_key(
+            {
+                "feature": feature,
+                "model": model,
+                "system": system,
+                "prompt": prompt,
+                "schema": json_schema,
+            }
+        )
         cached_val = await cache.lookup(
-            db, namespace=feature, key=cache_key, ttl_days=cache_ttl_days,
+            db,
+            namespace=feature,
+            key=cache_key,
+            ttl_days=cache_ttl_days,
         )
         if cached_val is not None:
             await audit.log_call(
-                db, user_id=user_id, feature=feature, model=model,
-                input_tokens=0, output_tokens=0, cost_usd="0",
-                latency_ms=0, cached=True, success=True,
+                db,
+                user_id=user_id,
+                feature=feature,
+                model=model,
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd="0",
+                latency_ms=0,
+                cached=True,
+                success=True,
             )
             return LLMResponse(
                 text=cached_val.get("text", ""),
                 structured=cached_val.get("structured"),
-                model=model, input_tokens=0, output_tokens=0,
-                cost_usd=Decimal("0"), latency_ms=0,
-                cached=True, cache_key=cache_key,
+                model=model,
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd=Decimal("0"),
+                latency_ms=0,
+                cached=True,
+                cache_key=cache_key,
             )
 
     # Call provider
@@ -298,22 +322,37 @@ async def chat(
     try:
         if provider == "claude":
             text, structured, in_tok, out_tok = await _call_claude(
-                model=model, system=system, prompt=prompt,
-                json_schema=json_schema, max_tokens=max_tokens, timeout=timeout,
+                model=model,
+                system=system,
+                prompt=prompt,
+                json_schema=json_schema,
+                max_tokens=max_tokens,
+                timeout=timeout,
             )
         else:
             text, structured, in_tok, out_tok = await _call_mistral(
-                model=model, system=system, prompt=prompt,
-                json_schema=json_schema, max_tokens=max_tokens, timeout=timeout,
+                model=model,
+                system=system,
+                prompt=prompt,
+                json_schema=json_schema,
+                max_tokens=max_tokens,
+                timeout=timeout,
             )
     except Exception as e:  # noqa: BLE001
         success = False
         err_str = str(e)
         await audit.log_call(
-            db, user_id=user_id, feature=feature, model=model,
-            input_tokens=0, output_tokens=0, cost_usd="0",
+            db,
+            user_id=user_id,
+            feature=feature,
+            model=model,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd="0",
             latency_ms=int((time.monotonic() - t0) * 1000),
-            cached=False, success=False, error=err_str,
+            cached=False,
+            success=False,
+            error=err_str,
         )
         raise
 
@@ -323,19 +362,34 @@ async def chat(
     # Store cache + audit
     if cache_ttl_days > 0 and cache_key:
         await cache.store(
-            db, namespace=feature, key=cache_key,
+            db,
+            namespace=feature,
+            key=cache_key,
             value={"text": text, "structured": structured},
             source_info={"model": model, "cost_usd": str(cost), "latency_ms": latency_ms},
         )
     await audit.log_call(
-        db, user_id=user_id, feature=feature, model=model,
-        input_tokens=in_tok, output_tokens=out_tok, cost_usd=str(cost),
-        latency_ms=latency_ms, cached=False, success=success, error=err_str,
+        db,
+        user_id=user_id,
+        feature=feature,
+        model=model,
+        input_tokens=in_tok,
+        output_tokens=out_tok,
+        cost_usd=str(cost),
+        latency_ms=latency_ms,
+        cached=False,
+        success=success,
+        error=err_str,
     )
 
     return LLMResponse(
-        text=text, structured=structured, model=model,
-        input_tokens=in_tok, output_tokens=out_tok,
-        cost_usd=cost, latency_ms=latency_ms, cached=False,
+        text=text,
+        structured=structured,
+        model=model,
+        input_tokens=in_tok,
+        output_tokens=out_tok,
+        cost_usd=cost,
+        latency_ms=latency_ms,
+        cached=False,
         cache_key=cache_key,
     )

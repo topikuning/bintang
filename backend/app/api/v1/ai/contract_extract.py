@@ -1,10 +1,11 @@
 """Endpoint AI-7: contract/SPK/BAST extraction."""
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_current_user
+from app.core.deps import require_can_write
 from app.db.session import get_db
-from app.models.models import User
+from app.models.models import AIExtraction, AIExtractionStatus, User
 from app.services.ai.features.contract_extract import run as run_extract
 from app.services.ocr.preprocess import preprocess_for_ocr
 from app.services.storage.local import ALLOWED_MIME, save_upload
@@ -17,7 +18,7 @@ async def extract_contract(
     file: UploadFile = File(...),
     save_attachment: bool = Form(False),
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_can_write),
 ) -> dict:
     """Extract kontrak/SPK/BAST/perjanjian via Claude vision.
 
@@ -34,6 +35,7 @@ async def extract_contract(
         saved = await save_upload(file, subdir="contracts")
         # Re-read content dari saved file (audit #S-01: resolver bersama)
         from app.services.storage.paths import read_upload_bytes
+
         content = read_upload_bytes(saved["url"])
         media_type = saved["mime_type"]
         source_url = saved["url"]
@@ -47,7 +49,10 @@ async def extract_contract(
 
     try:
         result = await run_extract(
-            db, user_id=user.id, content=processed, media_type=processed_mime,
+            db,
+            user_id=user.id,
+            content=processed,
+            media_type=processed_mime,
         )
     except RuntimeError as e:
         if "ai_rate_limited" in str(e):
@@ -56,5 +61,16 @@ async def extract_contract(
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     await db.commit()
+    if source_url:
+        db.add(
+            AIExtraction(
+                user_id=user.id,
+                entity="contract",
+                source_url=source_url,
+                status=AIExtractionStatus.DONE,
+                extracted_data=result,
+            )
+        )
+        await db.commit()
     result["source_url"] = source_url
     return result

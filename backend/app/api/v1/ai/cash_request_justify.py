@@ -1,6 +1,7 @@
 """Endpoint AI-4: cash request justifier."""
+
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import ensure_project_access, get_current_user
@@ -20,6 +21,7 @@ class JustifyIn(BaseModel):
     """Mode 1: cash_request_id (CR sudah ada -- load context dari DB).
     Mode 2: items + project_id + title (draft baru, belum di-save).
     """
+
     cash_request_id: int | None = None
     items: list[JustifyItemIn] | None = None
     project_id: int | None = None
@@ -50,7 +52,8 @@ async def justify_cash_request(
 
     try:
         result = await run_justify(
-            db, user_id=user.id,
+            db,
+            user_id=user.id,
             cash_request_id=payload.cash_request_id,
             items=[it.model_dump() for it in (payload.items or [])] or None,
             project_id=payload.project_id,
