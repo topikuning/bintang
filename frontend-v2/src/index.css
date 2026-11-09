@@ -63,8 +63,8 @@
 :root {
   color-scheme: light;
   font-synthesis: none;
-  --app-nav: #0b1220;
-  --app-nav-raised: #111c30;
+  --app-nav: #ffffff;
+  --app-nav-raised: #f8fafc;
   --app-canvas: #f4f6fa;
   --app-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 10px 30px rgb(15 23 42 / 0.05);
   --app-shadow-raised: 0 20px 60px rgb(15 23 42 / 0.16);
