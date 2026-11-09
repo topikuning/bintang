@@ -89,13 +89,19 @@ DATABASE_URL=postgresql://…/bintang_test APP_ENV=test pnpm vitest run tests/in
 pnpm build
 ```
 
-## Server Lenovo (produksi)
+## Deploy
 
-v3 berjalan di server sendiri (Linux + Docker), **bukan Railway**. Cabang: `main`
-(satu repo dengan aplikasi lama; image Railway tidak menyalin `web/`).
+Cabang v3: **`dev3`**. Satu image (`Dockerfile`) untuk dua tempat:
+
+- **Railway** – layanan baru `bintang-v3` di samping aplikasi lama, Postgres &
+  volume sendiri: [`docs/RAILWAY.md`](./docs/RAILWAY.md). Cocok selama Lenovo
+  belum siap.
+- **Server Lenovo** – tujuan jangka panjang, di bawah.
+
+## Server Lenovo
 
 ```bash
-git clone https://github.com/topikuning/bintang /opt/bintang
+git clone -b dev3 https://github.com/topikuning/bintang /opt/bintang
 cd /opt/bintang/web
 cp .env.lenovo.example .env && chmod 600 .env   # isi DB_PASSWORD, SESSION_SECRET, KUNCI_DATA, DATA_DIR
 docker compose up -d --build                   # db + app + cadangan harian

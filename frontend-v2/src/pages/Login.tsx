@@ -85,19 +85,19 @@ export function LoginPage() {
 
   return (
     <div className="grid min-h-[100dvh] bg-white lg:grid-cols-[minmax(0,1.1fr)_minmax(440px,0.9fr)]">
-      <section className="relative hidden overflow-hidden bg-[var(--app-nav)] p-12 text-white lg:flex lg:flex-col lg:justify-between">
-        <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-brand-500/20 blur-3xl" />
-        <div className="absolute -bottom-40 -left-24 h-96 w-96 rounded-full bg-info-500/10 blur-3xl" />
-        <BrandMark inverse className="relative" />
+      <section className="relative hidden overflow-hidden border-r border-border bg-brand-50 p-12 text-ink-900 lg:flex lg:flex-col lg:justify-between">
+        <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-brand-200/50 blur-3xl" />
+        <div className="absolute -bottom-40 -left-24 h-96 w-96 rounded-full bg-info-100/60 blur-3xl" />
+        <BrandMark className="relative" />
 
         <div className="relative max-w-xl">
-          <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs text-slate-300">
-            <Sparkles className="h-3.5 w-3.5 text-brand-300" /> Satu ruang kerja finansial
+          <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-brand-100 bg-white px-3 py-1.5 text-xs text-ink-600">
+            <Sparkles className="h-3.5 w-3.5 text-brand-500" /> Satu ruang kerja finansial
           </span>
           <h1 className="text-5xl font-bold leading-[1.08] tracking-[-0.045em]">
             Kendalikan arus dana, proyek, dan keputusan.
           </h1>
-          <p className="mt-6 max-w-lg text-base leading-7 text-slate-400">
+          <p className="mt-6 max-w-lg text-base leading-7 text-ink-600">
             Visibilitas keuangan end-to-end untuk tim operasional dan pengambil keputusan—tanpa spreadsheet yang terpisah-pisah.
           </p>
           <div className="mt-10 grid grid-cols-3 gap-3">
@@ -107,7 +107,7 @@ export function LoginPage() {
           </div>
         </div>
 
-        <p className="relative text-xs text-slate-500">Bintang Financial OS · {new Date().getFullYear()}</p>
+        <p className="relative text-xs text-ink-400">Bintang Financial OS · {new Date().getFullYear()}</p>
       </section>
 
       <main className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden px-5 py-10 sm:px-10">
@@ -183,9 +183,9 @@ export function LoginPage() {
 
 function LoginFeature({ icon: Icon, label }: { icon: typeof BarChart3; label: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.05] p-4">
-      <Icon className="mb-3 h-5 w-5 text-brand-300" />
-      <p className="text-xs font-medium text-slate-300">{label}</p>
+    <div className="rounded-xl border border-brand-100 bg-white p-4">
+      <Icon className="mb-3 h-5 w-5 text-brand-600" />
+      <p className="text-xs font-medium text-ink-700">{label}</p>
     </div>
   )
 }

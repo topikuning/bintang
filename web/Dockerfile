@@ -1,6 +1,5 @@
-# BINTANG v3 – multi-stage build untuk Railway (builder DOCKERFILE).
-# Debian slim (bukan alpine): kompatibel Prisma engine & OpenSSL.
-# Dijalankan di server Lenovo lewat docker-compose.yml (lihat README).
+# BINTANG v3 – satu image untuk server Lenovo (docker-compose.yml) dan Railway
+# (railway.json). Debian slim (bukan alpine): kompatibel Prisma & OpenSSL.
 
 # ── base ─────────────────────────────────────────────────────
 FROM node:24.18.0-bookworm-slim AS base
@@ -25,22 +24,8 @@ RUN pnpm prisma generate && \
     DATABASE_URL="postgresql://build:build@localhost:5432/build" \
     SESSION_SECRET="build-placeholder-secret-0123456789abcdef" \
     APP_ENV="production" \
-    pnpm next build
-
-# ── alat ─────────────────────────────────────────────────────
-# Image untuk pekerjaan sekali jalan (impor dari Bintang lama). Berisi
-# node_modules lengkap + skrip, TIDAK dipakai untuk melayani pengguna.
-#   docker compose --profile impor run --rm impor --kering
-# Diletakkan SEBELUM runner supaya target bawaan `docker build` tetap runner.
-FROM builder AS alat
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gosu ca-certificates && \
-    rm -rf /var/lib/apt/lists/* && \
-    groupadd --gid 1001 bintang && \
-    useradd --uid 1001 --gid bintang --create-home --shell /usr/sbin/nologin bintang
-COPY --chmod=755 scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-ENV UPLOAD_DIR=/data/berkas IMPOR_CERMIN=/data/impor-cermin
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh", "node_modules/.bin/tsx", "--require", "./scripts/stub-server-only.cjs", "scripts/impor-bintang-lama.ts"]
+    pnpm next build && \
+    pnpm build:impor
 
 # ── runner ───────────────────────────────────────────────────
 FROM node:24.18.0-bookworm-slim AS runner
@@ -49,6 +34,7 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     PORT=3000 \
     UPLOAD_DIR=/data/berkas \
+    IMPOR_CERMIN=/data/impor-cermin \
     PRISMA_HIDE_UPDATE_MESSAGE=1 \
     CHECKPOINT_DISABLE=1
 
@@ -71,6 +57,9 @@ COPY --from=builder --chown=bintang:bintang /app/public ./public
 COPY --from=builder --chown=bintang:bintang /app/prisma ./prisma
 COPY --from=builder --chown=bintang:bintang /app/prisma.config.js ./prisma.config.js
 COPY --from=builder --chmod=755 /app/scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+# Importer Bintang lama (satu berkas) – lihat scripts/bintang-impor.sh.
+COPY --from=builder --chown=bintang:bintang /app/dist/impor.mjs ./impor.mjs
+COPY --from=builder --chmod=755 /app/scripts/bintang-impor.sh /usr/local/bin/bintang-impor
 
 RUN mkdir -p /data/berkas && chown -R bintang:bintang /data
 

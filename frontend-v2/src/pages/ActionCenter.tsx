@@ -128,16 +128,16 @@ export function ActionCenterPage() {
 
   return (
     <Page>
-      <section className="overflow-hidden rounded-2xl bg-ink-900 text-white shadow-[0_24px_70px_rgb(15_23_42/0.18)]">
+      <section className="overflow-hidden rounded-2xl border border-border bg-surface text-ink-900 shadow-[var(--app-shadow)]">
         <div className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[1.4fr_1fr] lg:p-8">
           <div className="max-w-2xl">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-indigo-200">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-700">
               <ListChecks className="h-3.5 w-3.5" /> Pusat Tindakan
             </div>
-            <h1 className="max-w-xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+            <h1 className="max-w-xl text-3xl font-semibold tracking-tight text-ink-900 sm:text-4xl">
               {taskCount === 0 ? "Operasional dalam kendali." : `${taskCount} hal membutuhkan perhatian.`}
             </h1>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
+            <p className="mt-3 max-w-xl text-sm leading-6 text-ink-600">
               Prioritas lintas transaksi, pengajuan dana, purchase order, dan invoice—disusun berdasarkan keputusan dan risiko, bukan berdasarkan modul.
             </p>
           </div>
@@ -206,9 +206,9 @@ function Page({ children }: { children: React.ReactNode }) {
 
 function HeroMetric({ label, value, danger = false }: { label: string; value: string; danger?: boolean }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.06] p-3.5 backdrop-blur-sm">
-      <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">{label}</p>
-      <p className={cn("mt-1 font-mono text-lg font-semibold tabular-nums", danger ? "text-rose-300" : "text-white")}>{value}</p>
+    <div className="rounded-xl border border-border bg-surface-muted p-3.5">
+      <p className="text-[10px] uppercase tracking-[0.12em] text-ink-500">{label}</p>
+      <p className={cn("mt-1 font-mono text-lg font-semibold tabular-nums", danger ? "text-danger-600" : "text-ink-900")}>{value}</p>
     </div>
   )
 }
@@ -235,7 +235,7 @@ function QueuePanel({
   return (
     <article className="flex min-h-[390px] flex-col rounded-2xl border border-white bg-white p-4 shadow-[var(--app-shadow)] sm:p-5">
       <div className="flex items-start gap-3 border-b border-ink-100 pb-4">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-ink-900 text-white"><Icon className="h-5 w-5" /></span>
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700"><Icon className="h-5 w-5" /></span>
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-400">{eyebrow}</p>
           <h2 className="text-base font-semibold text-ink-900">{title}</h2>

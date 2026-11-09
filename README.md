@@ -1,6 +1,6 @@
 # Bintang
 
-> **Bintang v3 ada di [`web/`](./web/README.md)** – rombak total di
+> **Bintang v3 ada di [`web/`](./web/README.md) (cabang `dev3`)** – rombak total di
 > atas stack MARLIN (Next.js 16 + Prisma 7 + PostgreSQL), berjalan di **server
 > Lenovo**, dengan alur pengajuan → persetujuan → pembayaran sebagai inti.
 > Aplikasi di bawah ini (FastAPI + React, Railway) tetap berjalan sampai hari

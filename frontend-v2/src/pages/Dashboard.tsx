@@ -450,18 +450,18 @@ function FinancialPositionHero({ data: d }: { data: GlobalDashboardResponse }) {
   ]
 
   return (
-    <section className="overflow-hidden rounded-2xl bg-ink-900 text-white shadow-[0_24px_70px_rgb(15_23_42/0.16)]">
+    <section className="overflow-hidden rounded-2xl border border-border bg-surface text-ink-900 shadow-[var(--app-shadow)]">
       <div className="grid lg:grid-cols-[1.35fr_1fr]">
         <div className="relative overflow-hidden p-5 sm:p-7 lg:p-8">
-          <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-brand-500/20 blur-3xl" />
+          <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-brand-100/70 blur-3xl" />
           <div className="relative">
-            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-              <Wallet className="h-3.5 w-3.5 text-brand-300" /> Saldo terkonsolidasi
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-ink-500">
+              <Wallet className="h-3.5 w-3.5 text-brand-600" /> Saldo terkonsolidasi
             </div>
-            <p className={cn("mt-3 font-mono text-4xl font-semibold tracking-tight tabular-nums sm:text-5xl", d.totals.balance < 0 ? "text-rose-300" : "text-white")}>
+            <p className={cn("mt-3 font-mono text-4xl font-semibold tracking-tight tabular-nums sm:text-5xl", d.totals.balance < 0 ? "text-danger-600" : "text-ink-900")}>
               {fmtIDR(d.totals.balance)}
             </p>
-            <div className="mt-7 grid max-w-xl grid-cols-3 gap-3 border-t border-white/10 pt-5">
+            <div className="mt-7 grid max-w-xl grid-cols-3 gap-3 border-t border-border pt-5">
               <PositionMetric label="Masuk" value={fmtCompact(d.totals.in)} tone="positive" />
               <PositionMetric label="Keluar" value={fmtCompact(d.totals.out)} tone="negative" />
               <PositionMetric label="Pergerakan neto" value={fmtCompact(netMovement)} tone={netMovement < 0 ? "negative" : "positive"} />
@@ -469,30 +469,30 @@ function FinancialPositionHero({ data: d }: { data: GlobalDashboardResponse }) {
           </div>
         </div>
 
-        <div className="border-t border-white/10 bg-white/[0.045] p-4 sm:p-5 lg:border-l lg:border-t-0">
+        <div className="border-t border-border bg-surface-muted p-4 sm:p-5 lg:border-l lg:border-t-0">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Prioritas hari ini</p>
-              <p className="text-sm font-semibold text-white">{riskCount === 0 ? "Tidak ada exception terbuka" : `${riskCount} sinyal perlu ditinjau`}</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-ink-500">Prioritas hari ini</p>
+              <p className="text-sm font-semibold text-ink-900">{riskCount === 0 ? "Tidak ada exception terbuka" : `${riskCount} sinyal perlu ditinjau`}</p>
             </div>
-            <Link to="/action-center" className="grid h-9 w-9 place-items-center rounded-lg bg-white/10 text-white hover:bg-white/15" aria-label="Buka pusat tindakan">
+            <Link to="/action-center" className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-surface text-ink-700 hover:bg-surface-sunken" aria-label="Buka pusat tindakan">
               <ListChecks className="h-4 w-4" />
             </Link>
           </div>
           <div className="space-y-1.5">
             {actions.map(({ label, value, hint, to, icon: Icon, urgent }) => (
-              <Link key={label} to={to} className="group flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.045] p-3 hover:bg-white/[0.09]">
-                <span className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-lg", urgent ? "bg-warning-500/15 text-warning-400" : "bg-success-500/15 text-success-400")}><Icon className="h-4 w-4" /></span>
+              <Link key={label} to={to} className="group flex items-center gap-3 rounded-xl border border-border bg-surface p-3 hover:border-brand-200 hover:bg-brand-50/40">
+                <span className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-lg", urgent ? "bg-warning-50 text-warning-600" : "bg-success-50 text-success-600")}><Icon className="h-4 w-4" /></span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12px] font-medium text-slate-200">{label}</span>
-                  <span className="block text-[10px] text-slate-500">{hint}</span>
+                  <span className="block truncate text-[12px] font-medium text-ink-800">{label}</span>
+                  <span className="block text-[10px] text-ink-500">{hint}</span>
                 </span>
-                <span className={cn("font-mono text-lg font-semibold tabular-nums", urgent ? "text-warning-300" : "text-slate-400")}>{value}</span>
-                <ArrowRight className="h-3.5 w-3.5 text-slate-600 group-hover:text-white" />
+                <span className={cn("font-mono text-lg font-semibold tabular-nums", urgent ? "text-warning-600" : "text-ink-400")}>{value}</span>
+                <ArrowRight className="h-3.5 w-3.5 text-ink-300 group-hover:text-brand-600" />
               </Link>
             ))}
           </div>
-          <Link to="/action-center" className="mt-3 flex h-10 items-center justify-center gap-2 rounded-xl bg-white text-[12px] font-semibold text-ink-900 hover:bg-slate-100">
+          <Link to="/action-center" className="mt-3 flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-600 text-[12px] font-semibold text-white hover:bg-brand-700">
             Buka Pusat Tindakan <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
@@ -504,8 +504,8 @@ function FinancialPositionHero({ data: d }: { data: GlobalDashboardResponse }) {
 function PositionMetric({ label, value, tone }: { label: string; value: string; tone: "positive" | "negative" }) {
   return (
     <div className="min-w-0">
-      <p className="truncate text-[10px] uppercase tracking-[0.11em] text-slate-500">{label}</p>
-      <p className={cn("mt-1 truncate font-mono text-sm font-semibold tabular-nums sm:text-base", tone === "positive" ? "text-emerald-300" : "text-rose-300")}>{value}</p>
+      <p className="truncate text-[10px] uppercase tracking-[0.11em] text-ink-500">{label}</p>
+      <p className={cn("mt-1 truncate font-mono text-sm font-semibold tabular-nums sm:text-base", tone === "positive" ? "text-success-600" : "text-danger-600")}>{value}</p>
     </div>
   )
 }

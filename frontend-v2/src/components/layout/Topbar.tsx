@@ -95,7 +95,7 @@ export function Topbar({
       )}
 
       <details className="group relative hidden sm:block">
-        <summary className="flex h-10 cursor-pointer list-none items-center gap-2 rounded-xl bg-ink-900 px-3.5 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-ink-800 [&::-webkit-details-marker]:hidden">
+        <summary className="flex h-10 cursor-pointer list-none items-center gap-2 rounded-xl bg-brand-600 px-3.5 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-700 [&::-webkit-details-marker]:hidden">
           <Plus className="h-4 w-4" /> Buat baru
         </summary>
         <div className="absolute right-0 top-12 z-40 w-56 overflow-hidden rounded-xl border border-white bg-white p-1.5 shadow-[var(--app-shadow-raised)]">

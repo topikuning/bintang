@@ -19,7 +19,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx --require ./scripts/stub-server-only.cjs prisma/seed.ts",
     "db:studio": "prisma studio",
-    "impor:lama": "tsx --require ./scripts/stub-server-only.cjs scripts/impor-bintang-lama.ts"
+    "impor:lama": "tsx --require ./scripts/stub-server-only.cjs scripts/impor-bintang-lama.ts",
+    "build:impor": "node scripts/bundel-impor.mjs"
   },
   "dependencies": {
     "@date-fns/tz": "1.5.0",
@@ -45,6 +46,7 @@
     "@types/pg": "8.20.0",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
+    "esbuild": "0.28.2",
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.1",
     "prisma": "7.8.0",

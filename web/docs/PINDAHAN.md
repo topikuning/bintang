@@ -10,6 +10,11 @@ Yang **tidak** disarankan: memindahkan aplikasi lama ke Lenovo dulu, baru
 kemudian pindah versi. Itu dua kali pindahan, dua kali risiko, untuk aplikasi
 yang akan dipensiunkan.
 
+> **Lenovo belum siap?** v3 bisa dijalankan dulu di Railway sebagai layanan
+> terpisah di samping aplikasi lama: [`RAILWAY.md`](./RAILWAY.md). Langkah §1
+> dan §3–5 di bawah sama; hanya perintah impornya `bintang-impor` lewat
+> `railway ssh`.
+
 ---
 
 ## 0. Putuskan dulu (sebelum menyentuh server)
@@ -48,7 +53,7 @@ password dan nomor rekening. Jangan kirim lewat chat; kosongkan setelah selesai.
 ```bash
 sudo apt install -y docker.io docker-compose-v2 git   # atau Docker resmi
 sudo systemctl enable --now docker
-sudo git clone https://github.com/topikuning/bintang /opt/bintang   # cabang main
+sudo git clone -b dev3 https://github.com/topikuning/bintang /opt/bintang
 cd /opt/bintang/web
 sudo cp .env.lenovo.example .env && sudo chmod 600 .env
 sudo nano .env      # DB_PASSWORD, SESSION_SECRET, KUNCI_DATA, DATA_DIR=/srv/bintang
