@@ -8,7 +8,7 @@ set -e
 DIR="${UPLOAD_DIR:-/data/berkas}"
 
 if [ "$(id -u)" = "0" ]; then
-  # IMPOR_CERMIN hanya ada di image `alat` (impor dari Bintang lama).
+  # IMPOR_CERMIN: cermin berkas impor dari Bintang lama (lihat bintang-impor).
   for d in "$DIR" ${IMPOR_CERMIN:-}; do
     if mkdir -p "$d" 2>/dev/null; then
       chown bintang:bintang "$d" 2>/dev/null || echo "[entrypoint] tidak bisa mengubah pemilik $d – penulisan berkas akan gagal." >&2
@@ -18,8 +18,13 @@ if [ "$(id -u)" = "0" ]; then
   done
 fi
 
-# Self-host (docker-compose) tanpa preDeploy: jalankan migrasi dulu.
-if [ "${MIGRASI_SAAT_START:-0}" = "1" ]; then
+# Migrasi DB tiap start (bawaan: ya). Aman diulang – `migrate deploy` hanya
+# menerapkan yang belum, dan dikunci advisory lock bila dua container start
+# bersamaan. Jangan bergantung pada pre-deploy platform saja: di Railway ia
+# hanya jalan bila "Railway Config File" = /web/railway.json, dan tanpa itu
+# aplikasi hidup dengan database kosong ("table public.users does not exist").
+# MIGRASI_SAAT_START=0 untuk mematikan.
+if [ "${MIGRASI_SAAT_START:-1}" = "1" ]; then
   echo "[entrypoint] prisma migrate deploy…"
   prisma migrate deploy
 fi

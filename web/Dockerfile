@@ -44,8 +44,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends tini gosu ca-certificates openssl && \
     rm -rf /var/lib/apt/lists/*
 
-# Prisma CLI (pinned) untuk `prisma migrate deploy` saat start
-# (MIGRASI_SAAT_START=1 di docker-compose).
+# Prisma CLI (pinned) untuk `prisma migrate deploy` tiap start
+# (scripts/docker-entrypoint.sh, MIGRASI_SAAT_START bawaan 1).
 RUN npm install -g prisma@7.8.0 && npm cache clean --force
 
 RUN groupadd --gid 1001 bintang && useradd --uid 1001 --gid bintang --create-home --shell /usr/sbin/nologin bintang
