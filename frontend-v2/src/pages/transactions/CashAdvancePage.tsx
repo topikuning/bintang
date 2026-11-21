@@ -483,7 +483,7 @@ function SettlementDialog({
     const s = existingQ.data!
     return (
       <Dialog open onOpenChange={(o) => !o && onClose()}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0 max-sm:pb-0">
           <DialogHeader className="px-6 pt-6 pb-3 border-b shrink-0">
             <DialogTitle>Pertanggungjawaban</DialogTitle>
             <DialogDescription>
@@ -536,7 +536,7 @@ function SettlementDialog({
               <div className="text-[12px] text-ink-500 italic">{s.notes}</div>
             )}
           </div>
-          <DialogFooter className="px-6 py-3 border-t shrink-0 bg-surface">
+          <DialogFooter className="px-6 py-3 border-t shrink-0 bg-surface max-sm:mx-0 max-sm:mb-0 max-sm:px-4">
             <Button
               variant="danger"
               onClick={handleDelete}
@@ -557,7 +557,7 @@ function SettlementDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0 max-sm:pb-0">
         <DialogHeader className="px-6 pt-6 pb-3 border-b shrink-0">
           <DialogTitle>
             Pertanggungjawaban Dana Operasional -- {target.recipient_display}
@@ -763,7 +763,7 @@ function SettlementDialog({
           </div>
         </form>
 
-        <DialogFooter className="px-6 py-3 border-t shrink-0 bg-surface">
+        <DialogFooter className="px-6 py-3 border-t shrink-0 bg-surface max-sm:mx-0 max-sm:mb-0 max-sm:px-4">
           <Button variant="secondary" onClick={onClose} disabled={isSubmitting || settleMu.isPending}>
             Batal
           </Button>

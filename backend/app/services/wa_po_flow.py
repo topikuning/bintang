@@ -340,6 +340,42 @@ async def _pesan_ke_pemasok(db: AsyncSession, po: PurchaseOrder) -> str:
     return "\n".join(baris)
 
 
+async def _simpan_nomor_pemasok(db: AsyncSession, po: PurchaseOrder) -> None:
+    """Nomor WA pemasok otomatis tercatat di data pemasok pada pesanan pertama,
+    supaya permintaan berikutnya tidak perlu menulis nomornya lagi.
+
+    - Pemasok sudah ada di data, nomornya kosong -> diisi.
+    - Pemasok belum ada di data -> dibuat (nama + nomor).
+    - Pemasok sudah punya nomor -> tidak ditimpa.
+    """
+    if not po.supplier_wa:
+        return
+    nomor = tampil_nomor(po.supplier_wa)
+    vendor = await db.get(VendorClient, po.vendor_client_id) if po.vendor_client_id else None
+    if vendor is None:
+        nama = (po.vendor_name or "").strip()
+        if not nama:
+            return
+        vendor = (
+            (
+                await db.execute(
+                    select(VendorClient).where(
+                        VendorClient.deleted_at.is_(None), VendorClient.name.ilike(nama)
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if vendor is None:
+            vendor = VendorClient(name=nama[:200], phone=nomor)
+            db.add(vendor)
+            await db.flush()
+        po.vendor_client_id = vendor.id
+    if not (vendor.phone or "").strip():
+        vendor.phone = nomor
+
+
 async def kirim_ke_pemasok(db: AsyncSession, po: PurchaseOrder, aktor: User) -> str:
     """Kirim (atau kirim ulang) pesanan ke WA pemasok. Return balasan untuk aktor."""
     if not po.supplier_wa:
@@ -353,6 +389,7 @@ async def kirim_ke_pemasok(db: AsyncSession, po: PurchaseOrder, aktor: User) -> 
     ):
         label = LABEL_TAHAP.get(po.wa_tahap or "", po.status.value)
         return f"{kode(po)} sudah {label}; tidak bisa dikirim ulang ke pemasok."
+    await _simpan_nomor_pemasok(db, po)
     po.status = POStatus.ISSUED
     po.wa_tahap = MENUNGGU_PEMASOK
     _antre(po.supplier_wa, await _pesan_ke_pemasok(db, po))

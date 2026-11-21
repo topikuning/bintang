@@ -300,9 +300,19 @@ async def webhook(
     if not chat_id:
         return {"ok": True, "skipped": "no chat_id"}
 
+    # WhatsApp bisa mengirim ID '…@lid' alih-alih nomor. `nomor` = nomor asli
+    # ('62…@c.us') bila bisa diketahui; dipakai untuk mencocokkan pengguna
+    # dan pemasok (pemasok tidak perlu terdaftar, cukup nomornya).
+    nomor = await wa.nomor_pengirim(chat_id, payload)
     user = (
-        await db.execute(select(User).where(User.whatsapp_chat_id == chat_id))
-    ).scalar_one_or_none()
+        (
+            await db.execute(
+                select(User).where(User.whatsapp_chat_id.in_({chat_id, nomor or chat_id}))
+            )
+        )
+        .scalars()
+        .first()
+    )
 
     text = _extract_text(payload)
     reply: str = ""
@@ -385,7 +395,7 @@ async def webhook(
 
         # Balasan pemasok (SETUJU / UBAH / TOLAK) untuk PO yang menunggunya.
         if not reply and text.strip() and not text.startswith("/"):
-            reply = await wa_po_flow.tangani_balasan_pemasok(db, chat_id, text) or ""
+            reply = await wa_po_flow.tangani_balasan_pemasok(db, nomor or chat_id, text) or ""
 
         if not reply and text.startswith("/"):
             reply = await dispatch_command(db, user, chat_id, text, payload)

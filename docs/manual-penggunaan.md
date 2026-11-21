@@ -765,7 +765,9 @@ wa 0812-3456-7890
 
 Catatan:
 - Harga boleh dikosongkan; pemasok mengisinya lewat **UBAH**. PO tidak bisa diajukan sebelum semua harga dan tempo terisi.
-- Kalau nomor WA pemasok tidak ditulis, sistem memakai nomor telepon di data master vendor. Tanpa keduanya PO hanya disimpan sebagai draf; kirim belakangan dengan **KIRIM PO12 08xxxx**.
+- Pemasok **tidak perlu mendaftar**. Nomor WA pemasok cukup ditulis sekali di permintaan pertama: nomor itu otomatis tersimpan di data pemasok (pemasok baru ikut dibuat), dan permintaan berikutnya memakainya tanpa perlu menulis ulang. Nomor yang sudah ada di data pemasok tidak ditimpa.
+- Tanpa nomor sama sekali, PO hanya disimpan sebagai draf; kirim belakangan dengan **KIRIM PO12 08xxxx**.
+- Balasan pemasok tetap dikenali walau WhatsApp menyembunyikan nomornya (ID `…@lid`). Sistem mencari nomor aslinya di data pesan atau menanyakannya ke WAHA.
 - Pemasok yang menerima lebih dari satu pesanan cukup menyertakan kodenya, mis. **SETUJU PO12 30**.
 - Penyetuju dan penerima ringkasan pagi = akun **SUPERADMIN / CENTRAL_ADMIN** yang sudah menautkan WhatsApp (`/link`).
 - Bukti transfer (foto atau PDF) dikirim **langsung sebagai berkas** ke WhatsApp pemasok, dengan keterangan nominal dan tanggal transfer. Hal yang sama berlaku untuk bukti yang diunggah dari aplikasi.

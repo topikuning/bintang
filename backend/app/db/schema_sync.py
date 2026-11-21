@@ -48,7 +48,7 @@ async def _sync_pg_columns(conn) -> None:
         # Proposal workflow (siapa ajukan, siapa approve, kapan, alasan reject)
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS proposed_by_id INTEGER REFERENCES users(id)",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS approved_by_id INTEGER REFERENCES users(id)",
-        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP",
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS rejection_reason TEXT",
         # Akunting: kind tx (INVOICE_PAYMENT/CASH_ADVANCE/DIRECT_EXPENSE)
         "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS kind VARCHAR(40) NOT NULL DEFAULT 'INVOICE_PAYMENT'",

@@ -1,6 +1,6 @@
 import { useEffect } from "react"
 import { Controller, useForm } from "react-hook-form"
-import { Loader2 } from "lucide-react"
+import { ChevronDown, Loader2 } from "lucide-react"
 import { z } from "zod"
 import {
   useProposeProject,
@@ -115,9 +115,7 @@ export function ProjectProposalForm({ open, onClose }: Props) {
         <DialogHeader>
           <DialogTitle>Ajukan Proyek Baru</DialogTitle>
           <DialogDescription>
-            Proyek akan berstatus <strong>Menunggu Persetujuan</strong>. Setelah
-            disetujui Admin Pusat / Superadmin, proyek aktif & Anda otomatis
-            di-assign sebagai anggota tim.
+            Proyek aktif setelah disetujui admin pusat, dan Anda otomatis masuk tim proyek.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -125,13 +123,22 @@ export function ProjectProposalForm({ open, onClose }: Props) {
           onSubmit={handleSubmit(onSubmit)}
           className="flex flex-col gap-3"
         >
-          <div className="grid grid-cols-2 gap-3">
+          <Field label="Nama Proyek" required error={errors.name?.message}>
+            <Input
+              {...register("name")}
+              placeholder="Mis. KNMP Mataram Fase 2"
+              enterKeyHint="next"
+            />
+          </Field>
+          <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3">
             <Field label="Kode" required error={errors.code?.message}>
               <Input
                 {...register("code")}
-                placeholder="Mis. KNMP-MTR"
+                placeholder="KNMP-MTR"
                 className="font-mono"
-                autoFocus
+                autoCapitalize="characters"
+                autoCorrect="off"
+                enterKeyHint="next"
               />
             </Field>
             <Field label="Perusahaan" required error={errors.company_id?.message}>
@@ -147,29 +154,6 @@ export function ProjectProposalForm({ open, onClose }: Props) {
               />
             </Field>
           </div>
-          <Field label="Nama Proyek" required error={errors.name?.message}>
-            <Input {...register("name")} placeholder="Mis. KNMP Mataram Fase 2" />
-          </Field>
-          <Field label="Lokasi">
-            <Input {...register("location")} placeholder="Mis. Mataram, NTB" />
-          </Field>
-          <Field
-            label="Dinas / Instansi / Klien"
-            hint="Pemberi pekerjaan (opsional). Tampil di header PDF PO/Invoice."
-          >
-            <Input
-              {...register("client_name")}
-              placeholder="Mis. Dinas PUPR Kota Mataram"
-            />
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Tanggal Mulai">
-              <Input type="date" {...register("start_date")} />
-            </Field>
-            <Field label="Tanggal Selesai">
-              <Input type="date" {...register("end_date")} />
-            </Field>
-          </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Nilai Kontrak">
               <Controller
@@ -183,7 +167,7 @@ export function ProjectProposalForm({ open, onClose }: Props) {
                 )}
               />
             </Field>
-            <Field label="Budget Pengeluaran">
+            <Field label="Budget">
               <Controller
                 control={control}
                 name="budget_amount"
@@ -196,12 +180,40 @@ export function ProjectProposalForm({ open, onClose }: Props) {
               />
             </Field>
           </div>
-          <Field
-            label="Catatan / Justifikasi"
-            hint="Jelaskan singkat alasan/keperluan proyek (bantu admin saat review)."
-          >
-            <Textarea {...register("notes")} rows={3} placeholder="Mis. proyek lanjutan dr SPK ..." />
-          </Field>
+
+          <details className="group rounded-md border">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-sm font-medium text-ink-700 [&::-webkit-details-marker]:hidden">
+              Detail lain (opsional)
+              <ChevronDown className="h-4 w-4 text-ink-500 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="flex flex-col gap-3 border-t px-3 pb-3 pt-3">
+              <Field label="Lokasi">
+                <Input {...register("location")} placeholder="Mis. Mataram, NTB" enterKeyHint="next" />
+              </Field>
+              <Field label="Dinas / Klien" hint="Tampil di kop PDF PO/Invoice.">
+                <Input
+                  {...register("client_name")}
+                  placeholder="Mis. Dinas PUPR Kota Mataram"
+                  enterKeyHint="next"
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Mulai">
+                  <Input type="date" {...register("start_date")} />
+                </Field>
+                <Field label="Selesai">
+                  <Input type="date" {...register("end_date")} />
+                </Field>
+              </div>
+              <Field label="Catatan untuk admin">
+                <Textarea
+                  {...register("notes")}
+                  rows={2}
+                  placeholder="Mis. proyek lanjutan dari SPK …"
+                />
+              </Field>
+            </div>
+          </details>
         </form>
         <DialogFooter>
           <Button variant="secondary" onClick={onClose}>
@@ -209,7 +221,7 @@ export function ProjectProposalForm({ open, onClose }: Props) {
           </Button>
           <Button type="submit" form="proposal-form" disabled={isSubmitting}>
             {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            Ajukan Proposal
+            Ajukan
           </Button>
         </DialogFooter>
       </DialogContent>
