@@ -170,6 +170,60 @@ async def send_media(
         return None
 
 
+_lid_cache: dict[str, str] = {}
+
+
+async def lid_ke_nomor(lid: str) -> str | None:
+    """Tanya WAHA nomor asli di balik ID '…@lid'. Return '<nomor>@c.us' atau None."""
+    from urllib.parse import quote
+
+    from app.services.whatsapp.phone import jid_nomor
+
+    if lid in _lid_cache:
+        return _lid_cache[lid]
+    if not is_enabled():
+        return None
+    base, sess = _base_url(), _session()
+    kandidat = [
+        f"{base}/api/{sess}/lids/{quote(lid, safe='@')}",
+        f"{base}/api/{sess}/lids/{quote(lid.split('@', 1)[0])}",
+    ]
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as cli:
+            for url in kandidat:
+                r = await cli.get(url, headers=_headers())
+                if r.status_code >= 400:
+                    logger.warning("WAHA lids %s -> %s body=%s", url, r.status_code, r.text[:300])
+                    continue
+                data = r.json()
+                nomor = jid_nomor(data.get("pn") if isinstance(data, dict) else None)
+                if nomor:
+                    _lid_cache[lid] = nomor
+                    return nomor
+    except Exception as e:
+        logger.warning("whatsapp lid_ke_nomor %s gagal: %s", lid, e)
+    return None
+
+
+async def nomor_pengirim(chat_id: str, payload: dict) -> str | None:
+    """Nomor asli pengirim ('<nomor>@c.us'), juga saat `from` berupa '…@lid'.
+
+    Dipakai untuk mencocokkan balasan pemasok dengan nomor yang diketik
+    pengguna saat memesan. None kalau tidak bisa diketahui (mis. grup).
+    """
+    from app.services.whatsapp.phone import jid_nomor, nomor_dari_payload
+
+    nomor = jid_nomor(chat_id)
+    if nomor:
+        return nomor
+    if not chat_id.endswith("@lid"):
+        return None
+    nomor = nomor_dari_payload(payload) or await lid_ke_nomor(chat_id)
+    if nomor is None:
+        logger.warning("WAHA: nomor asli untuk %s tidak diketahui", chat_id)
+    return nomor
+
+
 async def download_media(media_url: str) -> tuple[bytes, str | None] | None:
     """Download file yang dirujuk webhook WAHA. Mendukung 3 bentuk:
     1) URL absolut http(s) — di-fetch apa adanya (dengan API key kalau set).

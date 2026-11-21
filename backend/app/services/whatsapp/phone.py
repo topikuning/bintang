@@ -27,6 +27,48 @@ def normalisasi_wa(raw: str | None) -> str:
     return f"{digits}@c.us"
 
 
+_RE_JID_NOMOR = re.compile(r"^(\d{8,15})(?::\d+)?@(?:c\.us|s\.whatsapp\.net)$")
+
+
+def jid_nomor(nilai: object) -> str | None:
+    """ID WhatsApp berbasis nomor -> `<nomor>@c.us`.
+
+    '62812..@c.us', '62812..@s.whatsapp.net', '62812..:5@s.whatsapp.net'
+    -> '62812..@c.us'. ID lain (mis. '…@lid', grup) -> None.
+    """
+    if not isinstance(nilai, str):
+        return None
+    m = _RE_JID_NOMOR.match(nilai.strip())
+    return f"{m.group(1)}@c.us" if m else None
+
+
+def nomor_dari_payload(payload: dict) -> str | None:
+    """Cari nomor asli pengirim di payload WAHA saat `from` berupa '…@lid'.
+
+    WhatsApp kini sering menyembunyikan nomor di balik ID '@lid'. Sebagian
+    mesin WAHA tetap menyertakan nomornya di `_data` dengan nama kolom
+    berakhiran Alt / Pn (remoteJidAlt, senderPn, SenderAlt, …). Hanya
+    kolom seperti itu yang dibaca, supaya nomor kita sendiri (`to`) tidak
+    ikut terambil.
+    """
+    data = payload.get("_data")
+    if not isinstance(data, dict):
+        return None
+    antre: list[dict] = [data]
+    while antre:
+        d = antre.pop(0)
+        for kunci, nilai in d.items():
+            if isinstance(nilai, dict):
+                antre.append(nilai)
+                continue
+            k = str(kunci).lower()
+            if k.endswith(("alt", "pn")) and "recipient" not in k:
+                nomor = jid_nomor(nilai)
+                if nomor:
+                    return nomor
+    return None
+
+
 def tampil_nomor(chat_id: str | None) -> str:
     """'62812xxxx@c.us' -> '0812xxxx' untuk ditampilkan ke manusia."""
     if not chat_id:

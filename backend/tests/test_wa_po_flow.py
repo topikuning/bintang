@@ -627,3 +627,196 @@ async def test_alur_lewat_webhook_whatsapp(db, monkeypatch, upload_dir):
     # Perintah lama tetap jalan (tidak tertelan alur PO).
     keluar = await kirim(PENGAJU_WA, "/help")
     assert any("Pesan material lewat WA" in t for _, t in keluar)
+
+
+# ---------------------------------------------------------------------------
+# Pemasok membalas dari ID '@lid' (WhatsApp menyembunyikan nomornya)
+# ---------------------------------------------------------------------------
+
+LID_PEMASOK = "246813579024680@lid"
+
+
+def test_jid_nomor_dan_nomor_dari_payload():
+    from app.services.whatsapp.phone import jid_nomor, nomor_dari_payload
+
+    assert jid_nomor("6281234567890@c.us") == PEMASOK
+    assert jid_nomor("6281234567890@s.whatsapp.net") == PEMASOK
+    assert jid_nomor("6281234567890:12@s.whatsapp.net") == PEMASOK
+    assert jid_nomor(LID_PEMASOK) is None
+    assert jid_nomor("120363000000000000@g.us") is None
+
+    payload = {
+        "from": LID_PEMASOK,
+        "to": "6289999999999@c.us",
+        "_data": {
+            "key": {"remoteJid": LID_PEMASOK, "remoteJidAlt": "6281234567890@s.whatsapp.net"}
+        },
+    }
+    assert nomor_dari_payload(payload) == PEMASOK
+    # Nomor kita sendiri (to / recipient) tidak boleh terambil.
+    assert (
+        nomor_dari_payload({"to": "6289@c.us", "_data": {"RecipientAlt": "6289999999999@c.us"}})
+        is None
+    )
+    assert (
+        nomor_dari_payload({"_data": {"Info": {"SenderAlt": "6281234567890@s.whatsapp.net"}}})
+        == PEMASOK
+    )
+
+
+async def _siapkan_webhook(db, monkeypatch):
+    from types import SimpleNamespace
+
+    from app.api.v1 import whatsapp as wa_api
+
+    async def _config(_db):
+        return SimpleNamespace(whatsapp_enabled=True)
+
+    async def _tanpa_secret(_db, _key):
+        return None
+
+    terkirim: list[tuple[str, str]] = []
+
+    async def teks(chat_id, t):
+        terkirim.append((chat_id, t))
+        return {"ok": True}
+
+    monkeypatch.setattr(wa, "is_enabled", lambda: True)
+    monkeypatch.setattr(wa, "send_text", teks)
+    monkeypatch.setattr(wa_api.messaging, "get_config", _config)
+    monkeypatch.setattr(wa_api, "get_setting", _tanpa_secret)
+
+    async def kirim(payload):
+        terkirim.clear()
+        await wa_api.webhook(_req_webhook(payload), x_webhook_hmac=None, db=db)
+        return list(terkirim)
+
+    return kirim
+
+
+@pytest.mark.asyncio
+async def test_balasan_pemasok_dari_lid_dengan_nomor_di_payload(db, monkeypatch, upload_dir):
+    proyek, pengaju, keuangan, vendor = await _seed(db)
+    kirim = await _siapkan_webhook(db, monkeypatch)
+    po = await _buat_po_lewat_wa(db, monkeypatch, pengaju)
+
+    keluar = await kirim(
+        {
+            "from": LID_PEMASOK,
+            "fromMe": False,
+            "body": "ubah 1 = 72000 tempo 15 hari",
+            "_data": {
+                "key": {"remoteJid": LID_PEMASOK, "remoteJidAlt": "6281234567890@s.whatsapp.net"}
+            },
+        }
+    )
+    await db.refresh(po)
+    assert po.wa_tahap == wa_po_flow.MENUNGGU_PENGAJU and po.tempo_days == 15
+    # Balasan ke pemasok dikirim ke chat asalnya (ID @lid).
+    assert any(c == LID_PEMASOK and "Penawaran" in t for c, t in keluar)
+    assert any(c == PENGAJU_WA and "Penawaran pemasok" in t for c, t in keluar)
+
+
+@pytest.mark.asyncio
+async def test_balasan_pemasok_dari_lid_ditanyakan_ke_waha(db, monkeypatch, upload_dir):
+    proyek, pengaju, keuangan, vendor = await _seed(db)
+    kirim = await _siapkan_webhook(db, monkeypatch)
+    po = await _buat_po_lewat_wa(db, monkeypatch, pengaju)
+
+    ditanya: list[str] = []
+
+    async def lid_ke_nomor(lid):
+        ditanya.append(lid)
+        return PEMASOK
+
+    monkeypatch.setattr(wa, "lid_ke_nomor", lid_ke_nomor)
+    keluar = await kirim({"from": LID_PEMASOK, "fromMe": False, "body": "SETUJU 30"})
+    assert ditanya == [LID_PEMASOK]
+    await db.refresh(po)
+    # Harga semen belum ada -> pemasok diminta melengkapi (bukan diam).
+    assert any(c == LID_PEMASOK and "belum ada" in t for c, t in keluar)
+
+    keluar = await kirim(
+        {"from": LID_PEMASOK, "fromMe": False, "body": "UBAH\n1 = 72000\nTEMPO 30"}
+    )
+    await db.refresh(po)
+    assert po.wa_tahap == wa_po_flow.MENUNGGU_PENGAJU
+
+
+@pytest.mark.asyncio
+async def test_lid_ke_nomor_memanggil_waha(monkeypatch):
+    import httpx
+
+    diminta: list[str] = []
+
+    def tangkap(req: httpx.Request) -> httpx.Response:
+        diminta.append(str(req.url))
+        return httpx.Response(200, json={"lid": LID_PEMASOK, "pn": "6281234567890@c.us"})
+
+    asli = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda **kw: asli(transport=httpx.MockTransport(tangkap))
+    )
+    monkeypatch.setattr(
+        wa, "get_cached", lambda k: {"WHATSAPP_BASE_URL": "http://waha:3000"}.get(k, "")
+    )
+    wa._lid_cache.clear()
+    assert await wa.lid_ke_nomor(LID_PEMASOK) == PEMASOK
+    assert diminta == ["http://waha:3000/api/default/lids/246813579024680@lid"]
+    # Hasil disimpan: tidak bertanya lagi.
+    assert await wa.lid_ke_nomor(LID_PEMASOK) == PEMASOK
+    assert len(diminta) == 1
+    wa._lid_cache.clear()
+
+
+# ---------------------------------------------------------------------------
+# Nomor pemasok otomatis tercatat di data pemasok
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_nomor_pemasok_tersimpan_dan_dipakai_lagi(db, monkeypatch, upload_dir):
+    proyek, pengaju, keuangan, vendor = await _seed(db)
+    assert not vendor.phone
+    await _buat_po_lewat_wa(db, monkeypatch, pengaju)
+    await db.refresh(vendor)
+    assert vendor.phone == "081234567890"
+
+    # Permintaan berikutnya tanpa baris 'wa' -> nomor diambil dari data pemasok.
+    _mock_ai(
+        monkeypatch, [{"description": "Besi 10", "quantity": 20, "unit": "btg", "unit_price": None}]
+    )
+    preview = await parse_and_save(
+        db,
+        user=pengaju,
+        channel="whatsapp",
+        chat_id=PENGAJU_WA,
+        text="Besi 10 = 20 btg\nproyek BMJ1\nvendor CV Sumber Bangunan",
+    )
+    assert "WA pemasok: 081234567890" in preview
+
+
+@pytest.mark.asyncio
+async def test_pemasok_baru_otomatis_masuk_data(db, monkeypatch, upload_dir):
+    proyek, pengaju, keuangan, vendor = await _seed(db)
+    po = PurchaseOrder(
+        number="PO/UJI/1",
+        project_id=proyek.id,
+        company_id=proyek.company_id,
+        vendor_name="Toko Baru Jaya",
+        po_date=datetime(2026, 11, 21).date(),
+        status=POStatus.DRAFT,
+        created_by_id=pengaju.id,
+        supplier_wa="6285500001111@c.us",
+        items=[],
+    )
+    db.add(po)
+    await db.flush()
+    wa_po_flow.buka_kotak()
+    await wa_po_flow.kirim_ke_pemasok(db, po, pengaju)
+    await db.commit()
+    baru = (
+        await db.execute(select(VendorClient).where(VendorClient.name == "Toko Baru Jaya"))
+    ).scalar_one()
+    assert baru.phone == "085500001111"
+    assert po.vendor_client_id == baru.id
