@@ -146,24 +146,24 @@ export function TransactionDetail({
           <Field
             label="Penerima Dana"
             icon={UserIcon}
-            value={t.recipient_display || t.recipient_name || "—"}
+            value={t.recipient_display || t.recipient_name || "-"}
           />
         ) : (
-          <Field label="Pihak" icon={UserIcon} value={t.party_name || "—"} />
+          <Field label="Pihak" icon={UserIcon} value={t.party_name || "-"} />
         )}
-        <Field label="Proyek" value={project ? `${project.name} (${project.code})` : "—"} />
+        <Field label="Proyek" value={project ? `${project.name} (${project.code})` : "-"} />
         {/* Kategori hanya relevant utk INVOICE_PAYMENT (kategori sebagai
             ringkasan keseluruhan); utk DIRECT_EXPENSE rincian ada di items. */}
         {!isDirect && (
-          <Field label="Kategori" value={category?.name || "—"} />
+          <Field label="Kategori" value={category?.name || "-"} />
         )}
-        <Field label="Deskripsi" icon={FileText} value={t.description || "—"} />
+        <Field label="Deskripsi" icon={FileText} value={t.description || "-"} />
         <Field
           label="Metode Pembayaran"
           icon={CreditCard}
           value={PAYMENT_LABEL[t.payment_method] ?? t.payment_method}
         />
-        <Field label="No. Referensi" icon={Hash} value={t.reference_no || "—"} mono />
+        <Field label="No. Referensi" icon={Hash} value={t.reference_no || "-"} mono />
         {t.parent_advance_tx_id && (
           <Field
             label="Top-up dari"

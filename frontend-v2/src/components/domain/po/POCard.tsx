@@ -34,7 +34,7 @@ export function POCard({ po, projectName, onClick, className }: POCardProps) {
 
       <div className="flex flex-col gap-0.5 min-w-0">
         <div className="text-sm font-medium text-ink-900 truncate">
-          {po.vendor_name || "—"}
+          {po.vendor_name || "-"}
         </div>
         {projectName && (
           <div className="text-[11px] text-ink-500 truncate">{projectName}</div>

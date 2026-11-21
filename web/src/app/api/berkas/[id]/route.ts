@@ -6,7 +6,7 @@ import { scopePengajuan } from "@/lib/pengajuan/queries";
 import { ambilBerkas } from "@/lib/penyimpanan";
 
 /**
- * Sajikan lampiran – WAJIB login dan lolos lingkup akses yang sama dengan
+ * Sajikan lampiran - WAJIB login dan lolos lingkup akses yang sama dengan
  * dokumen induknya. Tidak ada URL publik; kunci penyimpanan tidak bocor.
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {

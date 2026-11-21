@@ -62,7 +62,7 @@ export default async function PengajuanPage({
     <>
       <PageHeader
         title="Pengajuan pembayaran"
-        description="Ajukan, setujui, dan bayar – semua jejaknya tercatat di sini."
+        description="Ajukan, setujui, dan bayar - semua jejaknya tercatat di sini."
         actions={
           can(user.role, "request.create") ? (
             <ButtonLink href="/pengajuan/baru" variant="primary">
@@ -92,7 +92,7 @@ export default async function PengajuanPage({
               param: "proyek",
               label: "Proyek",
               allLabel: "Semua proyek",
-              options: projects.map((p) => ({ value: p.id, label: `${p.code} – ${p.name}` })),
+              options: projects.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` })),
             },
             {
               param: "jenis",

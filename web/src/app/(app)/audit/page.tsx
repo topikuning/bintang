@@ -56,7 +56,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
   ]);
   return (
     <>
-      <PageHeader title="Jejak Audit" description="Setiap perubahan uang, status, dan akses – tidak bisa diubah atau dihapus." />
+      <PageHeader title="Jejak Audit" description="Setiap perubahan uang, status, dan akses - tidak bisa diubah atau dihapus." />
       <Suspense>
         <FilterBar
           className="mb-4"

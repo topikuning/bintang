@@ -106,8 +106,7 @@
     {# Pisah nama material + spec kalau ada separator em-dash.
        Kalau tidak ada (atau spec sama dgn name), merge 'Nama' + 'Spec'
        jadi satu cell (colspan=2). Jangan duplikat unit dgn kolom 'Sat.'. #}
-    {% set _name = it.description.split('—')[0]|trim if '—' in it.description else it.description %}
-    {% set _spec = it.description.split('—')[1]|trim if '—' in it.description else '' %}
+    {% set _name, _spec = it.description|pisah_uraian %}
     <tr>
       <td class="center">{{ loop.index }}</td>
       {% if _spec and _spec != _name %}

@@ -173,7 +173,7 @@ export async function requestIp(): Promise<string | undefined> {
     const h = await headers();
     return h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || undefined;
   } catch {
-    // Di luar scope request (skrip/uji) – IP memang tidak ada.
+    // Di luar scope request (skrip/uji) - IP memang tidak ada.
     return undefined;
   }
 }

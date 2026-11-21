@@ -541,7 +541,7 @@ function ProjectSummaryCard({ project: p }: { project: GlobalDashboardProjectSum
         <HealthBadge status={p.health} />
       </div>
 
-      {/* Satu baris per angka (label kiri, nominal utuh kanan) – tidak ada
+      {/* Satu baris per angka (label kiri, nominal utuh kanan) - tidak ada
           lagi angka yang terpotong "…" di kartu sempit. */}
       <div className="mt-2 space-y-0.5 border-t pt-2">
         <div className="flex items-baseline justify-between gap-3">

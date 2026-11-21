@@ -21,7 +21,7 @@ export default async function MasterPage() {
     { href: "/master/pihak", label: "Penerima & vendor", ket: "Vendor, tukang, klien, beserta rekeningnya", n: p, icon: Users },
     { href: "/master/kategori", label: "Kategori", ket: "Pengelompokan biaya & pemasukan untuk laporan", n: k, icon: Tags },
     { href: "/master/rekening", label: "Rekening & kas", ket: "Asal dan tujuan uang, beserta saldo awal", n: r, icon: Landmark },
-    { href: "/master/perusahaan", label: "Perusahaan", ket: "Badan usaha pemilik proyek – tampil di kop cetak", n: c, icon: Building2 },
+    { href: "/master/perusahaan", label: "Perusahaan", ket: "Badan usaha pemilik proyek - tampil di kop cetak", n: c, icon: Building2 },
   ];
   return (
     <>

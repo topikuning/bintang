@@ -49,7 +49,7 @@ atau kredensial bot production ke `dev`.
    database, volume, network, dan deployment tetap terpisah.
 4. Pastikan pemilih environment di bagian atas sekarang menampilkan
    **`dev`** sebelum mengubah apa pun.
-5. Jangan klik deploy final sebelum langkah B–E selesai. Perubahan Railway
+5. Jangan klik deploy final sebelum langkah B-E selesai. Perubahan Railway
    bersifat staged, sehingga semuanya dapat diperiksa lebih dulu.
 
 > Sealed variable tidak ikut tersalin saat environment diduplikasi.
@@ -222,7 +222,7 @@ yang tercatat setelah deploy akan hilang. Gunakan hanya dalam insiden.
 
 1. Dashboard Railway → **New Project** → **Deploy from GitHub repo**.
 2. Pilih repo `bintang`.
-3. Railway akan membuat satu service otomatis — kita atur di langkah 3.
+3. Railway akan membuat satu service otomatis - kita atur di langkah 3.
 
 ---
 
@@ -240,7 +240,7 @@ yang tercatat setelah deploy akan hilang. Gunakan hanya dalam insiden.
 
 1. **New** → **GitHub Repo** → pilih repo yang sama.
 2. Settings → **Root Directory**: kosongkan / isi `/`
-   — **root repo**, bukan `backend` dan bukan `frontend-v2`.
+   - **root repo**, bukan `backend` dan bukan `frontend-v2`.
    `Dockerfile` di root yang mem-build keduanya.
 3. Settings → **Watch Paths**: kosongkan (perubahan di backend maupun
    frontend sama-sama harus memicu build ulang).
@@ -253,7 +253,7 @@ menjalankan migrasi lalu uvicorn.
 
 **Migrasi jalan otomatis.** `docker-entrypoint.sh` memanggil
 `python -m app.bootstrap_db` sebelum uvicorn. Kalau migrasi gagal,
-container berhenti dan deploy ditandai gagal — versi lama tetap
+container berhenti dan deploy ditandai gagal - versi lama tetap
 melayani, bukannya naik dengan schema setengah jadi.
 
 ### 3c. Volume untuk uploads
@@ -283,7 +283,7 @@ Set di service aplikasi:
 Catatan penting:
 
 - **`ALLOWED_ORIGINS` sengaja kosong**, dan defaultnya memang sudah
-  kosong — jadi variabel ini tidak perlu ditambahkan sama sekali. SPA
+  kosong - jadi variabel ini tidak perlu ditambahkan sama sekali. SPA
   dan API satu origin, tidak ada request lintas-origin yang perlu
   diizinkan. Kalau environment lama masih membawa nilai berisi
   `localhost`, entri itu diabaikan otomatis (dengan peringatan di log)
@@ -306,7 +306,7 @@ Catatan penting:
 > **PALING SERING SALAH DI SINI.** Kalau service ini sebelumnya
 > menjalankan frontend nginx, target port-nya masih tersimpan `80`.
 > Mengubah Root Directory TIDAK ikut mengubahnya. Gejalanya: 502
-> `connection refused` di semua path — **termasuk `/health`** — padahal
+> `connection refused` di semua path - **termasuk `/health`** - padahal
 > log deploy menunjukkan `[entrypoint] menjalankan uvicorn di port 8000`
 > dan tidak ada error sama sekali.
 >
@@ -338,10 +338,10 @@ Setelah deploy sehat → buka domain → login `admin@bintang.me` / `admin123`.
 
 | Cek | Cara |
 | --- | --- |
-| Aplikasi hidup | buka `https://<domain>/` — SPA muncul |
+| Aplikasi hidup | buka `https://<domain>/` - SPA muncul |
 | API hidup | `https://<domain>/health` → `{"status":"ok"}` |
 | Migrasi jalan | deploy log memuat `[bootstrap_db] schema up to date.` |
-| Refresh route dalam | buka `https://<domain>/transactions` langsung — tidak 404 |
+| Refresh route dalam | buka `https://<domain>/transactions` langsung - tidak 404 |
 | Lampiran terlindungi | buka URL `/files/...` di jendela penyamaran → **401**, bukan gambar |
 | Upload persist | upload bukti, redeploy, pastikan gambarnya masih ada |
 
@@ -359,7 +359,7 @@ Kalau project Railway Anda dibuat sebelum perubahan ini:
    (root repo), lalu redeploy. Sekarang ia menyajikan SPA juga.
 2. Pindahkan domain publik dari service frontend ke service ini
    (atau generate domain baru dan perbarui bookmark/tautan).
-3. Hapus `ALLOWED_ORIGINS` dari variabel — tidak lagi diperlukan.
+3. Hapus `ALLOWED_ORIGINS` dari variabel - tidak lagi diperlukan.
 4. Tambahkan `TRUSTED_PROXY_HOPS=1`.
 5. Kalau integrasi Telegram/WhatsApp aktif, pastikan webhook secret
    terisi (Pengaturan → Integrasi), kalau tidak boot akan ditolak.
@@ -371,7 +371,7 @@ Kalau project Railway Anda dibuat sebelum perubahan ini:
 
 `bootstrap_db.py` mendeteksi DB yang selama ini dikelola `create_all`
 (punya tabel, tapi belum punya `alembic_version`) dan hanya melakukan
-**`stamp head`** — mencatat posisi versi. Tidak ada `CREATE`, `ALTER`,
+**`stamp head`** - mencatat posisi versi. Tidak ada `CREATE`, `ALTER`,
 `DROP`, maupun `UPDATE` yang dijalankan.
 
 Itu memang yang benar: `create_all` membangun schema dari model saat
@@ -379,7 +379,7 @@ ini, jadi struktur DB Anda sudah setara `head`. Kalau Alembic dipaksa
 melakukan `upgrade` dari baseline, setiap migrasi akan mencoba membuat
 kolom/tabel yang sudah ada dan deploy gagal di langkah pertama.
 
-Konsekuensinya, dua *data migration* dilewati secara sengaja —
+Konsekuensinya, dua *data migration* dilewati secara sengaja -
 alasannya ditulis lengkap di `backend/app/bootstrap_db.py`. Ringkasnya:
 enkripsi rekening bank aman dilewati karena kolomnya membaca plaintext
 maupun ciphertext, dan merge tabel `funders` tidak relevan lagi.
@@ -420,7 +420,7 @@ Redeploy, atau Ctrl/Cmd+K → "Deploy Latest Commit".
 
 Pencegahan: CI di `main` tidak lagi membatalkan run sebelumnya
 (`.github/workflows/ci.yml`), dan satu perubahan masuk ke `main` lewat satu
-PR saja – jangan dua PR berisi commit yang sama.
+PR saja - jangan dua PR berisi commit yang sama.
 
 ### Backup database
 
@@ -454,19 +454,19 @@ langsung dan tidak ada arsip raksasa yang harus diunduh manual.
    dengan `SUMBER_LAMA_URL` = domain layanan ini dan token yang sama.
 3. Setelah impor final berhasil: **kosongkan** `EKSPOR_V3_TOKEN` dan redeploy.
    Selama token terisi, siapa pun yang memegangnya bisa mengambil seluruh
-   data – termasuk hash password dan nomor rekening yang sudah didekripsi.
+   data - termasuk hash password dan nomor rekening yang sudah didekripsi.
 
 Rute: `GET /api/v1/ekspor-v3/manifest`, `/tabel/{nama}`, `/berkas`,
-`/berkas/{path}` – semuanya wajib header `X-Ekspor-Token`.
+`/berkas/{path}` - semuanya wajib header `X-Ekspor-Token`.
 
 ## Troubleshooting
 
 **Deploy gagal, log memuat `REFUSE_BOOT:`**
 Konfigurasi produksi ditolak dengan sengaja. Pesannya menyebutkan
-variabel mana yang bermasalah — perbaiki lalu redeploy.
+variabel mana yang bermasalah - perbaiki lalu redeploy.
 
 **502 `connection refused` di semua path (termasuk `/health`)**
-Railway merutekan ke port yang salah — bukan masalah kode. Setel target
+Railway merutekan ke port yang salah - bukan masalah kode. Setel target
 port domain ke `8000` (Settings → Networking). Lihat catatan di langkah
 3e; ini biasanya sisa konfigurasi dari service frontend nginx yang
 dulu memakai port 80.
@@ -479,7 +479,7 @@ kredensial Postgres berubah.
 
 **WhatsApp jalan sebentar lalu berhenti**
 Kalau `WHATSAPP_WEBHOOK_SECRET` diisi, WAHA harus menyertakan tanda
-tangan HMAC di tiap webhook — tapi **WAHA Core menyimpan kuncinya di
+tangan HMAC di tiap webhook - tapi **WAHA Core menyimpan kuncinya di
 memori** dan kehilangannya tiap restart/reconnect session. Akibatnya
 webhook mulai ditolak `401` beberapa menit setelah WAHA hidup, tanpa
 sebab yang terlihat dari sisi Bintang.
@@ -491,14 +491,14 @@ volume yang di-mount).
 
 **SPA muncul tapi semua data gagal dimuat**
 Cek `https://<domain>/health`. Kalau API sehat tapi UI tetap kosong,
-biasanya build SPA memakai `VITE_API_BASE_URL` lama — di image gabungan
+biasanya build SPA memakai `VITE_API_BASE_URL` lama - di image gabungan
 nilainya di-hardcode ke `/api/v1`, jadi pastikan build memakai
 `Dockerfile` di root, bukan `frontend-v2` sebagai Root Directory.
 
 **Lampiran tidak muncul (401 di tab Network)**
 Cookie `bintang_files` tidak terkirim. Cookie itu di-set saat login dan
 ber-scope path `/files`. Logout lalu login lagi. Kalau tetap gagal,
-pastikan diakses lewat HTTPS — di `APP_ENV=prod` cookie ber-flag
+pastikan diakses lewat HTTPS - di `APP_ENV=prod` cookie ber-flag
 `Secure`.
 
 **Upload hilang setelah deploy**

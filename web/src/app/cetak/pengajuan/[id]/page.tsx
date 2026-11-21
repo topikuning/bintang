@@ -53,12 +53,12 @@ export default async function CetakPengajuanPage({ params }: { params: Promise<{
         <table className="mt-4 w-full text-[10pt]">
           <tbody>
             {[
-              ["Proyek", `${p.project.code} – ${p.project.name}`],
+              ["Proyek", `${p.project.code} - ${p.project.name}`],
               ["Jenis", REQUEST_KIND_LABEL[p.kind]],
               ["Keperluan", p.title],
-              ["Tanggal diajukan", p.submittedAt ? fmtWaktu(p.submittedAt) : "–"],
+              ["Tanggal diajukan", p.submittedAt ? fmtWaktu(p.submittedAt) : "-"],
               ...(p.neededDate ? [["Dibutuhkan", fmtTanggal(p.neededDate)]] : []),
-              ["Dibayarkan ke", p.payeeName ?? "–"],
+              ["Dibayarkan ke", p.payeeName ?? "-"],
               ...(rekening ? [["Rekening", `${p.bankName ?? ""} ${rekening}${p.bankHolder ? ` a.n. ${p.bankHolder}` : ""}`.trim()]] : []),
               ...(p.paidDate
                 ? [["Pembayaran", `${fmtTanggal(p.paidDate)} · ${p.paymentMethod ? METODE[p.paymentMethod] : ""}${p.account ? ` dari ${p.account.name}` : ""}${p.paymentRef ? ` · Ref ${p.paymentRef}` : ""}`]]
@@ -88,11 +88,11 @@ export default async function CetakPengajuanPage({ params }: { params: Promise<{
               <tr key={it.id} className="break-inside-avoid">
                 <td className="border border-neutral-400 px-2 py-1 align-top">{i + 1}</td>
                 <td className="border border-neutral-400 px-2 py-1 align-top">{it.description}</td>
-                <td className="border border-neutral-400 px-2 py-1 align-top">{it.category?.name ?? "–"}</td>
+                <td className="border border-neutral-400 px-2 py-1 align-top">{it.category?.name ?? "-"}</td>
                 <td className="border border-neutral-400 px-2 py-1 text-right align-top">
-                  {it.quantity !== null ? `${it.quantity.toString().replace(".", ",")} ${it.unit ?? ""}` : "–"}
+                  {it.quantity !== null ? `${it.quantity.toString().replace(".", ",")} ${it.unit ?? ""}` : "-"}
                 </td>
-                <td className="border border-neutral-400 px-2 py-1 text-right align-top">{it.unitPrice !== null ? angka(it.unitPrice) : "–"}</td>
+                <td className="border border-neutral-400 px-2 py-1 text-right align-top">{it.unitPrice !== null ? angka(it.unitPrice) : "-"}</td>
                 <td className="border border-neutral-400 px-2 py-1 text-right align-top tabular-nums">{angka(it.amount)}</td>
               </tr>
             ))}

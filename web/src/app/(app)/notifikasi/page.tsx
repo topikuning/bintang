@@ -30,7 +30,7 @@ export default async function NotifikasiPage() {
         }
       />
       {rows.length === 0 ? (
-        <EmptyState icon={Bell} title="Belum ada notifikasi" description="Kabar soal pengajuan Anda – disetujui, dibayar, perlu revisi – akan muncul di sini." />
+        <EmptyState icon={Bell} title="Belum ada notifikasi" description="Kabar soal pengajuan Anda - disetujui, dibayar, perlu revisi - akan muncul di sini." />
       ) : (
         <Card>
           <ul className="divide-y divide-border">

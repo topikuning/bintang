@@ -1,9 +1,9 @@
-// Prisma CLI config (v7) – JavaScript polos supaya CLI global di image
+// Prisma CLI config (v7) - JavaScript polos supaya CLI global di image
 // produksi bisa memuatnya tanpa loader TypeScript.
 try {
   process.loadEnvFile();
 } catch {
-  // .env tidak ada (CI/produksi – env dari platform)
+  // .env tidak ada (CI/produksi - env dari platform)
 }
 
 const { normalizeDatabaseUrl } = require("./prisma/db-url.cjs");

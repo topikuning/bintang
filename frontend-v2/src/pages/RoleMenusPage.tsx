@@ -244,7 +244,7 @@ export function RoleMenusPage() {
       <div className="rounded-md border border-info-200 bg-info-50 p-3 text-[12px] text-info-800">
         <strong>Catatan:</strong> Filter ini hanya menyembunyikan link di
         sidebar / mobile menu. Backend tetap protect endpoint per role
-        (defense in depth) — sembunyikan link bukan jaminan keamanan.
+        (defense in depth) - sembunyikan link bukan jaminan keamanan.
       </div>
     </div>
   )

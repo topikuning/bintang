@@ -64,15 +64,15 @@ def _is_admin(user: User) -> bool:
 
 async def cmd_help(db, user, chat_id, args, msg) -> str:
     return (
-        "*Bintang Bot* — perintah:\n"
+        "*Bintang Bot* - perintah:\n"
         "*Lihat data:*\n"
-        "  /saldo — saldo semua proyek\n"
-        "  /saldo <kode> — saldo + budget proyek\n"
-        "  /proyek — list proyek\n"
-        "  /pending — transaksi belum diverifikasi (admin)\n"
-        "  /invoice — invoice belum lunas\n"
-        "  /draft — daftar tx draft milik Anda\n"
-        "  /lihat <id> — detail satu transaksi\n"
+        "  /saldo - saldo semua proyek\n"
+        "  /saldo <kode> - saldo + budget proyek\n"
+        "  /proyek - list proyek\n"
+        "  /pending - transaksi belum diverifikasi (admin)\n"
+        "  /invoice - invoice belum lunas\n"
+        "  /draft - daftar tx draft milik Anda\n"
+        "  /lihat <id> - detail satu transaksi\n"
         "\n*Catat transaksi (DRAFT):*\n"
         "  /keluar <kode> <jumlah> <deskripsi>\n"
         "  /masuk <kode> <jumlah> <deskripsi>\n"
@@ -81,12 +81,12 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "(setel kode pendek di master Perusahaan).\n"
         "  Foto yang dikirim setelahnya jadi attachment otomatis.\n"
         "\n*Workflow validasi:*\n"
-        "  /submit <id> — kirim tx draft utk validasi\n"
-        "  /verify <id> — admin verify tx submitted\n"
-        "  /tolak <id> <alasan> — admin reject tx\n"
-        "  /batal <id> <alasan> — cancel tx\n"
+        "  /submit <id> - kirim tx draft utk validasi\n"
+        "  /verify <id> - admin verify tx submitted\n"
+        "  /tolak <id> <alasan> - admin reject tx\n"
+        "  /batal <id> <alasan> - cancel tx\n"
         "\n*Lampirkan bukti ke transaksi yang sudah ada:*\n"
-        "  /buktitx <id> — buka jendela 5 menit utk attach foto/PDF\n"
+        "  /buktitx <id> - buka jendela 5 menit utk attach foto/PDF\n"
         "  Contoh: ```/buktitx 123``` lalu kirim foto/file.\n"
         "\n*Buat PO / Invoice via chat (AI / OCR):*\n"
         "  /po + daftar item per-baris → AI parse → preview → balas *ya*\n"
@@ -98,9 +98,9 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "  /invoice + foto → OCR jadi Invoice DRAFT (default Hutang/IN)\n"
         "  /invoice-out + foto → Invoice tipe OUT (Piutang)\n"
         "  Caption opsional bisa sertakan:\n"
-        "  • `proyek BMJ1` — override proyek default\n"
-        "  • `vendor PT Sumber Besi` — hint vendor\n"
-        "  • `konteks: invoice utk pekerjaan konstruksi` — konteks dipakai AI utk OCR yg lebih akurat + disimpan sbg catatan\n"
+        "  • `proyek BMJ1` - override proyek default\n"
+        "  • `vendor PT Sumber Besi` - hint vendor\n"
+        "  • `konteks: invoice utk pekerjaan konstruksi` - konteks dipakai AI utk OCR yg lebih akurat + disimpan sbg catatan\n"
         "  Contoh: `/invoice proyek BMJ1 konteks: pembelian material besi tulangan`\n"
         "\n*Pesan material lewat WA (PO ke pemasok):*\n"
         "```/po\n"
@@ -109,19 +109,19 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "vendor CV Sumber Bangunan\n"
         "wa 08123456789```\n"
         "  Balas *ya* → PO dikirim ke WA pemasok. Pemasok membalas SETUJU/UBAH.\n"
-        "  *AJUKAN PO12* — teruskan penawaran pemasok ke keuangan\n"
-        "  *SETUJUI PO12* / *TOLAK PO12 alasan* — keuangan/pimpinan\n"
-        "  *TERIMA PO12* + foto surat jalan — barang datang, tagihan dibuat\n"
-        "  *BAYAR PO12* + foto bukti transfer — keuangan; bukti dikirim ke pemasok\n"
-        "  *KIRIM PO12 08xxxx* — kirim/ulang ke nomor pemasok · *BATAL PO12*\n"
-        "  *TAGIHAN* — tagihan jatuh tempo hari ini & besok (keuangan)\n"
+        "  *AJUKAN PO12* - teruskan penawaran pemasok ke keuangan\n"
+        "  *SETUJUI PO12* / *TOLAK PO12 alasan* - keuangan/pimpinan\n"
+        "  *TERIMA PO12* + foto surat jalan - barang datang, tagihan dibuat\n"
+        "  *BAYAR PO12* + foto bukti transfer - keuangan; bukti dikirim ke pemasok\n"
+        "  *KIRIM PO12 08xxxx* - kirim/ulang ke nomor pemasok · *BATAL PO12*\n"
+        "  *TAGIHAN* - tagihan jatuh tempo hari ini & besok (keuangan)\n"
         "\n*AI (admin):*\n"
-        "  /tanya <pertanyaan> — tanya laporan natural\n"
+        "  /tanya <pertanyaan> - tanya laporan natural\n"
         "  Contoh: ```/tanya top vendor bulan ini```\n"
-        "  /ringkas — ringkasan executive hari ini\n"
+        "  /ringkas - ringkasan executive hari ini\n"
         "\n*Akun:*\n"
-        "  /link <kode> — hubungkan akun web (kode 6 digit dari menu Pengaturan)\n"
-        "  /unlink — putuskan akun\n"
+        "  /link <kode> - hubungkan akun web (kode 6 digit dari menu Pengaturan)\n"
+        "  /unlink - putuskan akun\n"
     )
 
 
@@ -181,7 +181,7 @@ async def cmd_proyek(db, user, chat_id, args, msg) -> str:
         return "Tidak ada proyek yang bisa diakses."
     lines = ["*Proyek kamu:*"]
     for p in projects[:30]:
-        lines.append(f"• `{p.code}` — {p.name} _({p.status.value})_")
+        lines.append(f"• `{p.code}` - {p.name} _({p.status.value})_")
     if len(projects) > 30:
         lines.append(f"\n…dan {len(projects) - 30} lagi.")
     return "\n".join(lines)
@@ -219,7 +219,7 @@ async def cmd_saldo(db, user, chat_id, args, msg) -> str:
             f"Keluar: Rp {_fmt_idr(totals['total_out'])}\n"
             f"Saldo: *Rp {_fmt_idr(totals['balance'])}*\n"
             f"Budget: Rp {_fmt_idr(bs['spent'])} / Rp {_fmt_idr(bs['budget_amount'])} "
-            f"({float(bs['usage_pct']):.1f}% — {bs['status']})"
+            f"({float(bs['usage_pct']):.1f}% - {bs['status']})"
         )
     # Audit 2026-05-24: KONSISTEN dgn dashboard -- exclude DIBATALKAN.
     # SELESAI tetap ikut (real money).
@@ -273,7 +273,7 @@ async def cmd_pending(db, user, chat_id, args, msg) -> str:
     for t, code in rows:
         sym = "−" if t.type == TxnType.OUT else "+"
         desc = (t.description or t.party_name or "Transaksi")[:40]
-        lines.append(f"• #{t.id} `{code}` {sym}Rp {_fmt_idr(t.amount)} — {desc}")
+        lines.append(f"• #{t.id} `{code}` {sym}Rp {_fmt_idr(t.amount)} - {desc}")
     return "\n".join(lines)
 
 
@@ -396,7 +396,7 @@ async def _make_transaction(db, user, chat_id, args, ttype: TxnType, msg: dict) 
     sym = "−" if ttype == TxnType.OUT else "+"
     return (
         f"✅ Transaksi DRAFT #{tx.id} dibuat\n"
-        f"*{proj.code}* {sym}Rp {_fmt_idr(amount)} — "
+        f"*{proj.code}* {sym}Rp {_fmt_idr(amount)} - "
         f"{description or '(tanpa deskripsi)'}\n"
         f"_Kirim foto bukti (boleh beberapa) dalam {ATTACH_WINDOW_MINUTES} menit ke depan,\n"
         f"otomatis dilampirkan ke transaksi ini._\n"
@@ -492,7 +492,7 @@ async def cmd_buktitx(db, user, chat_id, args, msg) -> str:
     return (
         f"📎 Siap menerima bukti untuk transaksi *#{tid}*\n"
         f"`{proj.code if proj else '-'}` "
-        f"{sym}Rp {_fmt_idr(tx.amount)} — "
+        f"{sym}Rp {_fmt_idr(tx.amount)} - "
         f"_{(tx.description or tx.party_name or '')[:60]}_\n"
         f"Kirim foto / file (PDF) dalam *{ATTACH_WINDOW_MINUTES} menit* ke depan."
     )
@@ -554,7 +554,7 @@ async def handle_media(
 
     if content is None:
         logger.warning(
-            "whatsapp handle_media gagal — media_url=%s message_id=%s",
+            "whatsapp handle_media gagal - media_url=%s message_id=%s",
             media_url,
             message_id,
         )

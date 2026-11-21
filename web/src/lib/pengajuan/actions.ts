@@ -25,7 +25,7 @@ function segarkan(id?: string) {
 }
 
 /**
- * Simpan berkas DULU (di luar transaksi DB – disk tidak ikut rollback), lalu
+ * Simpan berkas DULU (di luar transaksi DB - disk tidak ikut rollback), lalu
  * jalankan transaksi. Bila transaksi gagal, berkas yang terlanjur tersimpan
  * dibuang supaya tidak jadi yatim.
  */
@@ -170,7 +170,7 @@ export async function bayarPengajuan(id: string, _prev: ActionState, form: FormD
     );
     segarkan(id);
     revalidatePath("/transaksi");
-    return sukses(`${gabung ? "Disetujui & dibayar" : "Tercatat dibayar"} – ${r.transactionNumber}.`);
+    return sukses(`${gabung ? "Disetujui & dibayar" : "Tercatat dibayar"} - ${r.transactionNumber}.`);
   });
 }
 

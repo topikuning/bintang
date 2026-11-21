@@ -229,7 +229,7 @@ async def cmd_lihat(db: AsyncSession, user: User, args: list[str], **_) -> str:
         "INVOICE_PAYMENT": "Bayar Invoice",
         "CASH_ADVANCE": "Dana Operasional",
         "DIRECT_EXPENSE": "Beban Langsung",
-    }.get(t.kind if isinstance(t.kind, str) else t.kind.value, "—")
+    }.get(t.kind if isinstance(t.kind, str) else t.kind.value, "-")
     arrow = "Pemasukan" if t.type == TxnType.IN else "Pengeluaran"
     lines = [
         f"📄 Tx #{t.id}",
@@ -277,13 +277,13 @@ async def cmd_draft(db: AsyncSession, user: User, args: list[str], **_) -> str:
 WORKFLOW_HELP_LINES = [
     "",
     "Workflow validasi:",
-    "  /submit <id>           — kirim tx draft utk validasi",
-    "  /verify <id>           — admin verify tx submitted",
-    "  /tolak <id> <alasan>   — admin reject tx",
-    "  /batal <id> <alasan>   — cancel tx",
+    "  /submit <id>           - kirim tx draft utk validasi",
+    "  /verify <id>           - admin verify tx submitted",
+    "  /tolak <id> <alasan>   - admin reject tx",
+    "  /batal <id> <alasan>   - cancel tx",
     "",
     "View & list:",
-    "  /lihat <id>            — detail satu tx",
-    "  /draft                 — tx draft milik Anda",
-    "  /pending               — tx submitted siap verify (admin)",
+    "  /lihat <id>            - detail satu tx",
+    "  /draft                 - tx draft milik Anda",
+    "  /pending               - tx submitted siap verify (admin)",
 ]

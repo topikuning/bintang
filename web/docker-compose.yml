@@ -7,7 +7,7 @@
 #
 # Semua data tinggal di DATA_DIR di mesin ini (bawaan ./data):
 #   postgres/  isi database      berkas/  lampiran      cadangan/  dump harian
-# Mesin di pojok ruangan akan mati listrik dan reboot – semua layanan
+# Mesin di pojok ruangan akan mati listrik dan reboot - semua layanan
 # `restart: unless-stopped`, jadi kembali sendiri begitu Docker hidup.
 # ═══════════════════════════════════════════════════════════════
 services:
@@ -61,7 +61,7 @@ services:
   # Cadangan harian: dump DB (format custom, bisa pg_restore) + salinan
   # tambahan berkas lampiran. Lampiran tidak pernah ditimpa (nama acak),
   # jadi salinan "tanpa menimpa" sudah merupakan cadangan inkremental.
-  # INI MASIH DI MESIN YANG SAMA – salin DATA_DIR/cadangan ke luar mesin
+  # INI MASIH DI MESIN YANG SAMA - salin DATA_DIR/cadangan ke luar mesin
   # (lihat README) supaya disk rusak tidak menghapus semuanya sekaligus.
   cadangan:
     image: postgres:16-alpine

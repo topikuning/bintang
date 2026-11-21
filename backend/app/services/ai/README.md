@@ -1,4 +1,4 @@
-# services/ai/ — AI feature foundation
+# services/ai/ - AI feature foundation
 
 Generic infrastruktur untuk semua fitur AI selain OCR (kategori suggest,
 generator, justifier, dll). OCR existing tetap di `services/ocr/`.
@@ -96,5 +96,5 @@ ORDER BY total_usd DESC;
 ## Migrasi OCR ke services/ai/
 
 OCR existing pakai infra sendiri (`services/ocr/`). Migrasi ke services/ai/
-ditunda — high risk, no functional benefit. Kalau OCR perlu di-extend dgn
+ditunda - high risk, no functional benefit. Kalau OCR perlu di-extend dgn
 chat (mis. "explain this receipt"), pakai services/ai/chat() langsung.

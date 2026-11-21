@@ -18,7 +18,7 @@ const schema = z.object({
    * Cookie sesi `Secure`? "auto" (bawaan) = ya bila permintaan datang lewat
    * HTTPS (Cloudflare Tunnel / reverse proxy), tidak bila lewat http:// di
    * jaringan kantor. Tanpa ini, server Lenovo yang dibuka lewat IP LAN tidak
-   * bisa dipakai login sama sekali – peramban membuang cookie Secure di http.
+   * bisa dipakai login sama sekali - peramban membuang cookie Secure di http.
    */
   COOKIE_AMAN: z.enum(["auto", "1", "0"]).default("auto"),
 });
@@ -36,7 +36,7 @@ if (!parsed.success) {
 }
 
 if (parsed.data.APP_ENV === "production" && parsed.data.SESSION_SECRET.startsWith("dev-only")) {
-  throw new Error("SESSION_SECRET masih nilai pengembangan – ganti sebelum produksi.");
+  throw new Error("SESSION_SECRET masih nilai pengembangan - ganti sebelum produksi.");
 }
 
 export const env = {

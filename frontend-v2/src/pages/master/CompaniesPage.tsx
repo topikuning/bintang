@@ -104,7 +104,7 @@ export function CompaniesPage() {
       id: "npwp",
       header: "NPWP",
       cell: ({ row }) => (
-        <span className="font-mono text-[13px]">{row.original.npwp || "—"}</span>
+        <span className="font-mono text-[13px]">{row.original.npwp || "-"}</span>
       ),
       meta: { align: "left", width: "180px" },
     },
@@ -112,7 +112,7 @@ export function CompaniesPage() {
       id: "director",
       header: "Direktur",
       cell: ({ row }) => (
-        <span className="text-[13px]">{row.original.director_name || "—"}</span>
+        <span className="text-[13px]">{row.original.director_name || "-"}</span>
       ),
       meta: { align: "left", width: "200px" },
     },
@@ -120,7 +120,7 @@ export function CompaniesPage() {
       id: "address",
       header: "Alamat",
       cell: ({ row }) => (
-        <span className="text-[13px] text-ink-700 truncate">{row.original.address || "—"}</span>
+        <span className="text-[13px] text-ink-700 truncate">{row.original.address || "-"}</span>
       ),
       meta: { align: "left" },
     },

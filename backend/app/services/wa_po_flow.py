@@ -242,7 +242,7 @@ def hari_ini() -> date:
 def _daftar_barang(po: PurchaseOrder, harga_lama: dict[int, Decimal] | None = None) -> list[str]:
     baris = []
     for i, it in enumerate(po.items, start=1):
-        teks = f"{i}. {it.description} — {_qty(it.quantity)} {it.unit or ''}".rstrip()
+        teks = f"{i}. {it.description} - {_qty(it.quantity)} {it.unit or ''}".rstrip()
         harga = Decimal(it.unit_price or 0)
         if harga > 0:
             lama = (harga_lama or {}).get(i)
@@ -320,7 +320,7 @@ async def _catat(db: AsyncSession, user: User | None, po: PurchaseOrder, catatan
 
 
 # ---------------------------------------------------------------------------
-# Langkah 1–2: kirim ke pemasok
+# Langkah 1-2: kirim ke pemasok
 # ---------------------------------------------------------------------------
 
 
@@ -329,7 +329,7 @@ async def _pesan_ke_pemasok(db: AsyncSession, po: PurchaseOrder) -> str:
     perusahaan = await _nama_perusahaan(db, po)
     baris = [
         f"📦 *Pesanan Barang {kode(po)}*",
-        f"Dari: {perusahaan}" + (f" — proyek {proyek.name}" if proyek else ""),
+        f"Dari: {perusahaan}" + (f" - proyek {proyek.name}" if proyek else ""),
         f"No. PO: {po.number}",
         "",
         *_daftar_barang(po),
@@ -601,7 +601,7 @@ async def terapkan_balasan(db: AsyncSession, po: PurchaseOrder, b: BalasanPemaso
             return HasilBalasan(
                 False,
                 f"Nomor barang {', '.join(map(str, salah))} tidak ada. "
-                f"{kode(po)} berisi {len(po.items)} barang (nomor 1–{len(po.items)}).",
+                f"{kode(po)} berisi {len(po.items)} barang (nomor 1-{len(po.items)}).",
             )
         for n, h in b.harga.items():
             po.items[n - 1].unit_price = h
@@ -622,7 +622,7 @@ async def terapkan_balasan(db: AsyncSession, po: PurchaseOrder, b: BalasanPemaso
             "contoh: *SETUJU 30* atau *SETUJU TUNAI*.",
         )
     if tempo < 0 or tempo > 365:
-        return HasilBalasan(False, "Tempo pembayaran 0–365 hari.")
+        return HasilBalasan(False, "Tempo pembayaran 0-365 hari.")
 
     from app.api.v1.purchase_orders import _compute_totals
 
@@ -646,7 +646,7 @@ async def terapkan_balasan(db: AsyncSession, po: PurchaseOrder, b: BalasanPemaso
             [
                 f"📨 *Penawaran pemasok untuk {kode(po)}*",
                 f"{nama} ({tampil_nomor(po.supplier_wa)})"
-                + (" — *harga diubah*" if berubah else ""),
+                + (" - *harga diubah*" if berubah else ""),
                 f"No. PO: {po.number}",
                 "",
                 *_daftar_barang(po, harga_lama),
@@ -665,7 +665,7 @@ async def terapkan_balasan(db: AsyncSession, po: PurchaseOrder, b: BalasanPemaso
 
 
 # ---------------------------------------------------------------------------
-# Langkah 3–4: ajukan, setujui, tolak, batal
+# Langkah 3-4: ajukan, setujui, tolak, batal
 # ---------------------------------------------------------------------------
 
 
@@ -695,7 +695,7 @@ async def _teks_minta_persetujuan(db: AsyncSession, po: PurchaseOrder, pengaju: 
         [
             f"🧾 *{kode(po)} menunggu persetujuan*",
             f"Pengaju: {pengaju.name}"
-            + (f" — proyek {proyek.name} ({proyek.code})" if proyek else ""),
+            + (f" - proyek {proyek.name} ({proyek.code})" if proyek else ""),
             f"Pemasok: {nama}",
             f"No. PO: {po.number}",
             "",
@@ -781,7 +781,7 @@ async def _kabari_final(db: AsyncSession, po: PurchaseOrder, penyetuju: User) ->
     perusahaan = await _nama_perusahaan(db, po)
     teks = "\n".join(
         [
-            f"✅ *{kode(po)} DISETUJUI* — {po.number}",
+            f"✅ *{kode(po)} DISETUJUI* - {po.number}",
             f"Dari: {perusahaan}",
             "",
             *_daftar_barang(po),
@@ -1118,7 +1118,7 @@ async def bayar(db: AsyncSession, aktor: User, po: PurchaseOrder, berkas: dict) 
     perusahaan = await _nama_perusahaan(db, po)
     teks_pemasok = (
         f"💸 Pembayaran {kode(po)} ({po.number}) sebesar *{rp(sisa)}* sudah kami transfer "
-        f"pada {tgl(hari_ini())}. Terima kasih. — {perusahaan}"
+        f"pada {tgl(hari_ini())}. Terima kasih. - {perusahaan}"
     )
     # Bukti dikirim sebagai foto/berkas langsung ke WA pemasok. Tautan hanya
     # cadangan kalau WAHA menolak mengirim berkas.
@@ -1159,7 +1159,7 @@ async def setelah_invoice_lunas(
     _antre(
         po.supplier_wa,
         f"💸 Pembayaran {kode(po)} ({po.number}) sebesar *{rp(tx.amount)}* sudah kami transfer "
-        f"pada {tgl(hari_ini())}. Terima kasih. — {perusahaan}",
+        f"pada {tgl(hari_ini())}. Terima kasih. - {perusahaan}",
     )
     pengaju = await _pengaju(db, po)
     if pengaju is not None and pengaju.id != aktor.id:
@@ -1203,7 +1203,7 @@ async def ringkasan_tagihan(db: AsyncSession, tanggal: date | None = None) -> st
         kunci = "lewat" if inv.due_date < h else ("hari_ini" if inv.due_date == h else "besok")
         kelompok[kunci].append((inv, sisa))
 
-    judul = f"🌅 *Tagihan jatuh tempo — {_HARI[h.weekday()]}, {tgl(h)}*"
+    judul = f"🌅 *Tagihan jatuh tempo - {_HARI[h.weekday()]}, {tgl(h)}*"
     if not any(kelompok.values()):
         return f"{judul}\n\n✅ Tidak ada tagihan jatuh tempo hari ini dan besok."
 
@@ -1225,7 +1225,7 @@ async def ringkasan_tagihan(db: AsyncSession, tanggal: date | None = None) -> st
         jumlah = sum((s for _, s in daftar), Decimal("0"))
         total_semua += jumlah
         baris.append("")
-        baris.append(f"{label} ({len(daftar)}) — {rp(jumlah)}")
+        baris.append(f"{label} ({len(daftar)}) - {rp(jumlah)}")
         for inv, sisa in daftar:
             ref = f"PO{inv.purchase_order_id}" if inv.purchase_order_id else inv.number
             tambahan = f" · jatuh tempo {tgl(inv.due_date)}" if kunci == "lewat" else ""

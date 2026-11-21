@@ -1,6 +1,6 @@
 import { cn } from "@/lib/cn";
 
-/** Logo bintang – emas di atas indigo. Murni SVG, tanpa berkas gambar. */
+/** Logo bintang - emas di atas indigo. Murni SVG, tanpa berkas gambar. */
 export function BrandMark({ className }: { className?: string }) {
   return (
     <span

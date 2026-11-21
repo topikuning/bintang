@@ -37,7 +37,7 @@ export default async function LaporanPage({
     ringkasanPerProyek(lingkup),
   ]);
   const totalBiaya = kategori.reduce((a, k) => a + k.amount, 0n);
-  const label = periode.preset ? PRESET_LABEL[periode.preset] : `${periode.dari ? fmtTanggal(periode.dari) : "awal"} – ${periode.sampai ? fmtTanggal(periode.sampai) : "sekarang"}`;
+  const label = periode.preset ? PRESET_LABEL[periode.preset] : `${periode.dari ? fmtTanggal(periode.dari) : "awal"} - ${periode.sampai ? fmtTanggal(periode.sampai) : "sekarang"}`;
 
   return (
     <>
@@ -82,7 +82,7 @@ export default async function LaporanPage({
         <Suspense>
           <FilterBar
             search={false}
-            selects={[{ param: "proyek", label: "Proyek", allLabel: "Semua proyek", options: projects.map((p) => ({ value: p.id, label: `${p.code} – ${p.name}` })) }]}
+            selects={[{ param: "proyek", label: "Proyek", allLabel: "Semua proyek", options: projects.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` })) }]}
           />
         </Suspense>
       </div>

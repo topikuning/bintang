@@ -61,7 +61,7 @@ export function InvoiceCard({
       {/* Row 2: vendor / pihak */}
       <div className="flex flex-col gap-0.5 min-w-0">
         <div className="text-sm font-medium text-ink-900 truncate">
-          {inv.party_name || "—"}
+          {inv.party_name || "-"}
         </div>
         {projectName && (
           <div className="text-[11px] text-ink-500 truncate">{projectName}</div>

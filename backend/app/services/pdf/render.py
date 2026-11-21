@@ -37,6 +37,23 @@ def _format_idr(value) -> str:
 env.filters["idr"] = _format_idr
 
 
+# Data lama memakai em dash (U+2014) sebagai pemisah "nama <pemisah> spesifikasi"
+# pada uraian barang. Kode aplikasi tidak menulis karakter itu lagi; filter ini
+# hanya membacanya supaya PDF lama tetap memisahkan nama dan spesifikasi.
+_PEMISAH_LAMA = "\u2014"
+
+
+def _pisah_uraian(teks: str | None) -> tuple[str, str]:
+    teks = teks or ""
+    if _PEMISAH_LAMA not in teks:
+        return teks.strip(), ""
+    nama, spek = teks.split(_PEMISAH_LAMA, 1)
+    return nama.strip(), spek.split(_PEMISAH_LAMA, 1)[0].strip()
+
+
+env.filters["pisah_uraian"] = _pisah_uraian
+
+
 def render_html(template: str, **ctx) -> str:
     tmpl = env.get_template(template)
     return tmpl.render(**ctx)

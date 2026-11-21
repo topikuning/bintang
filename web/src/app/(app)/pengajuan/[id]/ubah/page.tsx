@@ -23,7 +23,7 @@ export default async function UbahPengajuanPage({ params }: { params: Promise<{ 
   const bahan = await bahanFormPengajuan(user);
   // Proyek pengajuan tetap muncul walau sudah tidak aktif, supaya form tidak kosong.
   if (!bahan.projects.some((x) => x.value === p.projectId)) {
-    bahan.projects.unshift({ value: p.projectId, label: `${p.project.code} – ${p.project.name}` });
+    bahan.projects.unshift({ value: p.projectId, label: `${p.project.code} - ${p.project.name}` });
   }
   const revisi = [...p.events].reverse().find((e) => e.toStatus === "perlu_revisi");
 

@@ -1,6 +1,6 @@
 """Admin endpoint utk per-feature AI runtime settings.
 
-Audit 2026-05-24 user req: admin atur per fitur — provider, model,
+Audit 2026-05-24 user req: admin atur per fitur - provider, model,
 budget, web_search, dst.
 
 Default selalu di code (services/ai/feature_settings.DEFAULTS). Override

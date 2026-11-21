@@ -3,7 +3,7 @@ import { rupiah, rupiahRingkas } from "@/lib/uang";
 
 /**
  * Grafik batang arus kas bulanan (masuk vs keluar). SVG murni yang dirender di
- * server – tanpa pustaka grafik, tanpa JavaScript di peramban. Tabel di
+ * server - tanpa pustaka grafik, tanpa JavaScript di peramban. Tabel di
  * bawahnya untuk pembaca layar.
  */
 export function GrafikArusKas({ data }: { data: { tahun: number; bulan: number; masuk: bigint; keluar: bigint }[] }) {
@@ -47,7 +47,7 @@ export function GrafikArusKas({ data }: { data: { tahun: number; bulan: number; 
                 <title>{`Keluar ${namaBulan(d.tahun, d.bulan, "MMMM yyyy")}: ${rupiah(d.keluar)}`}</title>
               </rect>
               {/* Grafik panjang: nama bulan saja, tahun hanya di Januari & batang
-                  pertama – "Des 25Jan 26" yang bertumpuk tidak terbaca. */}
+                  pertama - "Des 25Jan 26" yang bertumpuk tidak terbaca. */}
               <text x={x0} y={H - 6} textAnchor="middle" fontSize={rapat ? 11 : 12} fill="var(--color-ink-muted)">
                 {rapat && !(i === 0 || d.bulan === 1) ? namaBulan(d.tahun, d.bulan, "MMM") : namaBulan(d.tahun, d.bulan)}
               </text>

@@ -171,7 +171,7 @@ export function PenawaranPage() {
                   className={cn(!h && "border-warning-500")}
                 />
                 <div className="min-w-[7rem] text-right text-[13px] tabular-nums text-ink-700">
-                  {h ? fmtIDR(h * Number(b.jumlah)) : "—"}
+                  {h ? fmtIDR(h * Number(b.jumlah)) : "-"}
                 </div>
               </div>
             </li>

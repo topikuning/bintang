@@ -75,7 +75,7 @@ async def _fetch_vendor_pattern(
     elif direction == "OUT":
         stmt = stmt.where(Transaction.type == "OUT")
     rows = (await db.execute(stmt)).all()
-    return [((d or "")[:50], c or "—") for d, c in rows]
+    return [((d or "")[:50], c or "-") for d, c in rows]
 
 
 async def run(

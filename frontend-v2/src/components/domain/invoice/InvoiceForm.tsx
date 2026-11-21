@@ -319,7 +319,7 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
           </button>
           <SheetTitle className="text-center flex-1">
             {justCreatedInv
-              ? `Tambah Bukti — Invoice #${justCreatedInv.id}`
+              ? `Tambah Bukti - Invoice #${justCreatedInv.id}`
               : isEdit ? "Edit Invoice" : "Tambah Invoice"}
           </SheetTitle>
           {!justCreatedInv && !isEdit ? (
@@ -581,7 +581,7 @@ export function InvoiceForm({ open, onClose, invoice, lockProjectId, onSaved }: 
                                           {sug.category_name}
                                           {" "}({Math.round(sug.confidence * 100)}%)
                                         </span>
-                                        {" — "}{sug.reason}
+                                        {" - "}{sug.reason}
                                       </div>
                                     )}
                                   </div>

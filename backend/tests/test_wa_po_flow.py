@@ -228,7 +228,7 @@ async def test_alur_lengkap_po_lewat_whatsapp(db, monkeypatch, upload_dir):
     kotak = wa_po_flow.isi_kotak()
     assert [p.chat_id for p in kotak] == [PEMASOK]
     assert f"Pesanan Barang {k}" in kotak[0].teks
-    assert "Semen Tonasa 50 kg — 200 sak (harga belum diisi)" in kotak[0].teks
+    assert "Semen Tonasa 50 kg - 200 sak (harga belum diisi)" in kotak[0].teks
 
     # 2. Pemasok: SETUJU saja ditolak karena harga semen belum ada
     wa_po_flow.buka_kotak()

@@ -56,7 +56,7 @@ export function ProjectsPage() {
       header: "Perusahaan",
       cell: ({ row }) => (
         <span className="text-[13px]">
-          {row.original.company_name || companyMap.get(row.original.company_id) || "—"}
+          {row.original.company_name || companyMap.get(row.original.company_id) || "-"}
         </span>
       ),
       meta: { align: "left", width: "200px" },
@@ -166,7 +166,7 @@ export function ProjectsPage() {
                 <Badge tone={STATUS_TONE[s]}>{PROJECT_STATUS_LABEL[s]}</Badge>
               </div>
               <div className="text-[11px] text-ink-500">
-                {p.company_name || companyMap.get(p.company_id) || "—"}
+                {p.company_name || companyMap.get(p.company_id) || "-"}
               </div>
               <div
                 data-num

@@ -16,7 +16,7 @@ export function rupiah(nilai: bigint | number | string | null | undefined): stri
   return `${neg ? "−" : ""}Rp ${RIBUAN.format(abs)}`;
 }
 
-/** Tanpa "Rp" – untuk kolom angka yang judul kolomnya sudah menyebut Rp. */
+/** Tanpa "Rp" - untuk kolom angka yang judul kolomnya sudah menyebut Rp. */
 export function angka(nilai: bigint | number | string | null | undefined): string {
   if (nilai === null || nilai === undefined || nilai === "") return "0";
   const n = typeof nilai === "bigint" ? nilai : BigInt(Math.trunc(Number(nilai)));
@@ -26,7 +26,7 @@ export function angka(nilai: bigint | number | string | null | undefined): strin
 
 /**
  * Ringkas untuk kartu KPI di ponsel: 1.250.000.000 → "Rp 1,25 M".
- * Di bawah sejuta ditulis utuh – "Rp 750 rb" justru lebih sulit dibaca.
+ * Di bawah sejuta ditulis utuh - "Rp 750 rb" justru lebih sulit dibaca.
  */
 export function rupiahRingkas(nilai: bigint | number | string): string {
   const n = typeof nilai === "bigint" ? nilai : BigInt(Math.trunc(Number(nilai)));
@@ -43,7 +43,7 @@ export function rupiahRingkas(nilai: bigint | number | string): string {
 /**
  * Baca isian rupiah dari pengguna: "1.250.000", "Rp1.250.000", "1250000",
  * "1,250,000". Desimal TIDAK diterima (",50" di akhir dianggap salah ketik,
- * bukan sen) – mengembalikan null bila bukan angka bulat non-negatif.
+ * bukan sen) - mengembalikan null bila bukan angka bulat non-negatif.
  */
 export function parseRupiah(input: string | null | undefined): bigint | null {
   if (input === null || input === undefined) return null;

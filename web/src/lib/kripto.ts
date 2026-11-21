@@ -7,7 +7,7 @@ import { env } from "@/lib/env";
  * rekening di database; versi ini mempertahankannya.
  *
  * Bentuk tersimpan: "enc:v1:<iv>:<tag>:<ciphertext>" (base64url).
- * Nilai TANPA awalan dianggap polos – supaya `KUNCI_DATA` bisa diaktifkan
+ * Nilai TANPA awalan dianggap polos - supaya `KUNCI_DATA` bisa diaktifkan
  * belakangan tanpa migrasi, dan data lama tetap terbaca.
  */
 const AWALAN = "enc:v1:";

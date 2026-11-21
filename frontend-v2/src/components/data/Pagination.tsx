@@ -26,7 +26,7 @@ export function Pagination({
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t bg-surface px-3 py-2.5">
       <div className="flex items-center gap-3 text-[13px] text-ink-600">
         <span data-num className="font-mono">
-          {start.toLocaleString("id-ID")}–{end.toLocaleString("id-ID")} dari {total.toLocaleString("id-ID")}
+          {start.toLocaleString("id-ID")}-{end.toLocaleString("id-ID")} dari {total.toLocaleString("id-ID")}
         </span>
         {onSizeChange && (
           <div className="hidden md:flex items-center gap-1.5">

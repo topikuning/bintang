@@ -3,7 +3,7 @@
 // Indonesia, DB snake_case via @map/@@map, uang = BigInt rupiah (tanpa sen),
 // tanggal kerja = @db.Date, waktu = Timestamptz (logika harian Asia/Jakarta).
 //
-// Angka agregat (saldo, terpakai, sisa anggaran) TIDAK disimpan – selalu
+// Angka agregat (saldo, terpakai, sisa anggaran) TIDAK disimpan - selalu
 // dihitung di src/lib/keuangan/hitung.ts. Satu-satunya kolom jumlah yang
 // disimpan adalah total dokumen, dan ia diturunkan dari rinciannya saat ditulis.
 
@@ -21,17 +21,17 @@ datasource db {
 // ─────────────────────────────────────────────────────────────
 
 enum UserRole {
-  /// Admin sistem – semua wewenang.
+  /// Admin sistem - semua wewenang.
   super_admin
-  /// Pimpinan – menyetujui pengajuan berapa pun nilainya, melihat semua.
+  /// Pimpinan - menyetujui pengajuan berapa pun nilainya, melihat semua.
   director
-  /// Keuangan – menyetujui (sampai batas), membayar, mencatat & memverifikasi kas.
+  /// Keuangan - menyetujui (sampai batas), membayar, mencatat & memverifikasi kas.
   finance
-  /// Admin proyek – mengajukan dan mencatat kas di proyek yang ditugaskan.
+  /// Admin proyek - mengajukan dan mencatat kas di proyek yang ditugaskan.
   project_admin
-  /// Staf – mengajukan pembayaran di proyek yang ditugaskan.
+  /// Staf - mengajukan pembayaran di proyek yang ditugaskan.
   staff
-  /// Pengamat – hanya melihat (investor/pendana/eksekutif).
+  /// Pengamat - hanya melihat (investor/pendana/eksekutif).
   viewer
 }
 
@@ -42,7 +42,7 @@ enum ProjectStatus {
   batal
 }
 
-/// `operasional` = buku kas di luar proyek (kantor, overhead) – pengganti
+/// `operasional` = buku kas di luar proyek (kantor, overhead) - pengganti
 /// "Catatan Non-Proyek" versi lama.
 enum ProjectKind {
   proyek
@@ -142,7 +142,7 @@ model User {
   tokenVersion       Int       @default(0) @map("token_version")
   /// Untuk peran ter-scope (admin proyek, staf, pengamat): lihat semua proyek.
   allProjects        Boolean   @default(false) @map("all_projects")
-  /// Rekening pribadi – dipakai otomatis untuk uang muka & penggantian.
+  /// Rekening pribadi - dipakai otomatis untuk uang muka & penggantian.
   bankName           String?   @map("bank_name")
   bankAccount        String?   @map("bank_account")
   bankHolder         String?   @map("bank_holder")
@@ -168,7 +168,7 @@ model User {
 }
 
 model Session {
-  /// sha256(token) – token mentah hanya ada di cookie.
+  /// sha256(token) - token mentah hanya ada di cookie.
   id           String    @id
   userId       String    @map("user_id") @db.Uuid
   tokenVersion Int       @map("token_version")
@@ -280,7 +280,7 @@ model Category {
   @@map("categories")
 }
 
-/// Vendor, klien, tukang, karyawan non-akun – siapa pun yang menerima/memberi uang.
+/// Vendor, klien, tukang, karyawan non-akun - siapa pun yang menerima/memberi uang.
 model Party {
   id          String    @id @default(uuid(7)) @db.Uuid
   name        String
@@ -305,7 +305,7 @@ model Party {
   @@map("parties")
 }
 
-/// Rekening bank / kas tunai milik perusahaan – asal & tujuan uang.
+/// Rekening bank / kas tunai milik perusahaan - asal & tujuan uang.
 model Account {
   id             String      @id @default(uuid(7)) @db.Uuid
   name           String
@@ -330,7 +330,7 @@ model Account {
 
 model PaymentRequest {
   id          String        @id @default(uuid(7)) @db.Uuid
-  /// PGJ/2026/11/0001 – diberikan saat pertama kali DIAJUKAN, bukan saat draft.
+  /// PGJ/2026/11/0001 - diberikan saat pertama kali DIAJUKAN, bukan saat draft.
   number      String?       @unique
   projectId   String        @map("project_id") @db.Uuid
   kind        RequestKind
@@ -342,7 +342,7 @@ model PaymentRequest {
   total       BigInt        @default(0)
   status      RequestStatus @default(draft)
 
-  // Penerima dana (snapshot saat diajukan – master boleh berubah belakangan).
+  // Penerima dana (snapshot saat diajukan - master boleh berubah belakangan).
   partyId     String? @map("party_id") @db.Uuid
   payeeName   String? @map("payee_name")
   bankName    String? @map("bank_name")
@@ -397,7 +397,7 @@ model PaymentRequestItem {
   position    Int      @default(0)
   categoryId  String?  @map("category_id") @db.Uuid
   description String
-  /// Opsional – bila diisi, amount = round(quantity × unitPrice).
+  /// Opsional - bila diisi, amount = round(quantity × unitPrice).
   quantity    Decimal? @db.Decimal(15, 3)
   unit        String?
   unitPrice   BigInt?  @map("unit_price")
@@ -426,7 +426,7 @@ model PaymentRequestRealization {
   @@map("payment_request_realizations")
 }
 
-/// Riwayat status – append-only. Sumber garis waktu di layar detail.
+/// Riwayat status - append-only. Sumber garis waktu di layar detail.
 model PaymentRequestEvent {
   id         String         @id @default(uuid(7)) @db.Uuid
   requestId  String         @map("request_id") @db.Uuid
@@ -513,7 +513,7 @@ model TransactionItem {
 // ─────────────────────────────────────────────────────────────
 
 /// Lampiran. Pemiliknya tepat SATU: pengajuan, transaksi, atau proyek
-/// (dokumen proyek: kontrak, SPK, BAST, arsip impor) – dijaga CHECK di DB.
+/// (dokumen proyek: kontrak, SPK, BAST, arsip impor) - dijaga CHECK di DB.
 model Attachment {
   id            String         @id @default(uuid(7)) @db.Uuid
   kind          AttachmentKind @default(nota)
@@ -565,7 +565,7 @@ model Counter {
   @@map("counters")
 }
 
-/// Pengaturan organisasi – satu baris (id = 1).
+/// Pengaturan organisasi - satu baris (id = 1).
 model Setting {
   id                 Int      @id @default(1)
   orgName            String   @default("Bintang") @map("org_name")
@@ -578,7 +578,7 @@ model Setting {
   @@map("settings")
 }
 
-/// Jejak audit – append-only (dijaga trigger di migrasi).
+/// Jejak audit - append-only (dijaga trigger di migrasi).
 model AuditLog {
   id           String   @id @default(uuid(7)) @db.Uuid
   userId       String?  @map("user_id") @db.Uuid

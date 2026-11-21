@@ -117,8 +117,7 @@
        Kalau tidak ada separator (atau spec sama dgn name), merge kolom
        'Deskripsi' + 'Spesifikasi' jadi satu (colspan=2) supaya lebih
        rapi -- jangan duplikat unit yang sudah ada di kolom 'Sat.'. #}
-    {% set _name = it.description.split('—')[0]|trim if '—' in it.description else it.description %}
-    {% set _spec = it.description.split('—')[1]|trim if '—' in it.description else '' %}
+    {% set _name, _spec = it.description|pisah_uraian %}
     <tr>
       <td class="center">{{ loop.index }}</td>
       {% if _spec and _spec != _name %}

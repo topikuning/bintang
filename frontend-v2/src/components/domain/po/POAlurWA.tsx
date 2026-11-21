@@ -16,7 +16,7 @@ const TAHAP: Record<POWaTahap, { label: string; tone: string; langkah: string }>
     langkah: "Pemasok membalas SETUJU / UBAH / TOLAK di WhatsApp.",
   },
   MENUNGGU_PENGAJU: {
-    label: "Penawaran masuk — menunggu diajukan",
+    label: "Penawaran masuk - menunggu diajukan",
     tone: "bg-info-50 text-info-700 border-info-100",
     langkah: "Pengaju membalas AJUKAN {kode} di WhatsApp.",
   },
@@ -26,17 +26,17 @@ const TAHAP: Record<POWaTahap, { label: string; tone: string; langkah: string }>
     langkah: "Keuangan/pimpinan: SETUJUI {kode} di WhatsApp, atau tombol Setujui di aplikasi.",
   },
   FINAL: {
-    label: "Disetujui — menunggu barang",
+    label: "Disetujui - menunggu barang",
     tone: "bg-info-50 text-info-700 border-info-100",
     langkah: "Saat barang datang: kirim foto surat jalan dengan keterangan TERIMA {kode}.",
   },
   DITERIMA: {
-    label: "Barang diterima — menunggu pembayaran",
+    label: "Barang diterima - menunggu pembayaran",
     tone: "bg-warning-50 text-warning-700 border-warning-100",
     langkah: "Keuangan: kirim foto bukti transfer dengan keterangan BAYAR {kode}, atau unggah di bawah.",
   },
   LUNAS: {
-    label: "Lunas — bukti terkirim ke pemasok",
+    label: "Lunas - bukti terkirim ke pemasok",
     tone: "bg-success-50 text-success-700 border-success-100",
     langkah: "",
   },
@@ -53,7 +53,7 @@ const TAHAP: Record<POWaTahap, { label: string; tone: string; langkah: string }>
 }
 
 function nomorTampil(chatId: string | null | undefined): string {
-  if (!chatId) return "—"
+  if (!chatId) return "-"
   const digits = chatId.split("@")[0] ?? chatId
   return digits.startsWith("62") ? `0${digits.slice(2)}` : digits
 }
@@ -112,7 +112,7 @@ export function POAlurWA({ po }: { po: PurchaseOrder }) {
         <div>
           <dt className="text-[11px] text-ink-500">Tempo</dt>
           <dd>
-            {po.tempo_days == null ? "—" : po.tempo_days === 0 ? "Tunai" : `${po.tempo_days} hari`}
+            {po.tempo_days == null ? "-" : po.tempo_days === 0 ? "Tunai" : `${po.tempo_days} hari`}
           </dd>
         </div>
         {po.diterima_at && (

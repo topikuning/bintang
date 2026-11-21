@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 export type TabItem = { key: string; label: string; href: string; count?: number; highlight?: boolean };
 
 /**
- * Tab berbasis tautan (state di URL – bisa dibagikan, tombol kembali bekerja).
+ * Tab berbasis tautan (state di URL - bisa dibagikan, tombol kembali bekerja).
  * Di ponsel bergulir mendatar, bukan melipat jadi dua baris.
  */
 export function LinkTabs({ items, active, className }: { items: TabItem[]; active: string; className?: string }) {

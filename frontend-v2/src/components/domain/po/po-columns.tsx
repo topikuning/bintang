@@ -37,7 +37,7 @@ export function buildPOColumns({ projectMap, hideProject }: BuildOpts): ColumnDe
       accessorKey: "needed_date",
       cell: ({ getValue }) => {
         const v = getValue<string | null | undefined>()
-        return v ? fmtDate(v) : <span className="text-ink-400">—</span>
+        return v ? fmtDate(v) : <span className="text-ink-400">-</span>
       },
       meta: { align: "left", width: "100px" },
     },
@@ -70,7 +70,7 @@ export function buildPOColumns({ projectMap, hideProject }: BuildOpts): ColumnDe
       cell: ({ row }) => {
         const masterName = row.original.vendor_client_name
         const freeText = row.original.vendor_name
-        const display = masterName || freeText || "—"
+        const display = masterName || freeText || "-"
         return (
           <span className="text-sm">
             {display}

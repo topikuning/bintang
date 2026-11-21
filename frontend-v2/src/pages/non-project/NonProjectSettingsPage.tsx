@@ -200,7 +200,7 @@ export function NonProjectSettingsPage() {
                               {fmtIDR(r.total_in)}
                             </span>
                           ) : (
-                            <span className="text-ink-400">—</span>
+                            <span className="text-ink-400">-</span>
                           )}
                         </td>
                         <td className="text-right px-3 py-2.5 tabular-nums">
@@ -209,12 +209,12 @@ export function NonProjectSettingsPage() {
                               {fmtIDR(r.total_out)}
                             </span>
                           ) : (
-                            <span className="text-ink-400">—</span>
+                            <span className="text-ink-400">-</span>
                           )}
                         </td>
                         <td className="px-3 py-2.5 text-ink-600 text-[12px]">
                           {r.notes || (
-                            <span className="text-ink-400 italic">—</span>
+                            <span className="text-ink-400 italic">-</span>
                           )}
                         </td>
                         <td className="px-3 py-2.5 text-ink-500 text-[11px]">

@@ -142,7 +142,7 @@ function ExpenseCompositionCard({
           Komposisi Biaya Aktual
         </span>
         <span className="text-[10px] text-ink-500">
-          Pure breakdown — tdk re-hitung profit
+          Pure breakdown - tdk re-hitung profit
         </span>
       </div>
       <ul className="text-sm divide-y divide-ink-200/60">
@@ -238,7 +238,7 @@ function ProfitComparison({
             <div className="flex-1 text-[12px] text-danger-800">
               <strong className="font-semibold">Proyek minus.</strong>{" "}
               Tinjau realisasi vs target. Kalau ada bagi hasil yg sudah
-              dibayar, review akunting — distribusi profit seharusnya
+              dibayar, review akunting - distribusi profit seharusnya
               nol ketika operasi minus.
             </div>
           </div>

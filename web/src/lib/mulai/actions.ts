@@ -17,7 +17,7 @@ const schema = z
   .object({
     orgName: z.string().trim().min(2, "Isi nama organisasi.").max(120),
     fullName: z.string().trim().min(2, "Isi nama Anda.").max(120),
-    username: z.string().trim().toLowerCase().regex(/^[a-z0-9._-]{3,50}$/, "Username 3–50 huruf kecil/angka/titik/strip."),
+    username: z.string().trim().toLowerCase().regex(/^[a-z0-9._-]{3,50}$/, "Username 3-50 huruf kecil/angka/titik/strip."),
     password: z.string().min(8, "Password minimal 8 karakter.").max(255),
     confirm: z.string(),
   })
@@ -25,7 +25,7 @@ const schema = z
 
 /**
  * Pemasangan pertama: membuat Admin Sistem, pengaturan, dan kategori bawaan.
- * HANYA berlaku selama belum ada satu pun pengguna – dicek ulang di dalam
+ * HANYA berlaku selama belum ada satu pun pengguna - dicek ulang di dalam
  * transaksi dengan kunci advisory, jadi dua orang yang membuka layar ini
  * bersamaan tidak bisa sama-sama menjadi admin.
  */

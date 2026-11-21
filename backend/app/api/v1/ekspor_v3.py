@@ -1,12 +1,12 @@
 """Ekspor seluruh data + berkas ke Bintang v3 (sekali pakai saat pindahan).
 
 Bintang v3 berjalan di server lain (Lenovo) dan MENARIK data dari sini lewat
-API ini – bukan sebaliknya – karena volume Railway tempat lampiran disimpan
+API ini - bukan sebaliknya - karena volume Railway tempat lampiran disimpan
 tidak bisa dijangkau dari luar, dan satu arsip raksasa tidak bisa dilanjutkan
 bila unduhannya putus. Dengan API per-tabel dan per-berkas, importer v3 bisa
 mengulang dari titik putus dan memeriksa ukuran tiap berkas.
 
-KEAMANAN – baca sebelum mengaktifkan:
+KEAMANAN - baca sebelum mengaktifkan:
 - Mati secara bawaan. Aktif hanya bila env `EKSPOR_V3_TOKEN` diisi (minimal
   32 karakter). Selama mati, semua rute membalas 404 seolah tidak ada.
 - Token ini membuka SELURUH data, termasuk hash password dan nomor rekening
@@ -68,7 +68,7 @@ TABEL: tuple[str, ...] = (
     "po_items",
 )
 
-# Kolom tersandi (Fernet, lihat services/field_crypto.py) – dibuka di sini
+# Kolom tersandi (Fernet, lihat services/field_crypto.py) - dibuka di sini
 # supaya v3 tidak perlu tahu SECRET_KEY aplikasi lama.
 KOLOM_TERSANDI: dict[str, tuple[str, ...]] = {
     "companies": ("bank_account",),
@@ -183,5 +183,5 @@ async def unduh_berkas(path: str) -> FileResponse:
         p = resolve_upload_path(path, must_exist=True)
     except (UnsafeUploadPath, FileNotFoundError) as e:
         raise HTTPException(404, "berkas_tidak_ada") from e
-    # FileResponse melayani header Range – unduhan besar bisa dilanjutkan.
+    # FileResponse melayani header Range - unduhan besar bisa dilanjutkan.
     return FileResponse(p, media_type="application/octet-stream")

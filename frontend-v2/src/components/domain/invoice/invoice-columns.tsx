@@ -76,7 +76,7 @@ export function buildInvoiceColumns({
       accessorKey: "due_date",
       cell: ({ getValue }) => {
         const v = getValue<string | null>()
-        return v ? fmtDate(v) : <span className="text-ink-400">—</span>
+        return v ? fmtDate(v) : <span className="text-ink-400">-</span>
       },
       meta: { align: "left", width: "110px" },
       enableSorting: true,
@@ -106,7 +106,7 @@ export function buildInvoiceColumns({
       header: "Vendor / Klien",
       accessorKey: "party_name",
       cell: ({ getValue }) => (
-        <span className="text-sm">{getValue<string>() || "—"}</span>
+        <span className="text-sm">{getValue<string>() || "-"}</span>
       ),
       meta: { align: "left" },
     },
@@ -131,7 +131,7 @@ export function buildInvoiceColumns({
       cell: ({ row }) => {
         const paid = Number(row.original.paid_amount ?? 0)
         if (paid <= 0)
-          return <span className="text-ink-400 text-sm">—</span>
+          return <span className="text-ink-400 text-sm">-</span>
         return (
           <span
             data-num

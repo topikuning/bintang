@@ -372,7 +372,7 @@ function EditDialog({
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Setting AI — {feature.label}</DialogTitle>
+          <DialogTitle>Setting AI - {feature.label}</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-2 gap-3">
@@ -390,7 +390,7 @@ function EditDialog({
                   }
                 }}
               >
-                <option value="">— Pakai default sistem —</option>
+                <option value="">- Pakai default sistem -</option>
                 <option value="mistral">Mistral</option>
                 <option value="claude">Claude (Anthropic)</option>
               </Select>
@@ -400,7 +400,7 @@ function EditDialog({
                 Model
               </Label>
               <Select value={model} onChange={(e) => setModel(e.target.value)}>
-                <option value="">— Auto (hint: {feature.model_hint}) —</option>
+                <option value="">- Auto (hint: {feature.model_hint}) -</option>
                 {filteredModels.map((m) => {
                   const cost = m.cost_tier ? "·".repeat(m.cost_tier) : "?"
                   return (

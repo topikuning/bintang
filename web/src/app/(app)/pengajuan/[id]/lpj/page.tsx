@@ -23,7 +23,7 @@ export default async function LpjPage({ params }: { params: Promise<{ id: string
     select: { id: true, name: true },
   });
   const dikembalikan = [...p.events].reverse().find((e) => e.action === "LPJ dikembalikan");
-  // Rincian awal: LPJ yang dikembalikan, atau – kalau belum pernah – rencana di pengajuannya.
+  // Rincian awal: LPJ yang dikembalikan, atau - kalau belum pernah - rencana di pengajuannya.
   const awal = (p.realizations.length ? p.realizations : p.items).map((r) =>
     barisBaru({ description: r.description, categoryId: r.categoryId ?? "", amount: formatIsian(r.amount.toString()) }),
   );

@@ -1,8 +1,8 @@
 #!/bin/sh
-# Cadangan harian Bintang v3 – dijalankan layanan `cadangan` di docker-compose.
+# Cadangan harian Bintang v3 - dijalankan layanan `cadangan` di docker-compose.
 #
 # Tiap hari pukul CADANGAN_JAM menurut zona waktu kontainer (UTC kecuali TZ
-# diisi – compose mengisi TZ=Asia/Jakarta):
+# diisi - compose mengisi TZ=Asia/Jakarta):
 #   1. pg_dump -Fc  → /cadangan/db/bintang-YYYYmmdd-HHMM.dump
 #   2. berkas lampiran disalin TANPA MENIMPA ke /cadangan/berkas
 #   3. dump yang lebih tua dari CADANGAN_SIMPAN_HARI dihapus
@@ -23,7 +23,7 @@ cadangkan() {
     echo "[cadangan] DB → $tujuan ($(du -h "$tujuan" | cut -f1))"
   else
     rm -f "$tujuan.part"
-    echo "[cadangan] GAGAL pg_dump – dicoba lagi besok; periksa log ini." >&2
+    echo "[cadangan] GAGAL pg_dump - dicoba lagi besok; periksa log ini." >&2
   fi
   # Lampiran: bernama acak & tidak pernah ditimpa → salin yang belum ada saja.
   (cd /data/berkas 2>/dev/null && find . -type f | while read -r f; do

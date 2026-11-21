@@ -371,7 +371,7 @@ export function TransactionForm({
           </button>
           <SheetTitle className="text-center flex-1">
             {justCreatedTx
-              ? `Tambah Bukti — Tx #${justCreatedTx.id}`
+              ? `Tambah Bukti - Tx #${justCreatedTx.id}`
               : isEdit ? "Edit Transaksi" : "Tambah Transaksi"}
           </SheetTitle>
           {/* sr-only deskripsi -- penuhi Radix Dialog a11y requirement
@@ -575,7 +575,7 @@ export function TransactionForm({
                           field.onChange(e.target.value ? Number(e.target.value) : null)
                         }
                       >
-                        <option value="">— Pilih user —</option>
+                        <option value="">- Pilih user -</option>
                         {(usersQ.data ?? []).map((u) => (
                           <option key={u.id} value={u.id}>
                             {u.name} ({u.email})

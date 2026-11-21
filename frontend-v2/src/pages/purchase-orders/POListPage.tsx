@@ -195,14 +195,14 @@ export function POListPage() {
             icon={Clock}
             label="Draft"
             value={String(nDraft)}
-            hint={nDraft > 0 ? "perlu review" : "—"}
+            hint={nDraft > 0 ? "perlu review" : "-"}
             tone={nDraft > 0 ? "warning" : "neutral"}
           />
           <SummaryCard
             icon={XCircle}
             label="Dibatalkan"
             value={String(nCancelled)}
-            hint={nCancelled > 0 ? "tidak dihitung laporan" : "—"}
+            hint={nCancelled > 0 ? "tidak dihitung laporan" : "-"}
             tone="neutral"
           />
         </SummaryCardGrid>
@@ -425,7 +425,7 @@ function formatPeriod(from: string | null, to: string | null): string | null {
     return `${d}/${m}`
   }
   if (from && to && from === to) return fmt(from)
-  if (from && to) return `${fmt(from)} – ${fmt(to)}`
+  if (from && to) return `${fmt(from)} - ${fmt(to)}`
   if (from) return `≥ ${fmt(from)}`
   if (to) return `≤ ${fmt(to)}`
   return null

@@ -166,7 +166,7 @@ async def _fetch_vendor_patterns(
         )
         rows = (await db.execute(stmt)).all()
         if rows:
-            out[v_clean.lower()] = [((d or "")[:50], c or "—") for d, c in rows]
+            out[v_clean.lower()] = [((d or "")[:50], c or "-") for d, c in rows]
     return out
 
 

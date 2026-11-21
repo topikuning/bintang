@@ -8,7 +8,7 @@ import { CONTROL_CLASS } from "./field";
 /**
  * Isian rupiah: titik ribuan muncul SAAT mengetik ("1.250.000"), papan angka
  * di ponsel (inputMode numeric), awalan "Rp" tetap. Nilai yang dikirim ke
- * server tetap teks berformat – server membacanya dengan `parseRupiah`.
+ * server tetap teks berformat - server membacanya dengan `parseRupiah`.
  */
 export function MoneyInput({
   name,

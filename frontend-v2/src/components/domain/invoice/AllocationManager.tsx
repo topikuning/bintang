@@ -340,7 +340,7 @@ function AllocationRow({
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <div className="text-sm font-medium truncate">
-                {txn.party_name || txn.description || "—"}
+                {txn.party_name || txn.description || "-"}
               </div>
               <div className="text-[11px] text-ink-500 truncate">
                 {fmtDate(txn.tx_date)} · {txn.payment_method}

@@ -1,17 +1,17 @@
 """Endpoint WhatsApp via WAHA:
-  GET  /api/v1/whatsapp/health           — status integrasi
-  GET  /api/v1/whatsapp/session          — status session WAHA (admin)
-  GET  /api/v1/whatsapp/qr               — PNG QR code untuk pairing (admin)
-  POST /api/v1/whatsapp/restart          — restart session (admin)
-  POST /api/v1/whatsapp/logout           — logout/unpair (admin)
-  POST /api/v1/whatsapp/webhook          — receiver event dari WAHA
-  POST /api/v1/whatsapp/me/link-code     — terbitkan kode 6 digit utk user
-  POST /api/v1/whatsapp/me/unlink        — putuskan tautan
-  GET  /api/v1/whatsapp/me/status        — status link user
+  GET  /api/v1/whatsapp/health           - status integrasi
+  GET  /api/v1/whatsapp/session          - status session WAHA (admin)
+  GET  /api/v1/whatsapp/qr               - PNG QR code untuk pairing (admin)
+  POST /api/v1/whatsapp/restart          - restart session (admin)
+  POST /api/v1/whatsapp/logout           - logout/unpair (admin)
+  POST /api/v1/whatsapp/webhook          - receiver event dari WAHA
+  POST /api/v1/whatsapp/me/link-code     - terbitkan kode 6 digit utk user
+  POST /api/v1/whatsapp/me/unlink        - putuskan tautan
+  GET  /api/v1/whatsapp/me/status        - status link user
 
 Integrasi config (toggle):
-  GET  /api/v1/messaging/config          — baca toggle TG/WA
-  PATCH /api/v1/messaging/config         — ubah toggle (admin)
+  GET  /api/v1/messaging/config          - baca toggle TG/WA
+  PATCH /api/v1/messaging/config         - ubah toggle (admin)
 """
 
 from __future__ import annotations

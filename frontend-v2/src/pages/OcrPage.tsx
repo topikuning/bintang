@@ -486,7 +486,7 @@ export function OcrPage() {
 }
 
 function fmtRupiah(v: unknown): string {
-  if (v == null || v === "") return "—"
+  if (v == null || v === "") return "-"
   const n = Number(v)
   if (!Number.isFinite(n)) return String(v)
   // Pakai fmtIDR shared supaya konsisten (NBSP antara Rp dan angka,
@@ -622,7 +622,7 @@ function DraftCard({
             <div className="text-sm font-medium truncate">{summary.vendor}</div>
           )}
           <div className="text-[11px] text-ink-500 truncate font-mono">
-            {summary.nomor ?? "—"} · {summary.tanggal ?? "—"}
+            {summary.nomor ?? "-"} · {summary.tanggal ?? "-"}
             {summary.total != null && <> · {fmtRupiah(summary.total)}</>}
           </div>
           {draft.reviewed_at && (
@@ -808,11 +808,11 @@ function DraftCard({
                     <tbody className="[&>tr]:border-t [&>tr>td]:px-2 [&>tr>td]:py-1.5 [&>tr>td]:align-top">
                       {items.map((it, i) => (
                         <tr key={`${i}:${it.description ?? ""}`}>
-                          <td className="text-ink-900">{it.description ?? "—"}</td>
+                          <td className="text-ink-900">{it.description ?? "-"}</td>
                           <td className="text-right font-mono [font-variant-numeric:tabular-nums]">
-                            {it.qty ?? "—"}
+                            {it.qty ?? "-"}
                           </td>
-                          <td className="text-ink-500">{it.unit ?? "—"}</td>
+                          <td className="text-ink-500">{it.unit ?? "-"}</td>
                           <td className="text-right font-mono [font-variant-numeric:tabular-nums]">
                             {fmtRupiah(it.price)}
                           </td>
@@ -927,7 +927,7 @@ function CreateInvoiceFromDraftPanel({
     : typeof data["total"] === "number"
       ? (data["total"] as number)
       : Number(data["total"])
-  const totalLabel = Number.isFinite(totalNum) ? fmtIDR(totalNum) : "—"
+  const totalLabel = Number.isFinite(totalNum) ? fmtIDR(totalNum) : "-"
 
   const handleSubmit = async () => {
     if (!projectId) {
@@ -1066,7 +1066,7 @@ function CreateInvoiceFromDraftPanel({
         <p className="text-[11px] text-ink-500">
           Kalau kosong, nama dari OCR (
           <span className="font-mono">
-            {(data["vendor_name"] as string) ?? "—"}
+            {(data["vendor_name"] as string) ?? "-"}
           </span>
           ) dipakai sebagai <em>party_name</em> bebas.
         </p>
@@ -1118,7 +1118,7 @@ function FieldCell({
           strong && "font-semibold",
         )}
       >
-        {value == null || value === "" ? "—" : value}
+        {value == null || value === "" ? "-" : value}
       </div>
     </div>
   )

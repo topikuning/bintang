@@ -122,7 +122,7 @@ function FilterBar({
             // Saat company berubah, reset project_id (avoid stale).
             onChange({ ...value, company_id: id, project_id: null })
           }}
-          placeholder="— Semua Perusahaan —"
+          placeholder="- Semua Perusahaan -"
         />
       </div>
       <div className="flex flex-col gap-1">
@@ -132,7 +132,7 @@ function FilterBar({
         <ProjectPicker
           value={value.project_id}
           onChange={(id) => onChange({ ...value, project_id: id })}
-          placeholder="— Semua Proyek —"
+          placeholder="- Semua Proyek -"
           activeOnly={false}
           companyId={value.company_id}
         />
@@ -345,9 +345,9 @@ function BulkTxPanel({ filters }: { filters: BulkFilters }) {
             <td className="px-3 py-2 text-sm">{fmtDate(item.tx_date)}</td>
             <td className="px-3 py-2 text-sm">{item.type}</td>
             <td className="px-3 py-2 text-sm font-mono">{fmtIDR(Number(item.amount))}</td>
-            <td className="px-3 py-2 text-sm">{item.party_name || "—"}</td>
+            <td className="px-3 py-2 text-sm">{item.party_name || "-"}</td>
             <td className="px-3 py-2 text-sm text-ink-600 truncate max-w-[300px]">
-              {item.description || "—"}
+              {item.description || "-"}
             </td>
           </>
         )}
@@ -468,7 +468,7 @@ function BulkPoPanel({ filters }: { filters: BulkFilters }) {
             </td>
             <td className="px-3 py-2 text-sm font-mono">{item.number}</td>
             <td className="px-3 py-2 text-sm">{fmtDate(item.po_date)}</td>
-            <td className="px-3 py-2 text-sm">{item.vendor_client_name || item.vendor_name || "—"}</td>
+            <td className="px-3 py-2 text-sm">{item.vendor_client_name || item.vendor_name || "-"}</td>
             <td className="px-3 py-2 text-sm font-mono">{fmtIDR(Number(item.total))}</td>
           </>
         )}
@@ -635,7 +635,7 @@ function BulkInvoicePanel({ filters }: { filters: BulkFilters }) {
             <td className="px-3 py-2 text-sm font-mono">{item.number}</td>
             <td className="px-3 py-2 text-sm">{fmtDate(item.invoice_date)}</td>
             <td className="px-3 py-2 text-sm">{item.type === "IN" ? "Hutang" : "Piutang"}</td>
-            <td className="px-3 py-2 text-sm">{item.party_name || "—"}</td>
+            <td className="px-3 py-2 text-sm">{item.party_name || "-"}</td>
             <td className="px-3 py-2 text-sm font-mono">{fmtIDR(Number(item.total))}</td>
           </>
         )}

@@ -37,7 +37,7 @@ export function AppShell({
     <div className="min-h-dvh">
       {penanda ? (
         <div className="no-print sticky top-0 z-[60] bg-gold px-4 py-1 text-center text-xs font-semibold text-ink">
-          SERVER UJI ({penanda}) – data di sini bukan data sungguhan
+          SERVER UJI ({penanda}) - data di sini bukan data sungguhan
         </div>
       ) : null}
       <Sidebar appName={appName} nav={nav} badges={badges} />

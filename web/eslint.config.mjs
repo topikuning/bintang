@@ -15,7 +15,7 @@ const eslintConfig = [
   ...next,
   {
     // Semua dropdown form memakai <Combobox> (bisa diketik-cari), bukan
-    // <select> native – pola yang sama dengan MARLIN. Pengecualian: primitif.
+    // <select> native - pola yang sama dengan MARLIN. Pengecualian: primitif.
     files: ["src/**/*.tsx"],
     ignores: ["src/components/ui/field.tsx", "src/components/ui/combobox.tsx"],
     rules: {

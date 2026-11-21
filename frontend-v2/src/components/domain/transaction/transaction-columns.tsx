@@ -66,7 +66,7 @@ export function buildTransactionColumns({
       header: "Kategori",
       cell: ({ row }) => {
         const c = row.original.category_id ? categoryMap.get(row.original.category_id) : null
-        return <span className="text-sm">{c?.name ?? "—"}</span>
+        return <span className="text-sm">{c?.name ?? "-"}</span>
       },
       meta: { align: "left", width: "140px" },
     },
@@ -75,7 +75,7 @@ export function buildTransactionColumns({
       header: "Pihak",
       accessorKey: "party_name",
       cell: ({ getValue }) => (
-        <span className="text-sm">{getValue<string>() || "—"}</span>
+        <span className="text-sm">{getValue<string>() || "-"}</span>
       ),
       meta: { align: "left" },
     },
@@ -84,7 +84,7 @@ export function buildTransactionColumns({
       header: "Deskripsi",
       accessorKey: "description",
       cell: ({ getValue }) => (
-        <span className="text-sm text-ink-600 line-clamp-2">{getValue<string>() || "—"}</span>
+        <span className="text-sm text-ink-600 line-clamp-2">{getValue<string>() || "-"}</span>
       ),
       meta: { align: "left" },
     },

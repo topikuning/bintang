@@ -71,7 +71,7 @@ export function UpcomingInvoices({
                   <StatusBadge domain="invoice" status={inv.status} />
                 </div>
                 <div className="text-[11px] text-ink-500 truncate">
-                  {inv.party_name ?? "—"}
+                  {inv.party_name ?? "-"}
                   {inv.due_date && <> · jatuh tempo {fmtDate(inv.due_date)}</>}
                 </div>
                 {inv.paid_amount > 0 && inv.outstanding_amount > 0 && (

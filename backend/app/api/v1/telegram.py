@@ -1,7 +1,7 @@
 """Endpoint Telegram bot:
-  GET  /api/v1/telegram/health      — status integrasi
-  POST /api/v1/telegram/webhook     — receiver update dari Telegram
-  POST /api/v1/me/telegram/link     — generate kode 6 digit untuk /link
+  GET  /api/v1/telegram/health      - status integrasi
+  POST /api/v1/telegram/webhook     - receiver update dari Telegram
+  POST /api/v1/me/telegram/link     - generate kode 6 digit untuk /link
 
 Catatan: webhook diset dengan secret_token; Telegram mengirim header
 `X-Telegram-Bot-Api-Secret-Token`. Selain header, kita juga dukung

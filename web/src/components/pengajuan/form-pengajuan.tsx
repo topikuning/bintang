@@ -140,7 +140,7 @@ export function FormPengajuan({
       {/* 1. Jenis */}
       <section className="rounded-xl border border-border bg-surface p-4 shadow-(--shadow-card) sm:p-5">
         <h2 className="mb-1 text-sm font-semibold text-ink">1. Jenis pengajuan</h2>
-        <p className="mb-3 text-[13px] text-ink-muted">Pilih yang paling sesuai – menentukan alur setelah dibayar.</p>
+        <p className="mb-3 text-[13px] text-ink-muted">Pilih yang paling sesuai - menentukan alur setelah dibayar.</p>
         <div role="radiogroup" aria-label="Jenis pengajuan" className="grid grid-cols-3 gap-2">
           {JENIS.map((j) => {
             const aktif = kind === j.value;
@@ -169,7 +169,7 @@ export function FormPengajuan({
                 </span>
                 <span className="min-w-0">
                   <span className="block text-[13px] leading-tight font-semibold text-ink sm:text-sm">{j.label}</span>
-                  {/* Di ponsel penjelasannya cukup satu, di bawah kisi – tiga
+                  {/* Di ponsel penjelasannya cukup satu, di bawah kisi - tiga
                       paragraf berjajar di layar 390 px hanya jadi tembok teks. */}
                   <span className="hidden text-[12.5px] leading-snug text-ink-muted sm:block">{REQUEST_KIND_HINT[j.value]}</span>
                 </span>
@@ -432,7 +432,7 @@ function KartuRekening(p: {
               {p.bankHolder ? ` · a.n. ${p.bankHolder}` : ""}
             </>
           ) : (
-            "Rekening belum tercatat – isi bila dibayar transfer."
+            "Rekening belum tercatat - isi bila dibayar transfer."
           )}
         </p>
       </div>

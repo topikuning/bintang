@@ -19,7 +19,7 @@ const VARIANT: Record<ButtonVariant, string> = {
     "bg-transparent text-ink-muted hover:bg-surface-inset hover:text-ink active:bg-surface-muted border border-transparent",
 };
 
-// Di layar sentuh tombol minimal 44 px (pointer-coarse) – jari bukan kursor.
+// Di layar sentuh tombol minimal 44 px (pointer-coarse) - jari bukan kursor.
 const SIZE: Record<ButtonSize, string> = {
   sm: "h-8 px-3 text-[13px] gap-1.5 pointer-coarse:min-h-10",
   md: "h-9 px-4 text-sm gap-2 pointer-coarse:min-h-11",
@@ -69,7 +69,7 @@ export interface ButtonLinkProps extends AnchorHTMLAttributes<HTMLAnchorElement>
   variant?: ButtonVariant;
   size?: ButtonSize;
   children: ReactNode;
-  /** Tautan ke route handler (unduhan/cetak) – bukan navigasi Next. */
+  /** Tautan ke route handler (unduhan/cetak) - bukan navigasi Next. */
   external?: boolean;
 }
 

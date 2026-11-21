@@ -3,9 +3,9 @@
  *
  *   DATABASE_URL=<db v3>  DATABASE_URL_LAMA=<db lama>  [SECRET_KEY_LAMA=<SECRET_KEY lama>] \
  *     pnpm impor:lama -- --kering     # uji: semua dijalankan lalu DIBATALKAN, cetak ringkasan
- *   … pnpm impor:lama                 # sungguhan, satu transaksi DB – gagal = tidak ada yang masuk
+ *   … pnpm impor:lama                 # sungguhan, satu transaksi DB - gagal = tidak ada yang masuk
  *
- * Yang diimpor: pengguna (password lama tetap berlaku – hash bcrypt diganti
+ * Yang diimpor: pengguna (password lama tetap berlaku - hash bcrypt diganti
  * argon2id otomatis saat login pertama), perusahaan, proyek + anggota,
  * kategori, vendor/klien, transaksi + rincian, penyelesaian uang muka, dan
  * pengajuan dana (cash request) beserta rinciannya.
@@ -19,7 +19,7 @@
  * - Rincian penyelesaian → realisasi_uang_muka (tanpa gerak kas).
  * - returned_to_kas > 0 → pengembalian_uang_muka (kas masuk). Versi lama TIDAK
  *   mencatat uang kembali ini sebagai transaksi, jadi saldo kas di v3 akan
- *   LEBIH BESAR sebesar jumlah itu – yang benar adalah v3.
+ *   LEBIH BESAR sebesar jumlah itu - yang benar adalah v3.
  * - Proyek NON_PROJECT → proyek jenis "operasional" (selalu ikut agregat; saklar
  *   per-tahun versi lama tidak dibawa).
  * - Nomor rekening terenkripsi (Fernet) dibuka bila SECRET_KEY_LAMA diisi, lalu
@@ -27,7 +27,7 @@
  *
  * TIDAK diimpor: invoice & PO (pembayarannya tetap masuk sebagai transaksi),
  * berkas lampiran (ada di volume layanan lama), pengaturan AI/OCR/bot.
- * Transaksi lama tidak punya rekening – di v3 tampil sebagai "tanpa rekening".
+ * Transaksi lama tidak punya rekening - di v3 tampil sebagai "tanpa rekening".
  */
 import { createDecipheriv, createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { createWriteStream } from "node:fs";
@@ -149,7 +149,7 @@ async function sumberPostgres(url: string): Promise<Sumber> {
       return null;
     },
     async unduh() {
-      throw new Error("Sumber PostgreSQL tidak membawa berkas – pakai SUMBER_LAMA_URL.");
+      throw new Error("Sumber PostgreSQL tidak membawa berkas - pakai SUMBER_LAMA_URL.");
     },
     async tutup() {
       await lama.end();
@@ -165,7 +165,7 @@ async function sumberApi(base: string, token: string): Promise<Sumber> {
       try {
         const r = await fetch(akar + path, { headers: h });
         if (r.status === 404 && path === "/manifest") {
-          throw new Error("API ekspor mati di server lama – isi EKSPOR_V3_TOKEN di sana lalu redeploy.");
+          throw new Error("API ekspor mati di server lama - isi EKSPOR_V3_TOKEN di sana lalu redeploy.");
         }
         if (r.status === 401) throw new Error("Token ekspor ditolak server lama (EKSPOR_V3_TOKEN tidak sama).");
         if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
@@ -178,7 +178,7 @@ async function sumberApi(base: string, token: string): Promise<Sumber> {
   }
   const manifest = await json("/manifest");
   if (manifest.versi !== 1) throw new Error(`Format ekspor versi ${manifest.versi} belum didukung importer ini.`);
-  console.log(`Sumber: ${base} – ${Object.values(manifest.tabel as Record<string, number>).reduce((a, b) => a + b, 0)} baris, ${manifest.berkas.jumlah} berkas (${(manifest.berkas.total_bytes / 1e6).toFixed(1)} MB).`);
+  console.log(`Sumber: ${base} - ${Object.values(manifest.tabel as Record<string, number>).reduce((a, b) => a + b, 0)} baris, ${manifest.berkas.jumlah} berkas (${(manifest.berkas.total_bytes / 1e6).toFixed(1)} MB).`);
   return {
     nama: base,
     async tabel(nama) {
@@ -504,19 +504,19 @@ async function main() {
               : t.kind === "CASH_ADVANCE" || t.parent_advance_tx_id
                 ? "uang_muka"
                 : "pengeluaran";
-          // Uang muka belum biaya – kategorinya diakui lewat realisasi.
+          // Uang muka belum biaya - kategorinya diakui lewat realisasi.
           const kategori = (id: unknown) => (kind === "uang_muka" ? null : (kid.get(Number(id)) ?? null));
           let rincian = (itemsPer.get(t.id) ?? []).map((it, i) => ({
             position: i,
             categoryId: kategori(it.category_id),
-            description: it.description || t.description || "–",
+            description: it.description || t.description || "-",
             amount: uang(it.amount),
           }));
           rincian = rincian.filter((r) => r.amount > 0n);
           const sum = rincian.reduce((a, r) => a + r.amount, 0n);
           if (!rincian.length || sum !== amount) {
             if (rincian.length && sum !== amount) hitung("rincian disesuaikan ke jumlah transaksi");
-            rincian = [{ position: 0, categoryId: kategori(t.category_id), description: t.description || "–", amount }];
+            rincian = [{ position: 0, categoryId: kategori(t.category_id), description: t.description || "-", amount }];
           }
           const n = await tx.transaction.create({
             data: {
@@ -560,7 +560,7 @@ async function main() {
           const rows = (sItems.get(s.id) ?? []).map((it, i) => ({
             position: i,
             categoryId: kid.get(it.category_id) ?? null,
-            description: it.description || "–",
+            description: it.description || "-",
             amount: uang(it.amount),
           })).filter((r) => r.amount > 0n);
           realisasiPer.set(adv.id, rows);
@@ -635,7 +635,7 @@ async function main() {
           const rows = (crItemsPer.get(c.id) ?? []).map((it, i) => ({
             position: i,
             categoryId: kid.get(it.category_id) ?? null,
-            description: it.description || "–",
+            description: it.description || "-",
             quantity: it.quantity !== null && it.unit_price !== null && it.quantity !== undefined ? String(it.quantity) : null,
             unitPrice: it.unit_price !== null && it.unit_price !== undefined && it.quantity !== null ? uang(it.unit_price) : null,
             amount: uang(it.amount),
@@ -723,7 +723,7 @@ async function main() {
             if (!inv || !pid.has(inv.project_id)) continue;
             const b = await salin(a.url, a.file_name, a.mime_type, `invoice lama ${inv.number}`);
             if (!b) continue;
-            const label = `Invoice ${inv.number}${inv.party_name ? ` – ${inv.party_name}` : ""}`;
+            const label = `Invoice ${inv.number}${inv.party_name ? ` - ${inv.party_name}` : ""}`;
             await tx.attachment.create({
               data: { ...b, kind: "lainnya", label: label.slice(0, 200), projectId: pid.get(inv.project_id)!, uploadedById: u(a.uploaded_by_id) },
             });
@@ -760,7 +760,7 @@ async function main() {
           const poIds = new Set(poP.map((p) => p.id));
           const nomorPo = new Map(poP.map((p) => [p.id, p.number]));
           const wb = bukuBaru();
-          const sub = `Proyek ${proj?.code ?? lp} – diarsipkan dari Bintang lama`;
+          const sub = `Proyek ${proj?.code ?? lp} - diarsipkan dari Bintang lama`;
           tambahSheet(wb, "Invoice", "Invoice (hutang & piutang)", sub, [
             { header: "Nomor", key: "number", width: 20 },
             { header: "Jenis", key: "jenis", width: 10 },
@@ -840,16 +840,16 @@ async function main() {
     await writeFile(join(cermin, "laporan-berkas-hilang.tsv"), hilang.join("\n"));
   }
 
-  console.log(`\n${KERING ? "UJI KERING – tidak ada yang disimpan" : "IMPOR SELESAI"}\n`);
+  console.log(`\n${KERING ? "UJI KERING - tidak ada yang disimpan" : "IMPOR SELESAI"}\n`);
   for (const [k, v] of Object.entries(ringkas).sort()) console.log(`  ${String(v).padStart(6)}  ${k}`);
   if (pecahan) console.log(`\n  ${pecahan} nilai bersen dibulatkan ke rupiah terdekat.`);
   if (rekeningTerbuka) console.log(`  ${rekeningTerbuka} nomor rekening terenkripsi berhasil dibuka & disandikan ulang.`);
-  if (rekeningGagal) console.log(`  ${rekeningGagal} nomor rekening terenkripsi TIDAK bisa dibuka (isi SECRET_KEY_LAMA) – dikosongkan.`);
+  if (rekeningGagal) console.log(`  ${rekeningGagal} nomor rekening terenkripsi TIDAK bisa dibuka (isi SECRET_KEY_LAMA) - dikosongkan.`);
   if (daftarBerkas) {
     console.log(`\n  Berkas: ${diunduh} diunduh, ${sudahAda} sudah ada di cermin (${cermin}).`);
-    console.log(`  Semua isi UPLOAD_DIR lama ikut dicerminkan – termasuk yang tidak ditautkan ke data mana pun.`);
-    if (tautanLuar.length) console.log(`  ${tautanLuar.length} lampiran berupa tautan luar (tidak bisa diunduh) – lihat laporan-tautan-luar.tsv.`);
-    if (hilang.length) console.log(`  ${hilang.length} lampiran tercatat di DB tapi berkasnya tidak ada di server lama – lihat laporan-berkas-hilang.tsv.`);
+    console.log(`  Semua isi UPLOAD_DIR lama ikut dicerminkan - termasuk yang tidak ditautkan ke data mana pun.`);
+    if (tautanLuar.length) console.log(`  ${tautanLuar.length} lampiran berupa tautan luar (tidak bisa diunduh) - lihat laporan-tautan-luar.tsv.`);
+    if (hilang.length) console.log(`  ${hilang.length} lampiran tercatat di DB tapi berkasnya tidak ada di server lama - lihat laporan-berkas-hilang.tsv.`);
   } else {
     console.log("\n  Sumber PostgreSQL langsung: berkas lampiran TIDAK ikut. Pakai SUMBER_LAMA_URL untuk membawa berkas.");
   }
@@ -858,6 +858,6 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error("\nIMPOR GAGAL – tidak ada data yang tersimpan.\n", e instanceof Error ? e.message : e);
+  console.error("\nIMPOR GAGAL - tidak ada data yang tersimpan.\n", e instanceof Error ? e.message : e);
   process.exit(1);
 });

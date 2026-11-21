@@ -11,14 +11,14 @@ if [ "$(id -u)" = "0" ]; then
   # IMPOR_CERMIN: cermin berkas impor dari Bintang lama (lihat bintang-impor).
   for d in "$DIR" ${IMPOR_CERMIN:-}; do
     if mkdir -p "$d" 2>/dev/null; then
-      chown bintang:bintang "$d" 2>/dev/null || echo "[entrypoint] tidak bisa mengubah pemilik $d – penulisan berkas akan gagal." >&2
+      chown bintang:bintang "$d" 2>/dev/null || echo "[entrypoint] tidak bisa mengubah pemilik $d - penulisan berkas akan gagal." >&2
     else
-      echo "[entrypoint] tidak bisa membuat $d – penulisan berkas akan gagal." >&2
+      echo "[entrypoint] tidak bisa membuat $d - penulisan berkas akan gagal." >&2
     fi
   done
 fi
 
-# Migrasi DB tiap start (bawaan: ya). Aman diulang – `migrate deploy` hanya
+# Migrasi DB tiap start (bawaan: ya). Aman diulang - `migrate deploy` hanya
 # menerapkan yang belum, dan dikunci advisory lock bila dua container start
 # bersamaan. Jangan bergantung pada pre-deploy platform saja: di Railway ia
 # hanya jalan bila "Railway Config File" = /web/railway.json, dan tanpa itu

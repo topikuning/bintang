@@ -49,7 +49,7 @@ async def _audience_for_tx(
 ) -> list[User]:
     """Stakeholder Telegram untuk satu tx:
 
-    - **creator** (tx.created_by_id) — pembuat tx
+    - **creator** (tx.created_by_id) - pembuat tx
     - **central admins** (SUPERADMIN, CENTRAL_ADMIN) aktif
     - **project admins** (PROJECT_ADMIN ditugaskan ke proyek tsb) aktif
 

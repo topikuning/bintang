@@ -5,7 +5,7 @@ import { hariIniKey } from "@/lib/tanggal";
 /**
  * Nomor dokumen berurutan: PGJ/2026/11/0001, TRX/2026/11/0001.
  *
- * Bintang lama memakai `COUNT(*) + 1` – dua pengajuan yang dikirim bersamaan
+ * Bintang lama memakai `COUNT(*) + 1` - dua pengajuan yang dikirim bersamaan
  * mendapat nomor sama. Di sini penghitungnya dinaikkan dengan UPSERT atomik di
  * DALAM transaksi dokumennya: kunci baris dipegang sampai transaksi selesai,
  * jadi pemanggil kedua menunggu, bukan menyalip.

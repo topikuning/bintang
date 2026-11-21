@@ -5,7 +5,7 @@ import { env } from "@/lib/env";
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createClient() {
-  // adapter-pg menormalisasi timestamp seolah sesi selalu UTC – pin zonanya.
+  // adapter-pg menormalisasi timestamp seolah sesi selalu UTC - pin zonanya.
   const url = new URL(env.DATABASE_URL);
   const options = url.searchParams.get("options") ?? "";
   url.searchParams.set("options", `${options} -c timezone=UTC`.trim());

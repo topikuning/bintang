@@ -464,7 +464,7 @@ async def report_cash_advances(
     for b in AGING_BUCKETS:
         if aging_count[b] > 0:
             aging_parts.append(f"{b}: Rp {_fmt_idr(aging_out[b])} ({aging_count[b]})")
-    aging_disp = " · ".join(aging_parts) if aging_parts else "—"
+    aging_disp = " · ".join(aging_parts) if aging_parts else "-"
     summary = [
         {
             "label": "Total Disbursed",
@@ -594,7 +594,7 @@ async def report_audit(
         {"label": "Entity Unik", "value": str(len({log.entity for log in logs})), "sub": ""},
         {
             "label": "Aksi Terbanyak",
-            "value": (max(actions_count, key=actions_count.get) if actions_count else "—"),
+            "value": (max(actions_count, key=actions_count.get) if actions_count else "-"),
             "sub": (f"{max(actions_count.values())}× tercatat" if actions_count else ""),
         },
     ]

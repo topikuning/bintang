@@ -1,7 +1,7 @@
 import type { TransactionKind } from "@/generated/prisma/enums";
 
 /**
- * CALCULATION LAYER KANONIK – satu-satunya tempat rumus angka keuangan.
+ * CALCULATION LAYER KANONIK - satu-satunya tempat rumus angka keuangan.
  * Komponen, laporan, dan ekspor Excel DILARANG menghitung ulang; mereka
  * memanggil fungsi di sini (konsep MARLIN, PROJECT.md §3).
  *

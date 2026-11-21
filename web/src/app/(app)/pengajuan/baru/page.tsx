@@ -18,7 +18,7 @@ export default async function PengajuanBaruPage({ searchParams }: { searchParams
       <PageHeader
         back={{ href: "/pengajuan", label: "Pengajuan" }}
         title="Ajukan pembayaran"
-        description="Isi seperlunya – pengajuan bisa disimpan sebagai draf dan dilanjutkan nanti."
+        description="Isi seperlunya - pengajuan bisa disimpan sebagai draf dan dilanjutkan nanti."
       />
       {bahan.projects.length === 0 ? (
         <EmptyState

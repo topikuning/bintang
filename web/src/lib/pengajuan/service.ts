@@ -47,7 +47,7 @@ async function muat(tx: Tx, id: string) {
   return p;
 }
 
-/** Kunci baris pengajuan selama transaksi – dua klik "Bayar" bersamaan tidak boleh dua-duanya lolos. */
+/** Kunci baris pengajuan selama transaksi - dua klik "Bayar" bersamaan tidak boleh dua-duanya lolos. */
 async function kunci(tx: Tx, id: string) {
   await tx.$queryRaw`SELECT id FROM "payment_requests" WHERE id = ${id}::uuid FOR UPDATE`;
   return muat(tx, id);
@@ -72,7 +72,7 @@ function tautan(id: string) {
 }
 
 function label(p: { number: string | null; title: string }) {
-  return p.number ? `${p.number} – ${p.title}` : p.title;
+  return p.number ? `${p.number} - ${p.title}` : p.title;
 }
 
 async function cap(tx: Tx): Promise<bigint> {
@@ -93,7 +93,7 @@ export async function simpan(
 
   const proyek = await tx.project.findUnique({ where: { id: input.projectId }, select: { status: true, name: true } });
   if (!proyek) throw new PesanError("Proyek tidak ditemukan.");
-  if (proyek.status !== "aktif") throw new PesanError(`Proyek "${proyek.name}" tidak aktif – pengajuan tidak bisa dibuat.`);
+  if (proyek.status !== "aktif") throw new PesanError(`Proyek "${proyek.name}" tidak aktif - pengajuan tidak bisa dibuat.`);
 
   const catIds = [...new Set(input.items.map((i) => i.categoryId).filter((x): x is string => !!x))];
   if (catIds.length) {
@@ -101,9 +101,9 @@ export async function simpan(
     if (ok !== catIds.length) throw new PesanError("Ada kategori yang tidak valid untuk pengeluaran.");
   }
 
-  // Penerima: dari master pihak, atau – untuk uang muka & penggantian – pemohon sendiri.
+  // Penerima: dari master pihak, atau - untuk uang muka & penggantian - pemohon sendiri.
   // Nomor rekening dari isian disandikan; dari master (pihak/profil) sudah
-  // tersandi di DB, jadi disalin apa adanya – jangan disandikan dua kali.
+  // tersandi di DB, jadi disalin apa adanya - jangan disandikan dua kali.
   let payeeName = input.payeeName;
   let bankName = input.bankName;
   let bankHolder = input.bankHolder;
@@ -215,7 +215,7 @@ export async function ajukan(tx: Tx, aktor: Aktor, id: string): Promise<{ number
     tx,
     penyetuju,
     {
-      title: `${p.urgent ? "MENDESAK – " : ""}Pengajuan ${ulang ? "diperbaiki" : "baru"} menunggu persetujuan`,
+      title: `${p.urgent ? "MENDESAK - " : ""}Pengajuan ${ulang ? "diperbaiki" : "baru"} menunggu persetujuan`,
       body: `${aktor.fullName} · ${REQUEST_KIND_LABEL[p.kind]} ${rupiah(p.total)} · ${p.title}`,
       href: tautan(id),
     },
@@ -261,7 +261,7 @@ export async function setujui(
     const pembayar = await penerimaBerwenang(tx, "request.pay", p.projectId);
     await kirim(tx, pembayar, {
       title: "Pengajuan siap dibayar",
-      body: `${label(p)} · ${rupiah(p.total)} · ke ${p.payeeName ?? "–"}`,
+      body: `${label(p)} · ${rupiah(p.total)} · ke ${p.payeeName ?? "-"}`,
       href: tautan(id),
     }, aktor.id);
   }
@@ -364,7 +364,7 @@ export async function bayar(
       items: {
         create: items.map((it) => ({
           position: it.position,
-          // Uang muka belum biaya – kategorinya baru diakui saat LPJ diterima.
+          // Uang muka belum biaya - kategorinya baru diakui saat LPJ diterima.
           categoryId: kind === "uang_muka" ? null : it.categoryId,
           description: it.description,
           amount: it.amount,
@@ -404,7 +404,7 @@ export async function bayar(
     body:
       p.kind === "uang_muka"
         ? `${label(p)} · ${rupiah(p.total)}. Jangan lupa ajukan LPJ beserta notanya.`
-        : `${label(p)} · ${rupiah(p.total)} ke ${p.payeeName ?? "–"}.`,
+        : `${label(p)} · ${rupiah(p.total)} ke ${p.payeeName ?? "-"}.`,
     href: tautan(id),
   }, aktor.id);
   return { transactionNumber: number };

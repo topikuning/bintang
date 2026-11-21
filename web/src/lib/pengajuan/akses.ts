@@ -7,7 +7,7 @@ import { rupiah } from "@/lib/uang";
  * memutuskan tombol mana yang tampil, dan dipakai service untuk menegakkannya.
  * Jadi tombol yang tampil = aksi yang akan diterima server, tidak lebih.
  *
- * Akses proyek TIDAK diperiksa di sini (butuh DB) – pemanggil wajib sudah
+ * Akses proyek TIDAK diperiksa di sini (butuh DB) - pemanggil wajib sudah
  * memastikannya.
  */
 
@@ -123,7 +123,7 @@ export function bolehPeriksaLpj(a: Aktor, p: PengajuanRingkas): Keputusan {
   return YA;
 }
 
-/** Semua keputusan sekaligus – untuk layar detail. */
+/** Semua keputusan sekaligus - untuk layar detail. */
 export function semuaAksi(a: Aktor, p: PengajuanRingkas, cap: bigint) {
   return {
     edit: bolehEdit(a, p),

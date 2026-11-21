@@ -265,7 +265,7 @@ export function ProjectDashboardPage() {
             label="Rasio Keluar/Masuk"
             value={
               dash.expense_to_income_ratio_pct == null
-                ? "—"
+                ? "-"
                 : `${dash.expense_to_income_ratio_pct.toFixed(1)}%`
             }
           />
@@ -1035,7 +1035,7 @@ function ProjectAttachmentsSection({
                               className="text-[11px] rounded border border-border bg-surface px-1.5 py-0.5"
                               aria-label="Ubah tipe dokumen"
                             >
-                              <option value="">— Tanpa Kategori —</option>
+                              <option value="">- Tanpa Kategori -</option>
                               {Object.entries(PROJECT_DOC_TYPE_LABELS).map(([v, l]) => (
                                 <option key={v} value={v}>
                                   {l}
@@ -1073,7 +1073,7 @@ function ProjectAttachmentsSection({
                 onChange={(e) => setDocType(e.target.value as ProjectDocType | "")}
                 className="h-9 rounded border border-border-strong bg-surface px-2 text-sm"
               >
-                <option value="">— Pilih kategori (opsional) —</option>
+                <option value="">- Pilih kategori (opsional) -</option>
                 {Object.entries(PROJECT_DOC_TYPE_LABELS).map(([v, l]) => (
                   <option key={v} value={v}>
                     {l}
@@ -1166,7 +1166,7 @@ function QuickAction({
   )
 }
 
-/** Widget AR/AP aging — bucket 0-30 / 31-60 / 61-90 / >90.
+/** Widget AR/AP aging - bucket 0-30 / 31-60 / 61-90 / >90.
  *  Standar finance pro: visualize cash trapped di invoice yg belum dibayar.
  *  Section ini critical utk CFO/PM lihat working capital health.
  */

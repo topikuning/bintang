@@ -1,4 +1,4 @@
-/** Kerangka saat halaman dimuat – bentuknya mirip isi sungguhan supaya tidak "melompat". */
+/** Kerangka saat halaman dimuat - bentuknya mirip isi sungguhan supaya tidak "melompat". */
 export default function Loading() {
   return (
     <div aria-busy="true" aria-label="Memuat" className="space-y-5">

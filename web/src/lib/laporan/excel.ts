@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 /**
  * Pembuat buku Excel. Angka rupiah ditulis sebagai ANGKA (bukan teks) dengan
  * format ribuan, jadi bisa langsung dijumlah/diolah di Excel. Nilai dihitung
- * di calculation layer – di sini hanya ditata.
+ * di calculation layer - di sini hanya ditata.
  */
 
 export type Kolom = { header: string; key: string; width?: number; uang?: boolean; tanggal?: boolean };
