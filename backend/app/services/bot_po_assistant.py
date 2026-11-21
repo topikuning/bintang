@@ -29,6 +29,7 @@ from app.models.models import (
     User,
     VendorClient,
 )
+from app.services import po_teks
 from app.services.ai.features.po_chat_parser import parse as ai_parse
 from app.services.bot_doc_session import (
     BotDocError,
@@ -63,8 +64,28 @@ async def parse_text_and_save(
     # Alur PO lewat WA: nomor WA pemasok di pesan diambil dulu (dan dibuang
     # dari teks) supaya tidak terbaca sebagai barang oleh pembaca AI.
     supplier_wa, text = ambil_nomor_wa(text)
-    parsed = await ai_parse(db, user_id=user.id, text=text)
-    items: list[dict] = parsed.get("items") or []
+    # Baris proyek/vendor/catatan dan baris barang ber-nominal (11jt, 300rb,
+    # Rp ..., @ ...) dibaca pasti tanpa AI; AI hanya membaca baris barang
+    # tanpa nominal. Urutan barang mengikuti urutan baris pesan.
+    pasti = po_teks.baca(text)
+    parsed: dict = {}
+    if pasti.sisa:
+        try:
+            parsed = await ai_parse(db, user_id=user.id, text="\n".join(b for _, b in pasti.sisa))
+        except RuntimeError:
+            if not pasti.barang:
+                raise
+    sudah = {it["description"].lower() for it in pasti.barang}
+    dari_ai = [it for it in (parsed.get("items") or []) if it["description"].lower() not in sudah]
+    for i, it in enumerate(dari_ai):
+        # Anggap AI mengembalikan satu barang per baris sisa, berurutan.
+        it["_baris"] = pasti.sisa[min(i, len(pasti.sisa) - 1)][0]
+    items: list[dict] = sorted(pasti.barang + dari_ai, key=lambda it: it["_baris"])
+    for it in items:
+        it.pop("_baris", None)
+    parsed["project_hint"] = pasti.proyek or parsed.get("project_hint")
+    parsed["vendor_hint"] = pasti.vendor or parsed.get("vendor_hint")
+    parsed["notes"] = pasti.catatan or parsed.get("notes")
     if not items:
         raise BotDocError(
             "Tidak terbaca daftar item dari pesanmu. Contoh format:\n"
