@@ -41,7 +41,7 @@ import mimetypes
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -213,6 +213,38 @@ async def serve_upload(
             # Berkas keuangan: jangan pernah masuk cache bersama.
             "Cache-Control": "private, max-age=300",
             "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.get("/dokumen-po/{token}")
+async def serve_dokumen_po(token: str, db: AsyncSession = Depends(get_db)) -> Response:
+    """PDF PO resmi untuk pemasok, tanpa login (cadangan bila WhatsApp gagal
+    mengirim dokumen). Token ditandatangani HMAC dengan kunci khusus
+    "dokumen-po", menunjuk SATU PO, kedaluwarsa 120 hari, dan hanya untuk PO
+    yang sudah disetujui. Selain itu -> 404."""
+    from app.api.v1.purchase_orders import render_po_pdf
+    from app.models.models import POStatus
+    from app.services.wa_po_flow import ambil_po, baca_token_dokumen_po, nama_berkas_po
+
+    po_id = baca_token_dokumen_po(token)
+    po = await ambil_po(db, po_id) if po_id else None
+    if (
+        po is None
+        or po.deleted_at is not None
+        or not po.supplier_wa
+        or po.status not in (POStatus.APPROVED, POStatus.FULFILLED)
+    ):
+        raise HTTPException(404, "not_found")
+    pdf = await render_po_pdf(db, po)
+    return Response(
+        pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{nama_berkas_po(po)}"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
         },
     )
 

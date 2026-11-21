@@ -1046,3 +1046,128 @@ async def test_pemasok_menolak_lewat_tautan(db, monkeypatch, upload_dir):
     assert hasil.ok
     po = await wa_po_flow.ambil_po(db, po.id)
     assert po.wa_tahap == wa_po_flow.DITOLAK_PEMASOK and "Stok habis" in po.cancel_reason
+
+
+# ---------------------------------------------------------------------------
+# PO final ke pemasok: PDF resmi terlampir
+# ---------------------------------------------------------------------------
+
+
+async def _po_siap_disetujui(db, monkeypatch, pengaju) -> PurchaseOrder:
+    po = await _buat_po_lewat_wa(db, monkeypatch, pengaju)
+    await wa_po_flow.tangani_balasan_pemasok(db, PEMASOK, "UBAH\n1 = 52000\nTEMPO 30")
+    await wa_po_flow.tangani_perintah(db, user=pengaju, teks=f"AJUKAN {wa_po_flow.kode(po)}")
+    await db.commit()
+    return po
+
+
+@pytest.mark.asyncio
+async def test_po_final_ke_pemasok_dengan_pdf(db, monkeypatch, upload_dir):
+    from app.api.v1 import purchase_orders as po_api
+
+    proyek, pengaju, keuangan, vendor = await _seed(db)
+    po = await _po_siap_disetujui(db, monkeypatch, pengaju)
+
+    async def pdf_palsu(_db, _po, **kw):
+        return b"%PDF-uji"
+
+    monkeypatch.setattr(po_api, "render_po_pdf", pdf_palsu)
+    wa_po_flow.buka_kotak()
+    k = wa_po_flow.kode(po)
+    await wa_po_flow.tangani_perintah(db, user=keuangan, teks=f"SETUJUI {k}")
+    await db.commit()
+    ke_pemasok = [p for p in wa_po_flow.isi_kotak() if p.chat_id == PEMASOK]
+    assert len(ke_pemasok) == 1
+    m = ke_pemasok[0]
+    assert m.berkas_isi == b"%PDF-uji" and m.berkas_mime == "application/pdf"
+    assert m.berkas_nama == f"{po.number.replace('/', '-')}.pdf"
+    assert f"{k} DISETUJUI" in m.teks and "PO resmi terlampir" in m.teks
+    assert "https://bintang.contoh.id/dokumen-po/" in m.cadangan
+
+    # Pengiriman: dokumen dengan teks sebagai keterangan.
+    terkirim: list[tuple] = []
+
+    async def media(chat_id, data, mime, filename, caption=None):
+        terkirim.append((chat_id, data, mime, filename, caption))
+        return {"id": "x"}
+
+    monkeypatch.setattr(wa, "send_media", media)
+    await wa_po_flow._kirim(m)
+    assert terkirim == [(PEMASOK, b"%PDF-uji", "application/pdf", m.berkas_nama, m.teks)]
+
+    # WAHA menolak dokumen -> teks + tautan unduh PDF.
+    teks: list[str] = []
+
+    async def gagal(*a, **kw):
+        return None
+
+    async def kirim_teks(chat_id, t):
+        teks.append(t)
+        return {"ok": True}
+
+    monkeypatch.setattr(wa, "send_media", gagal)
+    monkeypatch.setattr(wa, "send_text", kirim_teks)
+    await wa_po_flow._kirim(m)
+    assert len(teks) == 1 and "Unduh PO (PDF): https://bintang.contoh.id/dokumen-po/" in teks[0]
+
+
+@pytest.mark.asyncio
+async def test_pdf_gagal_dibuat_persetujuan_tetap_jalan(db, monkeypatch, upload_dir):
+    from app.api.v1 import purchase_orders as po_api
+
+    proyek, pengaju, keuangan, vendor = await _seed(db)
+    po = await _po_siap_disetujui(db, monkeypatch, pengaju)
+
+    async def rusak(_db, _po, **kw):
+        raise OSError("pango tidak ada")
+
+    monkeypatch.setattr(po_api, "render_po_pdf", rusak)
+    wa_po_flow.buka_kotak()
+    r = await wa_po_flow.tangani_perintah(db, user=keuangan, teks=f"SETUJUI {wa_po_flow.kode(po)}")
+    await db.commit()
+    assert "disetujui" in r and po.status == POStatus.APPROVED
+    m = next(p for p in wa_po_flow.isi_kotak() if p.chat_id == PEMASOK)
+    assert m.berkas_isi is None and "terlampir" not in m.teks
+    assert "Unduh PO (PDF): https://bintang.contoh.id/dokumen-po/" in m.teks
+
+
+@pytest.mark.asyncio
+async def test_tautan_unduh_pdf_po(db, monkeypatch, upload_dir):
+    from app.api import files
+    from app.api.v1 import purchase_orders as po_api
+
+    proyek, pengaju, keuangan, vendor = await _seed(db)
+    po = await _po_siap_disetujui(db, monkeypatch, pengaju)
+
+    async def pdf_palsu(_db, _po, **kw):
+        return b"%PDF-uji"
+
+    monkeypatch.setattr(po_api, "render_po_pdf", pdf_palsu)
+    token = wa_po_flow.token_dokumen_po(po.id)
+    # Belum disetujui -> 404
+    with pytest.raises(HTTPException) as e:
+        await files.serve_dokumen_po(token, db=db)
+    assert e.value.status_code == 404
+
+    await wa_po_flow.tangani_perintah(db, user=keuangan, teks=f"SETUJUI {wa_po_flow.kode(po)}")
+    await db.commit()
+    resp = await files.serve_dokumen_po(token, db=db)
+    assert resp.media_type == "application/pdf" and resp.body == b"%PDF-uji"
+    # Token tujuan lain (penawaran) tidak berlaku di sini.
+    with pytest.raises(HTTPException):
+        await files.serve_dokumen_po(wa_po_flow.token_penawaran(po.id), db=db)
+
+
+@pytest.mark.asyncio
+async def test_render_pdf_po_sungguhan(db, monkeypatch, upload_dir):
+    """PDF PO benar-benar dibuat WeasyPrint (bila pustaka sistemnya tersedia)."""
+    from app.api.v1.purchase_orders import render_po_pdf
+
+    proyek, pengaju, keuangan, vendor = await _seed(db)
+    po = await _po_siap_disetujui(db, monkeypatch, pengaju)
+    po = await wa_po_flow.ambil_po(db, po.id)
+    try:
+        pdf = await render_po_pdf(db, po)
+    except OSError as e:  # pustaka pango/cairo tidak terpasang di mesin ini
+        pytest.skip(f"WeasyPrint tidak tersedia: {e}")
+    assert pdf.startswith(b"%PDF") and len(pdf) > 1000

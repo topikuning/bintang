@@ -747,7 +747,7 @@ Seluruh alur PO bisa berjalan di WhatsApp: dari permintaan material sampai bukti
 | 1. Minta material | Pengguna lapangan | `/po` + daftar barang, `proyek …`, `vendor …`, `wa 08xxxx` (nomor pemasok). Sistem membalas ringkasan → balas **ya**. PO langsung dikirim ke pemasok. |
 | 2. Jawaban pemasok | Pemasok | Buka **tautan isi harga** di pesan pesanan (tanpa login): isi harga per barang, pilih tempo, *Kirim penawaran*. Atau balas di WA: **SETUJU 30** · **SETUJU TUNAI** · **UBAH** lalu per baris `nomor barang = harga` dan `TEMPO 30` · **TOLAK** |
 | 3. Teruskan | Pengguna | Menerima penawaran pemasok → **AJUKAN PO12** (atau **BATAL PO12**) |
-| 4. Setujui | Keuangan / pimpinan | Menerima WA *PO12 menunggu persetujuan* → **SETUJUI PO12** atau **TOLAK PO12 alasan** — atau tombol *Setujui* di aplikasi. PO final terkirim ke pemasok. |
+| 4. Setujui | Keuangan / pimpinan | Menerima WA *PO12 menunggu persetujuan* → **SETUJUI PO12** atau **TOLAK PO12 alasan** — atau tombol *Setujui* di aplikasi. PO final terkirim ke pemasok beserta **PDF PO resmi** (sama dengan hasil cetak di aplikasi). |
 | 5. Barang datang | Pengguna | **Foto surat jalan** dengan keterangan **TERIMA PO12** → tagihan dibuat, jatuh tempo = tanggal terima + tempo |
 | 6. Ringkasan pagi | Otomatis | Tiap pagi (bawaan 07:00 WITA) keuangan/pimpinan menerima daftar tagihan lewat jatuh tempo, hari ini, dan besok. Kapan saja: kirim **TAGIHAN**. |
 | 7. Bayar | Keuangan / pimpinan | **Foto bukti transfer** dengan keterangan **BAYAR PO12** — atau di aplikasi: detail PO → *Bayar & kirim bukti*. Kas keluar tercatat (terverifikasi), bukti dikirim ke pemasok, pengguna diberi tahu. |

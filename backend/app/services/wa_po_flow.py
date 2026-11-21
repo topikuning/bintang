@@ -114,6 +114,8 @@ class Pesan:
     berkas_url: str | None = None
     berkas_mime: str | None = None
     berkas_nama: str | None = None
+    # Atau isi berkas langsung (mis. PDF PO yang baru dibuat), tanpa disimpan.
+    berkas_isi: bytes | None = None
     # Ditambahkan ke teks bila berkas gagal terkirim.
     cadangan: str = ""
 
@@ -135,9 +137,14 @@ def _antre(
     teks: str,
     *,
     berkas: dict | None = None,
+    berkas_isi: tuple[bytes, str, str] | None = None,
     cadangan: str = "",
 ) -> None:
-    """Antrekan pesan. `berkas` = dict hasil simpan file (url, mime_type, file_name)."""
+    """Antrekan pesan.
+
+    `berkas` = dict hasil simpan file (url, mime_type, file_name);
+    `berkas_isi` = (isi, mime, nama berkas) untuk berkas yang tidak disimpan.
+    """
     if not chat_id:
         return
     pesan = Pesan(chat_id, teks, cadangan=cadangan)
@@ -145,6 +152,8 @@ def _antre(
         pesan.berkas_url = berkas.get("url")
         pesan.berkas_mime = berkas.get("mime_type")
         pesan.berkas_nama = berkas.get("file_name")
+    if berkas_isi:
+        pesan.berkas_isi, pesan.berkas_mime, pesan.berkas_nama = berkas_isi
     box = _kotak.get()
     if box is None:
         # Tanpa kotak (mis. skrip): kirim di latar.
@@ -157,21 +166,24 @@ def _antre(
 
 
 async def _kirim(p: Pesan) -> None:
-    if p.berkas_url:
-        from app.services.storage.paths import resolve_upload_path
+    if p.berkas_url or p.berkas_isi:
+        isi = p.berkas_isi
+        nama = p.berkas_nama or "berkas"
+        if isi is None and p.berkas_url:
+            from app.services.storage.paths import resolve_upload_path
 
-        try:
-            path = resolve_upload_path(p.berkas_url)
-            isi = await asyncio.to_thread(path.read_bytes)
-        except Exception:
-            logger.exception("wa_po_flow: berkas %s tidak terbaca", p.berkas_url)
-            isi = None
+            try:
+                path = resolve_upload_path(p.berkas_url)
+                isi = await asyncio.to_thread(path.read_bytes)
+                nama = p.berkas_nama or path.name
+            except Exception:
+                logger.exception("wa_po_flow: berkas %s tidak terbaca", p.berkas_url)
         if isi is not None:
             hasil = await wa.send_media(
                 p.chat_id,
                 isi,
                 p.berkas_mime or "application/octet-stream",
-                p.berkas_nama or path.name,
+                nama,
                 caption=p.teks,
             )
             if hasil is not None:
@@ -747,26 +759,54 @@ async def setelah_diajukan_aplikasi(db: AsyncSession, po: PurchaseOrder, pengaju
         _antre(u.whatsapp_chat_id, teks)
 
 
+async def _pdf_po(db: AsyncSession, po: PurchaseOrder) -> bytes | None:
+    """PDF PO resmi (sama dengan cetak di aplikasi). None bila gagal dibuat;
+    persetujuan tidak boleh gagal hanya karena PDF."""
+    from app.api.v1.purchase_orders import render_po_pdf
+
+    try:
+        await db.flush()
+        return await render_po_pdf(db, po)
+    except Exception:
+        logger.exception("wa_po_flow: PDF %s gagal dibuat", po.number)
+        return None
+
+
+def nama_berkas_po(po: PurchaseOrder) -> str:
+    return f"{po.number.replace('/', '-')}.pdf"
+
+
 async def _kabari_final(db: AsyncSession, po: PurchaseOrder, penyetuju: User) -> None:
     proyek = await _proyek(db, po)
     perusahaan = await _nama_perusahaan(db, po)
-    _antre(
-        po.supplier_wa,
-        "\n".join(
-            [
-                f"✅ *{kode(po)} DISETUJUI* — {po.number}",
-                f"Dari: {perusahaan}",
-                "",
-                *_daftar_barang(po),
-                f"Total: {rp(po.total)}",
-                f"Pembayaran: {teks_tempo(po.tempo_days)}.",
-                "",
-                "Mohon kirim barang"
-                + (f" ke proyek {proyek.name}" if proyek else "")
-                + ". Terima kasih.",
-            ]
-        ),
+    teks = "\n".join(
+        [
+            f"✅ *{kode(po)} DISETUJUI* — {po.number}",
+            f"Dari: {perusahaan}",
+            "",
+            *_daftar_barang(po),
+            f"Total: {rp(po.total)}",
+            f"Pembayaran: {teks_tempo(po.tempo_days)}.",
+            "",
+            "Mohon kirim barang"
+            + (f" ke proyek {proyek.name}" if proyek else "")
+            + ". PO resmi terlampir. Terima kasih.",
+        ]
     )
+    # PO resmi (PDF) dikirim sebagai dokumen dengan teks di atas sebagai
+    # keterangannya. Bila WAHA menolak berkas: teks + tautan unduh PDF.
+    pdf = await _pdf_po(db, po)
+    tautan = tautan_dokumen_po(po)
+    cadangan = f"\n\nUnduh PO (PDF): {tautan}" if tautan else ""
+    if pdf is None:
+        _antre(po.supplier_wa, teks.replace(" PO resmi terlampir.", "") + cadangan)
+    else:
+        _antre(
+            po.supplier_wa,
+            teks,
+            berkas_isi=(pdf, "application/pdf", nama_berkas_po(po)),
+            cadangan=cadangan,
+        )
     pengaju = await _pengaju(db, po)
     _antre(
         pengaju.whatsapp_chat_id if pengaju else None,
@@ -1018,6 +1058,22 @@ def _alamat_dasar() -> str:
 def tautan_bukti(attachment_id: int) -> str | None:
     dasar = _alamat_dasar()
     return f"{dasar}/bukti/{token_bukti(attachment_id)}" if dasar else None
+
+
+def token_dokumen_po(po_id: int, *, berlaku_hari: int = 120, sekarang: float | None = None) -> str:
+    return _buat_token("dokumen-po", po_id, berlaku_hari, sekarang)
+
+
+def baca_token_dokumen_po(token: str, *, sekarang: float | None = None) -> int | None:
+    """Return id PO kalau token unduh PDF PO sah & belum kedaluwarsa."""
+    return _baca_token("dokumen-po", token, sekarang)
+
+
+def tautan_dokumen_po(po: PurchaseOrder) -> str | None:
+    """Tautan unduh PDF PO untuk pemasok (tanpa login), cadangan bila
+    WhatsApp gagal mengirim dokumen."""
+    dasar = _alamat_dasar()
+    return f"{dasar}/dokumen-po/{token_dokumen_po(po.id)}" if dasar else None
 
 
 def tautan_penawaran(po: PurchaseOrder) -> str | None:
