@@ -190,6 +190,10 @@ class Invoice(TimestampMixin, Base):
         ForeignKey("vendors_clients.id"), nullable=True, index=True
     )
     party_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Tagihan yang lahir dari PO (alur WA: foto surat jalan -> tagihan).
+    purchase_order_id: Mapped[int | None] = mapped_column(
+        ForeignKey("purchase_orders.id"), nullable=True, index=True
+    )
 
     subtotal: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
     tax: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
@@ -334,6 +338,18 @@ class PurchaseOrder(TimestampMixin, Base):
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     approved_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Alur PO lewat WhatsApp (services/wa_po_flow.py). Semua kosong untuk PO
+    # yang dibuat dari aplikasi seperti biasa.
+    # Nomor WA pemasok, format WAHA "62812xxxx@c.us".
+    supplier_wa: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # Tempo pembayaran yang disepakati pemasok, dalam hari sejak barang diterima.
+    tempo_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Tahap alur WA: MENUNGGU_PEMASOK, MENUNGGU_PENGAJU, MENUNGGU_PERSETUJUAN,
+    # FINAL, DITERIMA, LUNAS, DITOLAK_PEMASOK, DIBATALKAN.
+    wa_tahap: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    # Tanggal barang diterima (foto surat jalan masuk).
+    diterima_at: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     items: Mapped[list[POItem]] = relationship(
         back_populates="po", cascade="all,delete-orphan", order_by="POItem.id"

@@ -432,5 +432,10 @@ class POOut(POBase):
     # ada. FE pakai vendor_client_name > vendor_name fallback. Audit
     # 2026-05-23 user request #2.
     vendor_client_name: str | None = None
+    # Alur PO lewat WhatsApp (kosong untuk PO biasa).
+    supplier_wa: str | None = None
+    tempo_days: int | None = None
+    wa_tahap: str | None = None
+    diterima_at: date | None = None
 
     model_config = ConfigDict(from_attributes=True)

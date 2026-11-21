@@ -23,6 +23,15 @@ async def _sync_pg_columns(conn) -> None:
     """Tambahkan kolom baru yang muncul di model setelah tabel sudah ada di prod.
     Idempoten via `ADD COLUMN IF NOT EXISTS` (Postgres 9.6+)."""
     statements = [
+        # Alur PO lewat WhatsApp (migrasi q2d8f4b7c1e5)
+        "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS supplier_wa VARCHAR(64)",
+        "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS tempo_days INTEGER",
+        "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS wa_tahap VARCHAR(30)",
+        "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS diterima_at DATE",
+        "CREATE INDEX IF NOT EXISTS ix_purchase_orders_supplier_wa ON purchase_orders (supplier_wa)",
+        "CREATE INDEX IF NOT EXISTS ix_purchase_orders_wa_tahap ON purchase_orders (wa_tahap)",
+        "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS purchase_order_id INTEGER REFERENCES purchase_orders(id)",
+        "CREATE INDEX IF NOT EXISTS ix_invoices_purchase_order_id ON invoices (purchase_order_id)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS scope_all_projects BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id VARCHAR(40)",
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_telegram_chat_id ON users (telegram_chat_id) WHERE telegram_chat_id IS NOT NULL",

@@ -215,3 +215,41 @@ async def serve_upload(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.get("/bukti/{token}")
+async def serve_bukti_bayar(token: str, db: AsyncSession = Depends(get_db)) -> FileResponse:
+    """Bukti transfer untuk pemasok, tanpa login (alur PO lewat WhatsApp).
+
+    Pemasok bukan pengguna aplikasi, dan WAHA Core tidak bisa mengirim
+    gambar -- jadi bukti dikirim sebagai tautan. Token ditandatangani HMAC
+    (SECRET_KEY), menunjuk SATU lampiran transaksi, dan kedaluwarsa (60
+    hari). Token rusak / kedaluwarsa / lampiran tidak ada -> 404.
+    """
+    from app.services.wa_po_flow import baca_token_bukti
+
+    att_id = baca_token_bukti(token)
+    if att_id is None:
+        raise HTTPException(404, "not_found")
+    att = await db.get(TransactionAttachment, att_id)
+    if att is None or att.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    tx = await db.get(Transaction, att.transaction_id)
+    if tx is None or tx.deleted_at is not None or tx.purchase_order_id is None:
+        raise HTTPException(404, "not_found")
+    try:
+        target = resolve_upload_path(att.url)
+    except (UnsafeUploadPath, FileNotFoundError):
+        raise HTTPException(404, "not_found") from None
+    mime = att.mime_type or mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+    disposition = "inline" if mime in INLINE_SAFE_MIME else "attachment"
+    return FileResponse(
+        target,
+        media_type=mime,
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{target.name}"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
+        },
+    )

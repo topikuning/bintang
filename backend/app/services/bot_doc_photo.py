@@ -254,13 +254,22 @@ async def handle_session_reply(
     if is_yes:
         try:
             if session.entity_type == "PO":
+                from app.services import wa_po_flow
+                from app.services.bot_doc_session import parse_payload
                 from app.services.bot_po_assistant import confirm_create as create_po
 
+                supplier_wa = parse_payload(session).get("supplier_wa")
                 po = await create_po(db, user=user, session=session)
+                if supplier_wa:
+                    # Alur PO lewat WA: langsung kirim ke pemasok.
+                    po.supplier_wa = supplier_wa
+                    kirim = await wa_po_flow.kirim_ke_pemasok(db, po, user)
+                    return f"✅ PO dibuat: `{po.number}` (kode *{wa_po_flow.kode(po)}*)\n{kirim}"
                 return (
-                    f"✅ PO dibuat sbg DRAFT: `{po.number}`\n"
+                    f"✅ PO dibuat sbg DRAFT: `{po.number}` (kode *PO{po.id}*)\n"
                     f"Total: Rp {po.total or 0:,.0f}\n".replace(",", ".")
-                    + "Lengkapi/edit di web kalau perlu, lalu submit utk approve."
+                    + "Lengkapi/edit di web kalau perlu, lalu submit utk approve.\n"
+                    f"Atau kirim ke pemasok lewat WA: *KIRIM PO{po.id} 08xxxxxxxxxx*"
                 )
             elif session.entity_type == "INVOICE":
                 from app.services.bot_invoice_assistant import confirm_create as create_inv

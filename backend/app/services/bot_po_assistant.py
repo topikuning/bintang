@@ -27,6 +27,7 @@ from app.models.models import (
     Project,
     PurchaseOrder,
     User,
+    VendorClient,
 )
 from app.services.ai.features.po_chat_parser import parse as ai_parse
 from app.services.bot_doc_session import (
@@ -39,6 +40,7 @@ from app.services.bot_doc_session import (
     resolve_vendor,
     save_session,
 )
+from app.services.whatsapp.phone import ambil_nomor_wa, normalisasi_wa, tampil_nomor
 
 # Backward-compat alias.
 BotPOError = BotDocError
@@ -58,6 +60,9 @@ async def parse_text_and_save(
     text: str,
 ) -> str:
     """Audit 2026-05-30: /po + multi-line text body."""
+    # Alur PO lewat WA: nomor WA pemasok di pesan diambil dulu (dan dibuang
+    # dari teks) supaya tidak terbaca sebagai barang oleh pembaca AI.
+    supplier_wa, text = ambil_nomor_wa(text)
     parsed = await ai_parse(db, user_id=user.id, text=text)
     items: list[dict] = parsed.get("items") or []
     if not items:
@@ -85,6 +90,10 @@ async def parse_text_and_save(
         )
 
     vendor_id, vendor_name = await resolve_vendor(db, parsed.get("vendor_hint"))
+    if not supplier_wa and vendor_id:
+        vendor = await db.get(VendorClient, vendor_id)
+        if vendor is not None and vendor.phone:
+            supplier_wa = normalisasi_wa(vendor.phone) or None
 
     payload = await _build_payload(
         project=project,
@@ -93,6 +102,7 @@ async def parse_text_and_save(
         vendor_name=vendor_name,
         notes=parsed.get("notes"),
         source="chat_text",
+        supplier_wa=supplier_wa,
     )
     session_id = await save_session(
         db,
@@ -259,8 +269,10 @@ async def _build_payload(
     notes: str | None,
     source: str,
     ocr_meta: dict | None = None,
+    supplier_wa: str | None = None,
 ) -> dict:
     return {
+        "supplier_wa": supplier_wa,
         "project_id": project.id,
         "project_code": project.code,
         "project_name": project.name,
@@ -314,7 +326,15 @@ def _format_preview(payload: dict) -> str:
         if conf is not None:
             lines.append(f"_OCR confidence: {conf:.0%}_")
     lines.append("")
-    lines.append("Balas *ya* untuk simpan sebagai DRAFT, *batal* untuk batal.")
+    if payload.get("supplier_wa"):
+        lines.append(f"📱 WA pemasok: {tampil_nomor(payload['supplier_wa'])}")
+        lines.append("Balas *ya* untuk membuat PO dan mengirimnya ke pemasok, *batal* untuk batal.")
+    else:
+        lines.append(
+            "Balas *ya* untuk simpan sebagai DRAFT, *batal* untuk batal.\n"
+            "_Supaya langsung dikirim ke pemasok, tambahkan baris nomor WA pemasok, "
+            "mis. `wa 08123456789`._"
+        )
     return "\n".join(lines)
 
 

@@ -21,6 +21,7 @@ import { fmtDate, fmtDateTime, fmtIDR } from "@/lib/format"
 import { usePOLinkedTransactions } from "@/hooks/usePOs"
 import { StatusBadge } from "@/components/domain/shared/StatusBadge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { POAlurWA } from "./POAlurWA"
 
 interface PODetailProps {
   po: PurchaseOrder | null | undefined
@@ -67,6 +68,8 @@ export function PODetail({ po, isLoading, project }: PODetailProps) {
           {po.needed_date && <> · butuh tgl {fmtDate(po.needed_date, { fullMonth: true })}</>}
         </div>
       </div>
+
+      <POAlurWA po={po} />
 
       <dl className="divide-y">
         <Field label="Vendor" icon={User} value={po.vendor_name || "—"} />

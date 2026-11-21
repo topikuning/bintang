@@ -138,6 +138,13 @@ SETTING_REGISTRY: dict[str, dict[str, Any]] = {
         "hint": "Samakan dgn WAHA_HMAC_KEY di sisi WAHA. Wajib diisi di "
         "produksi -- tanpa ini webhook bisa dipanggil siapa pun.",
     },
+    "WA_RINGKASAN_JAM": {
+        "group": "whatsapp",
+        "secret": False,
+        "label": "Jam ringkasan tagihan (WITA)",
+        "hint": "Jam kirim daftar tagihan jatuh tempo ke WA keuangan/pimpinan, "
+        "format JJ:MM. Kosong = 07:00. Isi 'mati' untuk tidak mengirim.",
+    },
     # System
     "PUBLIC_BASE_URL": {
         "group": "system",

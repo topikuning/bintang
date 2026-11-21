@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from datetime import date as date_type
 from decimal import Decimal
 from pathlib import Path
@@ -27,12 +27,8 @@ from app.models.models import (
     InvoiceAttachment,
     InvoiceItem,
     InvoiceStatus,
-    InvoiceType,
-    PaymentMethod,
     Project,
     Transaction,
-    TxnStatus,
-    TxnType,
     User,
     UserRole,
     VendorClient,
@@ -510,8 +506,10 @@ async def bulk_mark_paid_invoices(
     sebesar outstanding lalu alokasi). Item invalid (CANCELLED / DRAFT /
     total_zero) di-skip dgn reason, tdk halt seluruh batch.
     """
-    from app.services.allocation import apply_allocations_to_invoice
+    from app.services import wa_po_flow
+    from app.services.invoice_payment import lunasi_invoice
 
+    wa_po_flow.buka_kotak()
     ids = payload.get("ids") or []
     if not isinstance(ids, list) or not ids:
         raise HTTPException(400, "ids_required")
@@ -530,7 +528,6 @@ async def bulk_mark_paid_invoices(
 
     success_ids: list[int] = []
     skipped: list[dict] = []
-    now = datetime.now(UTC)
 
     for iid in ids:
         inv = invs.get(iid)
@@ -547,46 +544,17 @@ async def bulk_mark_paid_invoices(
         if total <= 0:
             skipped.append({"id": iid, "reason": "total_zero"})
             continue
-        paid = await paid_amount(db, inv.id)
-        outstanding = total - paid
-        if outstanding <= 0:
-            inv.status = InvoiceStatus.PAID
+        new_tx, _sisa = await lunasi_invoice(
+            db,
+            inv,
+            admin,
+            catatan_audit=f"Bulk mark_paid invoice {inv.number}",
+            catatan_alokasi="bulk mark-paid",
+        )
+        if new_tx is None:
             success_ids.append(iid)
             continue
-
-        tx_type = TxnType.OUT if inv.type == InvoiceType.IN else TxnType.IN
-        new_tx = Transaction(
-            project_id=inv.project_id,
-            tx_date=date.today(),
-            type=tx_type,
-            amount=outstanding,
-            party_name=inv.party_name,
-            vendor_client_id=inv.vendor_client_id,
-            payment_method=PaymentMethod.TRANSFER,
-            description=f"Pelunasan invoice {inv.number}",
-            status=TxnStatus.VERIFIED,
-            verified_by_id=admin.id,
-            verified_at=now,
-            created_by_id=admin.id,
-        )
-        db.add(new_tx)
-        await db.flush()
-        await log(
-            db,
-            user_id=admin.id,
-            entity="transaction",
-            entity_id=new_tx.id,
-            action=AuditAction.CREATE,
-            after=snapshot(new_tx),
-            note=f"Bulk mark_paid invoice {inv.number}",
-        )
-        await apply_allocations_to_invoice(
-            db,
-            invoice_id=inv.id,
-            items=[(new_tx.id, outstanding)],
-            note="bulk mark-paid",
-            user_id=admin.id,
-        )
+        await wa_po_flow.setelah_invoice_lunas(db, inv, new_tx, admin)
         await log(
             db,
             user_id=admin.id,
@@ -598,6 +566,7 @@ async def bulk_mark_paid_invoices(
         success_ids.append(iid)
 
     await db.commit()
+    await wa_po_flow.kirim_kotak()
     return {
         "total_requested": len(ids),
         "success_count": len(success_ids),
@@ -736,53 +705,24 @@ async def mark_invoice_paid(
     if total <= 0:
         raise HTTPException(409, "invoice_total_zero")
 
-    paid = await paid_amount(db, inv.id)
-    outstanding = total - paid
+    from app.services import wa_po_flow
+    from app.services.invoice_payment import lunasi_invoice
 
+    wa_po_flow.buka_kotak()
+    # Transaksi VERIFIED sebesar sisa + alokasi (lewat service supaya validasi
+    # & lock konsisten dengan endpoint /allocations). Kalau sudah lunas lewat
+    # alokasi sebelumnya, status dipastikan PAID.
+    new_tx, outstanding = await lunasi_invoice(
+        db,
+        inv,
+        admin,
+        catatan_audit=f"Auto-create dari mark_paid invoice {inv.number}",
+        catatan_alokasi="auto mark-paid",
+    )
     note_msg = None
-    if outstanding > 0:
-        tx_type = TxnType.OUT if inv.type == InvoiceType.IN else TxnType.IN
-        now = datetime.now(UTC)
-        new_tx = Transaction(
-            project_id=inv.project_id,
-            tx_date=date.today(),
-            type=tx_type,
-            amount=outstanding,
-            party_name=inv.party_name,
-            vendor_client_id=inv.vendor_client_id,
-            payment_method=PaymentMethod.TRANSFER,
-            description=f"Pelunasan invoice {inv.number}",
-            status=TxnStatus.VERIFIED,
-            verified_by_id=admin.id,
-            verified_at=now,
-            created_by_id=admin.id,
-        )
-        db.add(new_tx)
-        await db.flush()
-        await log(
-            db,
-            user_id=admin.id,
-            entity="transaction",
-            entity_id=new_tx.id,
-            action=AuditAction.CREATE,
-            after=snapshot(new_tx),
-            note=f"Auto-create dari mark_paid invoice {inv.number}",
-        )
-        # Buat allocation row sebesar outstanding (lewat service supaya
-        # validasi & lock konsisten dengan endpoint /allocations).
-        from app.services.allocation import apply_allocations_to_invoice
-
-        await apply_allocations_to_invoice(
-            db,
-            invoice_id=inv.id,
-            items=[(new_tx.id, outstanding)],
-            note="auto mark-paid",
-            user_id=admin.id,
-        )
-        note_msg = f"auto-create transaksi {tx_type.value} Rp{outstanding} untuk pelunasan"
-    else:
-        # sudah lunas via alokasi sebelumnya; pastikan status PAID
-        inv.status = InvoiceStatus.PAID
+    if new_tx is not None:
+        note_msg = f"auto-create transaksi {new_tx.type.value} Rp{outstanding} untuk pelunasan"
+        await wa_po_flow.setelah_invoice_lunas(db, inv, new_tx, admin)
 
     await log(
         db,
@@ -793,6 +733,7 @@ async def mark_invoice_paid(
         note=note_msg or "marked paid",
     )
     await db.commit()
+    await wa_po_flow.kirim_kotak()
     res = await db.execute(select(Invoice).options(*_full_options()).where(Invoice.id == inv.id))
     return await _to_out(db, res.scalar_one())
 

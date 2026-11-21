@@ -139,6 +139,12 @@ async def webhook(
 
     caption = message.get("caption") or ""
 
+    # PO dari Telegram yang menyertakan nomor WA pemasok ikut dikirim ke
+    # pemasok lewat WA; pesannya baru dikirim setelah commit.
+    from app.services import wa_po_flow
+
+    wa_po_flow.buka_kotak()
+
     # Audit 2026-06-02: foto + caption /po atau /invoice -> OCR flow
     # (jangan attach ke pending TX). Pakai bot_doc_photo helper.
     from app.services.bot_doc_photo import parse_doc_cmd
@@ -197,6 +203,7 @@ async def webhook(
 
     # commit perubahan DB (link, create transaksi, attach foto, dst)
     await db.commit()
+    await wa_po_flow.kirim_kotak()
 
     if reply:
         await tg.send_message(chat_id, reply, reply_to=message.get("message_id"))

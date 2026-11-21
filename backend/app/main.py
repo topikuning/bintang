@@ -205,7 +205,21 @@ async def lifespan(_app: FastAPI):
         except Exception as e:  # noqa: BLE001
             print(f"[startup] WAHA setWebhook failed: {e}")
 
+    # Ringkasan tagihan jatuh tempo tiap pagi ke WA keuangan/pimpinan
+    # (alur PO lewat WhatsApp). Loop ringan: cek tiap menit, kirim sekali
+    # sehari setelah jam WA_RINGKASAN_JAM (WITA). Tidak jalan saat uji.
+    import asyncio
+
+    penjadwal = None
+    if settings.APP_ENV != "test":
+        from app.services.wa_po_flow import penjadwal_ringkasan
+
+        penjadwal = asyncio.create_task(penjadwal_ringkasan())
+
     yield
+
+    if penjadwal is not None:
+        penjadwal.cancel()
 
 
 app = FastAPI(

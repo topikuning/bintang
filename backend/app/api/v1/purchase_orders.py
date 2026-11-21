@@ -3,7 +3,7 @@ from datetime import date as date_type
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -585,6 +585,9 @@ async def bulk_approve_pos(
     """Bulk approve PO (DRAFT/ISSUED -> APPROVED). Admin only.
     Audit 2026-05-23.
     """
+    from app.services import wa_po_flow
+
+    wa_po_flow.buka_kotak()
     ids = payload.get("ids") or []
     if not isinstance(ids, list) or not ids:
         raise HTTPException(400, "ids_required")
@@ -607,6 +610,10 @@ async def bulk_approve_pos(
         if p.status not in (POStatus.DRAFT, POStatus.ISSUED):
             skipped.append({"id": pid, "reason": f"invalid_state_{p.status.value}"})
             continue
+        if p.wa_tahap in (wa_po_flow.MENUNGGU_PEMASOK, wa_po_flow.MENUNGGU_PENGAJU):
+            # Harga/tempo belum disepakati pemasok atau belum diajukan.
+            skipped.append({"id": pid, "reason": "po_wa_belum_diajukan"})
+            continue
         p.status = POStatus.APPROVED
         p.approved_by_id = admin.id
         p.approved_at = now
@@ -618,8 +625,10 @@ async def bulk_approve_pos(
             action=AuditAction.APPROVE,
             note="bulk approve",
         )
+        await wa_po_flow.setelah_disetujui_aplikasi(db, p, admin)
         success_ids.append(pid)
     await db.commit()
+    await wa_po_flow.kirim_kotak()
     return {
         "total_requested": len(ids),
         "success_count": len(success_ids),
@@ -737,18 +746,26 @@ async def approve_po(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> POOut:
+    from app.services import wa_po_flow
+
+    wa_po_flow.buka_kotak()
     po = await db.get(PurchaseOrder, pid)
     if not po or po.deleted_at is not None:
         raise HTTPException(404, "not_found")
     if po.status not in (POStatus.DRAFT, POStatus.ISSUED):
         raise HTTPException(409, "invalid_state")
+    if po.wa_tahap in (wa_po_flow.MENUNGGU_PEMASOK, wa_po_flow.MENUNGGU_PENGAJU):
+        # PO alur WA: harga/tempo belum disepakati pemasok atau belum diajukan.
+        raise HTTPException(409, "po_wa_belum_diajukan")
     po.status = POStatus.APPROVED
     po.approved_by_id = admin.id
     po.approved_at = datetime.now(UTC)
     await log(
         db, user_id=admin.id, entity="purchase_order", entity_id=po.id, action=AuditAction.APPROVE
     )
+    await wa_po_flow.setelah_disetujui_aplikasi(db, po, admin)
     await db.commit()
+    await wa_po_flow.kirim_kotak()
     res = await db.execute(
         select(PurchaseOrder)
         .options(selectinload(PurchaseOrder.items))
@@ -764,6 +781,9 @@ async def cancel_po(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> POOut:
+    from app.services import wa_po_flow
+
+    wa_po_flow.buka_kotak()
     po = await db.get(PurchaseOrder, pid)
     if not po or po.deleted_at is not None:
         raise HTTPException(404, "not_found")
@@ -777,7 +797,46 @@ async def cancel_po(
         action=AuditAction.CANCEL,
         note=body.reason,
     )
+    await wa_po_flow.setelah_dibatalkan_aplikasi(db, po, admin)
     await db.commit()
+    await wa_po_flow.kirim_kotak()
+    res = await db.execute(
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id == po.id)
+    )
+    return await _to_out_async(db, res.scalar_one())
+
+
+@router.post("/{pid}/bayar", response_model=POOut)
+async def bayar_po(
+    pid: int,
+    bukti: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> POOut:
+    """Bayar PO alur WhatsApp yang barangnya sudah diterima.
+
+    Satu langkah: catat kas keluar (VERIFIED) sebesar sisa tagihan PO,
+    lampirkan bukti transfer, tandai lunas, dan kirim bukti ke WA pemasok.
+    Setara dengan `BAYAR PO12` + foto di WhatsApp.
+    """
+    from app.services import wa_po_flow
+    from app.services.storage.local import save_upload
+
+    wa_po_flow.buka_kotak()
+    po = await wa_po_flow.ambil_po(db, pid)
+    if po is None:
+        raise HTTPException(404, "not_found")
+    await ensure_project_access(db, admin, po.project_id)
+    if po.wa_tahap != wa_po_flow.DITERIMA:
+        raise HTTPException(409, "po_belum_siap_dibayar")
+    berkas = await save_upload(bukti, f"transactions/po-{po.id}")
+    hasil = await wa_po_flow.bayar(db, admin, po, berkas)
+    if po.wa_tahap != wa_po_flow.LUNAS:
+        raise HTTPException(409, hasil)
+    await db.commit()
+    await wa_po_flow.kirim_kotak()
     res = await db.execute(
         select(PurchaseOrder)
         .options(selectinload(PurchaseOrder.items))
