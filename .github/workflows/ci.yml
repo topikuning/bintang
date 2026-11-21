@@ -13,9 +13,13 @@ permissions:
   contents: read
 
 # Cancel run lama saat ada push baru di branch yg sama -- hemat menit CI.
+# KECUALI di main: Railway produksi memakai "Wait for CI", dan commit yang
+# CI-nya dibatalkan di-SKIP, bukan di-deploy. Kejadian 2026-11-09: merge #145
+# dibatalkan oleh merge #146 beberapa detik kemudian; #146 sendiri tidak
+# mengubah berkas apa pun -> keduanya di-skip, produksi tertahan di #144.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   frontend:

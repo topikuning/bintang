@@ -376,7 +376,11 @@ app.add_middleware(
 
 @app.get("/health", tags=["health"])
 async def health() -> dict[str, str]:
-    return {"status": "ok", "app": settings.APP_NAME}
+    # `commit`: commit yang sedang berjalan (Railway mengisi
+    # RAILWAY_GIT_COMMIT_SHA untuk deploy dari GitHub). Bandingkan dengan
+    # ujung `main` untuk memastikan deploy terakhir tidak ter-skip.
+    commit = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "")[:7] or "tidak-diketahui"
+    return {"status": "ok", "app": settings.APP_NAME, "commit": commit}
 
 
 # ---------------------------------------------------------------------------

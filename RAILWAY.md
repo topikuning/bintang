@@ -396,6 +396,32 @@ berjalan normal.
 Push ke `main` → Railway build & deploy otomatis. Migrasi jalan sendiri
 di entrypoint.
 
+**Pastikan deploy terakhir benar-benar aktif.** Railway bisa men-*skip* sebuah
+commit tanpa memberi tahu siapa pun:
+
+- `Wait for CI` aktif dan CI commit itu gagal atau dibatalkan;
+- commit tidak mengubah berkas apa pun ("no changes to watched files"),
+  misalnya merge PR yang isinya sudah masuk lewat PR lain.
+
+Kejadian 2026-11-09: merge #145 di-skip (CI-nya dibatalkan oleh merge #146
+beberapa detik kemudian), merge #146 di-skip karena kosong. Produksi
+tertahan di #144 selama 12 hari.
+
+Cek setelah tiap merge:
+
+```bash
+curl -s https://<domain-produksi>/health
+# {"status":"ok","app":"Bintang","commit":"a96966f"}  ← harus = ujung main
+git ls-remote origin main
+```
+
+Kalau berbeda: Railway → service → Deployments → entri yang SKIPPED → ⋮ →
+Redeploy, atau Ctrl/Cmd+K → "Deploy Latest Commit".
+
+Pencegahan: CI di `main` tidak lagi membatalkan run sebelumnya
+(`.github/workflows/ci.yml`), dan satu perubahan masuk ke `main` lewat satu
+PR saja – jangan dua PR berisi commit yang sama.
+
 ### Backup database
 
 ```bash
