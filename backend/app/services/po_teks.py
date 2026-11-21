@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
 _RE_KUNCI = re.compile(
-    r"^\s*(proyek|project|vendor|pemasok|supplier|toko|catatan|note|ket|keterangan)\s*[:=\-]?\s*(.+?)\s*$",
+    r"^\s*(proyek|project|vendor|pemasok|supplier|toko|penerima|kepada|catatan|note|ket|keterangan)\s*[:=\-]?\s*(.+?)\s*$",
     re.I,
 )
 _KUNCI = {
@@ -29,6 +29,8 @@ _KUNCI = {
     "pemasok": "vendor",
     "supplier": "vendor",
     "toko": "vendor",
+    "penerima": "vendor",
+    "kepada": "vendor",
     "catatan": "catatan",
     "note": "catatan",
     "ket": "catatan",

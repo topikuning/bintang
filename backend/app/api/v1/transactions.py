@@ -886,7 +886,13 @@ async def verify_transaction(
         before=before,
         after=snapshot(t),
     )
+    # Pencairan pengajuan kas: kabari pengaju & penerima dana lewat WA.
+    from app.services import wa_kas, wa_po_flow
+
+    wa_po_flow.buka_kotak()
+    await wa_kas.setelah_tx_diverifikasi(db, t, admin)
     await db.commit()
+    await wa_po_flow.kirim_kotak()
     from app.services.messaging import notify_transaction_verified
 
     await notify_transaction_verified(db, t, actor_id=admin.id)

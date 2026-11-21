@@ -158,6 +158,10 @@ class CashRequest(TimestampMixin, Base):
     request_date: Mapped[date] = mapped_column(Date, nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Penerima dana yang bukan pengguna aplikasi (mis. mandor), dari pesan /kas.
+    # penerima_wa dikabari lewat WA saat dana ditransfer.
+    penerima_nama: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    penerima_wa: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # Sum(items.amount). Disimpan utk performance & filter range.
     total_amount: Mapped[Decimal] = mapped_column(

@@ -25,7 +25,7 @@ from app.services.whatsapp.phone import normalisasi_wa, tampil_nomor
 
 logger = logging.getLogger(__name__)
 
-_RE_PO = re.compile(r"^\s*/po\b", re.I)
+_RE_PO = re.compile(r"^\s*/(po|kas|dana)\b", re.I)
 _RE_NAMA = re.compile(r"^[^\W\d_][\w .,'-]{1,59}$", re.U)
 
 
@@ -125,8 +125,8 @@ async def _kabari_penyetuju(db: AsyncSession, user: User) -> None:
 
     teks = (
         f"👤 *Pengguna baru lewat WhatsApp*: {user.name} ({user.phone or '-'}).\n"
-        "Akun ini hanya bisa mengajukan pesanan material (/po) dan tidak bisa "
-        "melihat data lain. Bila tidak dikenal, nonaktifkan di menu Pengguna."
+        "Akun ini hanya bisa mengajukan pesanan material (/po) dan pengajuan kas "
+        "(/kas), dan tidak bisa melihat data lain. Bila tidak dikenal, nonaktifkan di menu Pengguna."
     )
     for u in await wa_po_flow._penyetuju(db, kecuali_id=user.id):
         wa_po_flow._antre(u.whatsapp_chat_id, teks)

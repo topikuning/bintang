@@ -1348,9 +1348,12 @@ async def ringkasan_tagihan(db: AsyncSession, tanggal: date | None = None) -> st
         kunci = "lewat" if inv.due_date < h else ("hari_ini" if inv.due_date == h else "besok")
         kelompok[kunci].append((inv, sisa))
 
+    from app.services import wa_kas
+
+    kas = await wa_kas.ringkasan(db)
     judul = f"🌅 *Tagihan jatuh tempo - {_HARI[h.weekday()]}, {tgl(h)}*"
     if not any(kelompok.values()):
-        return f"{judul}\n\n✅ Tidak ada tagihan jatuh tempo hari ini dan besok."
+        return f"{judul}\n\n✅ Tidak ada tagihan jatuh tempo hari ini dan besok." + "\n".join(kas)
 
     proyek_ids = {inv.project_id for daftar in kelompok.values() for inv, _ in daftar}
     proyek = {
@@ -1394,6 +1397,7 @@ async def ringkasan_tagihan(db: AsyncSession, tanggal: date | None = None) -> st
         )
     if any(not inv.purchase_order_id for daftar in kelompok.values() for inv, _ in daftar):
         baris.append("Tagihan tanpa kode PO dibayar dari aplikasi.")
+    baris += kas
     return "\n".join(baris)
 
 
@@ -1502,6 +1506,12 @@ async def tangani_perintah(
         if user.role not in PENYETUJU:
             return "Ringkasan tagihan hanya untuk keuangan/pimpinan."
         return await ringkasan_tagihan(db)
+
+    from app.services import wa_kas
+
+    hasil_kas = await wa_kas.tangani_perintah(db, user=user, teks=teks, ambil_media=ambil_media)
+    if hasil_kas is not None:
+        return hasil_kas
 
     m = _RE_PERINTAH.match(teks or "")
     if not m:
