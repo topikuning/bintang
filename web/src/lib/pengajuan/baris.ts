@@ -1,7 +1,7 @@
 import { kaliHarga, parseRupiah } from "@/lib/uang";
 
 /**
- * Baris rincian di form (murni – dipakai klien dan server). Server tetap
+ * Baris rincian di form (murni - dipakai klien dan server). Server tetap
  * menghitung ulang jumlahnya lewat `itemSchema`; ini hanya untuk tampilan.
  */
 export type Baris = {
@@ -29,7 +29,7 @@ export function barisBaru(seed: Partial<Baris> = {}): Baris {
   };
 }
 
-/** Jumlah satu baris (BigInt) – qty × harga bila dirinci, kalau tidak isian jumlah. */
+/** Jumlah satu baris (BigInt) - qty × harga bila dirinci, kalau tidak isian jumlah. */
 export function jumlahBaris(b: Baris): bigint {
   if (b.rinci) {
     const harga = parseRupiah(b.unitPrice);

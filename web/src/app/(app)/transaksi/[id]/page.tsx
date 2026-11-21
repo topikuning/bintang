@@ -17,7 +17,7 @@ import { rupiah } from "@/lib/uang";
 
 export const metadata: Metadata = { title: "Transaksi" };
 
-const METODE: Record<string, string> = { transfer: "Transfer", tunai: "Tunai", qris: "QRIS", giro: "Giro", lainnya: "–" };
+const METODE: Record<string, string> = { transfer: "Transfer", tunai: "Tunai", qris: "QRIS", giro: "Giro", lainnya: "-" };
 const PESAN: Record<string, string> = {
   tercatat: "Tercatat dan langsung terverifikasi.",
   menunggu: "Tercatat. Keuangan sudah diberi tahu untuk memverifikasi.",
@@ -155,13 +155,13 @@ export default async function DetailTransaksiPage({
               className="sm:grid-cols-1"
               items={[
                 { label: "Tanggal", value: fmtTanggal(t.date) },
-                { label: "Proyek", value: <Link className="text-primary-700 hover:underline" href={`/proyek/${t.project.id}`}>{t.project.code} – {t.project.name}</Link> },
-                { label: "Rekening", value: t.account?.name ?? "–" },
+                { label: "Proyek", value: <Link className="text-primary-700 hover:underline" href={`/proyek/${t.project.id}`}>{t.project.code} - {t.project.name}</Link> },
+                { label: "Rekening", value: t.account?.name ?? "-" },
                 { label: "Cara", value: METODE[t.method] },
                 ...(t.partyName ? [{ label: sign > 0 ? "Dari" : "Kepada", value: t.partyName }] : []),
                 ...(t.reference ? [{ label: "Referensi", value: t.reference }] : []),
                 ...(t.request
-                  ? [{ label: "Dari pengajuan", value: <Link className="text-primary-700 hover:underline" href={`/pengajuan/${t.request.id}`}>{t.request.number} – {t.request.title}</Link> }]
+                  ? [{ label: "Dari pengajuan", value: <Link className="text-primary-700 hover:underline" href={`/pengajuan/${t.request.id}`}>{t.request.number} - {t.request.title}</Link> }]
                   : []),
                 { label: "Dicatat", value: `${t.createdBy.fullName} · ${fmtWaktu(t.createdAt)}` },
                 ...(t.verifiedBy ? [{ label: "Diverifikasi", value: `${t.verifiedBy.fullName} · ${fmtWaktu(t.verifiedAt)}` }] : []),

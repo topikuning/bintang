@@ -1,6 +1,6 @@
 # Bintang v3
 
-Pengajuan pembayaran & buku kas multi-proyek – dibangun ulang dari nol di atas
+Pengajuan pembayaran & buku kas multi-proyek - dibangun ulang dari nol di atas
 stack dan konsep [MARLIN](https://github.com/topikuning/marlin-gibaku).
 Aplikasi lama (`../backend`, `../frontend-v2`, di Railway) **tidak diubah** dan
 tetap berjalan sampai hari pindah. v3 berjalan di **server Lenovo**.
@@ -14,7 +14,7 @@ tetap berjalan sampai hari pindah. v3 berjalan di **server Lenovo**.
 | UI | Tailwind CSS 4 (design token) · lucide-react · tanpa pustaka komponen |
 | Auth | Sesi di DB (bisa dicabut) · argon2id · otorisasi berbasis *capability* |
 | Validasi | Zod 4 di setiap batas (server action, route handler) |
-| Uji | Vitest 4 – unit + integrasi ke PostgreSQL sungguhan |
+| Uji | Vitest 4 - unit + integrasi ke PostgreSQL sungguhan |
 | Deploy | Server Lenovo: Docker Compose (multi-stage, non-root, tini) + cadangan harian + Cloudflare Tunnel |
 
 Konsep MARLIN yang dipakai: mesin transisi status (`src/lib/lifecycle.ts`),
@@ -69,7 +69,7 @@ corepack enable
 pnpm install
 cp .env.example .env          # isi DATABASE_URL + SESSION_SECRET
 pnpm prisma migrate deploy
-pnpm db:seed                  # data demo – password semua: bintang123
+pnpm db:seed                  # data demo - password semua: bintang123
 pnpm dev                      # http://localhost:3000
 ```
 
@@ -93,10 +93,10 @@ pnpm build
 
 Cabang v3: **`dev3`**. Satu image (`Dockerfile`) untuk dua tempat:
 
-- **Railway** – layanan baru `bintang-v3` di samping aplikasi lama, Postgres &
+- **Railway** - layanan baru `bintang-v3` di samping aplikasi lama, Postgres &
   volume sendiri: [`docs/RAILWAY.md`](./docs/RAILWAY.md). Cocok selama Lenovo
   belum siap.
-- **Server Lenovo** – tujuan jangka panjang, di bawah.
+- **Server Lenovo** - tujuan jangka panjang, di bawah.
 
 ## Server Lenovo
 
@@ -120,7 +120,7 @@ docker compose --profile tunnel up -d          # + Cloudflare Tunnel untuk HTTPS
 - Pembaruan: `git pull && docker compose up -d --build`.
 
 **Cadangan masih di mesin yang sama.** Salin `DATA_DIR/cadangan` ke luar mesin
-(Google Drive, R2, NAS) – misalnya `rclone sync /srv/bintang/cadangan remote:bintang-cadangan`
+(Google Drive, R2, NAS) - misalnya `rclone sync /srv/bintang/cadangan remote:bintang-cadangan`
 lewat cron harian. Tanpa itu, satu disk rusak menghapus data DAN cadangannya.
 Pulihkan DB: `pg_restore --clean --if-exists -d bintang <dump>`.
 
@@ -137,7 +137,7 @@ docker compose --profile impor run --rm impor --kering   # gladi: jalan penuh la
 docker compose --profile impor run --rm impor            # sungguhan
 ```
 
-- Satu transaksi DB – gagal = tidak ada yang masuk. Berkas dicerminkan dulu ke
+- Satu transaksi DB - gagal = tidak ada yang masuk. Berkas dicerminkan dulu ke
   `impor-cermin/` (bisa dilanjutkan bila putus, dicek ukurannya), baru disalin.
 - Pengguna masuk dengan **password lamanya** (bcrypt → argon2id saat login).
 - Nomor rekening dibuka di server lama, disandikan ulang dengan `KUNCI_DATA`.
@@ -145,10 +145,10 @@ docker compose --profile impor run --rm impor            # sungguhan
   berkas invoice → *Dokumen proyek*; invoice & PO → arsip Excel per proyek.
 - Tautan luar & berkas yang tercatat tapi tidak ada → `laporan-*.tsv` di cermin.
 - Uang kembali penyelesaian uang muka (`returned_to_kas`) kini tercatat sebagai
-  kas masuk – versi lama tidak mencatatnya, jadi saldo v3 lebih besar sebesar
+  kas masuk - versi lama tidak mencatatnya, jadi saldo v3 lebih besar sebesar
   itu. Koreksi, bukan galat.
 - Tanpa API (data saja): `DATABASE_URL_LAMA=<postgres lama>` (+ `SECRET_KEY_LAMA`
-  untuk rekening) – berkas tidak ikut.
+  untuk rekening) - berkas tidak ikut.
 
 ## Belum dipindahkan dari versi lama
 
@@ -161,4 +161,4 @@ Sengaja ditunda agar inti (pengajuan → persetujuan → pembayaran) matang dulu
 - **OCR/AI** (ekstraksi invoice, auto-kategori) dan **bot Telegram/WhatsApp**.
 - Impor Excel massal dan saklar "Catatan Non-Proyek per tahun" (diganti proyek
   jenis *Operasional* yang selalu ikut agregat).
-- Notifikasi keluar aplikasi (email/WA) – saat ini notifikasi di dalam aplikasi.
+- Notifikasi keluar aplikasi (email/WA) - saat ini notifikasi di dalam aplikasi.

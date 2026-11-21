@@ -138,7 +138,7 @@ export function ActionCenterPage() {
               {taskCount === 0 ? "Operasional dalam kendali." : `${taskCount} hal membutuhkan perhatian.`}
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-6 text-ink-600">
-              Prioritas lintas transaksi, pengajuan dana, purchase order, dan invoice—disusun berdasarkan keputusan dan risiko, bukan berdasarkan modul.
+              Prioritas lintas transaksi, pengajuan dana, purchase order, dan invoice-disusun berdasarkan keputusan dan risiko, bukan berdasarkan modul.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3 self-end">

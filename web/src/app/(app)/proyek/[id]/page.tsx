@@ -70,7 +70,7 @@ export default async function DetailProyekPage({ params }: { params: Promise<{ i
             <h1 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">{p.name}</h1>
             <p className="mt-1 text-[13px] text-ink-muted">
               {[p.client, p.location, p.company.name].filter(Boolean).join(" · ")}
-              {p.startDate ? ` · ${fmtTanggal(p.startDate)} – ${p.endDate ? fmtTanggal(p.endDate) : "…"}` : ""}
+              {p.startDate ? ` · ${fmtTanggal(p.startDate)} - ${p.endDate ? fmtTanggal(p.endDate) : "…"}` : ""}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -109,7 +109,7 @@ export default async function DetailProyekPage({ params }: { params: Promise<{ i
               {(komitmen._sum.total ?? 0n) > 0n ? (
                 <p className="flex items-center gap-1.5 text-[13px] text-ink-muted">
                   <Hourglass aria-hidden className="size-3.5" />
-                  Masih ada {rupiah(komitmen._sum.total ?? 0n)} pengajuan yang menunggu/siap dibayar – belum masuk angka terpakai.
+                  Masih ada {rupiah(komitmen._sum.total ?? 0n)} pengajuan yang menunggu/siap dibayar - belum masuk angka terpakai.
                 </p>
               ) : null}
             </CardBody>

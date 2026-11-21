@@ -19,7 +19,7 @@ export function SubmitButton({ children, pendingText, ...rest }: ButtonProps & {
 
 /**
  * Umpan balik hasil server action. Galat tampil sebagai banner; sukses tampil
- * sebagai toast kecil di bawah layar yang hilang sendiri – orang tidak perlu
+ * sebagai toast kecil di bawah layar yang hilang sendiri - orang tidak perlu
  * menutupnya dan isinya tidak menggeser tata letak.
  */
 export function ActionFeedback({ state, className }: { state: ActionState; className?: string }) {

@@ -1,4 +1,4 @@
-# Bintang Financial OS — UI dan arsitektur frontend
+# Bintang Financial OS - UI dan arsitektur frontend
 
 Terakhir diperbarui: **2026-09-04**.
 
@@ -32,8 +32,8 @@ sama pada seluruh viewport.
 - Canvas: cool neutral `#f4f6fa`; surface putih dengan border lembut.
 - Navigasi: midnight navy `#0b1220` agar konteks aplikasi selalu jelas.
 - Brand: indigo; hijau hanya untuk hasil finansial positif/sukses.
-- Status: success, warning, danger, info—tanpa warna ad-hoc.
-- Radius 8–16 px; shadow tipis untuk hierarki, bukan dekorasi berlebihan.
+- Status: success, warning, danger, info-tanpa warna ad-hoc.
+- Radius 8-16 px; shadow tipis untuk hierarki, bukan dekorasi berlebihan.
 - Heading rapat dan kuat; body tenang; angka memakai JetBrains Mono fallback.
 
 Sumber token global ada di `src/index.css`. Semua shell, navigasi, input,

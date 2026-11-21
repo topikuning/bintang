@@ -129,13 +129,13 @@ export function ProjectDetailPage() {
       <div className="rounded-md border bg-surface p-4 sm:p-5 space-y-2">
         <h2 className="text-sm font-semibold text-ink-900 mb-2">Info Proyek</h2>
         <dl className="divide-y">
-          <InfoRow label="Perusahaan" icon={Building2} value={company?.name ?? "—"} />
+          <InfoRow label="Perusahaan" icon={Building2} value={company?.name ?? "-"} />
           <InfoRow
             label="Budget"
             value={
               project.budget_amount && Number(project.budget_amount) > 0
                 ? fmtIDR(project.budget_amount)
-                : "—"
+                : "-"
             }
             mono
           />
@@ -144,7 +144,7 @@ export function ProjectDetailPage() {
           {(project.start_date || project.end_date) && (
             <InfoRow
               label="Periode"
-              value={`${project.start_date ?? "—"} s/d ${project.end_date ?? "—"}`}
+              value={`${project.start_date ?? "-"} s/d ${project.end_date ?? "-"}`}
             />
           )}
         </dl>

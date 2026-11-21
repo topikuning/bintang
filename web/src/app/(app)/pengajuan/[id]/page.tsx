@@ -88,7 +88,7 @@ export default async function DetailPengajuanPage({
             <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-ink-muted">
               <span className="inline-flex items-center gap-1">
                 <FolderKanban aria-hidden className="size-3.5" />
-                {p.project.code} – {p.project.name}
+                {p.project.code} - {p.project.name}
               </span>
               <span className="inline-flex items-center gap-1">
                 <UserRound aria-hidden className="size-3.5" />
@@ -241,7 +241,7 @@ export default async function DetailPengajuanPage({
           <Card>
             <CardHeader title="Dibayarkan ke" />
             <CardBody className="space-y-3">
-              <p className="text-sm font-semibold">{p.payeeName ?? "–"}</p>
+              <p className="text-sm font-semibold">{p.payeeName ?? "-"}</p>
               {rekening ? (
                 <div className="rounded-lg border border-border bg-surface-muted p-3">
                   <p className="text-xs text-ink-muted">{p.bankName ?? "Bank"}</p>

@@ -105,7 +105,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   project_code_already_used: "Kode proyek sudah dipakai proyek lain.",
 }
 
-/** Cek kalau detail string punya format "code:penjelasan" — return code. */
+/** Cek kalau detail string punya format "code:penjelasan" - return code. */
 function extractCode(detail: string): string {
   const colon = detail.indexOf(":")
   if (colon === -1) return detail.trim()

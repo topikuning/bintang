@@ -183,7 +183,7 @@ export function UsersPage() {
       id: "phone",
       header: "Telepon",
       cell: ({ row }) => (
-        <span className="font-mono text-[13px]">{row.original.phone || "—"}</span>
+        <span className="font-mono text-[13px]">{row.original.phone || "-"}</span>
       ),
       meta: { align: "left", width: "150px" },
     },

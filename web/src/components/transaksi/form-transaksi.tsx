@@ -89,7 +89,7 @@ export function FormTransaksi({
         </div>
         {!masuk ? (
           <p className="mt-2 text-[13px] text-ink-muted">
-            Untuk belanja yang butuh persetujuan, pakai <span className="font-medium text-ink">Pengajuan</span> – kas keluar tercatat otomatis saat dibayar.
+            Untuk belanja yang butuh persetujuan, pakai <span className="font-medium text-ink">Pengajuan</span> - kas keluar tercatat otomatis saat dibayar.
           </p>
         ) : null}
       </section>
@@ -122,7 +122,7 @@ export function FormTransaksi({
           />
         </div>
         <Field label={masuk ? "Dari" : "Kepada"} help="Opsional.">
-          <Combobox name="partyId" options={parties} value={partyId} onChange={setPartyId} clearLabel="–" placeholder="Pilih pihak" aria-label="Pihak" />
+          <Combobox name="partyId" options={parties} value={partyId} onChange={setPartyId} clearLabel="-" placeholder="Pilih pihak" aria-label="Pihak" />
         </Field>
         <Field label="No. referensi" htmlFor="reference" help="Opsional. No. bukti transfer/kuitansi.">
           <Input id="reference" name="reference" maxLength={120} />

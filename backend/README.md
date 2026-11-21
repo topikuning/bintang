@@ -38,7 +38,7 @@ PUBLIC_BASE_URL=https://api.domainmu.com    # tanpa trailing slash
 
 Saat startup, server akan register webhook ke
 `PUBLIC_BASE_URL/api/v1/telegram/webhook` lengkap dengan secret. Kalau
-`PUBLIC_BASE_URL` kosong, registrasi dilewati — daftarkan manual lewat
+`PUBLIC_BASE_URL` kosong, registrasi dilewati - daftarkan manual lewat
 `POST https://api.telegram.org/bot<TOKEN>/setWebhook`.
 
 User mengaktifkan bot dari halaman **Pengaturan** web → tombol

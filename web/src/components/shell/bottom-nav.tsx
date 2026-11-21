@@ -12,7 +12,7 @@ import { isActive } from "./sidebar";
 
 /**
  * Nav bawah ponsel. Tombol "+" di tengah = aksi paling sering: membuat
- * pengajuan baru, satu ketukan dari layar mana pun (pola "Foto Cepat" MARLIN –
+ * pengajuan baru, satu ketukan dari layar mana pun (pola "Foto Cepat" MARLIN -
  * aksi utama tidak boleh terkubur di menu).
  */
 export function BottomNav({
@@ -30,7 +30,7 @@ export function BottomNav({
   const [open, setOpen] = useState(false);
   const [prev, setPrev] = useState(pathname);
   if (prev !== pathname) {
-    // Laci tertutup ketika halaman BENAR-BENAR berganti, bukan saat diketuk –
+    // Laci tertutup ketika halaman BENAR-BENAR berganti, bukan saat diketuk -
     // supaya ketukan terbaca "sedang pindah", bukan "menu tertutup lalu diam".
     setPrev(pathname);
     setOpen(false);
@@ -49,7 +49,7 @@ export function BottomNav({
     };
   }, [open]);
 
-  // Layar isian (form) memakai bilah aksinya sendiri di dasar layar – nav
+  // Layar isian (form) memakai bilah aksinya sendiri di dasar layar - nav
   // bawah disembunyikan supaya tidak ada dua bilah bertumpuk dan tombol "+"
   // tidak mengajak membuka form yang sedang dibuka.
   const layarIsian = /\/(baru|ubah|lpj)$/.test(pathname);

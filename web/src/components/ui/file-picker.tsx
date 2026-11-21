@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 /**
  * Pemilih lampiran untuk ponsel: "Foto" membuka kamera belakang langsung,
  * "Pilih berkas" membuka galeri/PDF. Foto DIKECILKAN di peramban sebelum
- * dikirim (maks 1.920 px, JPEG 0,82) – foto nota 6 MB jadi ±400 KB, jadi
+ * dikirim (maks 1.920 px, JPEG 0,82) - foto nota 6 MB jadi ±400 KB, jadi
  * unggahan di sinyal lapangan tidak macet.
  *
  * Berkas akhirnya ditaruh di satu <input type="file" name=…> tersembunyi
@@ -40,7 +40,7 @@ async function kecilkan(file: File): Promise<File> {
     const nama = file.name.replace(/\.[^.]+$/, "") + ".jpg";
     return new File([blob], nama, { type: "image/jpeg", lastModified: Date.now() });
   } catch {
-    // HEIC di peramban yang tidak bisa membacanya, dst. – kirim apa adanya.
+    // HEIC di peramban yang tidak bisa membacanya, dst. - kirim apa adanya.
     return file;
   }
 }
@@ -72,7 +72,7 @@ export function FilePicker({
 
   // Sinkronkan daftar ke input tersembunyi yang ikut dikirim form.
   //
-  // React 19 MERESET form setelah server action selesai – termasuk saat aksi
+  // React 19 MERESET form setelah server action selesai - termasuk saat aksi
   // mengembalikan galat validasi. Tanpa penyetelan ulang sesudah `reset`,
   // pratinjau masih menampilkan foto padahal input kirimnya sudah kosong, dan
   // kiriman kedua berangkat tanpa lampiran tanpa tanda apa pun.

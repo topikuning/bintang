@@ -28,7 +28,7 @@ describe("fmtIDR", () => {
   })
 
   it("memakai en-dash untuk nilai negatif, bukan hyphen", () => {
-    expect(nb(fmtIDR(-2000))).toBe("–Rp 2.000")
+    expect(nb(fmtIDR(-2000))).toBe("-Rp 2.000")
   })
 
   it("mendukung format kurung untuk laporan akuntansi", () => {
@@ -70,7 +70,7 @@ describe("fmtCompact", () => {
   })
 
   it("mempertahankan tanda negatif di tiap satuan", () => {
-    expect(nb(fmtCompact(-25_300_000))).toBe("–Rp 25,3 jt")
+    expect(nb(fmtCompact(-25_300_000))).toBe("-Rp 25,3 jt")
   })
 
   it("memakai koma desimal, bukan titik", () => {

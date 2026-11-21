@@ -40,7 +40,7 @@ function Hapus({ id, projectId }: { id: string; projectId: string }) {
   );
 }
 
-/** Dokumen proyek: kontrak, SPK, BAST – termasuk arsip yang dipindah dari Bintang lama. */
+/** Dokumen proyek: kontrak, SPK, BAST - termasuk arsip yang dipindah dari Bintang lama. */
 export function DokumenProyek({ projectId, rows, bolehKelola }: { projectId: string; rows: DokumenRow[]; bolehKelola: boolean }) {
   const [open, setOpen] = useState(false);
   const [state, action] = useActionState<ActionState, FormData>(unggahDokumenProyek.bind(null, projectId), undefined);

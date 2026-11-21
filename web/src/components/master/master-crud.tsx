@@ -22,7 +22,7 @@ export type Row = { id: string; values: Record<string, string>; title: string; s
 
 /**
  * Daftar master + lembar tambah/ubah, digerakkan konfigurasi. Satu pola
- * untuk perusahaan, kategori, penerima, rekening – supaya keempatnya terasa
+ * untuk perusahaan, kategori, penerima, rekening - supaya keempatnya terasa
  * sama dan tidak ada yang tertinggal saat satu diperbaiki.
  */
 export function MasterCrud({

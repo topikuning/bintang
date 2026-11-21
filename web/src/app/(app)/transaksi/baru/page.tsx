@@ -30,7 +30,7 @@ export default async function CatatKasPage() {
       <FormTransaksi
         today={hariIniKey()}
         akanLangsung={can(user.role, "tx.verify")}
-        projects={projects.map((p) => ({ value: p.id, label: `${p.code} – ${p.name}` }))}
+        projects={projects.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` }))}
         accounts={accounts}
         catMasuk={cats.filter((c) => c.direction === "masuk").map((c) => ({ value: c.id, label: c.name }))}
         catKeluar={cats.filter((c) => c.direction === "keluar").map((c) => ({ value: c.id, label: c.name }))}

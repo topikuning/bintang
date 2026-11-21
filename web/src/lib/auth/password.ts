@@ -1,7 +1,7 @@
 import { hash, verify } from "@node-rs/argon2";
 import bcrypt from "bcryptjs";
 
-// argon2id, parameter OWASP (m=19 MiB, t=2, p=1) – sama dengan MARLIN.
+// argon2id, parameter OWASP (m=19 MiB, t=2, p=1) - sama dengan MARLIN.
 const ARGON2_OPTS = { memoryCost: 19456, timeCost: 2, parallelism: 1 };
 
 export function hashPassword(password: string): Promise<string> {

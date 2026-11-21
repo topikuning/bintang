@@ -250,7 +250,7 @@ export function BudgetPage() {
       {isSingleProject && byCategory.length > 0 && (
         <div>
           <h2 className="text-sm font-semibold text-ink-900 mb-2">
-            Realisasi per Kategori — {rows[0]?.project_name ?? "-"}
+            Realisasi per Kategori - {rows[0]?.project_name ?? "-"}
           </h2>
           <div className="rounded-md border bg-surface overflow-hidden">
             <table className="w-full text-[12px] border-collapse">
@@ -293,7 +293,7 @@ export function BudgetPage() {
 
 function pctText(v: number | string): string {
   const n = Number(v)
-  if (!Number.isFinite(n)) return "—"
+  if (!Number.isFinite(n)) return "-"
   return `${n.toFixed(1)}%`
 }
 

@@ -88,10 +88,10 @@ export function TransactionCard({
       {/* Row 2: pihak / proyek */}
       <div className="flex flex-col gap-0.5 min-w-0">
         <div className="text-sm font-medium text-ink-900 truncate">
-          {t.party_name || "—"}
+          {t.party_name || "-"}
         </div>
         <div className="text-[12px] text-ink-500 truncate">
-          {projectName ? `${projectName}${categoryName ? ` · ${categoryName}` : ""}` : categoryName || "—"}
+          {projectName ? `${projectName}${categoryName ? ` · ${categoryName}` : ""}` : categoryName || "-"}
         </div>
       </div>
 

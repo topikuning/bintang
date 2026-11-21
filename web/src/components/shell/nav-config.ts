@@ -2,7 +2,7 @@ import type { UserRole } from "@/generated/prisma/enums";
 import { can, type Capability } from "@/lib/authz";
 
 /**
- * Navigasi – serializable (ikon = kunci string) supaya aman dioper dari
+ * Navigasi - serializable (ikon = kunci string) supaya aman dioper dari
  * Server Component ke klien. Penyaringan capability terjadi DI SINI; shell
  * tidak tahu soal otorisasi.
  */

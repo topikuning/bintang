@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * BINTANG design tokens – satu sumber warna/radius/font (konsep MARLIN).
+ * BINTANG design tokens - satu sumber warna/radius/font (konsep MARLIN).
  * Komponen TIDAK memakai hex; pakai kelas yang dipetakan ke token di bawah
  * (bg-primary, text-ink, border-border, text-masuk, …).
  */
@@ -9,7 +9,7 @@
   --font-sans:
     "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
-  /* Primer: indigo tua – tenang, terbaca serius untuk urusan uang. */
+  /* Primer: indigo tua - tenang, terbaca serius untuk urusan uang. */
   --color-primary-50: #eef2ff;
   --color-primary-100: #e0e7ff;
   --color-primary-200: #c7d2fe;
@@ -26,7 +26,7 @@
   --color-gold: #f59e0b;
   --color-gold-soft: #fffbeb;
 
-  /* Arah uang – dipakai konsisten di semua angka. */
+  /* Arah uang - dipakai konsisten di semua angka. */
   --color-masuk: #047857;
   --color-masuk-soft: #ecfdf5;
   --color-keluar: #be123c;
@@ -178,7 +178,7 @@ body {
   animation: bintang-kilau 1.2s ease-in-out infinite;
 }
 
-/* Tautan yang sedang dibuka berdenyut – umpan balik di benda yang disentuh. */
+/* Tautan yang sedang dibuka berdenyut - umpan balik di benda yang disentuh. */
 @keyframes bintang-sibuk {
   0%,
   100% {

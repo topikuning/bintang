@@ -43,7 +43,7 @@ export const TAB_LABEL: Record<TabPengajuan, string> = {
 };
 
 /**
- * "Perlu tindakan SAYA" – inti layar beranda. Satu definisi, dipakai untuk
+ * "Perlu tindakan SAYA" - inti layar beranda. Satu definisi, dipakai untuk
  * hitungan di beranda dan isi tab "Perlu tindakan".
  */
 export function whereTindakan(user: SessionUser, cap: bigint): Prisma.PaymentRequestWhereInput {
@@ -221,5 +221,5 @@ export async function detailPengajuan(user: SessionUser, id: string) {
 
 export type DetailPengajuan = NonNullable<Awaited<ReturnType<typeof detailPengajuan>>>;
 
-/** Status terbuka (masih berjalan) – untuk ringkasan komitmen di proyek. */
+/** Status terbuka (masih berjalan) - untuk ringkasan komitmen di proyek. */
 export const STATUS_BERJALAN: RequestStatus[] = ["diajukan", "disetujui"];

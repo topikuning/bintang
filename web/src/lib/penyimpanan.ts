@@ -5,7 +5,7 @@ import path from "node:path";
 import { env } from "@/lib/env";
 
 /**
- * Penyimpanan berkas lampiran – SATU PINTU (konsep MARLIN: baca, tulis, hapus
+ * Penyimpanan berkas lampiran - SATU PINTU (konsep MARLIN: baca, tulis, hapus
  * hanya lewat modul ini). Sekarang disk lokal (volume Railway di /data);
  * kalau nanti pindah ke R2/S3, cukup modul ini yang berubah.
  */
@@ -78,7 +78,7 @@ export async function simpanBerkas(file: File, folder: string): Promise<BerkasTe
 
 /**
  * Tulis isi berkas yang SUDAH tepercaya (hasil impor dari Bintang lama, arsip
- * Excel buatan sistem) – tanpa daftar putih MIME, karena versi lama juga
+ * Excel buatan sistem) - tanpa daftar putih MIME, karena versi lama juga
  * menyimpan GIF/video dari bot. Jangan dipakai untuk unggahan pengguna.
  */
 export async function simpanBuffer(buf: Buffer, folder: string, fileName: string, mimeType: string): Promise<BerkasTersimpan> {

@@ -14,7 +14,7 @@ import type { Aktor } from "@/lib/pengajuan/service";
 
 /**
  * Pencatatan kas LANGSUNG (di luar pengajuan): termin masuk, belanja kecil
- * tunai, dll. Uang muka & realisasinya TIDAK dibuat di sini – itu hanya lewat
+ * tunai, dll. Uang muka & realisasinya TIDAK dibuat di sini - itu hanya lewat
  * alur pengajuan supaya pertanggungjawabannya tidak terlewat.
  *
  * Dicatat Keuangan → langsung terverifikasi. Dicatat admin proyek → menunggu
@@ -160,7 +160,7 @@ export async function batalkan(tx: Tx, aktor: Aktor, id: string, alasan: string)
   const t = await kunci(tx, id);
   await aksesProyek(tx, aktor, t.projectId);
   if (t.requestId) {
-    throw new PesanError("Transaksi ini berasal dari pengajuan – batalkan lewat halaman pengajuannya supaya statusnya ikut kembali.");
+    throw new PesanError("Transaksi ini berasal dari pengajuan - batalkan lewat halaman pengajuannya supaya statusnya ikut kembali.");
   }
   const pembuatMenunggu = t.createdById === aktor.id && t.status === "menunggu_verifikasi";
   if (!can(aktor.role, "tx.verify") && !pembuatMenunggu) throw new PesanError("Anda tidak berwenang membatalkan transaksi ini.");

@@ -2,7 +2,7 @@
 
 Panduan setup integrasi WhatsApp untuk Bintang. Backend memakai
 [WAHA](https://waha.devlike.pro/) (WhatsApp HTTP API self-hosted)
-sebagai bridge — Bintang tidak konek langsung ke WhatsApp.
+sebagai bridge - Bintang tidak konek langsung ke WhatsApp.
 
 ```
 [User HP]   <->   [WAHA server]   <->   [Bintang backend]
@@ -14,7 +14,7 @@ panggil HTTP API-nya dan terima webhook.
 
 > **Kontras dengan Telegram**: Telegram pakai Bot API resmi
 > (`api.telegram.org`), tidak perlu self-host apa pun. WhatsApp tidak
-> menyediakan Bot API publik — WAHA mensimulasikan WhatsApp Web di
+> menyediakan Bot API publik - WAHA mensimulasikan WhatsApp Web di
 > Chromium headless.
 
 ---
@@ -81,17 +81,17 @@ docker run -d \
   devlikeapro/waha:latest
 ```
 
-> **Penting**: volume `/app/.sessions` mounted — sesi WhatsApp
+> **Penting**: volume `/app/.sessions` mounted - sesi WhatsApp
 > persistent setelah restart. Tanpa ini, harus scan QR ulang.
 
 Pasang di balik Nginx/Caddy + TLS. Catat nilai `WHATSAPP_API_KEY` dan
-`WAHA_HMAC_KEY` — perlu untuk konfigurasi backend.
+`WAHA_HMAC_KEY` - perlu untuk konfigurasi backend.
 
 ### Opsi C: WAHA Plus (multi-session, lisensi berbayar)
 
 Untuk yang butuh > 1 session WhatsApp simultan (mis. multi-tenant),
 pakai [WAHA Plus](https://waha.devlike.pro/plus). Bintang sudah
-support `WHATSAPP_SESSION` field — tinggal set nama session per
+support `WHATSAPP_SESSION` field - tinggal set nama session per
 deployment.
 
 ---
@@ -149,7 +149,7 @@ menampilkan section status & QR code.
 4. Scan QR yg muncul di halaman Bintang. Status berubah jadi
    `WORKING` dalam beberapa detik.
 
-> Kalau QR habis (refresh diperlukan), klik tombol **Refresh QR** —
+> Kalau QR habis (refresh diperlukan), klik tombol **Refresh QR** -
 > WAHA generate QR baru.
 
 ### Endpoint reference
@@ -226,7 +226,7 @@ pesan tes":
 
 1. Isi nomor tujuan (format `08xxx` atau `628xxx`).
 2. Tulis pesan singkat (mis. "Halo dari Bintang").
-3. Klik **Kirim** — pesan harus sampai di WhatsApp tujuan dalam < 5
+3. Klik **Kirim** - pesan harus sampai di WhatsApp tujuan dalam < 5
    detik.
 
 ### C. Test bot reply
@@ -234,7 +234,7 @@ pesan tes":
 Kirim `/help` ke nomor bot dari HP lain. Bot harus reply daftar
 perintah. Kalau tidak reply:
 
-- Cek log backend: `app.api.v1.whatsapp` — webhook masuk?
+- Cek log backend: `app.api.v1.whatsapp` - webhook masuk?
 - Cek WAHA log: webhook delivery success?
 - Jika verifikasi diaktifkan, cek `WHATSAPP_WEBHOOK_SECRET` match dengan `WAHA_HMAC_KEY`.
 
@@ -278,7 +278,7 @@ Berguna untuk on-boarding cepat tanpa user perlu kirim apa-apa.
 | Bot tidak reply `/help` | User belum link, atau `whatsapp_chat_id` belum di-set | Cek tabel `users` row → field `whatsapp_chat_id` |
 | Pesan kirim sukses tapi tidak sampai | Nomor format salah, atau receiver tidak punya WhatsApp | Pastikan format `<msisdn>@c.us` (no `+`, no `-`) |
 | Sesi WORKING → FAILED tiba-tiba | WhatsApp logout dari Linked Devices, atau WAHA crash | Klik **Restart Session** di UI, scan QR ulang kalau perlu |
-| Media (foto/PDF) tidak ke-download | URL media di webhook host internal WAHA | Sudah di-handle backend (`_rewrite_to_external`) — kalau masih gagal cek log `whatsapp` di backend |
+| Media (foto/PDF) tidak ke-download | URL media di webhook host internal WAHA | Sudah di-handle backend (`_rewrite_to_external`) - kalau masih gagal cek log `whatsapp` di backend |
 | `/po` parsing salah | AI feature `po_chat_parser` perlu prompt tweaking | Edit prompt di **Pengaturan → AI Settings** → feature "Parser Chat -> PO" |
 | Webhook delay (> 30 detik) | WAHA queue penuh / Chromium hang | Restart WAHA service (container restart) |
 
@@ -377,7 +377,7 @@ total) → user balas **ya** untuk simpan sebagai PO **DRAFT**. Balas
 **batal** untuk batalkan. Session TTL 10 menit.
 
 - Harga satuan **opsional** (`@ 95000` / `harga 95000`). Kalau hilang,
-  unit_price default `0` — user lengkapi di web.
+  unit_price default `0` - user lengkapi di web.
 - Proyek dicari by code exact (case-insensitive) lalu by name partial
   (ilike). Scoped ke proyek yg user punya akses, status `AKTIF`.
 - Vendor dicari di master `vendors_clients` (ilike). Tidak ketemu →

@@ -7,7 +7,7 @@ import type {
 } from "@/generated/prisma/enums";
 
 /**
- * Mesin transisi status (konsep MARLIN). MURNI – dipakai server action untuk
+ * Mesin transisi status (konsep MARLIN). MURNI - dipakai server action untuk
  * validasi, dipakai UI untuk label/warna, dan diuji unit.
  *
  * Status HANYA berubah lewat `assertRequestTransition` + riwayat ditulis.
@@ -22,7 +22,7 @@ const REQUEST_TRANSITIONS: Record<RequestStatus, RequestStatus[]> = {
   diajukan: ["disetujui", "perlu_revisi", "ditolak", "dibatalkan"],
   perlu_revisi: ["diajukan", "dibatalkan"],
   // Keuangan boleh mengembalikan pengajuan yang sudah disetujui bila data
-  // penerima/rekening ternyata salah – wajib disetujui ulang.
+  // penerima/rekening ternyata salah - wajib disetujui ulang.
   disetujui: ["dibayar", "perlu_revisi", "dibatalkan"],
   // dibayar → disetujui = pembayaran dibatalkan (salah catat), transaksi kasnya
   // ikut dibatalkan. Hanya sebelum LPJ.
@@ -54,7 +54,7 @@ export function assertRequestTransition(from: RequestStatus, to: RequestStatus, 
 /** Status yang masih bisa diedit isinya oleh pemohon. */
 export const EDITABLE_REQUEST_STATUSES: readonly RequestStatus[] = ["draft", "perlu_revisi"];
 
-/** Status yang dianggap "selesai" untuk alur – tidak ada lagi yang perlu dikerjakan. */
+/** Status yang dianggap "selesai" untuk alur - tidak ada lagi yang perlu dikerjakan. */
 export function isRequestClosed(status: RequestStatus, kind: RequestKind): boolean {
   if (status === "selesai" || status === "ditolak" || status === "dibatalkan") return true;
   return status === "dibayar" && kind !== "uang_muka";
@@ -67,7 +67,7 @@ export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = {
   draft: "Draf",
   diajukan: "Menunggu persetujuan",
   perlu_revisi: "Perlu revisi",
-  disetujui: "Disetujui – siap dibayar",
+  disetujui: "Disetujui - siap dibayar",
   dibayar: "Dibayar",
   lpj_diajukan: "LPJ diperiksa",
   selesai: "Selesai",
@@ -102,7 +102,7 @@ export const REQUEST_STATUS_TONE: Record<RequestStatus, Tone> = {
 
 /** Label status yang sadar jenis: uang muka yang sudah dibayar masih menunggu LPJ. */
 export function requestStatusLabel(status: RequestStatus, kind: RequestKind, short = false): string {
-  if (status === "dibayar" && kind === "uang_muka") return short ? "Tunggu LPJ" : "Dibayar – menunggu LPJ";
+  if (status === "dibayar" && kind === "uang_muka") return short ? "Tunggu LPJ" : "Dibayar - menunggu LPJ";
   return (short ? REQUEST_STATUS_SHORT : REQUEST_STATUS_LABEL)[status];
 }
 

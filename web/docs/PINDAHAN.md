@@ -12,7 +12,7 @@ yang akan dipensiunkan.
 
 > **Lenovo belum siap?** v3 bisa dijalankan dulu di Railway sebagai layanan
 > terpisah di samping aplikasi lama: [`RAILWAY.md`](./RAILWAY.md). Langkah §1
-> dan §3–5 di bawah sama; hanya perintah impornya `bintang-impor` lewat
+> dan §3-5 di bawah sama; hanya perintah impornya `bintang-impor` lewat
 > `railway ssh`.
 
 ---
@@ -28,14 +28,14 @@ yang akan dipensiunkan.
 
 ## 1. Aplikasi lama: aktifkan API ekspor
 
-API ekspor (`/api/v1/ekspor-v3/*`) sudah di `main` – cabang yang dideploy
+API ekspor (`/api/v1/ekspor-v3/*`) sudah di `main` - cabang yang dideploy
 layanan produksi. Ia harus berjalan di **layanan Railway yang memegang data &
-volume produksi** – layanan uji dengan volume lain tidak membawa lampiran yang
+volume produksi** - layanan uji dengan volume lain tidak membawa lampiran yang
 sebenarnya.
 
 1. Pastikan deploy produksi dari commit `041ce36` (merge topikuning/bintang#141)
    atau sesudahnya hijau. Merge itu juga membawa perombakan UI dan perbaikan
-   audit dari `dev` ke produksi, bukan hanya API ekspor – cek layar lama masih
+   audit dari `dev` ke produksi, bukan hanya API ekspor - cek layar lama masih
    normal; bila tidak, rollback deploy di Railway dulu.
 2. Railway → layanan produksi → Variables → `EKSPOR_V3_TOKEN` =
    `python -c 'import secrets; print(secrets.token_urlsafe(48))'` → redeploy.
@@ -86,16 +86,16 @@ Isi `SUMBER_LAMA_URL` dan `EKSPOR_V3_TOKEN` di `.env` Lenovo, lalu:
 docker compose --profile impor run --rm impor --kering
 ```
 
-Gladi kering menjalankan SEMUANYA – unduh semua berkas ke
-`DATA_DIR/impor-cermin`, impor ke DB, salin lampiran – lalu membatalkan
+Gladi kering menjalankan SEMUANYA - unduh semua berkas ke
+`DATA_DIR/impor-cermin`, impor ke DB, salin lampiran - lalu membatalkan
 transaksi DB dan membuang berkas yang sempat ditulis. Cermin tetap disimpan,
 jadi impor berikutnya hanya mengunduh berkas yang baru.
 
 Baca ringkasannya. Yang perlu diperhatikan:
-- `laporan-tautan-luar.tsv` – lampiran berupa tautan (Google Drive, dsb.).
-- `laporan-berkas-hilang.tsv` – tercatat di DB lama tapi berkasnya sudah tidak
+- `laporan-tautan-luar.tsv` - lampiran berupa tautan (Google Drive, dsb.).
+- `laporan-berkas-hilang.tsv` - tercatat di DB lama tapi berkasnya sudah tidak
   ada di volume. Itu kerusakan lama, bukan akibat pindahan.
-- "top-up penyelesaian belum diverifikasi" – uang muka berjalan akan negatif
+- "top-up penyelesaian belum diverifikasi" - uang muka berjalan akan negatif
   sampai top-up itu diverifikasi di v3.
 
 Mau melihat hasilnya di layar sebelum hari H? Impor sungguhan, periksa, lalu
@@ -110,7 +110,7 @@ docker compose up -d
 
 ## 4. Hari pindah
 
-1. Umumkan jam berhenti input di aplikasi lama (cukup 30–60 menit).
+1. Umumkan jam berhenti input di aplikasi lama (cukup 30-60 menit).
 2. Setelah jam itu tidak ada lagi yang mengetik: pastikan DB v3 masih kosong
    (lihat langkah kosongkan di §3 bila pernah gladi sungguhan), lalu
    ```bash
@@ -118,9 +118,9 @@ docker compose up -d
    ```
 3. Cocokkan, minimal:
    - total kas masuk & keluar terverifikasi per proyek (Laporan lama vs
-     Laporan v3) – beda yang wajar hanya pembulatan sen dan pengembalian
+     Laporan v3) - beda yang wajar hanya pembulatan sen dan pengembalian
      uang muka yang dulu tidak tercatat;
-   - 3–5 lampiran acak terbuka;
+   - 3-5 lampiran acak terbuka;
    - satu orang dari tiap peran bisa masuk dengan password lamanya.
 4. Bagikan alamat baru. Isi **rekening & kas** di Data Master v3 (versi lama
    tidak punya konsep rekening; transaksi lama tampil sebagai "tanpa rekening").
@@ -128,11 +128,11 @@ docker compose up -d
 
 ## 5. Setelah pindah
 
-- Biarkan aplikasi lama hidup 2–4 minggu **hanya untuk dilihat** (minta
+- Biarkan aplikasi lama hidup 2-4 minggu **hanya untuk dilihat** (minta
   semua orang berhenti mengetik di sana; data yang masuk ke sana setelah hari
   pindah tidak ikut ke v3).
 - Sebelum mematikan Railway: ambil `pg_dump` terakhir database lama dan simpan
-  bersama `impor-cermin` – itu salinan utuh sistem lama.
+  bersama `impor-cermin` - itu salinan utuh sistem lama.
 - Matikan layanan Railway.
 
 ## Kalau impor gagal di tengah

@@ -189,7 +189,7 @@ async def report_invoices(
             },
             {
                 "label": "Periode",
-                "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "—",
+                "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "-",
                 "sub": f"sejak {_fmt_date(date_from)}" if date_from else "tanpa batas",
             },
             {"label": "Status", "value": status_disp, "sub": ""},
@@ -267,7 +267,7 @@ async def report_invoices(
             {"label": "Belum Tertutup", "value": str(n_open), "sub": "Issued / Partial / Overdue"},
             {
                 "label": "Periode",
-                "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "—",
+                "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "-",
                 "sub": f"sejak {_fmt_date(date_from)}" if date_from else "tanpa batas",
             },
         ]
@@ -450,7 +450,7 @@ async def report_debts(
         for b in AGING_BUCKETS:
             if d[b] > 0:
                 parts.append(f"{b}: Rp {_fmt_idr(d[b])}")
-        return " · ".join(parts) if parts else "—"
+        return " · ".join(parts) if parts else "-"
 
     n_in = len([i for i in invs if i.type == InvoiceType.IN])
     n_out = len([i for i in invs if i.type == InvoiceType.OUT])
@@ -591,7 +591,7 @@ async def report_pos(
         {"label": "Belum Diproses", "value": str(n_open), "sub": "Draft / Issued"},
         {
             "label": "Periode",
-            "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "—",
+            "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "-",
             "sub": f"sejak {_fmt_date(date_from)}" if date_from else "tanpa batas",
         },
     ]

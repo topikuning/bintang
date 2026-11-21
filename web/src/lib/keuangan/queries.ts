@@ -6,7 +6,7 @@ import { keyKeTanggal } from "@/lib/tanggal";
 import { kelompokkan, ringkasKas, type JumlahPerJenis, type RingkasanKas } from "./hitung";
 
 /**
- * Kueri agregat. Semua angka lewat `ringkasKas` – kueri hanya menjumlahkan
+ * Kueri agregat. Semua angka lewat `ringkasKas` - kueri hanya menjumlahkan
  * per jenis; rumusnya tidak boleh ditulis ulang di sini.
  */
 
@@ -97,7 +97,7 @@ export async function biayaPerKategori(
   return rows
     .map((x) => ({
       categoryId: x.categoryId,
-      name: x.categoryId ? (nama.get(x.categoryId) ?? "–") : "Tanpa kategori",
+      name: x.categoryId ? (nama.get(x.categoryId) ?? "-") : "Tanpa kategori",
       amount: x._sum.amount ?? 0n,
     }))
     .sort((a, b) => (b.amount > a.amount ? 1 : b.amount < a.amount ? -1 : 0));

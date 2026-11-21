@@ -287,7 +287,7 @@ function WhatsAppTestPanel({
             {allOk ? (
               <>
                 <CheckCircle2 className="h-4 w-4 text-success-600" />
-                <span className="text-[13px] font-semibold text-success-700">Semua OK — WhatsApp terhubung</span>
+                <span className="text-[13px] font-semibold text-success-700">Semua OK - WhatsApp terhubung</span>
               </>
             ) : (
               <>

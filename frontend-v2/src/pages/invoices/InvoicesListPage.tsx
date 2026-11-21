@@ -258,7 +258,7 @@ export function InvoicesListPage() {
             icon={Clock}
             label="Draft"
             value={String(nDraft)}
-            hint={nDraft > 0 ? "belum diterbitkan" : "—"}
+            hint={nDraft > 0 ? "belum diterbitkan" : "-"}
             tone={nDraft > 0 ? "warning" : "neutral"}
           />
         </SummaryCardGrid>
@@ -525,7 +525,7 @@ function formatPeriod(from: string | null, to: string | null): string | null {
     return `${d}/${m}`
   }
   if (from && to && from === to) return fmt(from)
-  if (from && to) return `${fmt(from)} – ${fmt(to)}`
+  if (from && to) return `${fmt(from)} - ${fmt(to)}`
   if (from) return `≥ ${fmt(from)}`
   if (to) return `≤ ${fmt(to)}`
   return null
@@ -564,7 +564,7 @@ function InvoiceItemsInline({ invoice }: { invoice: Invoice }) {
               >
                 {Number(it.quantity)}
               </td>
-              <td className="px-2 py-1.5 text-ink-700">{it.unit ?? "—"}</td>
+              <td className="px-2 py-1.5 text-ink-700">{it.unit ?? "-"}</td>
               <td
                 data-num
                 className="px-2 py-1.5 text-right font-mono [font-variant-numeric:tabular-nums]"

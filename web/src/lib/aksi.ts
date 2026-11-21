@@ -16,7 +16,7 @@ export type ActionState = {
   ok?: string;
   error?: string;
   fields?: Record<string, string>;
-  /** Penanda unik per hasil – supaya klien bisa bereaksi walau pesannya sama. */
+  /** Penanda unik per hasil - supaya klien bisa bereaksi walau pesannya sama. */
   at?: number;
 } | undefined;
 

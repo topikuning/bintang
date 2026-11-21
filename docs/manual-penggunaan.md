@@ -1,4 +1,4 @@
-# Manual Penggunaan — Bintang Finance & Project
+# Manual Penggunaan - Bintang Finance & Project
 
 **Versi**: 2.x  
 **Aplikasi**: Manajemen Keuangan Multi-Proyek  
@@ -90,10 +90,10 @@ Tabel **M:N** antara `Transaction` (pembayaran) dan `Invoice` (tagihan). Satu tr
 ### Aging AR/AP
 
 Bucket umur **invoice outstanding**:
-- **0-30 hari** — fresh
-- **31-60 hari** — watch
-- **61-90 hari** — overdue ringan
-- **>90 hari** — critical (kemungkinan macet)
+- **0-30 hari** - fresh
+- **31-60 hari** - watch
+- **61-90 hari** - overdue ringan
+- **>90 hari** - critical (kemungkinan macet)
 
 ### Purchase Order (PO)
 
@@ -156,7 +156,7 @@ Default: semua menu visible. Toggle off untuk sembunyikan menu dari role tertent
 
 ### Desktop (≥1024 px)
 
-- **Sidebar kiri** (lebar 240px) — menu lengkap dikelompokkan:
+- **Sidebar kiri** (lebar 240px) - menu lengkap dikelompokkan:
   - **Beranda**: Dashboard, Proyek
   - **Operasional**: Transaksi, Dana Operasional, Invoice, PO, Budget
   - **Laporan**: Laporan, Detail Invoice, Audit Log
@@ -165,18 +165,18 @@ Default: semua menu visible. Toggle off untuk sembunyikan menu dari role tertent
 
 ### Tablet (768-1024 px)
 
-- **Nav rail** (lebar 56px) — icon-only dengan tooltip
+- **Nav rail** (lebar 56px) - icon-only dengan tooltip
 
 ### Mobile (<768 px)
 
 - **Bottom nav** 5 icon: Beranda · Proyek · Transaksi · Invoice · Lainnya
-- **/more** — halaman overflow untuk menu di luar bottom-nav
+- **/more** - halaman overflow untuk menu di luar bottom-nav
 
 ### Top bar
 
 - **Global search** (Ctrl+K) untuk lompat ke proyek/transaksi/invoice
 - **Project switcher** untuk filter konteks proyek (di top bar)
-- **User profile** (avatar) — link ke /settings
+- **User profile** (avatar) - link ke /settings
 
 ---
 
@@ -225,9 +225,9 @@ URL: `/projects/:id`
 2. **Health badge** (hijau/kuning/merah berdasarkan budget usage + cashflow)
 3. **Quick action**: Tambah Transaksi · Tambah Invoice · Tambah PO
 4. **Stats Cashflow**: Masuk, Keluar, Saldo, Rasio Keluar/Masuk
-5. **Posisi Kas (AR/AP) — aging widget**:
-   - **Hutang ke Vendor (AP)** — invoice IN yang belum dibayar, dengan stacked bar 4-bucket (0-30 / 31-60 / 61-90 / >90)
-   - **Piutang dari Klien (AR)** — invoice OUT yang belum diterima, sama buckets
+5. **Posisi Kas (AR/AP) - aging widget**:
+   - **Hutang ke Vendor (AP)** - invoice IN yang belum dibayar, dengan stacked bar 4-bucket (0-30 / 31-60 / 61-90 / >90)
+   - **Piutang dari Klien (AR)** - invoice OUT yang belum diterima, sama buckets
 6. **Budget vs Realisasi** (progress bar)
 7. **Cashflow Bulanan** (chart)
 8. **Spending per kategori** (chart)
@@ -262,8 +262,8 @@ Klik **+ Tambah Transaksi**. Form muncul sebagai sheet.
 
 #### Step 1: Pilih Arah
 
-- **Pemasukan (IN)** — penerimaan dari klien (invoice OUT dilunasi, modal, dll)
-- **Pengeluaran (OUT)** — keluar uang
+- **Pemasukan (IN)** - penerimaan dari klien (invoice OUT dilunasi, modal, dll)
+- **Pengeluaran (OUT)** - keluar uang
 
 #### Step 2: Pilih Jenis (untuk OUT)
 
@@ -272,8 +272,8 @@ Card radio 3 pilihan:
 | Card | Kapan dipakai |
 |---|---|
 | **Bayar Invoice** | Pembayaran ke vendor lewat invoice/PO |
-| **Dana Operasional** | Kasbon ke staff/karyawan internal — perlu pertanggungjawaban nanti |
-| **Beban Langsung** | Pengeluaran tanpa invoice (struk/kwitansi) — rincian per item |
+| **Dana Operasional** | Kasbon ke staff/karyawan internal - perlu pertanggungjawaban nanti |
+| **Beban Langsung** | Pengeluaran tanpa invoice (struk/kwitansi) - rincian per item |
 
 #### Step 3: Isi Detail (sesuai jenis)
 
@@ -302,7 +302,7 @@ Status awal selalu **DRAFT**. Klik **Submit untuk Verifikasi** ketika siap. Admi
 ### List Transaksi
 
 - Grid card di mobile, table di desktop
-- Setiap card menampilkan: tanggal, **#ID** (badge mono — gunakan untuk reference di chat), nominal, party, status, badge kind (Bayar Invoice / Dana Ops / Beban Langsung), badge top-up (jika tx dari settlement)
+- Setiap card menampilkan: tanggal, **#ID** (badge mono - gunakan untuk reference di chat), nominal, party, status, badge kind (Bayar Invoice / Dana Ops / Beban Langsung), badge top-up (jika tx dari settlement)
 - **Bayar invoice**: row 3b menampilkan "Bayar invoice: INV-001, INV-002 +N lagi" (clickable di detail)
 
 ### Detail Transaksi
@@ -318,11 +318,11 @@ Klik card → drawer detail muncul:
 
 ### Aksi pada Detail
 
-- **Edit** — hanya untuk DRAFT/SUBMITTED/REJECTED (admin); VERIFIED hanya SUPERADMIN
-- **Submit** — kalau DRAFT/REJECTED → SUBMITTED
-- **Verify** — admin → VERIFIED (lock)
-- **Reject** — admin → REJECTED dengan alasan
-- **Cancel** — soft-cancel (audit trail tetap ada)
+- **Edit** - hanya untuk DRAFT/SUBMITTED/REJECTED (admin); VERIFIED hanya SUPERADMIN
+- **Submit** - kalau DRAFT/REJECTED → SUBMITTED
+- **Verify** - admin → VERIFIED (lock)
+- **Reject** - admin → REJECTED dengan alasan
+- **Cancel** - soft-cancel (audit trail tetap ada)
 
 ### Aturan Khusus
 
@@ -364,7 +364,7 @@ Klik invoice → drawer detail.
 - **Pihak**: vendor (untuk IN) atau klien (untuk OUT)
 - **Proyek**
 - **Items table** (rincian)
-- **Pembayaran (Allocations)** — list transaksi yang membayar invoice ini:
+- **Pembayaran (Allocations)** - list transaksi yang membayar invoice ini:
   - Tx ID **clickable** → buka detail transaksi
   - Tanggal · metode · nominal alokasi
   - Untuk SUPERADMIN/admin: tombol hapus alokasi (jika perlu koreksi)
@@ -421,7 +421,7 @@ Klik **+ Tambah PO**.
 
 `DRAFT` → `ISSUED` → `APPROVED` → `PARTIALLY_FULFILLED` → `FULFILLED` (atau `CANCELLED`)
 
-### Detail PO — Procurement Chain
+### Detail PO - Procurement Chain
 
 Buka detail PO → section **"Procurement Chain"** menampilkan:
 
@@ -433,11 +433,11 @@ Buka detail PO → section **"Procurement Chain"** menampilkan:
   - Clickable → drilldown ke detail invoice
 
 ```
-PO #PO/2026/05/001 — Rp 50.000.000
-├─ Tx #234 — Rp 25.000.000 (INVOICE_PAYMENT, VERIFIED)
-│  └─ 📄 INV/2026/05/001 (PAID) — Rp 25.000.000
-└─ Tx #235 — Rp 25.000.000 (INVOICE_PAYMENT, SUBMITTED)
-   └─ 📄 INV/2026/05/002 (PARTIALLY_PAID) — Rp 25.000.000
+PO #PO/2026/05/001 - Rp 50.000.000
+├─ Tx #234 - Rp 25.000.000 (INVOICE_PAYMENT, VERIFIED)
+│  └─ 📄 INV/2026/05/001 (PAID) - Rp 25.000.000
+└─ Tx #235 - Rp 25.000.000 (INVOICE_PAYMENT, SUBMITTED)
+   └─ 📄 INV/2026/05/002 (PARTIALLY_PAID) - Rp 25.000.000
 ```
 
 ---
@@ -451,10 +451,10 @@ URL: `/transactions/cash-advances`
 **Cash Advance** = uang muka yang diberikan ke staff untuk operasional lapangan. **Bukan beban** sampai dipertanggungjawabkan.
 
 Lifecycle:
-1. **Pencairan** — kasir keluarkan uang ke staff (Dr. Uang Muka / Kr. Kas)
-2. **Penggunaan** — staff pakai untuk bayar berbagai keperluan
-3. **Pertanggungjawaban (Settlement)** — staff lapor rincian + struk
-4. **Pelunasan** — sisa uang dikembalikan ke kas atau di-top-up kalau kurang
+1. **Pencairan** - kasir keluarkan uang ke staff (Dr. Uang Muka / Kr. Kas)
+2. **Penggunaan** - staff pakai untuk bayar berbagai keperluan
+3. **Pertanggungjawaban (Settlement)** - staff lapor rincian + struk
+4. **Pelunasan** - sisa uang dikembalikan ke kas atau di-top-up kalau kurang
 
 ### Halaman Hub Dana Operasional
 
@@ -483,7 +483,7 @@ Klik **"Settle"** pada advance tx yang masih outstanding → dialog terbuka:
 - **Dikembalikan ke kas** (sisa uang yang kembali)
 - **Rincian** (multi-line items):
   - Per item: Deskripsi · Kategori · Nominal
-  - **Bayar invoice (opsional)** — dropdown invoice OPEN dari proyek yang sama
+  - **Bayar invoice (opsional)** - dropdown invoice OPEN dari proyek yang sama
     - Kalau dipilih → backend auto-bikin `InvoiceAllocation` dari advance tx ke invoice itu
     - Cocok untuk: "kas bon dipakai bayar tagihan listrik vendor"
 - **Catatan** (opsional)
@@ -498,7 +498,7 @@ Klik **"Settle"** pada advance tx yang masih outstanding → dialog terbuka:
 
 ### Aturan Khusus
 
-- Advance & invoice **harus dari proyek yang sama** — backend validate (`invoice_wrong_project`)
+- Advance & invoice **harus dari proyek yang sama** - backend validate (`invoice_wrong_project`)
 - Settlement bisa dihapus (untuk koreksi). Top-up tx (jika ada) ikut soft-delete. Invoice allocation juga di-soft-delete + status invoice di-recompute.
 
 ### View Sudah Settled (Read-only)
@@ -535,7 +535,7 @@ Setiap card punya tombol **"Test koneksi"** independen untuk verifikasi auth + l
 
 1. Pilih engine
 2. Pilih **Jenis dokumen**: Invoice / Kuitansi / Purchase Order
-3. Upload file (drag-drop atau pilih) — atau paste URL eksternal
+3. Upload file (drag-drop atau pilih) - atau paste URL eksternal
 4. Klik **Extract** → loading 10-30 detik
 5. Hasil tampil sebagai **OCR Draft** dengan confidence score
 
@@ -575,7 +575,7 @@ Setiap section punya filter periode + proyek + extra filter spesifik. Tombol **P
 - Summary: Total Disbursed, Total Settled, Total Outstanding, Avg Age
 
 #### Beban Langsung
-- Per **line item** (bukan per tx) — supaya breakdown kategori jelas
+- Per **line item** (bukan per tx) - supaya breakdown kategori jelas
 - Filter: Proyek, Kategori, Periode
 
 #### Invoice
@@ -588,7 +588,7 @@ Setiap section punya filter periode + proyek + extra filter spesifik. Tombol **P
 - Export CSV langsung di browser
 
 #### Hutang & Piutang
-- Aging report — invoice outstanding dgn bucket umur
+- Aging report - invoice outstanding dgn bucket umur
 
 #### Budget
 - Realisasi vs target per proyek
@@ -623,7 +623,7 @@ CRUD proyek. Field:
 
 ### Perusahaan (`/master/companies`)
 
-Multi-tenant — satu instance bisa multi perusahaan. Field: nama, NPWP, alamat, telepon, email, **logo** (untuk header PDF), **letterhead**, nama direktur, bank account.
+Multi-tenant - satu instance bisa multi perusahaan. Field: nama, NPWP, alamat, telepon, email, **logo** (untuk header PDF), **letterhead**, nama direktur, bank account.
 
 ### Kategori (`/master/categories`)
 
@@ -664,7 +664,7 @@ Untuk user non-scope-all, tambahkan proyek-proyek yang user boleh akses.
    - Set `TELEGRAM_BOT_TOKEN`
    - Set `TELEGRAM_WEBHOOK_SECRET` (random string)
 3. Set `PUBLIC_BASE_URL` di section "Sistem" (mis. `https://api.cvbintang.com`)
-4. **Restart deploy** — backend register webhook otomatis ke Telegram
+4. **Restart deploy** - backend register webhook otomatis ke Telegram
 
 #### WhatsApp (via WAHA)
 
@@ -745,12 +745,12 @@ Seluruh alur PO bisa berjalan di WhatsApp: dari permintaan material sampai bukti
 | Langkah | Siapa | Kirim ke nomor WA sistem |
 |---|---|---|
 | 1. Minta material | Pengguna lapangan | `/po` + daftar barang, `proyek …`, `vendor …`, `wa 08xxxx` (nomor pemasok). Sistem membalas ringkasan → balas **ya**. PO langsung dikirim ke pemasok. |
-| 2. Jawaban pemasok | Pemasok | **SETUJU 30** (harga sesuai, tempo 30 hari) · **SETUJU TUNAI** · **UBAH** lalu per baris `nomor barang = harga` dan `TEMPO 30` · **TOLAK** |
+| 2. Jawaban pemasok | Pemasok | Buka **tautan isi harga** di pesan pesanan (tanpa login): isi harga per barang, pilih tempo, *Kirim penawaran*. Atau balas di WA: **SETUJU 30** · **SETUJU TUNAI** · **UBAH** lalu per baris `nomor barang = harga` dan `TEMPO 30` · **TOLAK** |
 | 3. Teruskan | Pengguna | Menerima penawaran pemasok → **AJUKAN PO12** (atau **BATAL PO12**) |
-| 4. Setujui | Keuangan / pimpinan | **SETUJUI PO12** atau **TOLAK PO12 alasan** — atau tombol *Setujui* di aplikasi. PO final terkirim ke pemasok. |
+| 4. Setujui | Keuangan / pimpinan | Menerima WA *PO12 menunggu persetujuan* → **SETUJUI PO12** atau **TOLAK PO12 alasan** - atau tombol *Setujui* di aplikasi. PO final terkirim ke pemasok beserta **PDF PO resmi** (sama dengan hasil cetak di aplikasi). |
 | 5. Barang datang | Pengguna | **Foto surat jalan** dengan keterangan **TERIMA PO12** → tagihan dibuat, jatuh tempo = tanggal terima + tempo |
 | 6. Ringkasan pagi | Otomatis | Tiap pagi (bawaan 07:00 WITA) keuangan/pimpinan menerima daftar tagihan lewat jatuh tempo, hari ini, dan besok. Kapan saja: kirim **TAGIHAN**. |
-| 7. Bayar | Keuangan / pimpinan | **Foto bukti transfer** dengan keterangan **BAYAR PO12** — atau di aplikasi: detail PO → *Bayar & kirim bukti*. Kas keluar tercatat (terverifikasi), bukti dikirim ke pemasok, pengguna diberi tahu. |
+| 7. Bayar | Keuangan / pimpinan | **Foto bukti transfer** dengan keterangan **BAYAR PO12** - atau di aplikasi: detail PO → *Bayar & kirim bukti*. Kas keluar tercatat (terverifikasi), bukti dikirim ke pemasok, pengguna diberi tahu. |
 
 Contoh langkah 1:
 
@@ -764,12 +764,19 @@ wa 0812-3456-7890
 ```
 
 Catatan:
+- **Peminta tidak perlu mendaftar.** Nomor WA yang belum tertaut cukup mengirim `/po`:
+  - nomor itu sudah tercatat di data pengguna (kolom telepon) -> langsung ditautkan ke akun tersebut;
+  - nomor baru -> sistem membuat akun dan menanyakan nama sekali, lalu permintaan langsung diproses. Keuangan/pimpinan menerima pemberitahuan *Pengguna baru lewat WhatsApp*.
+  - Akun baru ini tanpa kata sandi (tidak bisa masuk web) dan bukan anggota proyek mana pun: hanya bisa mengajukan pesanan material dan mengurus PO miliknya sendiri. Bila tidak dikenal, nonaktifkan di menu Pengguna.
 - Harga boleh dikosongkan; pemasok mengisinya lewat **UBAH**. PO tidak bisa diajukan sebelum semua harga dan tempo terisi.
 - Pemasok **tidak perlu mendaftar**. Nomor WA pemasok cukup ditulis sekali di permintaan pertama: nomor itu otomatis tersimpan di data pemasok (pemasok baru ikut dibuat), dan permintaan berikutnya memakainya tanpa perlu menulis ulang. Nomor yang sudah ada di data pemasok tidak ditimpa.
 - Tanpa nomor sama sekali, PO hanya disimpan sebagai draf; kirim belakangan dengan **KIRIM PO12 08xxxx**.
 - Balasan pemasok tetap dikenali walau WhatsApp menyembunyikan nomornya (ID `…@lid`). Sistem mencari nomor aslinya di data pesan atau menanyakannya ke WAHA.
 - Pemasok yang menerima lebih dari satu pesanan cukup menyertakan kodenya, mis. **SETUJU PO12 30**.
-- Penyetuju dan penerima ringkasan pagi = akun **SUPERADMIN / CENTRAL_ADMIN** yang sudah menautkan WhatsApp (`/link`).
+- Penyetuju dan penerima ringkasan pagi = akun **SUPERADMIN / CENTRAL_ADMIN** yang sudah menautkan WhatsApp (`/link`). Kalau belum ada yang menautkan, pengaju diberi tahu bahwa pemberitahuan tidak terkirim.
+- Pengaju yang juga pimpinan/keuangan langsung mendapat perintah **SETUJUI / TOLAK** di balasan AJUKAN.
+- **PO yang diajukan dari aplikasi** (tombol *Ajukan*) juga dikirim ke WA keuangan/pimpinan, dan bisa langsung dibalas **SETUJUI PO12** / **TOLAK PO12 alasan**; pembuat PO diberi tahu hasilnya.
+- **Tautan isi harga** untuk pemasok hanya berlaku untuk PO itu, selama PO masih menunggu jawaban pemasok, paling lama 30 hari. Syarat: *Public Base URL* di Pengaturan Sistem terisi (tanpa itu pesan pesanan hanya berisi cara balas di WA).
 - Bukti transfer (foto atau PDF) dikirim **langsung sebagai berkas** ke WhatsApp pemasok, dengan keterangan nominal dan tanggal transfer. Hal yang sama berlaku untuk bukti yang diunggah dari aplikasi.
 - Kalau WAHA menolak mengirim berkas, sistem mengirim pesannya sebagai teks saja. Pesan itu memuat tautan ke bukti bila *Public Base URL* terisi. Tautan tersebut hanya membuka satu bukti dan kedaluwarsa setelah 60 hari.
 - Jam ringkasan pagi: Pengaturan Sistem → WhatsApp → *Jam ringkasan tagihan (WITA)*. Isi `mati` untuk mematikannya.
@@ -779,11 +786,11 @@ Catatan:
 
 ## 16. Pengaturan Sistem (SUPERADMIN)
 
-### `/settings` — Profil
+### `/settings` - Profil
 
 User biasa: ganti nama, telepon, password, kode link Telegram/WhatsApp.
 
-### `/settings/system` — API Keys & Integrasi
+### `/settings/system` - API Keys & Integrasi
 
 SUPERADMIN-only. Section:
 
@@ -799,11 +806,11 @@ SUPERADMIN-only. Section:
 - "Dari env" (fallback)
 - "Belum di-set"
 
-### `/settings/role-menus` — Akses Menu per Role
+### `/settings/role-menus` - Akses Menu per Role
 
 SUPERADMIN-only. Matrix table 3 role × 20 menu. Cell click = toggle visible (hijau ✓) / hidden (merah ✗). Klik Simpan untuk apply.
 
-### `/settings/orphan-files` — File Orphan
+### `/settings/orphan-files` - File Orphan
 
 SUPERADMIN-only. Scan storage untuk file yang **tidak ter-link** ke entitas mana pun (akibat hard-delete tx/invoice). Bisa bulk delete untuk hemat disk.
 
@@ -836,10 +843,10 @@ SUPERADMIN-only. Scan storage untuk file yang **tidak ter-link** ke entitas mana
 4. Buka `/transactions/cash-advances` → tab "Belum di-settle"
 5. Klik tombol **"Settle"** pada baris Pak Joko
 6. Input rincian:
-   - Beli material — Rp 3.500.000 (kategori "Material")
-   - Bayar tagihan listrik (link invoice INV-XXX) — Rp 1.000.000
+   - Beli material - Rp 3.500.000 (kategori "Material")
+   - Bayar tagihan listrik (link invoice INV-XXX) - Rp 1.000.000
    - Dikembalikan ke kas: Rp 500.000
-7. Total = 5.000.000 — match
+7. Total = 5.000.000 - match
 8. Simpan settlement
 
 ### Alur 3: Beban Langsung dengan Multi-item
@@ -847,9 +854,9 @@ SUPERADMIN-only. Scan storage untuk file yang **tidak ter-link** ke entitas mana
 1. Mandor lapangan beli ATK + bensin + parkir total Rp 350rb dengan struk-struk
 2. Buat tx Pengeluaran → **Beban Langsung**
 3. Tambah rincian:
-   - ATK — kategori "ATK" — Rp 150rb
-   - Bensin motor — kategori "Transportasi" — Rp 150rb
-   - Parkir — kategori "Transportasi" — Rp 50rb
+   - ATK - kategori "ATK" - Rp 150rb
+   - Bensin motor - kategori "Transportasi" - Rp 150rb
+   - Parkir - kategori "Transportasi" - Rp 50rb
 4. Nominal total auto-sum jadi Rp 350rb
 5. Upload foto struk-struk sebagai lampiran
 6. Submit
@@ -908,7 +915,7 @@ Tx sudah ter-alokasi ke invoice. Hapus allocation/unlink dulu sebelum ubah jenis
 | **AP** (Account Payable) | Hutang ke vendor (invoice IN belum dibayar) |
 | **AR** (Account Receivable) | Piutang dari klien (invoice OUT belum diterima) |
 | **Aging** | Pengelompokan umur invoice outstanding (0-30, 31-60, 61-90, >90 hari) |
-| **Allocation** | Tabel M:N transaksi ↔ invoice — satu tx bisa bayar beberapa invoice |
+| **Allocation** | Tabel M:N transaksi ↔ invoice - satu tx bisa bayar beberapa invoice |
 | **Audit log** | Riwayat semua perubahan data dengan timestamp + user |
 | **BAST** | Berita Acara Serah Terima (jenis dokumen proyek) |
 | **Cash Advance / Dana Operasional** | Uang muka ke staff untuk operasional, perlu pertanggungjawaban |
@@ -919,7 +926,7 @@ Tx sudah ter-alokasi ke invoice. Hapus allocation/unlink dulu sebelum ubah jenis
 | **Funder / Pendana** | Sumber dana proyek (APBN, APBD, Swasta) |
 | **God-mode** | Hak SUPERADMIN untuk bypass audit lock (mis. edit VERIFIED tx) |
 | **Hard delete** | Hapus permanen dari DB. Hanya SUPERADMIN. |
-| **OCR** | Optical Character Recognition — ekstraksi teks dari gambar/PDF |
+| **OCR** | Optical Character Recognition - ekstraksi teks dari gambar/PDF |
 | **Orphan file** | File di storage yang tidak ter-link ke entitas DB |
 | **PO** (Purchase Order) | Pemesanan ke vendor sebelum invoice |
 | **PPN** | Pajak Pertambahan Nilai (default 11%) |

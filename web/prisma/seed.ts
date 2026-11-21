@@ -6,7 +6,7 @@
  *   pnpm db:seed -- --bersih → instalasi bersih: 1 admin + kategori + pengaturan.
  *                             Password admin dicetak SEKALI dan wajib diganti.
  *
- * Pengajuan demo dibuat LEWAT service yang sama dengan aplikasi – jadi seed ini
+ * Pengajuan demo dibuat LEWAT service yang sama dengan aplikasi - jadi seed ini
  * sekaligus membuktikan alurnya jalan, bukan menulis baris DB yang mustahil
  * terjadi lewat layar.
  */
@@ -70,7 +70,7 @@ async function main() {
   if (BERSIH) {
     const ada = await db.user.count();
     if (ada > 0) {
-      console.log("Sudah ada pengguna – admin tidak dibuat ulang.");
+      console.log("Sudah ada pengguna - admin tidak dibuat ulang.");
       return;
     }
     const pw = process.env.SEED_ADMIN_PASSWORD || randomBytes(9).toString("base64url");
@@ -89,7 +89,7 @@ async function main() {
   }
 
   if ((await db.paymentRequest.count()) > 0) {
-    console.log("Data demo sudah ada – seed dilewati.");
+    console.log("Data demo sudah ada - seed dilewati.");
     return;
   }
 
@@ -252,7 +252,7 @@ async function main() {
   const bayarInput = (date: string, accountId: string) => ({ paidDate: date, accountId, method: "transfer" as const, reference: undefined, note: undefined });
   const hari = hariIniKey();
 
-  // 1. Pembayaran material – sudah selesai dibayar.
+  // 1. Pembayaran material - sudah selesai dibayar.
   const r1 = await ajukan(budi, {
     ...base,
     projectId: p1.id,
@@ -267,7 +267,7 @@ async function main() {
   await db.$transaction((tx) => svc.setujui(tx, a(rina), r1.id, "Harga sesuai penawaran."));
   await db.$transaction((tx) => svc.bayar(tx, a(rina), r1.id, bayarInput("2026-10-12", bca.id), []));
 
-  // 2. Beton readymix – besar, di atas batas keuangan → disetujui Pimpinan, siap dibayar.
+  // 2. Beton readymix - besar, di atas batas keuangan → disetujui Pimpinan, siap dibayar.
   await db.setting.update({ where: { id: 1 }, data: { financeApproveCap: 100_000_000n } });
   const r2 = await ajukan(budi, {
     ...base,
@@ -281,7 +281,7 @@ async function main() {
   });
   await db.$transaction((tx) => svc.setujui(tx, a(hery), r2.id, "Jadwal cor tidak boleh mundur."));
 
-  // 3. Upah tukang – menunggu persetujuan.
+  // 3. Upah tukang - menunggu persetujuan.
   await ajukan(agus, {
     ...base,
     projectId: p2.id,
@@ -297,7 +297,7 @@ async function main() {
     ],
   });
 
-  // 4. Uang muka operasional lapangan – sudah dibayar, menunggu LPJ.
+  // 4. Uang muka operasional lapangan - sudah dibayar, menunggu LPJ.
   const r4 = await ajukan(budi, {
     ...base,
     projectId: p2.id,
@@ -327,7 +327,7 @@ async function main() {
   );
   await db.$transaction((tx) => svc.terimaLpj(tx, a(rina), r5.id, { date: "2026-10-15", accountId: kas.id, method: "tunai" }));
 
-  // 6. Penggantian – perlu revisi.
+  // 6. Penggantian - perlu revisi.
   const r6 = await ajukan(agus, {
     ...base,
     projectId: p1.id,
@@ -337,7 +337,7 @@ async function main() {
   });
   await db.$transaction((tx) => svc.mintaRevisi(tx, a(budi.role === "project_admin" ? rina : rina), r6.id, "Lampirkan foto nota sewanya ya, Pak."));
 
-  // 7. Operasional kantor – menunggu, dari admin proyek.
+  // 7. Operasional kantor - menunggu, dari admin proyek.
   await ajukan(sari, {
     ...base,
     projectId: ops.id,
@@ -356,7 +356,7 @@ async function main() {
     payeeName: "CV Alat Berat Makmur",
     items: [item("Sewa genset 20 kVA 1 bulan", 9_500_000, "Sewa alat")],
   });
-  await db.$transaction((tx) => svc.tolak(tx, a(rina), r8.id, "Genset proyek masih cukup – pakai yang ada dulu."));
+  await db.$transaction((tx) => svc.tolak(tx, a(rina), r8.id, "Genset proyek masih cukup - pakai yang ada dulu."));
 
   // 9. Draf milik Agus.
   await ajukan(
@@ -384,7 +384,7 @@ async function main() {
     });
   });
 
-  console.log("Seed demo selesai. Masuk dengan: admin / hery / rina / budi / sari / agus / investor – password: bintang123");
+  console.log("Seed demo selesai. Masuk dengan: admin / hery / rina / budi / sari / agus / investor - password: bintang123");
   void admin;
 }
 

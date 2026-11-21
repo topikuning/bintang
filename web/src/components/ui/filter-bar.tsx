@@ -8,7 +8,7 @@ import { Combobox, type ComboOption } from "./combobox";
 
 /**
  * Bilah saring: kotak cari (otomatis setelah berhenti mengetik) + pilihan.
- * Semua keadaan di URL – bisa dibagikan & tombol kembali bekerja.
+ * Semua keadaan di URL - bisa dibagikan & tombol kembali bekerja.
  */
 export function FilterBar({
   placeholder = "Cari…",

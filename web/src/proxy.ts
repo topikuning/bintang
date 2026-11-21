@@ -6,7 +6,7 @@ const SESSION_COOKIE = "bintang_session";
 /**
  * Proxy (dulu "middleware") ringan: hanya cek keberadaan cookie sesi. Validasi sesi
  * sesungguhnya + capability terjadi di data layer (requireUser /
- * requireCapability) – proxy bukan satu-satunya pagar.
+ * requireCapability) - proxy bukan satu-satunya pagar.
  */
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

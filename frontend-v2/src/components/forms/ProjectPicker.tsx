@@ -39,7 +39,7 @@ export function ProjectPicker({
       // lihat banyak baris identik. Tambah suffix supaya bisa dibedakan.
       const isNp = p.kind === "NON_PROJECT"
       const label = isNp && p.company_name
-        ? `${p.name} — ${p.company_name}`
+        ? `${p.name} - ${p.company_name}`
         : p.name
       return { value: p.id, label, hint: p.code }
     })

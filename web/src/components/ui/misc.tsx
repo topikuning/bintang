@@ -136,7 +136,7 @@ export function ProgressBar({
   className,
   label,
 }: {
-  /** 0–100+ (di atas 100 tetap penuh, warnanya yang bicara). */
+  /** 0-100+ (di atas 100 tetap penuh, warnanya yang bicara). */
   value: number;
   tone?: "primary" | "success" | "warning" | "danger";
   className?: string;
@@ -198,7 +198,7 @@ export function Avatar({ name, size = "md", className }: { name: string; size?: 
   );
 }
 
-// ─── Deskripsi (pasangan label–nilai) ────────────────────────
+// ─── Deskripsi (pasangan label-nilai) ────────────────────────
 
 export function DescList({ items, className }: { items: { label: string; value: ReactNode }[]; className?: string }) {
   return (
@@ -206,7 +206,7 @@ export function DescList({ items, className }: { items: { label: string; value: 
       {items.map((it) => (
         <div key={it.label} className="min-w-0">
           <dt className="text-xs font-medium text-ink-muted">{it.label}</dt>
-          <dd className="mt-0.5 text-sm break-words text-ink">{it.value ?? "–"}</dd>
+          <dd className="mt-0.5 text-sm break-words text-ink">{it.value ?? "-"}</dd>
         </div>
       ))}
     </dl>

@@ -14,7 +14,7 @@ export function StatusPengajuan({ status, kind, short = false }: { status: Reque
 
 /**
  * Penanda kemajuan: Diajukan → Disetujui → Dibayar (→ LPJ selesai).
- * Status buntu (ditolak/dibatalkan) tidak memakai stepper – banner lebih jujur.
+ * Status buntu (ditolak/dibatalkan) tidak memakai stepper - banner lebih jujur.
  */
 export function StepperPengajuan({ status, kind }: { status: RequestStatus; kind: RequestKind }) {
   const steps = requestSteps(kind);

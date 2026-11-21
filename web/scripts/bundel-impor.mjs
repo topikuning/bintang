@@ -1,5 +1,5 @@
 // Bundel importer Bintang lama jadi SATU berkas (dist/impor.mjs) supaya bisa
-// dijalankan di image aplikasi biasa – tanpa tsx/node_modules lengkap.
+// dijalankan di image aplikasi biasa - tanpa tsx/node_modules lengkap.
 // Railway: volume lampiran hanya terpasang di container aplikasi, jadi impor
 // harus berjalan di sana (`railway ssh` → `bintang-impor`).
 import { build } from "esbuild";

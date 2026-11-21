@@ -6,7 +6,7 @@ Layered config:
 1. DEFAULTS dict di code (kalau row override tdk ada)
 2. Override row di tabel `ai_feature_settings` (kalau ada)
 3. Caller bisa argumentpass yg over-rule keduanya (mis. paksa max_tokens
-   utk eksperimen) — saat ini tdk dipakai.
+   utk eksperimen) - saat ini tdk dipakai.
 
 Caller pattern:
     cfg = await get_effective(db, "category")

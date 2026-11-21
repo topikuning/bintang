@@ -45,7 +45,7 @@ export default async function RekeningPage() {
           { name: "kind", label: "Jenis", type: "select", required: true, options: [{ value: "bank", label: "Rekening bank" }, { value: "kas", label: "Kas tunai" }] },
           { name: "bankName", label: "Bank", type: "text" },
           { name: "accountNumber", label: "Nomor rekening", type: "text" },
-          { name: "companyId", label: "Milik perusahaan", type: "select", options: companies.map((c) => ({ value: c.id, label: c.name })), clearLabel: "–" },
+          { name: "companyId", label: "Milik perusahaan", type: "select", options: companies.map((c) => ({ value: c.id, label: c.name })), clearLabel: "-" },
           { name: "openingBalance", label: "Saldo awal", type: "money", help: "Saldo saat mulai memakai Bintang." },
           { name: "isActive", label: "Aktif", type: "checkbox", span: 2 },
         ]}

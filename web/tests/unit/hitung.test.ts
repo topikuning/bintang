@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { kelompokkan, ringkasKas, selisihLpj, statusAnggaran } from "@/lib/keuangan/hitung";
 
-describe("ringkasKas – calculation layer kanonik", () => {
+describe("ringkasKas - calculation layer kanonik", () => {
   it("uang muka mengurangi kas tapi belum biaya; realisasi mengakui biaya tanpa menggerakkan kas", () => {
     // Uang muka 4 jt, terpakai 3,09 jt, sisa 910 rb dikembalikan.
     const r = ringkasKas(

@@ -21,7 +21,7 @@ export function FormProfil({ v }: { v: { fullName: string; phone: string; bankNa
       </section>
       <section className="rounded-xl border border-border bg-surface p-4 shadow-(--shadow-card) sm:p-5">
         <h2 className="text-sm font-semibold">Rekening pribadi</h2>
-        <p className="mb-3 text-[13px] text-ink-muted">Dipakai otomatis saat Anda mengajukan uang muka atau penggantian – tidak perlu mengetik ulang tiap kali.</p>
+        <p className="mb-3 text-[13px] text-ink-muted">Dipakai otomatis saat Anda mengajukan uang muka atau penggantian - tidak perlu mengetik ulang tiap kali.</p>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Bank" htmlFor="bankName">
             <Input id="bankName" name="bankName" defaultValue={v.bankName} placeholder="BCA, BRI, Mandiri…" maxLength={80} />

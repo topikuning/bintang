@@ -80,7 +80,7 @@ def tampil_nomor(chat_id: str | None) -> str:
 
 
 # Nomor HP Indonesia di tengah teks: 0812..., +62 812..., 62812...,
-# boleh dipisah spasi/strip/titik. 10–15 digit.
+# boleh dipisah spasi/strip/titik. 10-15 digit.
 _RE_NOMOR = re.compile(r"(?<![\d])(?:\+?62|0)\s?8[\d \-.]{7,16}\d(?![\d])")
 _LABEL_NOMOR = {
     "wa",

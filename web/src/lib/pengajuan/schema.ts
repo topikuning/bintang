@@ -3,7 +3,7 @@ import { kaliHarga, parseRupiah } from "@/lib/uang";
 
 /**
  * Validasi isian pengajuan. Rincian dikirim klien sebagai JSON di satu kolom
- * tersembunyi (`items`), lalu DIHITUNG ULANG di sini – jumlah dari klien hanya
+ * tersembunyi (`items`), lalu DIHITUNG ULANG di sini - jumlah dari klien hanya
  * dipercaya bila tidak ada qty × harga.
  */
 

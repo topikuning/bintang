@@ -406,7 +406,7 @@ async def report_transactions(
             },
             {
                 "label": "Periode",
-                "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "—",
+                "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "-",
                 "sub": f"sejak {_fmt_date(date_from)}" if date_from else "tanpa batas",
             },
         ]
@@ -452,7 +452,7 @@ async def report_transactions(
             {"label": "Status", "value": status_disp, "sub": ""},
             {
                 "label": "Periode",
-                "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "—",
+                "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "-",
                 "sub": f"sejak {_fmt_date(date_from)}" if date_from else "tanpa batas",
             },
         ]
@@ -624,8 +624,8 @@ async def report_direct_expenses(
                     _fmt_idr(amt),
                 ]
             )
-    top_cat = max(cat_value, key=cat_value.get) if cat_value else "—"
-    top_cat_val = cat_value.get(top_cat, _D("0")) if top_cat != "—" else _D("0")
+    top_cat = max(cat_value, key=cat_value.get) if cat_value else "-"
+    top_cat_val = cat_value.get(top_cat, _D("0")) if top_cat != "-" else _D("0")
     summary = [
         {
             "label": "Total Beban Langsung",
@@ -638,11 +638,11 @@ async def report_direct_expenses(
         {
             "label": "Kategori Terbesar",
             "value": top_cat,
-            "sub": f"Rp {_fmt_idr(top_cat_val)}" if top_cat != "—" else "",
+            "sub": f"Rp {_fmt_idr(top_cat_val)}" if top_cat != "-" else "",
         },
         {
             "label": "Periode",
-            "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "—",
+            "value": _fmt_date(date_to or date_from) if (date_to or date_from) else "-",
             "sub": f"sejak {_fmt_date(date_from)}" if date_from else "tanpa batas",
         },
     ]

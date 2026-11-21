@@ -232,7 +232,7 @@ function ProjectSheet({
         header: "Pihak",
         accessorKey: "party_name",
         cell: ({ getValue }) => (
-          <span className="truncate">{getValue<string>() || "—"}</span>
+          <span className="truncate">{getValue<string>() || "-"}</span>
         ),
         size: 200,
       },
@@ -243,7 +243,7 @@ function ProjectSheet({
           const cid = row.original.category_id
           return (
             <span className="text-ink-700">
-              {cid ? categoriesMap.get(cid) ?? "—" : "—"}
+              {cid ? categoriesMap.get(cid) ?? "-" : "-"}
             </span>
           )
         },
@@ -255,7 +255,7 @@ function ProjectSheet({
         accessorKey: "description",
         cell: ({ getValue }) => (
           <span className="text-ink-600 truncate">
-            {getValue<string>() || "—"}
+            {getValue<string>() || "-"}
           </span>
         ),
         size: 280,
@@ -269,7 +269,7 @@ function ProjectSheet({
               {fmtIDR(Number(row.original.amount))}
             </span>
           ) : (
-            <span className="text-ink-300">—</span>
+            <span className="text-ink-300">-</span>
           ),
         size: 140,
       },
@@ -282,7 +282,7 @@ function ProjectSheet({
               {fmtIDR(Number(row.original.amount))}
             </span>
           ) : (
-            <span className="text-ink-300">—</span>
+            <span className="text-ink-300">-</span>
           ),
         size: 140,
       },
@@ -303,7 +303,7 @@ function ProjectSheet({
         accessorKey: "reference_no",
         cell: ({ getValue }) => (
           <span className="font-mono text-ink-500 text-[11px]">
-            {getValue<string>() || "—"}
+            {getValue<string>() || "-"}
           </span>
         ),
         size: 140,

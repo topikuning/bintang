@@ -305,20 +305,20 @@ export function CategoryAuditPage() {
                           </td>
                           <td className="px-2 py-2">
                             <div className="font-medium text-ink-900 text-[13px]">
-                              {f.party_name || "—"}
+                              {f.party_name || "-"}
                             </div>
                             <div className="text-[11px] text-ink-500 truncate max-w-xs">
-                              {f.description || "—"}
+                              {f.description || "-"}
                             </div>
                           </td>
                           <td className="px-2 py-2 text-right font-mono text-[12px]">
                             {fmtIDR(Number(f.amount))}
                           </td>
                           <td className="px-2 py-2 text-[12px]">
-                            {f.current_category_name || "—"}
+                            {f.current_category_name || "-"}
                           </td>
                           <td className="px-2 py-2 text-[12px] text-brand-700 font-medium">
-                            {f.suggested_category_name || "—"}
+                            {f.suggested_category_name || "-"}
                           </td>
                           <td className="px-2 py-2 w-48">
                             <CategoryPicker

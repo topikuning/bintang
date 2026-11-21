@@ -270,7 +270,7 @@ export function CashRequestFormSheet({ open, onClose, target }: Props) {
                 field.onChange(e.target.value ? Number(e.target.value) : null)
               }
             >
-              <option value="">— Saya sendiri —</option>
+              <option value="">- Saya sendiri -</option>
               {users.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name}

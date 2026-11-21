@@ -25,7 +25,7 @@ Di proyek Railway → **+ New**:
 
 `railway.json` sudah mengatur: build dari `web/Dockerfile`, hanya deploy bila
 `web/**` berubah, `prisma migrate deploy` sebelum tiap deploy, healthcheck
-`/api/health`. Bila Railway Config File tidak diisi, semua itu tidak berlaku –
+`/api/health`. Bila Railway Config File tidak diisi, semua itu tidak berlaku -
 migrasi tetap jalan karena container juga menjalankannya tiap start, tapi
 healthcheck dan watch path tidak, dan tiap push ke `dev3` memicu deploy.
 
@@ -43,7 +43,7 @@ Cek: Deployments → deploy terakhir → log harus memuat
 | `APP_ENV` | `production` |
 | `DATABASE_URL` | `${{Postgres-v3.DATABASE_URL}}` |
 | `SESSION_SECRET` | `openssl rand -hex 32` |
-| `KUNCI_DATA` | `openssl rand -hex 32` – simpan di pengelola password, **jangan pernah diganti** setelah ada data |
+| `KUNCI_DATA` | `openssl rand -hex 32` - simpan di pengelola password, **jangan pernah diganti** setelah ada data |
 | `APP_NAME` | `Bintang` |
 | `PENANDA_LINGKUNGAN` | `UJI` selama masa coba (bilah kuning). Kosongkan saat dipakai sungguhan. |
 
@@ -60,7 +60,7 @@ dalamnya lewat Railway CLI (`npm i -g @railway/cli`, lalu `railway login` dan
    karakter → redeploy.
 2. Layanan `bintang-v3` → Variables:
    - `SUMBER_LAMA_URL` = domain aplikasi lama (`https://…up.railway.app`), atau
-     alamat privatnya (`http://<nama-layanan-lama>.railway.internal:<PORT>`) –
+     alamat privatnya (`http://<nama-layanan-lama>.railway.internal:<PORT>`) -
      lebih cepat, tanpa lalu lintas publik;
    - `EKSPOR_V3_TOKEN` = token yang sama.
 3. Jangan buka v3 di peramban dulu (layar Mulai bisa membuat admin dan
@@ -78,7 +78,7 @@ nohup bintang-impor > /data/impor.log 2>&1 &   # sungguhan, tetap jalan bila SSH
 tail -f /data/impor.log
 ```
 
-Aturannya sama dengan di Lenovo (`docs/PINDAHAN.md` §3–4): satu transaksi DB,
+Aturannya sama dengan di Lenovo (`docs/PINDAHAN.md` §3-4): satu transaksi DB,
 gagal = tidak ada yang masuk; berkas dicerminkan dulu ke `/data/impor-cermin`
 dan bisa dilanjutkan; impor kedua ditolak bila data sudah ada. Laporan
 `laporan-*.tsv` ada di `/data/impor-cermin`.
@@ -93,11 +93,11 @@ ulang `Postgres-v3`, dan hapus isi `/data/berkas` lewat `railway ssh`
 
 Jadwalkan **Backups** harian di volume `Postgres-v3` **dan** volume
 `bintang-v3` (bila paket Railway Anda menyediakannya). Tanpa itu tidak ada
-cadangan sama sekali – container cadangan harian hanya ada di versi Lenovo.
+cadangan sama sekali - container cadangan harian hanya ada di versi Lenovo.
 
 ## 5. Cabang
 
 v3 dikembangkan dan dideploy dari **`dev3`**. Railway (layanan `bintang-v3`) dan
 Lenovo sama-sama mengikuti `dev3`. Layanan aplikasi lama tetap mengikuti `main`.
 Jangan merge `dev3` ke `main` lewat PR selama opsi GitHub *Automatically delete
-head branches* aktif – cabangnya ikut terhapus (itu yang terjadi pada #140).
+head branches* aktif - cabangnya ikut terhapus (itu yang terjadi pada #140).

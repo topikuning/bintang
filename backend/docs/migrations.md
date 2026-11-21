@@ -7,10 +7,10 @@ migration utk rollback aman & data-loss visibility.
 ## Setup awal (one-time)
 
 Alembic sudah di-scaffold:
-- `backend/alembic.ini` — config CLI
-- `backend/app/alembic/env.py` — env script (pakai metadata dari
+- `backend/alembic.ini` - config CLI
+- `backend/app/alembic/env.py` - env script (pakai metadata dari
   `Base`, DB URL dari `app.core.config`)
-- `backend/app/alembic/versions/` — migration files
+- `backend/app/alembic/versions/` - migration files
 - Baseline migration `20260516_0946_baseline_schema.py` snapshot dari
   schema saat ini.
 
@@ -32,7 +32,7 @@ DATABASE_URL="..." alembic revision --autogenerate -m "deskripsi_singkat"
 DATABASE_URL="..." alembic upgrade head
 ```
 
-## Workflow prod (Railway) — SUDAH OTOMATIS sejak 2026-06-13
+## Workflow prod (Railway) - SUDAH OTOMATIS sejak 2026-06-13
 
 Migrasi dijalankan `docker-entrypoint.sh` sebelum uvicorn, lewat
 `python -m app.bootstrap_db`. Tidak ada langkah manual.
@@ -89,7 +89,7 @@ alembic downgrade base     # rollback semua
 
 ## Coexistence dengan `create_all` + `_sync_pg_columns`
 
-Saat ini lifespan tetap memanggil `create_all` (idempotent — tidak
+Saat ini lifespan tetap memanggil `create_all` (idempotent - tidak
 overwrite tabel ada) + `_sync_pg_columns` (ALTER TABLE additions for
 legacy DBs).
 

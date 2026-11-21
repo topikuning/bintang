@@ -7,7 +7,7 @@
  */
 
 const NBSP = " "
-const ENDASH = "–"
+const ENDASH = "-"
 
 export interface FmtIDROptions {
   decimal?: number

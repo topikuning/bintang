@@ -192,7 +192,7 @@ export function InvoiceItemsReportPage() {
             .join(","),
         )
       }
-      // BOM utk Excel id-ID supaya unicode (—, /, dst) muncul benar.
+      // BOM utk Excel id-ID supaya unicode (-, /, dst) muncul benar.
       const csv = "﻿" + lines.join("\n")
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
       const url = URL.createObjectURL(blob)
@@ -467,7 +467,7 @@ export function InvoiceItemsReportPage() {
                       </td>
                       <td className="px-2 py-1.5">
                         <div className="leading-tight">
-                          <div className="truncate max-w-[180px]">{p?.name ?? "—"}</div>
+                          <div className="truncate max-w-[180px]">{p?.name ?? "-"}</div>
                           {p?.code && (
                             <div className="text-[10px] text-ink-500 font-mono">
                               {p.code}
@@ -476,7 +476,7 @@ export function InvoiceItemsReportPage() {
                         </div>
                       </td>
                       <td className="px-2 py-1.5 truncate max-w-[180px]">
-                        {r.invoice.party_name ?? "—"}
+                        {r.invoice.party_name ?? "-"}
                       </td>
                       <td className="px-2 py-1.5 text-center text-ink-500">
                         {r.idxInInvoice + 1}
@@ -491,7 +491,7 @@ export function InvoiceItemsReportPage() {
                         {Number(r.item.quantity)}
                       </td>
                       <td className="px-2 py-1.5 text-ink-700">
-                        {r.item.unit ?? "—"}
+                        {r.item.unit ?? "-"}
                       </td>
                       <td
                         data-num

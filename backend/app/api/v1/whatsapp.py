@@ -1,17 +1,17 @@
 """Endpoint WhatsApp via WAHA:
-  GET  /api/v1/whatsapp/health           — status integrasi
-  GET  /api/v1/whatsapp/session          — status session WAHA (admin)
-  GET  /api/v1/whatsapp/qr               — PNG QR code untuk pairing (admin)
-  POST /api/v1/whatsapp/restart          — restart session (admin)
-  POST /api/v1/whatsapp/logout           — logout/unpair (admin)
-  POST /api/v1/whatsapp/webhook          — receiver event dari WAHA
-  POST /api/v1/whatsapp/me/link-code     — terbitkan kode 6 digit utk user
-  POST /api/v1/whatsapp/me/unlink        — putuskan tautan
-  GET  /api/v1/whatsapp/me/status        — status link user
+  GET  /api/v1/whatsapp/health           - status integrasi
+  GET  /api/v1/whatsapp/session          - status session WAHA (admin)
+  GET  /api/v1/whatsapp/qr               - PNG QR code untuk pairing (admin)
+  POST /api/v1/whatsapp/restart          - restart session (admin)
+  POST /api/v1/whatsapp/logout           - logout/unpair (admin)
+  POST /api/v1/whatsapp/webhook          - receiver event dari WAHA
+  POST /api/v1/whatsapp/me/link-code     - terbitkan kode 6 digit utk user
+  POST /api/v1/whatsapp/me/unlink        - putuskan tautan
+  GET  /api/v1/whatsapp/me/status        - status link user
 
 Integrasi config (toggle):
-  GET  /api/v1/messaging/config          — baca toggle TG/WA
-  PATCH /api/v1/messaging/config         — ubah toggle (admin)
+  GET  /api/v1/messaging/config          - baca toggle TG/WA
+  PATCH /api/v1/messaging/config         - ubah toggle (admin)
 """
 
 from __future__ import annotations
@@ -337,6 +337,32 @@ async def webhook(
     from app.services.whatsapp import client as wa_media
 
     wa_po_flow.buka_kotak()
+
+    # Peminta material tidak perlu mendaftar: nomor tak tertaut yang mengirim
+    # /po ditautkan ke akun bernomor sama, atau dibuatkan akun lalu ditanya
+    # namanya (services/wa_pendaftaran.py).
+    from app.services import wa_pendaftaran
+
+    if user is None and wa_pendaftaran.minta_po(text):
+        daftar = await wa_pendaftaran.tautkan_atau_daftar(
+            db, chat_id=chat_id, nomor=nomor, teks=text, ada_foto=is_media_msg
+        )
+        if daftar.user is None or daftar.baru:
+            await db.commit()
+            if daftar.pesan:
+                await wa.send_text(chat_id, daftar.pesan)
+            return {"ok": True}
+        user = daftar.user
+    elif user is not None and user.wa_tunda is not None:
+        # Akun baru sedang menunggu nama.
+        balasan, tunda = await wa_pendaftaran.terima_nama(db, user, text)
+        if tunda:
+            lanjut = await dispatch_command(db, user, chat_id, tunda, {"body": tunda})
+            balasan = f"{balasan}\n\n{lanjut}" if lanjut else balasan
+        await db.commit()
+        await wa_po_flow.kirim_kotak()
+        await wa.send_text(chat_id, balasan)
+        return {"ok": True}
 
     async def _ambil_media() -> tuple[bytes, str] | None:
         dl = None

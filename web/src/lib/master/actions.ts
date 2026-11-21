@@ -75,7 +75,7 @@ export async function simpanKategori(_p: ActionState, form: FormData): Promise<A
       const lama = await db.category.findUniqueOrThrow({ where: { id: kid } });
       if (lama.direction !== d.direction) {
         const dipakai = await db.transactionItem.count({ where: { categoryId: kid } });
-        if (dipakai) throw new PesanError("Arah kategori yang sudah dipakai transaksi tidak bisa diubah – buat kategori baru saja.");
+        if (dipakai) throw new PesanError("Arah kategori yang sudah dipakai transaksi tidak bisa diubah - buat kategori baru saja.");
       }
     }
     await db.$transaction(async (tx) => {

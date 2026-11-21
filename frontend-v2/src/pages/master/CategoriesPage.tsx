@@ -109,7 +109,7 @@ export function CategoriesPage() {
       header: "Deskripsi",
       cell: ({ row }) => (
         <span className="text-[13px] text-ink-700 truncate">
-          {row.original.description || "—"}
+          {row.original.description || "-"}
         </span>
       ),
       meta: { align: "left" },

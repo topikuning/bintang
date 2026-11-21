@@ -72,13 +72,13 @@ export function PODetail({ po, isLoading, project }: PODetailProps) {
       <POAlurWA po={po} />
 
       <dl className="divide-y">
-        <Field label="Vendor" icon={User} value={po.vendor_name || "—"} />
+        <Field label="Vendor" icon={User} value={po.vendor_name || "-"} />
         <Field
           label="Proyek"
-          value={project ? `${project.name} (${project.code})` : "—"}
+          value={project ? `${project.name} (${project.code})` : "-"}
         />
-        <Field label="Termin Pembayaran" value={po.payment_terms || "—"} />
-        <Field label="Catatan" icon={FileText} value={po.notes || "—"} />
+        <Field label="Termin Pembayaran" value={po.payment_terms || "-"} />
+        <Field label="Catatan" icon={FileText} value={po.notes || "-"} />
         <Field label="Dibuat pada" icon={Calendar} value={fmtDateTime(po.created_at)} />
         {po.approved_at && (
           <Field label="Disetujui pada" value={fmtDateTime(po.approved_at)} />

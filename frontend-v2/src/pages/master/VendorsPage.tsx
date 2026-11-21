@@ -96,7 +96,7 @@ export function VendorsPage() {
       header: "NPWP",
       accessorKey: "npwp",
       cell: ({ getValue }) => (
-        <span className="font-mono text-[13px]">{getValue<string>() || "—"}</span>
+        <span className="font-mono text-[13px]">{getValue<string>() || "-"}</span>
       ),
       meta: { align: "left", width: "180px" },
     },
@@ -104,7 +104,7 @@ export function VendorsPage() {
       id: "contact",
       header: "Kontak",
       accessorKey: "contact",
-      cell: ({ getValue }) => <span className="text-[13px]">{getValue<string>() || "—"}</span>,
+      cell: ({ getValue }) => <span className="text-[13px]">{getValue<string>() || "-"}</span>,
       meta: { align: "left", width: "150px" },
     },
     {
@@ -112,7 +112,7 @@ export function VendorsPage() {
       header: "Telepon",
       accessorKey: "phone",
       cell: ({ getValue }) => (
-        <span className="font-mono text-[13px]">{getValue<string>() || "—"}</span>
+        <span className="font-mono text-[13px]">{getValue<string>() || "-"}</span>
       ),
       meta: { align: "left", width: "150px" },
     },
@@ -120,7 +120,7 @@ export function VendorsPage() {
       id: "email",
       header: "Email",
       accessorKey: "email",
-      cell: ({ getValue }) => <span className="text-[13px]">{getValue<string>() || "—"}</span>,
+      cell: ({ getValue }) => <span className="text-[13px]">{getValue<string>() || "-"}</span>,
       meta: { align: "left" },
     },
     {

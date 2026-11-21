@@ -1,23 +1,23 @@
 # Bintang
 
-> **Bintang v3 ada di [`web/`](./web/README.md) (cabang `dev3`)** – rombak total di
+> **Bintang v3 ada di [`web/`](./web/README.md) (cabang `dev3`)** - rombak total di
 > atas stack MARLIN (Next.js 16 + Prisma 7 + PostgreSQL), berjalan di **server
 > Lenovo**, dengan alur pengajuan → persetujuan → pembayaran sebagai inti.
 > Aplikasi di bawah ini (FastAPI + React, Railway) tetap berjalan sampai hari
-> pindah – runbook-nya di [`web/docs/PINDAHAN.md`](./web/docs/PINDAHAN.md).
+> pindah - runbook-nya di [`web/docs/PINDAHAN.md`](./web/docs/PINDAHAN.md).
 
-**Bintang — Biaya, Investasi dan Tata Anggaran Gerak.**
+**Bintang - Biaya, Investasi dan Tata Anggaran Gerak.**
 Aplikasi web pencatatan & monitoring keuangan multi-proyek, mobile-first.
 
 ## Fitur utama
 
 - Multi proyek dengan dashboard global & per proyek.
 - Pencatatan transaksi masuk/keluar (DRAFT → SUBMITTED → VERIFIED → REJECTED/CANCELLED).
-- Upload bukti (kamera HP, galeri, PDF, multi-file) — siap untuk OCR/AI invoice extraction.
+- Upload bukti (kamera HP, galeri, PDF, multi-file) - siap untuk OCR/AI invoice extraction.
 - Invoice masuk (hutang) & keluar (piutang) dengan status auto (draft/issued/partially paid/paid/overdue/cancelled).
 - Purchase Order dengan **nomor otomatis**, **PDF berkop perusahaan** (WeasyPrint).
 - Kontrol budget per proyek (aman / mendekati batas / overbudget).
-- Laporan: Cashflow, Transaksi, Invoice, Hutang/Piutang, Budget, PO, Audit log — **export PDF & XLSX**.
+- Laporan: Cashflow, Transaksi, Invoice, Hutang/Piutang, Budget, PO, Audit log - **export PDF & XLSX**.
 - Audit log otomatis untuk semua perubahan data keuangan.
 - Soft delete, role-based access (Superadmin / Project Admin).
 - AI Invoice Extraction (Claude Vision / Mistral Document AI, bisa diatur dari UI).
@@ -62,7 +62,7 @@ docker compose exec app python -m app.seed
 
 ## Deploy ke Railway
 
-Lihat [`RAILWAY.md`](./RAILWAY.md) untuk panduan rinci — **2 service**: Postgres + aplikasi (SPA & API dalam satu image), dengan persistent volume untuk uploads.
+Lihat [`RAILWAY.md`](./RAILWAY.md) untuk panduan rinci - **2 service**: Postgres + aplikasi (SPA & API dalam satu image), dengan persistent volume untuk uploads.
 
 ## Quick start (lokal tanpa Docker)
 

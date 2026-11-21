@@ -50,7 +50,7 @@ export function RecentTransactions({ items, className, limit }: RecentTransactio
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="truncate text-sm font-medium text-ink-900">
-                  {t.party || t.description || "—"}
+                  {t.party || t.description || "-"}
                 </span>
               </div>
               <div className="flex items-center gap-2 text-[11px] text-ink-500">

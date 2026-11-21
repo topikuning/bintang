@@ -602,7 +602,7 @@ function formatPeriod(from: string | null, to: string | null): string | null {
     return `${d}/${m}`
   }
   if (from && to && from === to) return fmt(from)
-  if (from && to) return `${fmt(from)} – ${fmt(to)}`
+  if (from && to) return `${fmt(from)} - ${fmt(to)}`
   if (from) return `≥ ${fmt(from)}`
   if (to) return `≤ ${fmt(to)}`
   return null

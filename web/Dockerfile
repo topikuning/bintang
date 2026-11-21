@@ -1,4 +1,4 @@
-# BINTANG v3 – satu image untuk server Lenovo (docker-compose.yml) dan Railway
+# BINTANG v3 - satu image untuk server Lenovo (docker-compose.yml) dan Railway
 # (railway.json). Debian slim (bukan alpine): kompatibel Prisma & OpenSSL.
 
 # ── base ─────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ COPY --from=builder --chown=bintang:bintang /app/public ./public
 COPY --from=builder --chown=bintang:bintang /app/prisma ./prisma
 COPY --from=builder --chown=bintang:bintang /app/prisma.config.js ./prisma.config.js
 COPY --from=builder --chmod=755 /app/scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-# Importer Bintang lama (satu berkas) – lihat scripts/bintang-impor.sh.
+# Importer Bintang lama (satu berkas) - lihat scripts/bintang-impor.sh.
 COPY --from=builder --chown=bintang:bintang /app/dist/impor.mjs ./impor.mjs
 COPY --from=builder --chmod=755 /app/scripts/bintang-impor.sh /usr/local/bin/bintang-impor
 

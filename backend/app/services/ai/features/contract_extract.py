@@ -1,6 +1,6 @@
 """AI-7: Generic document extraction (kontrak/SPK/BAST/perjanjian).
 
-Bukan invoice — dokumen legal/operasional yg ekstrak pasal, tanggal,
+Bukan invoice - dokumen legal/operasional yg ekstrak pasal, tanggal,
 nilai kontrak, pihak-pihak.
 """
 

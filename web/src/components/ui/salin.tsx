@@ -4,7 +4,7 @@ import { Check, Copy } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/cn";
 
-/** Tombol salin – untuk nomor rekening & nominal yang akan diketik ulang di m-banking. */
+/** Tombol salin - untuk nomor rekening & nominal yang akan diketik ulang di m-banking. */
 export function Salin({ teks, label = "Salin", className }: { teks: string; label?: string; className?: string }) {
   const [ok, setOk] = useState(false);
   return (
@@ -16,7 +16,7 @@ export function Salin({ teks, label = "Salin", className }: { teks: string; labe
           setOk(true);
           setTimeout(() => setOk(false), 1500);
         } catch {
-          // Peramban menolak akses papan klip – tidak ada yang bisa dilakukan.
+          // Peramban menolak akses papan klip - tidak ada yang bisa dilakukan.
         }
       }}
       aria-label={`${label}: ${teks}`}

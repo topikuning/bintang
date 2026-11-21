@@ -30,7 +30,7 @@ const schema = z.object({
     .string()
     .trim()
     .toLowerCase()
-    .regex(/^[a-z0-9._-]{3,50}$/, "Username 3–50 huruf kecil/angka/titik/strip.")
+    .regex(/^[a-z0-9._-]{3,50}$/, "Username 3-50 huruf kecil/angka/titik/strip.")
     .optional()
     .or(z.literal("").transform(() => undefined)),
   email: z.string().trim().toLowerCase().email("Email tidak valid.").optional().or(z.literal("").transform(() => undefined)),
@@ -60,7 +60,7 @@ export async function simpanPengguna(_p: SimpanPenggunaState, form: FormData): P
       isActive: get("isActive"),
       resetPassword: get("resetPassword"),
     });
-    if (!d.username && !d.email) throw new PesanError("Isi username atau email – salah satu dipakai untuk masuk.");
+    if (!d.username && !d.email) throw new PesanError("Isi username atau email - salah satu dipakai untuk masuk.");
     const kembar = await db.user.findFirst({
       where: {
         OR: [...(d.username ? [{ username: d.username }] : []), ...(d.email ? [{ email: d.email }] : [])],

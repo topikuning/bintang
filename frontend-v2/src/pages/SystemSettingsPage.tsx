@@ -37,7 +37,7 @@ const GROUP_META: Record<
     label: "OCR (Claude / Mistral)",
     icon: ScanLine,
     description:
-      "API key OCR engine + default engine. Pilih engine saat upload — setting di sini hanya menentukan default awal di dropdown.",
+      "API key OCR engine + default engine. Pilih engine saat upload - setting di sini hanya menentukan default awal di dropdown.",
   },
   ai: {
     label: "AI (Saran Kategori, Justifier, dll)",
@@ -347,7 +347,7 @@ function SettingRow({
           placeholder={
             item.is_secret
               ? hasAnyValue
-                ? `Sudah di-set (${item.preview ?? "•••"}) — biarkan kosong utk pertahankan`
+                ? `Sudah di-set (${item.preview ?? "•••"}) - biarkan kosong utk pertahankan`
                 : "Masukkan API key…"
               : item.hint ?? ""
           }

@@ -151,7 +151,7 @@ export function ImportsPage() {
       {/* Step 1: Pilih entity */}
       <div className="rounded-md border bg-surface p-4 sm:p-5 space-y-3">
         <div>
-          <h2 className="text-sm font-semibold text-ink-900">Langkah 1 — Pilih Jenis Data</h2>
+          <h2 className="text-sm font-semibold text-ink-900">Langkah 1 - Pilih Jenis Data</h2>
           <p className="text-[12px] text-ink-500 mt-0.5">
             Setiap jenis punya format kolom yg berbeda.
           </p>
@@ -188,7 +188,7 @@ export function ImportsPage() {
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <h2 className="text-sm font-semibold text-ink-900">
-                  Langkah 2 — Download Template
+                  Langkah 2 - Download Template
                 </h2>
                 <p className="text-[12px] text-ink-500 mt-0.5">
                   Pakai template Excel ini sbg dasar -- kolom & format harus
@@ -225,7 +225,7 @@ export function ImportsPage() {
           <div className="rounded-md border bg-surface p-4 sm:p-5 space-y-3">
             <div>
               <h2 className="text-sm font-semibold text-ink-900">
-                Langkah 3 — Upload Excel
+                Langkah 3 - Upload Excel
               </h2>
               <p className="text-[12px] text-ink-500 mt-0.5">
                 File .xlsx, max 20MB.
@@ -300,7 +300,7 @@ export function ImportsPage() {
             <div className="rounded-md border bg-surface p-4 sm:p-5 space-y-3">
               <div>
                 <h2 className="text-sm font-semibold text-ink-900">
-                  Langkah 4 — Konfirmasi & Commit
+                  Langkah 4 - Konfirmasi & Commit
                 </h2>
                 <p className="text-[12px] text-ink-500 mt-0.5">
                   Review hasil preview di bawah. Tekan Commit untuk simpan ke

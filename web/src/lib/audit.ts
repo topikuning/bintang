@@ -29,7 +29,7 @@ function auditData(
 }
 
 /**
- * Audit BEST-EFFORT – gagal menulis tidak menggagalkan aksi (login, logout).
+ * Audit BEST-EFFORT - gagal menulis tidak menggagalkan aksi (login, logout).
  * JANGAN untuk mutasi uang/status: pakai `auditIn` di transaksi yang sama.
  */
 export async function audit(
@@ -49,7 +49,7 @@ export async function audit(
 }
 
 /**
- * Audit DI DALAM transaksi pemanggil – gagal = seluruh transaksi batal.
+ * Audit DI DALAM transaksi pemanggil - gagal = seluruh transaksi batal.
  * Uang dan status tidak boleh berubah tanpa jejak.
  */
 export async function auditIn(

@@ -226,9 +226,9 @@ async def nomor_pengirim(chat_id: str, payload: dict) -> str | None:
 
 async def download_media(media_url: str) -> tuple[bytes, str | None] | None:
     """Download file yang dirujuk webhook WAHA. Mendukung 3 bentuk:
-    1) URL absolut http(s) — di-fetch apa adanya (dengan API key kalau set).
-    2) Path relatif "/api/files/..." — di-prefiks base URL WAHA.
-    3) data URI "data:image/...;base64,..." — di-decode langsung.
+    1) URL absolut http(s) - di-fetch apa adanya (dengan API key kalau set).
+    2) Path relatif "/api/files/..." - di-prefiks base URL WAHA.
+    3) data URI "data:image/...;base64,..." - di-decode langsung.
     Return (bytes, mime) atau None kalau gagal.
     """
     if not is_enabled():

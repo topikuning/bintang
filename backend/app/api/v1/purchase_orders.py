@@ -722,6 +722,9 @@ async def issue_po(
     await ensure_project_access(db, user, po.project_id)
     if po.status != POStatus.DRAFT:
         raise HTTPException(409, "invalid_state")
+    from app.services import wa_po_flow
+
+    wa_po_flow.buka_kotak()
     po.status = POStatus.ISSUED
     await log(
         db,
@@ -731,7 +734,10 @@ async def issue_po(
         action=AuditAction.UPDATE,
         note="issued",
     )
+    # Keuangan/pimpinan dikabari lewat WA dan bisa langsung SETUJUI/TOLAK.
+    await wa_po_flow.setelah_diajukan_aplikasi(db, po, user)
     await db.commit()
+    await wa_po_flow.kirim_kotak()
     res = await db.execute(
         select(PurchaseOrder)
         .options(selectinload(PurchaseOrder.items))
@@ -896,26 +902,16 @@ async def hard_delete_po(
     await db.commit()
 
 
-@router.get("/{pid}/pdf")
-async def po_pdf(
-    pid: int,
-    signatures: str = Query("both", pattern="^(both|creator|approver|none)$"),
-    responsible_name: str | None = Query(None, max_length=200),
-    responsible_title: str | None = Query(None, max_length=120),
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> Response:
-    """Cetak PO ke PDF. signatures + responsible_name dipakai utk
-    customize signature block per dokumen (lihat invoice_pdf)."""
-    res = await db.execute(
-        select(PurchaseOrder)
-        .options(selectinload(PurchaseOrder.items))
-        .where(PurchaseOrder.id == pid)
-    )
-    po = res.scalar_one_or_none()
-    if not po or po.deleted_at is not None:
-        raise HTTPException(404, "not_found")
-    await ensure_project_access(db, user, po.project_id)
+async def render_po_pdf(
+    db: AsyncSession,
+    po: PurchaseOrder,
+    *,
+    signatures: str = "both",
+    responsible_name: str | None = None,
+    responsible_title: str | None = None,
+) -> bytes:
+    """Render PDF PO (items harus sudah dimuat). Dipakai endpoint cetak dan
+    pengiriman PO final ke WhatsApp pemasok."""
     project = await db.get(Project, po.project_id)
     company = await db.get(Company, po.company_id)
     vendor = await db.get(VendorClient, po.vendor_client_id) if po.vendor_client_id else None
@@ -949,7 +945,36 @@ async def po_pdf(
         sig_responsible_name=(responsible_name or "").strip() or default_responsible,
         sig_responsible_title=(responsible_title or "").strip() or "Direktur",
     )
-    pdf = await html_to_pdf_async(html)
+    return await html_to_pdf_async(html)
+
+
+@router.get("/{pid}/pdf")
+async def po_pdf(
+    pid: int,
+    signatures: str = Query("both", pattern="^(both|creator|approver|none)$"),
+    responsible_name: str | None = Query(None, max_length=200),
+    responsible_title: str | None = Query(None, max_length=120),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    """Cetak PO ke PDF. signatures + responsible_name dipakai utk
+    customize signature block per dokumen (lihat invoice_pdf)."""
+    res = await db.execute(
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id == pid)
+    )
+    po = res.scalar_one_or_none()
+    if not po or po.deleted_at is not None:
+        raise HTTPException(404, "not_found")
+    await ensure_project_access(db, user, po.project_id)
+    pdf = await render_po_pdf(
+        db,
+        po,
+        signatures=signatures,
+        responsible_name=responsible_name,
+        responsible_title=responsible_title,
+    )
     return Response(
         pdf,
         media_type="application/pdf",

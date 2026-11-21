@@ -94,7 +94,7 @@ export function CashRequestDetailPage() {
 
   const query = useCashRequest(Number.isFinite(cid) ? cid : null)
   const cr = query.data
-  usePageTitle(cr ? `${cr.number} — Pengajuan Dana` : "Pengajuan Dana")
+  usePageTitle(cr ? `${cr.number} - Pengajuan Dana` : "Pengajuan Dana")
 
   const approveMut = useApproveCashRequest()
   const rejectMut = useRejectCashRequest()
@@ -247,7 +247,7 @@ export function CashRequestDetailPage() {
                 to={`/projects/${cr.project_id}`}
                 className="hover:text-brand-600 hover:underline"
               >
-                {cr.project_code} — {cr.project_name}
+                {cr.project_code} - {cr.project_name}
               </Link>
             </div>
           </div>
@@ -364,13 +364,13 @@ export function CashRequestDetailPage() {
                   <td className="px-3 py-2 text-ink-500">{idx + 1}</td>
                   <td className="px-3 py-2">{it.description}</td>
                   <td className="px-3 py-2 text-ink-600 text-[12px]">
-                    {it.category_name ?? <span className="text-ink-400">—</span>}
+                    {it.category_name ?? <span className="text-ink-400">-</span>}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-ink-600">
-                    {it.quantity ? fmtIDR(it.quantity) : <span className="text-ink-400">—</span>}
+                    {it.quantity ? fmtIDR(it.quantity) : <span className="text-ink-400">-</span>}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-ink-600">
-                    {it.unit_price ? `Rp ${fmtIDR(it.unit_price)}` : <span className="text-ink-400">—</span>}
+                    {it.unit_price ? `Rp ${fmtIDR(it.unit_price)}` : <span className="text-ink-400">-</span>}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums font-semibold">
                     Rp {fmtIDR(it.amount)}
@@ -434,14 +434,14 @@ export function CashRequestDetailPage() {
           <DialogHeader>
             <DialogTitle>Tolak Pengajuan</DialogTitle>
             <DialogDescription>
-              {cr.number} — Rp {fmtIDR(cr.total_amount)}. Berikan alasan
+              {cr.number} - Rp {fmtIDR(cr.total_amount)}. Berikan alasan
               penolakan supaya pengaju paham apa yang perlu diperbaiki.
             </DialogDescription>
           </DialogHeader>
           <Textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="Mis. Anggaran sedang ketat — pending sampai minggu depan."
+            placeholder="Mis. Anggaran sedang ketat - pending sampai minggu depan."
             rows={3}
             autoFocus
           />

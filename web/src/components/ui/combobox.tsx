@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
  * form Server Action: nilai terpilih ada di <input type="hidden" name=…>.
  * Kotak cari muncul otomatis bila opsi > `searchThreshold`.
  *
- * Tambahan Bintang: `onCreate` – tombol "Tambah '…'" di dasar daftar ketika
+ * Tambahan Bintang: `onCreate` - tombol "Tambah '…'" di dasar daftar ketika
  * yang dicari tidak ada (mis. vendor baru langsung dari form pengajuan).
  */
 

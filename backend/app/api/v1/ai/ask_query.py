@@ -24,7 +24,7 @@ async def ask_query(
 ) -> dict:
     """Tanya laporan keuangan dlm Bahasa Indonesia natural.
 
-    Backend pilih dari template predefined (BUKAN raw SQL — aman dari
+    Backend pilih dari template predefined (BUKAN raw SQL - aman dari
     injection). Output: template terpakai + data + reason + follow_up.
 
     Contoh pertanyaan:

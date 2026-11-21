@@ -326,7 +326,7 @@ export function BulkInvoiceCategorizePage() {
                   {inv.invoice_type === "IN" ? "Hutang" : "Piutang"}
                 </span>
                 <span className="text-[12px] text-ink-600 truncate">
-                  {inv.party_name || "—"}
+                  {inv.party_name || "-"}
                 </span>
               </div>
               <div className="flex items-center gap-2 text-[12px] text-ink-600">
@@ -398,10 +398,10 @@ export function BulkInvoiceCategorizePage() {
                               {it.description}
                             </td>
                             <td className="px-2 py-1.5 text-right text-[11px] font-mono">
-                              {it.quantity ? `${it.quantity} ${it.unit ?? ""}` : "—"}
+                              {it.quantity ? `${it.quantity} ${it.unit ?? ""}` : "-"}
                             </td>
                             <td className="px-2 py-1.5 text-right text-[11px] font-mono">
-                              {it.unit_price ? fmtIDR(Number(it.unit_price)) : "—"}
+                              {it.unit_price ? fmtIDR(Number(it.unit_price)) : "-"}
                             </td>
                             <td className="px-2 py-1.5 text-[11px]">
                               {it.current_category_name || (

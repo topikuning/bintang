@@ -25,7 +25,7 @@ export type BarisPengajuanData = {
 };
 
 /**
- * Satu baris daftar pengajuan – dirancang untuk dipindai cepat oleh pemberi
+ * Satu baris daftar pengajuan - dirancang untuk dipindai cepat oleh pemberi
  * persetujuan: judul & nominal sejajar di baris pertama, siapa & proyek di
  * baris kedua, sinyal penting (mendesak, tenggat, lampiran) sebagai ikon.
  */
@@ -50,7 +50,7 @@ export function BarisPengajuan({ r, today }: { r: BarisPengajuanData; today: str
           <div className="mt-1 flex items-center justify-between gap-3">
             <p className="min-w-0 truncate text-[12.5px] text-ink-muted">
               <span className="tabular">{r.number ?? "Draf"}</span> · {r.requester.fullName} · {r.project.code}
-              <span className="hidden md:inline"> – {r.project.name}</span>
+              <span className="hidden md:inline"> - {r.project.name}</span>
             </p>
             <StatusPengajuan status={r.status} kind={r.kind} short />
           </div>

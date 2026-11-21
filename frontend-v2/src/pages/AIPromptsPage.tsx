@@ -174,7 +174,7 @@ function FeatureCard({
           />
         ) : (
           <div className="rounded border border-dashed bg-ink-50/50 p-3 text-[12px] text-ink-500">
-            <em>(Tidak ada user prompt — feature ini vision-only.)</em>
+            <em>(Tidak ada user prompt - feature ini vision-only.)</em>
           </div>
         )}
       </div>
@@ -285,7 +285,7 @@ function EditDialog({
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>
-            {field === "system" ? "System Prompt" : "User Template"} —{" "}
+            {field === "system" ? "System Prompt" : "User Template"} -{" "}
             {feature.label}
           </DialogTitle>
         </DialogHeader>

@@ -815,7 +815,7 @@ function InvoicePickerInline({
       onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
       className="h-8 flex-1 rounded border border-border-strong bg-surface px-2 text-[12px]"
     >
-      <option value="">— Tidak (beban langsung) —</option>
+      <option value="">- Tidak (beban langsung) -</option>
       {items.map((inv) => (
         <option key={inv.id} value={inv.id}>
           {inv.number} -- {inv.party_name ?? "-"} ({fmtIDR(Number(inv.total ?? 0))})

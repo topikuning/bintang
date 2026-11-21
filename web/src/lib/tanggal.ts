@@ -4,7 +4,7 @@ import { id as localeId } from "date-fns/locale";
 
 /**
  * Semua logika "hari ini" memakai Asia/Jakarta. Kolom tanggal kerja (@db.Date)
- * tersimpan sebagai tengah malam UTC – JANGAN diformat dengan jam, karena
+ * tersimpan sebagai tengah malam UTC - JANGAN diformat dengan jam, karena
  * tengah malam UTC = 07:00 WIB dan itu bukan data.
  */
 export const ZONA = "Asia/Jakarta";
@@ -31,7 +31,7 @@ export function tanggalKeKey(d: Date): string {
 
 /** Kolom @db.Date → "4 Nov 2026". */
 export function fmtTanggal(d: Date | string | null | undefined, pola = "d MMM yyyy"): string {
-  if (!d) return "–";
+  if (!d) return "-";
   const key = typeof d === "string" ? d.slice(0, 10) : tanggalKeKey(d);
   const [y, m, day] = key.split("-").map(Number);
   return format(new Date(y, m - 1, day), pola, { locale: localeId });
@@ -39,7 +39,7 @@ export function fmtTanggal(d: Date | string | null | undefined, pola = "d MMM yy
 
 /** Timestamptz → "4 Nov 2026, 14.05" (WIB). */
 export function fmtWaktu(d: Date | string | null | undefined): string {
-  if (!d) return "–";
+  if (!d) return "-";
   return format(new TZDate(new Date(d), ZONA), "d MMM yyyy, HH.mm", { locale: localeId });
 }
 

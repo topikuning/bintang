@@ -1,6 +1,6 @@
 """AI-1: Smart category suggest.
 
-Audit 2026-05-24 user req: kategorisasi tepat adalah PRIORITAS — admin
+Audit 2026-05-24 user req: kategorisasi tepat adalah PRIORITAS - admin
 proyek sering salah pilih kategori, manfaat analitik jadi turun. AI
 sekarang dikasih konteks RIIL:
 - Vendor history (20 tx terakhir dgn vendor ini) → AI lihat pattern
@@ -85,7 +85,7 @@ async def _fetch_vendor_history(
     elif direction == "OUT":
         stmt = stmt.where(Transaction.type == "OUT")
     rows = (await db.execute(stmt)).all()
-    return [(str(d), (desc or "")[:60], cat or "—") for d, desc, cat in rows]
+    return [(str(d), (desc or "")[:60], cat or "-") for d, desc, cat in rows]
 
 
 async def _fetch_similar_tx(
@@ -122,7 +122,7 @@ async def _fetch_similar_tx(
     elif direction == "OUT":
         stmt = stmt.where(Transaction.type == "OUT")
     rows = (await db.execute(stmt)).all()
-    return [(str(d), (de or "")[:60], (p or "—"), c or "—") for d, de, p, c in rows]
+    return [(str(d), (de or "")[:60], (p or "-"), c or "-") for d, de, p, c in rows]
 
 
 async def run(

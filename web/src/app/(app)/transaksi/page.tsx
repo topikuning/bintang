@@ -43,7 +43,7 @@ export default async function TransaksiPage({
     db.transaction.count({ where: { status: "menunggu_verifikasi", ...(ids === null ? {} : { projectId: { in: ids } }) } }),
   ]);
   const base = { q: sp.q, proyek: sp.proyek, rekening: sp.rekening, arah: sp.arah, status: sp.status, dari: sp.dari, sampai: sp.sampai };
-  const periode = dari || sampai ? `${dari ? fmtTanggal(dari) : "awal"} – ${sampai ? fmtTanggal(sampai) : "sekarang"}` : "Bulan ini";
+  const periode = dari || sampai ? `${dari ? fmtTanggal(dari) : "awal"} - ${sampai ? fmtTanggal(sampai) : "sekarang"}` : "Bulan ini";
 
   return (
     <>
@@ -93,7 +93,7 @@ export default async function TransaksiPage({
           className="mb-4"
           placeholder="Cari keterangan, nomor, pihak, referensi…"
           selects={[
-            { param: "proyek", label: "Proyek", allLabel: "Semua proyek", options: projects.map((p) => ({ value: p.id, label: `${p.code} – ${p.name}` })) },
+            { param: "proyek", label: "Proyek", allLabel: "Semua proyek", options: projects.map((p) => ({ value: p.id, label: `${p.code} - ${p.name}` })) },
             { param: "rekening", label: "Rekening", allLabel: "Semua rekening", options: accounts.map((a) => ({ value: a.id, label: a.name })) },
           ]}
         />

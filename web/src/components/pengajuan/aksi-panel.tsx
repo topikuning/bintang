@@ -95,7 +95,7 @@ export function AksiPanel(p: AksiProps) {
 
   switch (p.status) {
     case "draft":
-      judul = "Draf – belum dikirim";
+      judul = "Draf - belum dikirim";
       ket = "Hanya Anda yang bisa melihat draf ini.";
       if (k.edit.boleh) {
         tombol.push(
@@ -146,14 +146,14 @@ export function AksiPanel(p: AksiProps) {
         if (k.batal.boleh) btn("batal", "Batalkan", <Ban aria-hidden className="size-4" />, "batal");
       } else {
         tone = "primary";
-        judul = "Disetujui – menunggu dibayar Keuangan";
+        judul = "Disetujui - menunggu dibayar Keuangan";
         ket = "Anda akan diberi tahu begitu dana dikirim.";
       }
       break;
     case "dibayar":
       tone = "success";
       if (p.kind === "uang_muka") {
-        judul = p.isRequester ? "Uang muka sudah diterima – ajukan LPJ" : "Dibayar – menunggu LPJ";
+        judul = p.isRequester ? "Uang muka sudah diterima - ajukan LPJ" : "Dibayar - menunggu LPJ";
         ket = p.isRequester
           ? "Setelah dana terpakai, laporkan pemakaiannya beserta nota. Sisa uang dikembalikan, kekurangan dibayarkan."
           : "Pemegang uang muka belum melaporkan pemakaiannya.";
@@ -178,7 +178,7 @@ export function AksiPanel(p: AksiProps) {
           ? "Pemakaian pas dengan uang muka."
           : p.lpj.arah === "kembali"
             ? `Ada sisa ${p.lpj.jumlahLabel} yang harus dikembalikan ke kas.`
-            : `Pemakaian lebih ${p.lpj.jumlahLabel} – perlu dibayarkan ke pemegang uang muka.`
+            : `Pemakaian lebih ${p.lpj.jumlahLabel} - perlu dibayarkan ke pemegang uang muka.`
         : null;
       if (k.periksaLpj.boleh) {
         btn("terima", "Terima LPJ", <CheckCircle2 aria-hidden className="size-4" />, "terimaLpj", "primary");
@@ -240,7 +240,7 @@ export function AksiPanel(p: AksiProps) {
         onClose={tutup}
         onOk={berhasil}
         title="Tolak pengajuan?"
-        description="Pengajuan yang ditolak tidak bisa diajukan ulang – pemohon harus membuat yang baru."
+        description="Pengajuan yang ditolak tidak bisa diajukan ulang - pemohon harus membuat yang baru."
         action={act.tolakPengajuan.bind(null, p.id)}
         submitLabel="Tolak"
         variant="danger"
@@ -446,7 +446,7 @@ function TerimaLpjSheet(p: AksiProps & { open: boolean; onClose: () => void; onO
       title="Terima LPJ"
       description={
         !p.lpj || p.lpj.arah === "pas"
-          ? "Pemakaian pas – biaya per kategori dicatat sesuai LPJ."
+          ? "Pemakaian pas - biaya per kategori dicatat sesuai LPJ."
           : p.lpj.arah === "kembali"
             ? `Sisa ${p.lpj.jumlahLabel} dicatat MASUK ke rekening yang Anda pilih.`
             : `Kekurangan ${p.lpj.jumlahLabel} dicatat KELUAR dari rekening yang Anda pilih.`

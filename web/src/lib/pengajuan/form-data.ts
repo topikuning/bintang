@@ -32,7 +32,7 @@ export async function bahanFormPengajuan(user: SessionUser) {
   return {
     projects: projects.map<ComboOption>((p) => ({
       value: p.id,
-      label: `${p.code} – ${p.name}`,
+      label: `${p.code} - ${p.name}`,
       hint: p.kind === "operasional" ? "Operasional (non-proyek)" : undefined,
     })),
     categories: categories.map<ComboOption>((c) => ({ value: c.id, label: c.name })),

@@ -131,12 +131,12 @@ export function InvoiceDetail({ invoice, isLoading, project }: InvoiceDetailProp
 
       {/* Field info */}
       <dl className="divide-y">
-        <Field label="Pihak" icon={User} value={inv.party_name || "—"} />
+        <Field label="Pihak" icon={User} value={inv.party_name || "-"} />
         <Field
           label="Proyek"
-          value={project ? `${project.name} (${project.code})` : "—"}
+          value={project ? `${project.name} (${project.code})` : "-"}
         />
-        <Field label="Catatan" icon={FileText} value={inv.notes || "—"} />
+        <Field label="Catatan" icon={FileText} value={inv.notes || "-"} />
         <Field label="Dibuat pada" icon={Calendar} value={fmtDateTime(inv.created_at)} />
       </dl>
 

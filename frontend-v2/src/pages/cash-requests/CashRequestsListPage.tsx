@@ -165,7 +165,7 @@ export function CashRequestsListPage() {
               {row.original.title}
             </span>
             <span className="text-[11px] text-ink-500 truncate">
-              {row.original.project_code} — {row.original.project_name}
+              {row.original.project_code} - {row.original.project_name}
             </span>
           </div>
         ),
@@ -305,7 +305,7 @@ export function CashRequestsListPage() {
           <option value="">Semua Proyek</option>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.code} — {p.name}
+              {p.code} - {p.name}
             </option>
           ))}
         </Select>
