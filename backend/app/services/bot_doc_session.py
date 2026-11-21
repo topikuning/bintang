@@ -25,6 +25,7 @@ from app.core.deps import user_project_ids
 from app.models.models import (
     BotPendingDocSession,
     Project,
+    ProjectKind,
     ProjectStatus,
     User,
     VendorClient,
@@ -56,11 +57,18 @@ async def resolve_project(
     if not hint:
         return None
     hint = hint.strip()
-    pids = await user_project_ids(db, user)
     stmt = select(Project).where(
         Project.deleted_at.is_(None),
         Project.status == ProjectStatus.AKTIF,
     )
+    if getattr(user, "daftar_via_wa", False):
+        # Peminta material yang terdaftar lewat WA tidak menjadi anggota proyek
+        # (tidak bisa melihat data proyek), tapi boleh memesan untuk proyek
+        # aktif mana pun; pesanannya tetap harus disetujui keuangan/pimpinan.
+        pids = None
+        stmt = stmt.where(Project.kind == ProjectKind.REGULAR.value)
+    else:
+        pids = await user_project_ids(db, user)
     if pids is not None:
         if not pids:
             return None

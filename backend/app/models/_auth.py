@@ -20,6 +20,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -51,6 +52,13 @@ class User(TimestampMixin, Base):
     telegram_chat_id: Mapped[str | None] = mapped_column(String(40), unique=True, nullable=True)
     # WhatsApp via WAHA: nomor WA user dlm format internal WAHA "<msisdn>@c.us"
     whatsapp_chat_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    # Akun dibuat otomatis saat nomor WA tak dikenal mengirim /po. Tanpa kata
+    # sandi & tanpa anggota proyek: hanya bisa mengajukan pesanan material.
+    daftar_via_wa: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
+    # Terisi (boleh "") = sedang menunggu nama; isinya pesan /po yang ditunda.
+    wa_tunda: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Token revocation cutoff. Kalau di-set, JWT dgn iat <= cutoff dianggap
     # invalid -> user "logout from all devices". Audit 2026-05-22 #C5.
     # Logout endpoint set kolom ini ke now(). Default NULL = no revocation.

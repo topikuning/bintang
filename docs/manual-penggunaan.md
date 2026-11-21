@@ -764,6 +764,10 @@ wa 0812-3456-7890
 ```
 
 Catatan:
+- **Peminta tidak perlu mendaftar.** Nomor WA yang belum tertaut cukup mengirim `/po`:
+  - nomor itu sudah tercatat di data pengguna (kolom telepon) -> langsung ditautkan ke akun tersebut;
+  - nomor baru -> sistem membuat akun dan menanyakan nama sekali, lalu permintaan langsung diproses. Keuangan/pimpinan menerima pemberitahuan *Pengguna baru lewat WhatsApp*.
+  - Akun baru ini tanpa kata sandi (tidak bisa masuk web) dan bukan anggota proyek mana pun: hanya bisa mengajukan pesanan material dan mengurus PO miliknya sendiri. Bila tidak dikenal, nonaktifkan di menu Pengguna.
 - Harga boleh dikosongkan; pemasok mengisinya lewat **UBAH**. PO tidak bisa diajukan sebelum semua harga dan tempo terisi.
 - Pemasok **tidak perlu mendaftar**. Nomor WA pemasok cukup ditulis sekali di permintaan pertama: nomor itu otomatis tersimpan di data pemasok (pemasok baru ikut dibuat), dan permintaan berikutnya memakainya tanpa perlu menulis ulang. Nomor yang sudah ada di data pemasok tidak ditimpa.
 - Tanpa nomor sama sekali, PO hanya disimpan sebagai draf; kirim belakangan dengan **KIRIM PO12 08xxxx**.

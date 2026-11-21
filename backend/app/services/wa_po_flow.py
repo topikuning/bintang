@@ -301,6 +301,10 @@ async def _penyetuju(db: AsyncSession, kecuali_id: int | None = None) -> list[Us
 async def _boleh_akses(db: AsyncSession, user: User, po: PurchaseOrder) -> bool:
     from app.core.deps import ensure_project_access
 
+    if po.created_by_id == user.id:
+        # Pembuat PO selalu boleh mengurus PO-nya sendiri (termasuk peminta
+        # yang terdaftar lewat WA dan bukan anggota proyek).
+        return True
     try:
         await ensure_project_access(db, user, po.project_id)
     except HTTPException:
