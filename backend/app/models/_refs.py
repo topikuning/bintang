@@ -96,7 +96,7 @@ class Project(TimestampMixin, Base):
     # (status berubah jadi DIBATALKAN).
     proposed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     approved_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     company: Mapped[Company] = relationship(back_populates="projects")
