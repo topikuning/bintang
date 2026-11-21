@@ -134,6 +134,42 @@ async def send_image_url(chat_id: str, url: str, caption: str | None = None) -> 
         return None
 
 
+async def send_media(
+    chat_id: str,
+    data: bytes,
+    mime: str,
+    filename: str,
+    caption: str | None = None,
+) -> dict | None:
+    """Kirim berkas langsung (isi berkas, bukan tautan): gambar lewat
+    sendImage, selain itu (PDF) lewat sendFile. WAHA tidak perlu mengambil
+    berkas dari alamat publik mana pun. Return None kalau gagal."""
+    if not is_enabled():
+        return None
+    endpoint = "sendImage" if mime.startswith("image/") else "sendFile"
+    payload: dict[str, Any] = {
+        "session": _session(),
+        "chatId": chat_id,
+        "file": {
+            "mimetype": mime,
+            "filename": filename,
+            "data": base64.b64encode(data).decode("ascii"),
+        },
+    }
+    if caption:
+        payload["caption"] = caption
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as cli:
+            r = await cli.post(f"{_base_url()}/api/{endpoint}", json=payload, headers=_headers())
+            if r.status_code >= 400:
+                logger.warning("WAHA %s %s body=%s", endpoint, r.status_code, r.text[:500])
+            r.raise_for_status()
+            return r.json()
+    except Exception as e:
+        logger.warning("whatsapp send_media failed: %s", e)
+        return None
+
+
 async def download_media(media_url: str) -> tuple[bytes, str | None] | None:
     """Download file yang dirujuk webhook WAHA. Mendukung 3 bentuk:
     1) URL absolut http(s) — di-fetch apa adanya (dengan API key kalau set).

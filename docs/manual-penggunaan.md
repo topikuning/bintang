@@ -765,10 +765,11 @@ wa 0812-3456-7890
 
 Catatan:
 - Harga boleh dikosongkan; pemasok mengisinya lewat **UBAH**. PO tidak bisa diajukan sebelum semua harga dan tempo terisi.
-- Kalau nomor WA pemasok tidak ditulis, sistem memakai nomor telepon di data master vendor. Tanpa keduanya PO hanya disimpan sebagai DRAFT; kirim belakangan dengan **KIRIM PO12 08xxxx**.
+- Kalau nomor WA pemasok tidak ditulis, sistem memakai nomor telepon di data master vendor. Tanpa keduanya PO hanya disimpan sebagai draf; kirim belakangan dengan **KIRIM PO12 08xxxx**.
 - Pemasok yang menerima lebih dari satu pesanan cukup menyertakan kodenya, mis. **SETUJU PO12 30**.
 - Penyetuju dan penerima ringkasan pagi = akun **SUPERADMIN / CENTRAL_ADMIN** yang sudah menautkan WhatsApp (`/link`).
-- Bukti transfer untuk pemasok dikirim sebagai **tautan** (WAHA Core tidak bisa mengirim gambar). Tautan hanya membuka satu bukti itu dan kedaluwarsa setelah 60 hari. Syarat: **Public Base URL** di Pengaturan Sistem terisi.
+- Bukti transfer (foto atau PDF) dikirim **langsung sebagai berkas** ke WhatsApp pemasok, dengan keterangan nominal dan tanggal transfer. Hal yang sama berlaku untuk bukti yang diunggah dari aplikasi.
+- Kalau WAHA menolak mengirim berkas, sistem mengirim pesannya sebagai teks saja. Pesan itu memuat tautan ke bukti bila *Public Base URL* terisi. Tautan tersebut hanya membuka satu bukti dan kedaluwarsa setelah 60 hari.
 - Jam ringkasan pagi: Pengaturan Sistem → WhatsApp → *Jam ringkasan tagihan (WITA)*. Isi `mati` untuk mematikannya.
 - Status alur terlihat di detail PO (panel *Alur WhatsApp*).
 

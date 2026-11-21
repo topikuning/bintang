@@ -109,9 +109,13 @@ _HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
 class Pesan:
     chat_id: str
     teks: str
-    # Kalau diisi: coba kirim sebagai gambar (WAHA Plus). Gagal (WAHA Core
-    # tidak bisa kirim gambar) -> kirim teks + tautan.
-    gambar_url: str | None = None
+    # Berkas yang ikut dikirim (url `/files/...` hasil simpan). Isi berkasnya
+    # dikirim langsung ke WA, `teks` jadi keterangannya.
+    berkas_url: str | None = None
+    berkas_mime: str | None = None
+    berkas_nama: str | None = None
+    # Ditambahkan ke teks bila berkas gagal terkirim.
+    cadangan: str = ""
 
 
 _kotak: ContextVar[list[Pesan] | None] = ContextVar("wa_po_kotak", default=None)
@@ -126,10 +130,21 @@ def isi_kotak() -> list[Pesan]:
     return list(_kotak.get() or [])
 
 
-def _antre(chat_id: str | None, teks: str, gambar_url: str | None = None) -> None:
+def _antre(
+    chat_id: str | None,
+    teks: str,
+    *,
+    berkas: dict | None = None,
+    cadangan: str = "",
+) -> None:
+    """Antrekan pesan. `berkas` = dict hasil simpan file (url, mime_type, file_name)."""
     if not chat_id:
         return
-    pesan = Pesan(chat_id, teks, gambar_url)
+    pesan = Pesan(chat_id, teks, cadangan=cadangan)
+    if berkas:
+        pesan.berkas_url = berkas.get("url")
+        pesan.berkas_mime = berkas.get("mime_type")
+        pesan.berkas_nama = berkas.get("file_name")
     box = _kotak.get()
     if box is None:
         # Tanpa kotak (mis. skrip): kirim di latar.
@@ -142,11 +157,26 @@ def _antre(chat_id: str | None, teks: str, gambar_url: str | None = None) -> Non
 
 
 async def _kirim(p: Pesan) -> None:
-    if p.gambar_url:
-        hasil = await wa.send_image_url(p.chat_id, p.gambar_url, caption=p.teks)
-        if hasil is not None:
-            return
-        await wa.send_text(p.chat_id, f"{p.teks}\n\nBukti transfer: {p.gambar_url}")
+    if p.berkas_url:
+        from app.services.storage.paths import resolve_upload_path
+
+        try:
+            path = resolve_upload_path(p.berkas_url)
+            isi = await asyncio.to_thread(path.read_bytes)
+        except Exception:
+            logger.exception("wa_po_flow: berkas %s tidak terbaca", p.berkas_url)
+            isi = None
+        if isi is not None:
+            hasil = await wa.send_media(
+                p.chat_id,
+                isi,
+                p.berkas_mime or "application/octet-stream",
+                p.berkas_nama or path.name,
+                caption=p.teks,
+            )
+            if hasil is not None:
+                return
+        await wa.send_text(p.chat_id, p.teks + p.cadangan)
         return
     await wa.send_text(p.chat_id, p.teks)
 
@@ -867,15 +897,17 @@ async def bayar(db: AsyncSession, aktor: User, po: PurchaseOrder, berkas: dict) 
 
     nama = await _nama_pemasok(db, po)
     perusahaan = await _nama_perusahaan(db, po)
-    tautan = tautan_bukti(lampiran.id)
     teks_pemasok = (
         f"💸 Pembayaran {kode(po)} ({po.number}) sebesar *{rp(sisa)}* sudah kami transfer "
         f"pada {tgl(hari_ini())}. Terima kasih. — {perusahaan}"
     )
-    if tautan:
-        _antre(po.supplier_wa, teks_pemasok, gambar_url=tautan)
-    else:
-        _antre(po.supplier_wa, teks_pemasok + "\nBukti transfer dapat diminta ke kami.")
+    # Bukti dikirim sebagai foto/berkas langsung ke WA pemasok. Tautan hanya
+    # cadangan kalau WAHA menolak mengirim berkas.
+    tautan = tautan_bukti(lampiran.id)
+    cadangan = (
+        f"\n\nBukti transfer: {tautan}" if tautan else "\n\nBukti transfer menyusul dari kami."
+    )
+    _antre(po.supplier_wa, teks_pemasok, berkas=berkas, cadangan=cadangan)
     pengaju = await _pengaju(db, po)
     if pengaju is not None and pengaju.id != aktor.id:
         _antre(
@@ -969,6 +1001,8 @@ async def ringkasan_tagihan(db: AsyncSession, tanggal: date | None = None) -> st
         ("besok", "*Besok*"),
     ):
         daftar = kelompok[kunci]
+        if kunci == "lewat" and not daftar:
+            continue
         jumlah = sum((s for _, s in daftar), Decimal("0"))
         total_semua += jumlah
         baris.append("")
@@ -979,12 +1013,23 @@ async def ringkasan_tagihan(db: AsyncSession, tanggal: date | None = None) -> st
             baris.append(
                 f"• {ref} · {inv.party_name or '-'} · {rp(sisa)} · {proyek.get(inv.project_id, '-')}{tambahan}"
             )
-    baris += [
-        "",
-        f"*Total: {rp(total_semua)}*",
-        "Bayar: kirim foto bukti transfer dengan keterangan *BAYAR PO12* (sesuai kode), "
-        "atau dari aplikasi untuk tagihan tanpa kode PO.",
-    ]
+    contoh = next(
+        (
+            f"PO{inv.purchase_order_id}"
+            for daftar in kelompok.values()
+            for inv, _ in daftar
+            if inv.purchase_order_id
+        ),
+        None,
+    )
+    baris += ["", f"*Total: {rp(total_semua)}*"]
+    if contoh:
+        baris.append(
+            f"Cara bayar: kirim foto bukti transfer dengan keterangan *BAYAR {contoh}* "
+            "(ganti dengan kode tagihannya)."
+        )
+    if any(not inv.purchase_order_id for daftar in kelompok.values() for inv, _ in daftar):
+        baris.append("Tagihan tanpa kode PO dibayar dari aplikasi.")
     return "\n".join(baris)
 
 

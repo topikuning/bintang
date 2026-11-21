@@ -295,15 +295,17 @@ def _format_preview(payload: dict) -> str:
             has_any_price = True
             total_est += Decimal(str(it["unit_price"])) * Decimal(str(it.get("quantity") or 1))
     lines: list[str] = []
-    lines.append("📋 *Preview PO*")
+    lines.append("📋 *Ringkasan PO*")
     lines.append(f"Proyek: {payload['project_name']} ({payload['project_code']})")
     vendor_label = payload["vendor_name"] or "(belum diisi)"
     if payload.get("vendor_client_id"):
         vendor_label = f"{vendor_label} ✓"
-    lines.append(f"Vendor: {vendor_label}")
-    lines.append(f"Items ({len(items)}):")
+    lines.append(f"Pemasok: {vendor_label}")
+    lines.append(f"Barang ({len(items)}):")
     for i, it in enumerate(items[:10], start=1):
         qty = it.get("quantity") or 1
+        if isinstance(qty, float) and qty.is_integer():
+            qty = int(qty)
         unit = it.get("unit") or ""
         price = it.get("unit_price")
         suffix = ""
@@ -311,11 +313,11 @@ def _format_preview(payload: dict) -> str:
             suffix = f" @ Rp {Decimal(str(price)):,.0f}".replace(",", ".")
         lines.append(f"  {i}. {it['description']} · {qty} {unit}{suffix}".rstrip())
     if len(items) > 10:
-        lines.append(f"  ... +{len(items) - 10} item lainnya")
+        lines.append(f"  ... +{len(items) - 10} barang lainnya")
     if has_any_price:
-        lines.append(f"Estimasi total (sub): Rp {total_est:,.0f}".replace(",", "."))
+        lines.append(f"Perkiraan total: Rp {total_est:,.0f}".replace(",", "."))
     else:
-        lines.append("Estimasi total: belum diisi (harga kosong)")
+        lines.append("Perkiraan total: belum ada (harga kosong)")
     if payload.get("notes"):
         lines.append(f"💬 Konteks: _{payload['notes']}_")
     if payload.get("ai_extraction_id"):
@@ -324,14 +326,14 @@ def _format_preview(payload: dict) -> str:
     if meta:
         conf = meta.get("confidence_score")
         if conf is not None:
-            lines.append(f"_OCR confidence: {conf:.0%}_")
+            lines.append(f"_Keyakinan OCR: {conf:.0%}_")
     lines.append("")
     if payload.get("supplier_wa"):
         lines.append(f"📱 WA pemasok: {tampil_nomor(payload['supplier_wa'])}")
         lines.append("Balas *ya* untuk membuat PO dan mengirimnya ke pemasok, *batal* untuk batal.")
     else:
         lines.append(
-            "Balas *ya* untuk simpan sebagai DRAFT, *batal* untuk batal.\n"
+            "Balas *ya* untuk simpan sebagai draf, *batal* untuk batal.\n"
             "_Supaya langsung dikirim ke pemasok, tambahkan baris nomor WA pemasok, "
             "mis. `wa 08123456789`._"
         )

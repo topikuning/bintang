@@ -331,12 +331,16 @@ async def test_alur_lengkap_po_lewat_whatsapp(db, monkeypatch, upload_dir):
     kotak = wa_po_flow.isi_kotak()
     ke_pemasok = [p for p in kotak if p.chat_id == PEMASOK]
     assert len(ke_pemasok) == 1
-    assert ke_pemasok[0].gambar_url.startswith("https://bintang.contoh.id/bukti/")
-    token = ke_pemasok[0].gambar_url.rsplit("/", 1)[1]
-    assert wa_po_flow.baca_token_bukti(token) == att.id
+    # Bukti dikirim sebagai berkas (foto) langsung ke WA pemasok.
+    assert ke_pemasok[0].berkas_url == att.url
+    assert ke_pemasok[0].berkas_mime == "image/jpeg"
+    assert "Pembayaran" in ke_pemasok[0].teks and "http" not in ke_pemasok[0].teks
     assert any(p.chat_id == PENGAJU_WA for p in kotak)
 
-    # Tautan bukti publik bisa dibuka tanpa login
+    # Cadangan bila WAHA menolak berkas: tautan bukti publik tanpa login.
+    assert "https://bintang.contoh.id/bukti/" in ke_pemasok[0].cadangan
+    token = ke_pemasok[0].cadangan.rsplit("/", 1)[1]
+    assert wa_po_flow.baca_token_bukti(token) == att.id
     from app.api.files import serve_bukti_bayar
 
     resp = await serve_bukti_bayar(token, db=db)
@@ -348,24 +352,94 @@ async def test_alur_lengkap_po_lewat_whatsapp(db, monkeypatch, upload_dir):
     assert k not in await wa_po_flow.ringkasan_tagihan(db, inv.due_date)
 
 
+async def _simpan_bukti() -> dict:
+    from app.services.storage.local import save_bytes
+
+    return await save_bytes(
+        JPEG, original_name="bukti.jpg", subdir="transactions/po-1", mime_hint="image/jpeg"
+    )
+
+
 @pytest.mark.asyncio
-async def test_kirim_kotak_gambar_gagal_jatuh_ke_teks(monkeypatch):
+async def test_kirim_kotak_bukti_terkirim_sebagai_foto(monkeypatch, upload_dir):
+    berkas = await _simpan_bukti()
+    terkirim: list[dict] = []
+
+    async def media(chat_id, data, mime, filename, caption=None):
+        terkirim.append(
+            {"chat_id": chat_id, "data": data, "mime": mime, "nama": filename, "caption": caption}
+        )
+        return {"id": "x"}
+
+    async def teks(chat_id, t):
+        raise AssertionError("tidak boleh jatuh ke teks")
+
+    monkeypatch.setattr(wa, "send_media", media)
+    monkeypatch.setattr(wa, "send_text", teks)
+    wa_po_flow.buka_kotak()
+    wa_po_flow._antre(PEMASOK, "Pembayaran PO1", berkas=berkas, cadangan="\n\ntautan")
+    await wa_po_flow.kirim_kotak()
+    assert len(terkirim) == 1
+    assert terkirim[0]["chat_id"] == PEMASOK
+    assert terkirim[0]["mime"] == "image/jpeg"
+    assert terkirim[0]["caption"] == "Pembayaran PO1"
+    assert terkirim[0]["data"] == (upload_dir / berkas["url"].removeprefix("/files/")).read_bytes()
+    assert wa_po_flow.isi_kotak() == []
+
+
+@pytest.mark.asyncio
+async def test_kirim_kotak_berkas_gagal_jatuh_ke_teks(monkeypatch, upload_dir):
+    berkas = await _simpan_bukti()
     terkirim: list[tuple[str, str]] = []
 
-    async def gagal_gambar(chat_id, url, caption=None):
-        return None  # WAHA Core: tidak bisa kirim gambar
+    async def gagal_media(chat_id, data, mime, filename, caption=None):
+        return None  # WAHA menolak berkas
 
     async def teks(chat_id, t):
         terkirim.append((chat_id, t))
         return {"ok": True}
 
-    monkeypatch.setattr(wa, "send_image_url", gagal_gambar)
+    monkeypatch.setattr(wa, "send_media", gagal_media)
     monkeypatch.setattr(wa, "send_text", teks)
     wa_po_flow.buka_kotak()
-    wa_po_flow._antre(PEMASOK, "Pembayaran PO1", gambar_url="https://x/bukti/1.2.3")
+    wa_po_flow._antre(
+        PEMASOK, "Pembayaran PO1", berkas=berkas, cadangan="\n\nBukti transfer: https://x/b/1"
+    )
     await wa_po_flow.kirim_kotak()
-    assert terkirim == [(PEMASOK, "Pembayaran PO1\n\nBukti transfer: https://x/bukti/1.2.3")]
-    assert wa_po_flow.isi_kotak() == []
+    assert terkirim == [(PEMASOK, "Pembayaran PO1\n\nBukti transfer: https://x/b/1")]
+
+
+@pytest.mark.asyncio
+async def test_send_media_kirim_isi_berkas_base64(monkeypatch):
+    import base64
+
+    import httpx
+
+    diterima: list[httpx.Request] = []
+
+    def tangkap(req: httpx.Request) -> httpx.Response:
+        diterima.append(req)
+        return httpx.Response(201, json={"id": "ok"})
+
+    asli = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda **kw: asli(transport=httpx.MockTransport(tangkap))
+    )
+    monkeypatch.setattr(
+        wa, "get_cached", lambda k: {"WHATSAPP_BASE_URL": "http://waha:3000"}.get(k, "")
+    )
+
+    assert await wa.send_media(PEMASOK, JPEG, "image/jpeg", "b.jpg", caption="Bayar") is not None
+    assert await wa.send_media(PEMASOK, b"%PDF-1.4", "application/pdf", "b.pdf") is not None
+    import json
+
+    foto, pdf = (json.loads(r.content) for r in diterima)
+    assert str(diterima[0].url) == "http://waha:3000/api/sendImage"
+    assert str(diterima[1].url) == "http://waha:3000/api/sendFile"
+    assert foto["chatId"] == PEMASOK and foto["caption"] == "Bayar"
+    assert base64.b64decode(foto["file"]["data"]) == JPEG
+    assert foto["file"]["mimetype"] == "image/jpeg" and "url" not in foto["file"]
+    assert pdf["file"]["mimetype"] == "application/pdf"
 
 
 @pytest.mark.asyncio
