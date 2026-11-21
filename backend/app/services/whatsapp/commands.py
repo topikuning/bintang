@@ -551,12 +551,6 @@ async def handle_media(
         .limit(1)
     )
     pending = (await db.execute(q)).scalar_one_or_none()
-    if not pending:
-        return (
-            "Lampiran diterima tapi belum ada transaksi yang menunggu.\n"
-            "Buat transaksi dulu (/keluar atau /masuk), atau buka jendela "
-            "lampiran utk transaksi yg sudah ada dgn /buktitx <id>."
-        )
 
     content: bytes | None = None
     ct: str | None = None
@@ -590,7 +584,7 @@ async def handle_media(
         meta = await save_bytes(
             content,
             original_name=name,
-            subdir=f"transactions/{pending.transaction_id}",
+            subdir=f"transactions/{pending.transaction_id}" if pending else "wa-tunda",
             mime_hint=final_mime,
         )
     except HTTPException as e:
@@ -599,13 +593,24 @@ async def handle_media(
         if e.status_code == 413:
             return "Berkas terlalu besar. Maksimal 20 MB."
         raise
+    if not pending:
+        # Foto tanpa keterangan & tanpa jendela lampiran: kemungkinan bagian
+        # album yang keterangannya (BAYAR PO12 / TERIMA PO12 / BAYAR KAS3) ada
+        # di foto lain. Ditahan diam-diam; perintah berikutnya mengambilnya.
+        from app.services import wa_po_flow
+
+        await wa_po_flow.tahan_foto(db, str(chat_id), meta)
+        return ""
     att = TransactionAttachment(
         transaction_id=pending.transaction_id,
         uploaded_by_id=user.id,
         **meta,
     )
     db.add(att)
-    return f"📎 Foto dilampirkan ke transaksi #{pending.transaction_id}."
+    from app.services import wa_po_flow
+
+    tambahan = await wa_po_flow.setelah_lampiran_tx(db, pending.transaction_id, meta)
+    return f"📎 Foto dilampirkan ke transaksi #{pending.transaction_id}.{tambahan}"
 
 
 # ---------------------------------------------------------------------------

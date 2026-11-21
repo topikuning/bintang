@@ -129,6 +129,25 @@ class WhatsAppPendingCommand(TimestampMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class WaFotoTunda(TimestampMixin, Base):
+    """Foto WA tanpa keterangan yang ditahan sebentar.
+
+    WhatsApp mengirim beberapa foto (album) sebagai pesan terpisah dan
+    keterangan (mis. "BAYAR PO12") hanya menempel di salah satunya. Foto
+    tanpa keterangan disimpan di sini lalu ikut diambil oleh perintah
+    BAYAR/TERIMA berikutnya dari chat yang sama (paling lama 10 menit).
+    """
+
+    __tablename__ = "wa_foto_tunda"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    url: Mapped[str] = mapped_column(String(500), nullable=False)
+    file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+
 class BotPendingDocSession(TimestampMixin, Base):
     """Session sementara per (channel, chat_id) utk konfirmasi pembuatan
     dokumen (PO atau Invoice) via bot chat.
