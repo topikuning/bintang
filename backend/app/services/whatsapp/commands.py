@@ -102,6 +102,15 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "  • `vendor PT Sumber Besi` - hint vendor\n"
         "  • `konteks: invoice utk pekerjaan konstruksi` - konteks dipakai AI utk OCR yg lebih akurat + disimpan sbg catatan\n"
         "  Contoh: `/invoice proyek BMJ1 konteks: pembelian material besi tulangan`\n"
+        "\n*Pengajuan kas (pencatatan, rincian menyusul):*\n"
+        "```/kas\n"
+        "proyek BMJ1\n"
+        "penerima Tedi Yulianto\n"
+        "Material 11jt\n"
+        "Kasbon Pekerja 70jt\n"
+        "wa 0813xxxxxxx```\n"
+        "Keuangan/pimpinan: *SETUJUI KAS12* / *TOLAK KAS12 alasan*; "
+        "foto bukti + *BAYAR KAS12*. Pengaju: *BATAL KAS12*.\n"
         "\n*Pesan material lewat WA (PO ke pemasok):*\n"
         "```/po\n"
         "Semen Tonasa 50 kg = 200 sak\n"
@@ -460,6 +469,17 @@ async def cmd_po(db, user, chat_id, args, msg) -> str:
         return f"⚠️ Gagal parse: {e}"
 
 
+async def cmd_kas(db, user, chat_id, args, msg) -> str:
+    """Pengajuan kas (Pengajuan Dana) lewat WA. Lihat services/wa_kas.py."""
+    if not user:
+        return "Akun belum ter-link. Pakai /link <kode> dulu."
+    from app.services import wa_kas
+
+    raw = (msg or {}).get("body") or (msg or {}).get("text") or (msg or {}).get("caption") or ""
+    teks = raw if isinstance(raw, str) and raw.strip() else "/kas " + " ".join(args)
+    return await wa_kas.ajukan(db, user, teks)
+
+
 async def cmd_buktitx(db, user, chat_id, args, msg) -> str:
     """Buka jendela attach untuk transaksi yang SUDAH ada.
     Cara pakai: /buktitx <id transaksi>. Setelah itu, semua foto/file
@@ -694,6 +714,8 @@ REGISTRY: dict[str, CommandHandler] = {
     "buktitx": cmd_buktitx,
     "bukti": cmd_buktitx,
     "lampiran": cmd_buktitx,
+    "kas": cmd_kas,
+    "dana": cmd_kas,
     "po": cmd_po,
     "buatpo": cmd_po,
     "buat-po": cmd_po,

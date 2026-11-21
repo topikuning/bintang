@@ -35,13 +35,8 @@ from app.models.models import (
     CashRequestItem,
     CashRequestStatus,
     Category,
-    PaymentMethod,
     Project,
     ProjectKind,
-    Transaction,
-    TxnKind,
-    TxnStatus,
-    TxnType,
     User,
 )
 from app.schemas.cash_requests import (
@@ -319,7 +314,14 @@ async def create_cash_request(
         action=AuditAction.CREATE,
         after=snapshot(cr),
     )
+    from app.services import wa_kas, wa_po_flow
+
+    wa_po_flow.buka_kotak()
+    cr_kabar = await _fetch_with_relations(db, cr.id)
+    if cr_kabar is not None:
+        await wa_kas.kabari_penyetuju(db, cr_kabar, user)
     await db.commit()
+    await wa_po_flow.kirim_kotak()
     cr_full = await _fetch_with_relations(db, cr.id)
     assert cr_full is not None
     return await _to_out(db, cr_full)
@@ -456,56 +458,16 @@ async def approve_cash_request(
     admin: User = Depends(require_admin),
 ) -> CashRequestOut:
     """CENTRAL/SUPERADMIN approve. Otomatis bikin tx CASH_ADVANCE DRAFT."""
+    from app.services import pengajuan_dana, wa_kas, wa_po_flow
+
     cr = await _fetch_with_relations(db, cr_id)
     if not cr:
         raise HTTPException(404, "not_found")
-    if cr.status != CashRequestStatus.PENDING.value:
-        raise HTTPException(400, "only_pending_can_be_approved")
-    if not cr.items:
-        raise HTTPException(400, "no_items")
-    proj = await db.get(Project, cr.project_id)
-    if not proj or proj.deleted_at is not None:
-        raise HTTPException(400, "project_unavailable")
-
-    before = snapshot(cr)
-
-    # Auto-create tx CASH_ADVANCE DRAFT. Recipient = recipient_user_id
-    # kalau ada, else requester.
-    recipient_id = cr.recipient_user_id or cr.requester_id
-    recipient = await db.get(User, recipient_id)
-    tx = Transaction(
-        project_id=cr.project_id,
-        tx_date=cr.request_date,
-        type=TxnType.OUT,
-        kind=TxnKind.CASH_ADVANCE.value,
-        amount=cr.total_amount,
-        description=f"[Pengajuan {cr.number}] {cr.title}",
-        usage_note=cr.notes,
-        recipient_user_id=recipient_id,
-        recipient_name=recipient.name if recipient else None,
-        payment_method=PaymentMethod.TRANSFER,
-        status=TxnStatus.DRAFT,
-        created_by_id=admin.id,
-    )
-    db.add(tx)
-    await db.flush()
-
-    cr.status = CashRequestStatus.APPROVED.value
-    cr.approved_by_id = admin.id
-    cr.approved_at = datetime.now(UTC)
-    cr.disbursement_tx_id = tx.id
-
-    await db.flush()
-    await log(
-        db,
-        user_id=admin.id,
-        entity="cash_request",
-        entity_id=cr.id,
-        action=AuditAction.UPDATE,
-        before=before,
-        after=snapshot(cr),
-    )
+    wa_po_flow.buka_kotak()
+    await pengajuan_dana.setujui(db, cr, admin)
+    await wa_kas.setelah_disetujui(db, cr, admin)
     await db.commit()
+    await wa_po_flow.kirim_kotak()
     cr_full = await _fetch_with_relations(db, cr.id)
     assert cr_full is not None
     return await _to_out(db, cr_full)
@@ -518,27 +480,16 @@ async def reject_cash_request(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> CashRequestOut:
+    from app.services import pengajuan_dana, wa_kas, wa_po_flow
+
     cr = await _fetch_with_relations(db, cr_id)
     if not cr:
         raise HTTPException(404, "not_found")
-    if cr.status != CashRequestStatus.PENDING.value:
-        raise HTTPException(400, "only_pending_can_be_rejected")
-    before = snapshot(cr)
-    cr.status = CashRequestStatus.REJECTED.value
-    cr.rejected_by_id = admin.id
-    cr.rejected_at = datetime.now(UTC)
-    cr.rejection_reason = payload.reason.strip()
-    await db.flush()
-    await log(
-        db,
-        user_id=admin.id,
-        entity="cash_request",
-        entity_id=cr.id,
-        action=AuditAction.UPDATE,
-        before=before,
-        after=snapshot(cr),
-    )
+    wa_po_flow.buka_kotak()
+    await pengajuan_dana.tolak(db, cr, admin, payload.reason)
+    await wa_kas.setelah_ditolak(db, cr, admin)
     await db.commit()
+    await wa_po_flow.kirim_kotak()
     cr_full = await _fetch_with_relations(db, cr.id)
     assert cr_full is not None
     return await _to_out(db, cr_full)

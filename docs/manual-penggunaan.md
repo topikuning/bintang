@@ -738,6 +738,28 @@ AKUN
 
 Foto/gambar yang dikirim **setelah** `/keluar` atau `/masuk` (dalam jendela ~5 menit) **otomatis attach** ke transaksi terakhir.
 
+### Pengajuan kas lewat WhatsApp (/kas)
+
+Untuk pencatatan kebutuhan dana (material yang dibeli sendiri, kasbon, upah, operasional) supaya tidak ada yang terlewat dan semua pihak tahu. Rinciannya menyusul lewat pertanggungjawaban di aplikasi. Tercatat sebagai **Pengajuan Dana**.
+
+```
+/kas
+proyek BMJ1
+penerima Tedi Yulianto Prabowo
+Material 11jt
+Kasbon Pekerja 70jt
+wa 0813-8811-1354
+```
+
+| Langkah | Siapa | Yang terjadi |
+|---|---|---|
+| 1. Ajukan | Pengguna | Kirim `/kas` (alias `/dana`). Tercatat dengan kode pendek **KAS12**. Setiap baris wajib bernominal (11jt, 300rb, Rp ...). Nomor baru didaftarkan otomatis (ditanya nama). |
+| 2. Setujui | Keuangan / pimpinan | Menerima WA *Pengajuan kas KAS12 menunggu persetujuan* -> **SETUJUI KAS12** atau **TOLAK KAS12 alasan** (atau di aplikasi). Pengaju dikabari. |
+| 3. Transfer | Keuangan / pimpinan | Foto bukti transfer dengan keterangan **BAYAR KAS12** (atau verifikasi kas keluar di aplikasi). Pengaju dan penerima dana (nomor `wa` di pesan) menerima kabar + bukti. |
+| Batal | Pengaju | **BATAL KAS12** selama belum disetujui. |
+
+Kas yang menunggu persetujuan atau transfer ikut tampil di ringkasan tagihan pagi.
+
 ### Pesan material lewat WhatsApp (PO ke pemasok)
 
 Seluruh alur PO bisa berjalan di WhatsApp: dari permintaan material sampai bukti bayar terkirim ke pemasok. Setiap PO punya **kode pendek** `PO` + angka (mis. `PO12`) yang dipakai di semua perintah; nomor resmi PO tetap tercantum di setiap pesan.
@@ -764,6 +786,7 @@ wa 0812-3456-7890
 ```
 
 Catatan:
+- **Kasbon/upah dalam /po** (baris berisi kata kasbon, upah, gaji, honor, borongan, uang muka, panjar, DP, ongkos kerja/tukang): begitu PO disetujui, bagian ini langsung menjadi tagihan jatuh tempo hari itu dan bisa dibayar dengan **BAYAR PO12** tanpa surat jalan. Material dalam PO yang sama tetap menunggu **TERIMA PO12** + foto surat jalan. PO yang seluruhnya kasbon tidak memerlukan surat jalan.
 - **Peminta tidak perlu mendaftar.** Nomor WA yang belum tertaut cukup mengirim `/po`:
   - nomor itu sudah tercatat di data pengguna (kolom telepon) -> langsung ditautkan ke akun tersebut;
   - nomor baru -> sistem membuat akun dan menanyakan nama sekali, lalu permintaan langsung diproses. Keuangan/pimpinan menerima pemberitahuan *Pengguna baru lewat WhatsApp*.

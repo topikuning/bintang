@@ -119,3 +119,34 @@ async def test_pesan_biasa_dari_nomor_tak_dikenal_tidak_membuat_akun(db, monkeyp
     await kirim({"from": BARU, "fromMe": False, "body": "halo"})
     await kirim({"from": BARU, "fromMe": False, "body": "/saldo"})
     assert await _pengguna(db, BARU) is None
+
+
+@pytest.mark.parametrize(
+    "isi",
+    [
+        "/po\nproyek bmj1\nvendor Tedi Yulianto Prabowo\nMaterial 11jt\nKasbon Pekerja 70jt\nwa +62 813-8811-1354",
+        "/po\nproyek bmj1\nvendor Tedi Yulianto Prabowo\nMaterial 1 ls 11jt\nKasbon Pekerja 1 ls 70jt\nwa +62 813-8811-1354",
+    ],
+)
+@pytest.mark.asyncio
+async def test_pesan_lapangan_persis_terbaca_tanpa_ai(db, monkeypatch, isi):
+    """Pesan nyata pengguna (format singkat bernominal). AI sengaja dibuat gagal:
+    semuanya harus terbaca oleh pembaca pasti."""
+    from app.services.ai import llm
+
+    async def ai_mati(**kw):
+        raise AssertionError("AI tidak boleh dipanggil untuk pesan ini")
+
+    monkeypatch.setattr(llm, "_call_claude", ai_mati)
+    proyek, pengaju, keuangan, vendor = await _seed(db)
+    kirim = await _siapkan_webhook(db, monkeypatch)
+    keluar = await kirim({"from": BARU, "fromMe": False, "body": isi})
+    assert "Siapa nama Anda?" in keluar[0][1]
+    keluar = await kirim({"from": BARU, "fromMe": False, "body": "Wawan"})
+    teks = next(t for c, t in keluar if c == BARU)
+    assert "Terima kasih, Wawan" in teks and "Ringkasan PO" in teks, teks
+    assert "Rekonstruksi Ruas Pucuk (BMJ1)" in teks
+    assert "Tedi Yulianto Prabowo" in teks
+    assert "Material · 1 ls @ Rp 11.000.000" in teks
+    assert "Kasbon Pekerja · 1 ls @ Rp 70.000.000" in teks
+    assert "WA pemasok: 081388111354" in teks
