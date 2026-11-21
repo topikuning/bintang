@@ -23,6 +23,9 @@ async def _sync_pg_columns(conn) -> None:
     """Tambahkan kolom baru yang muncul di model setelah tabel sudah ada di prod.
     Idempoten via `ADD COLUMN IF NOT EXISTS` (Postgres 9.6+)."""
     statements = [
+        # Rekening tujuan pembayaran (migrasi v4e7a1c9d3b6)
+        "ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS rekening_tujuan VARCHAR(500)",
+        "ALTER TABLE cash_requests ADD COLUMN IF NOT EXISTS rekening_tujuan VARCHAR(500)",
         # Pengajuan kas lewat WhatsApp (migrasi t3b9c5e1a7d4)
         "ALTER TABLE cash_requests ADD COLUMN IF NOT EXISTS penerima_nama VARCHAR(200)",
         "ALTER TABLE cash_requests ADD COLUMN IF NOT EXISTS penerima_wa VARCHAR(64)",

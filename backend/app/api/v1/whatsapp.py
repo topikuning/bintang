@@ -384,6 +384,7 @@ async def webhook(
         user=user,
         teks=text,
         ambil_media=_ambil_media if is_media_msg else None,
+        chat_id=chat_id,
     )
 
     # Audit 2026-06-02: foto + caption /po atau /invoice -> OCR flow.

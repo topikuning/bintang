@@ -71,6 +71,8 @@ class CashRequestOut(BaseModel):
     request_date: date
     title: str
     notes: str | None
+    penerima_nama: str | None = None
+    rekening_tujuan: str | None = None
     total_amount: Decimal
     status: str
     approved_by_id: int | None

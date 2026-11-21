@@ -124,8 +124,8 @@ async def test_pesan_biasa_dari_nomor_tak_dikenal_tidak_membuat_akun(db, monkeyp
 @pytest.mark.parametrize(
     "isi",
     [
-        "/po\nproyek bmj1\nvendor Tedi Yulianto Prabowo\nMaterial 11jt\nKasbon Pekerja 70jt\nwa +62 813-8811-1354",
-        "/po\nproyek bmj1\nvendor Tedi Yulianto Prabowo\nMaterial 1 ls 11jt\nKasbon Pekerja 1 ls 70jt\nwa +62 813-8811-1354",
+        "/po\nproyek bmj1\nvendor Tedi Yulianto Prabowo\nMaterial 11jt\nKasbon Pekerja 70jt\nwa +62 813-8811-1354\nNama Bank : SulutGo\nAtas Nama : TEDI YULIANTO PRABOWO\nRekening : 03002110011516",
+        "/po\nproyek bmj1\nvendor Tedi Yulianto Prabowo\nMaterial 1 ls 11jt\nKasbon Pekerja 1 ls 70jt\nwa +62 813-8811-1354\nNama Bank : SulutGo\nAtas Nama : TEDI YULIANTO PRABOWO\nRekening : 03002110011516",
     ],
 )
 @pytest.mark.asyncio
@@ -150,3 +150,4 @@ async def test_pesan_lapangan_persis_terbaca_tanpa_ai(db, monkeypatch, isi):
     assert "Material · 1 ls @ Rp 11.000.000" in teks
     assert "Kasbon Pekerja · 1 ls @ Rp 70.000.000" in teks
     assert "WA pemasok: 081388111354" in teks
+    assert "🏦 Rekening: SulutGo 03002110011516 a.n. TEDI YULIANTO PRABOWO" in teks

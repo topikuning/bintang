@@ -29,6 +29,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+from app.services.field_crypto import EncryptedString
 
 from ._enums import *  # noqa: F401, F403
 
@@ -162,6 +163,8 @@ class CashRequest(TimestampMixin, Base):
     # penerima_wa dikabari lewat WA saat dana ditransfer.
     penerima_nama: Mapped[str | None] = mapped_column(String(200), nullable=True)
     penerima_wa: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Rekening tujuan transfer (bank, nomor, atas nama), terenkripsi.
+    rekening_tujuan: Mapped[str | None] = mapped_column(EncryptedString(500), nullable=True)
 
     # Sum(items.amount). Disimpan utk performance & filter range.
     total_amount: Mapped[Decimal] = mapped_column(

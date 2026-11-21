@@ -55,7 +55,9 @@ async def _seed(db):
     )
     db.add(u)
     await db.flush()
-    vendor = VendorClient(name="PT Sumber Besi")
+    vendor = VendorClient(
+        name="PT Sumber Besi", bank_account="Mandiri 1230004567 a.n. PT Sumber Besi"
+    )
     db.add(vendor)
     await db.commit()
     return co, p, u, vendor
@@ -185,7 +187,7 @@ async def test_parse_project_resolve_by_name(db, monkeypatch):
         user=u,
         channel="telegram",
         chat_id="114",
-        text="Semen 10 zak proyek pucuk",
+        text="Semen 10 zak proyek pucuk\nbank BCA\nrekening 1234567",
     )
     assert "Rekonstruksi Ruas Pucuk" in reply
 
@@ -253,7 +255,7 @@ async def test_vendor_fallback_to_string(db, monkeypatch):
         user=u,
         channel="telegram",
         chat_id="116",
-        text="...",
+        text="...\nbank BCA\nrekening 1234567",
     )
     session = await load_active_session(db, channel="telegram", chat_id="116")
     po = await confirm_create(db, user=u, session=session)

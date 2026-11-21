@@ -122,6 +122,12 @@ export function POAlurWA({ po }: { po: PurchaseOrder }) {
             {po.tempo_days == null ? "-" : po.tempo_days === 0 ? "Tunai" : `${po.tempo_days} hari`}
           </dd>
         </div>
+        {po.rekening_tujuan && (
+          <div className="col-span-2">
+            <dt className="text-[11px] text-ink-500">Rekening tujuan</dt>
+            <dd className="font-mono">{po.rekening_tujuan}</dd>
+          </div>
+        )}
         {po.diterima_at && (
           <div>
             <dt className="text-[11px] text-ink-500">Barang diterima</dt>

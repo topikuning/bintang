@@ -340,6 +340,12 @@ async def _pesan_ke_pemasok(db: AsyncSession, po: PurchaseOrder) -> str:
     ]
     if Decimal(po.total or 0) > 0:
         baris.append(f"Total: {rp(po.total)}")
+    if po.rekening_tujuan:
+        baris += [
+            "",
+            f"🏦 Pembayaran akan kami transfer ke: {po.rekening_tujuan}",
+            "Bila rekening berbeda, tulis di balasan: bank ..., rekening ..., atas nama ...",
+        ]
     tautan = tautan_penawaran(po)
     if tautan:
         baris += [
@@ -397,6 +403,8 @@ async def _simpan_nomor_pemasok(db: AsyncSession, po: PurchaseOrder) -> None:
         po.vendor_client_id = vendor.id
     if not (vendor.phone or "").strip():
         vendor.phone = nomor
+    if po.rekening_tujuan and not (vendor.bank_account or "").strip():
+        vendor.bank_account = po.rekening_tujuan
 
 
 async def kirim_ke_pemasok(db: AsyncSession, po: PurchaseOrder, aktor: User) -> str:
@@ -458,6 +466,7 @@ class BalasanPemasok:
     tempo: int | None = None
     po_id: int | None = None
     alasan: str = ""
+    rekening: str | None = None  # koreksi rekening dari pemasok
 
 
 def _angka(teks: str, satuan: str | None) -> Decimal | None:
@@ -551,7 +560,11 @@ async def tangani_balasan_pemasok(db: AsyncSession, chat_id: str, teks: str) -> 
     if not terbuka:
         return None
 
+    from app.services.po_teks import ambil_rekening
+
+    rek, teks = ambil_rekening(teks)
     b = parse_balasan_pemasok(teks)
+    b.rekening = rek.teks() if rek.lengkap else None
     if b.po_id is not None:
         po = next((p for p in terbuka if p.id == b.po_id), None)
         if po is None:
@@ -583,6 +596,8 @@ async def terapkan_balasan(db: AsyncSession, po: PurchaseOrder, b: BalasanPemaso
         return HasilBalasan(False, f"{kode(po)} sudah tidak menunggu jawaban pemasok.")
     pengaju = await _pengaju(db, po)
     nama = await _nama_pemasok(db, po)
+    if b.rekening and b.aksi != "tolak":
+        po.rekening_tujuan = b.rekening
 
     if b.aksi == "tolak":
         po.wa_tahap = DITOLAK_PEMASOK
@@ -706,6 +721,7 @@ async def _teks_minta_persetujuan(db: AsyncSession, po: PurchaseOrder, pengaju: 
             *_daftar_barang(po),
             f"Total: {rp(po.total)}",
             *([f"Pembayaran: {tempo}"] if tempo else []),
+            *([f"🏦 Transfer ke: {po.rekening_tujuan}"] if po.rekening_tujuan else []),
             "",
             f"Balas *SETUJUI {kode(po)}* atau *TOLAK {kode(po)} alasan*. "
             "Bisa juga disetujui di aplikasi (Purchase Order).",
@@ -1032,11 +1048,12 @@ async def _tagih_kasbon(db: AsyncSession, po: PurchaseOrder, penyetuju: User) ->
         _antre(
             u.whatsapp_chat_id,
             f"🔔 Kasbon {kode(po)} ke {inv.party_name}: *{rp(inv.total)}* siap dibayar hari ini.\n"
-            f"Kirim foto bukti transfer dengan keterangan *BAYAR {kode(po)}*.",
+            + (f"🏦 Transfer ke: {po.rekening_tujuan}\n" if po.rekening_tujuan else "")
+            + f"Kirim foto bukti transfer dengan keterangan *BAYAR {kode(po)}*.",
         )
 
 
-async def terima(db: AsyncSession, user: User, po: PurchaseOrder, berkas: dict) -> str:
+async def terima(db: AsyncSession, user: User, po: PurchaseOrder, berkas: dict | list[dict]) -> str:
     """Foto surat jalan masuk. `berkas` = hasil save_bytes/save_upload.
     Hanya baris material yang ditagihkan di sini; kasbon sudah ditagih saat disetujui."""
     if user.role == UserRole.EXECUTIVE or not await _boleh_akses(db, user, po):
@@ -1058,7 +1075,8 @@ async def terima(db: AsyncSession, user: User, po: PurchaseOrder, berkas: dict) 
         catatan=f"Tagihan dari {po.number} ({kode(po)}); surat jalan via WhatsApp.",
         dengan_pajak=True,
     )
-    db.add(InvoiceAttachment(invoice_id=inv.id, uploaded_by_id=user.id, **berkas))
+    for b in berkas if isinstance(berkas, list) else [berkas]:
+        db.add(InvoiceAttachment(invoice_id=inv.id, uploaded_by_id=user.id, **b))
     po.status = POStatus.FULFILLED
     po.diterima_at = tgl_terima
     po.wa_tahap = DITERIMA
@@ -1069,7 +1087,9 @@ async def terima(db: AsyncSession, user: User, po: PurchaseOrder, berkas: dict) 
             _antre(
                 u.whatsapp_chat_id,
                 f"🔔 Tagihan baru {kode(po)} ke {nama}: {rp(inv.total)}, jatuh tempo "
-                f"*{tgl(jatuh_tempo)}*.\nKirim foto bukti transfer dengan keterangan *BAYAR {kode(po)}*.",
+                f"*{tgl(jatuh_tempo)}*.\n"
+                + (f"🏦 Transfer ke: {po.rekening_tujuan}\n" if po.rekening_tujuan else "")
+                + f"Kirim foto bukti transfer dengan keterangan *BAYAR {kode(po)}*.",
             )
     return (
         f"📥 Surat jalan {kode(po)} dicatat. Tagihan {rp(inv.total)} ke {nama} "
@@ -1198,11 +1218,20 @@ def tautan_penawaran(po: PurchaseOrder) -> str | None:
     return f"{dasar}/penawaran/{token_penawaran(po.id)}" if dasar else None
 
 
-async def bayar(db: AsyncSession, aktor: User, po: PurchaseOrder, berkas: dict) -> str:
-    """Catat pembayaran semua tagihan PO yang masih terbuka + bukti, kirim bukti
+async def bayar(
+    db: AsyncSession,
+    aktor: User,
+    po: PurchaseOrder,
+    berkas: dict | list[dict],
+    *,
+    chat_id: str | None = None,
+) -> str:
+    """Catat pembayaran semua tagihan PO yang masih terbuka + bukti (boleh
+    beberapa foto, mis. transfer dipecah karena limit bank), kirim semua bukti
     ke pemasok. Kasbon bisa dibayar sejak PO disetujui (sebelum barang datang)."""
     from app.services.invoice_payment import lunasi_invoice
 
+    daftar = berkas if isinstance(berkas, list) else [berkas]
     if aktor.role not in PENYETUJU:
         return "Hanya keuangan/pimpinan yang bisa mencatat pembayaran."
     if po.wa_tahap not in (FINAL, DITERIMA):
@@ -1217,6 +1246,7 @@ async def bayar(db: AsyncSession, aktor: User, po: PurchaseOrder, berkas: dict) 
         return f"{kode(po)} belum punya tagihan: tunggu barang datang (TERIMA {kode(po)})."
     total = Decimal("0")
     ada_kasbon = False
+    tx_terakhir = None
     for inv, _sisa in terbuka:
         tx, dibayar = await lunasi_invoice(
             db,
@@ -1230,9 +1260,11 @@ async def bayar(db: AsyncSession, aktor: User, po: PurchaseOrder, berkas: dict) 
         if tx is None:
             continue
         tx.purchase_order_id = po.id
-        db.add(TransactionAttachment(transaction_id=tx.id, uploaded_by_id=aktor.id, **berkas))
+        for b in daftar:
+            db.add(TransactionAttachment(transaction_id=tx.id, uploaded_by_id=aktor.id, **b))
         total += dibayar
         ada_kasbon = ada_kasbon or inv.number.startswith("KSB/")
+        tx_terakhir = tx
     await db.flush()
     lampiran = (
         (
@@ -1249,7 +1281,10 @@ async def bayar(db: AsyncSession, aktor: User, po: PurchaseOrder, berkas: dict) 
     # LUNAS hanya bila barang sudah diterima (semua tagihan sudah dibuat).
     if po.wa_tahap == DITERIMA:
         po.wa_tahap = LUNAS
-    await _catat(db, aktor, po, f"dibayar {rp(total)}")
+    await _catat(db, aktor, po, f"dibayar {rp(total)} ({len(daftar)} bukti)")
+    if tx_terakhir is not None:
+        # Sisa album yang menyusul tanpa keterangan ikut dilampirkan.
+        await buka_jendela_bukti(db, chat_id, tx_terakhir.id)
 
     nama = await _nama_pemasok(db, po)
     perusahaan = await _nama_perusahaan(db, po)
@@ -1264,22 +1299,31 @@ async def bayar(db: AsyncSession, aktor: User, po: PurchaseOrder, berkas: dict) 
     cadangan = (
         f"\n\nBukti transfer: {tautan}" if tautan else "\n\nBukti transfer menyusul dari kami."
     )
-    _antre(po.supplier_wa, teks_pemasok, berkas=berkas, cadangan=cadangan)
+    for i, b in enumerate(daftar):
+        if i == 0:
+            _antre(po.supplier_wa, teks_pemasok, berkas=b, cadangan=cadangan)
+        else:
+            _antre(po.supplier_wa, f"Bukti transfer {i + 1}/{len(daftar)} {kode(po)}.", berkas=b)
     pengaju = await _pengaju(db, po)
     if pengaju is not None and pengaju.id != aktor.id:
         _antre(
             pengaju.whatsapp_chat_id,
             f"💸 {kode(po)} sudah dibayar {rp(total)} oleh {aktor.name}. Bukti terkirim ke pemasok.",
         )
-    lanjut = (
-        f"\nMaterial masih menunggu barang datang (TERIMA {kode(po)})."
-        if po.wa_tahap == FINAL
-        else ""
-    )
-    return (
-        f"💸 Pembayaran {kode(po)} {rp(total)} dicatat sebagai kas keluar; "
-        f"bukti dikirim ke {nama}.{lanjut}"
-    )
+    bukti = f"{len(daftar)} bukti" if len(daftar) > 1 else "bukti"
+    baris = [
+        f"💸 Pembayaran {kode(po)} *{rp(total)}* dicatat sebagai kas keluar; {bukti} dikirim ke {nama}."
+    ]
+    if po.wa_tahap == FINAL:
+        sisa_material = sum(
+            (Decimal(it.subtotal or 0) for it in _barang_material(po)), Decimal("0")
+        )
+        baris.append(
+            f"Yang dicatat baru kasbon/upah. Material {rp(sisa_material)} belum ditagih karena "
+            f"barang belum diterima (TERIMA {kode(po)}). Bila material sudah ikut ditransfer, "
+            f"kirim lagi *BAYAR {kode(po)}* dengan bukti yang sama setelah TERIMA."
+        )
+    return "\n".join(baris)
 
 
 async def setelah_invoice_lunas(
@@ -1380,6 +1424,10 @@ async def ringkasan_tagihan(db: AsyncSession, tanggal: date | None = None) -> st
             baris.append(
                 f"• {ref} · {inv.party_name or '-'} · {rp(sisa)} · {proyek.get(inv.project_id, '-')}{tambahan}"
             )
+            if inv.purchase_order_id:
+                po_inv = await db.get(PurchaseOrder, inv.purchase_order_id)
+                if po_inv is not None and po_inv.rekening_tujuan:
+                    baris.append(f"   🏦 {po_inv.rekening_tujuan}")
     contoh = next(
         (
             f"PO{inv.purchase_order_id}"
@@ -1475,6 +1523,134 @@ _RE_TAGIHAN = re.compile(r"^\s*/?tagihan\s*$", re.I)
 AmbilMedia = Callable[[], Awaitable[tuple[bytes, str] | None]]
 
 
+_MENIT_TUNDA = 10
+_MENIT_JENDELA = 3
+
+
+async def tahan_foto(db: AsyncSession, chat_id: str, berkas: dict) -> None:
+    """Simpan foto tanpa keterangan; diambil BAYAR/TERIMA berikutnya (album WA)."""
+    from app.models.models import WaFotoTunda
+
+    db.add(
+        WaFotoTunda(
+            chat_id=chat_id,
+            url=berkas["url"],
+            file_name=berkas.get("file_name"),
+            file_size=berkas.get("file_size"),
+            mime_type=berkas.get("mime_type"),
+        )
+    )
+    await db.flush()
+
+
+async def ambil_foto_tunda(db: AsyncSession, chat_id: str | None) -> list[dict]:
+    """Foto tertahan dari chat ini (10 menit terakhir); dihapus setelah diambil."""
+    from app.models.models import WaFotoTunda
+
+    if not chat_id:
+        return []
+    batas = datetime.now(UTC) - timedelta(minutes=_MENIT_TUNDA)
+    res = await db.execute(
+        select(WaFotoTunda).where(WaFotoTunda.chat_id == chat_id).order_by(WaFotoTunda.id)
+    )
+    hasil = []
+    for f in res.scalars().all():
+        dibuat = f.created_at if f.created_at.tzinfo else f.created_at.replace(tzinfo=UTC)
+        if dibuat >= batas:
+            hasil.append(
+                {
+                    "url": f.url,
+                    "file_name": f.file_name or "bukti.jpg",
+                    "file_size": f.file_size or 0,
+                    "mime_type": f.mime_type or "image/jpeg",
+                }
+            )
+        await db.delete(f)
+    await db.flush()
+    return hasil
+
+
+async def kumpulkan_foto(
+    db: AsyncSession,
+    chat_id: str | None,
+    ambil_media: AmbilMedia | None,
+    subdir: str,
+    nama: str,
+) -> list[dict] | str:
+    """Foto tertahan (album) + foto di pesan ini. Return daftar berkas atau pesan galat."""
+    berkas = await ambil_foto_tunda(db, chat_id)
+    if ambil_media is not None:
+        ini = await _simpan_foto(ambil_media, subdir, nama)
+        if isinstance(ini, str):
+            return ini
+        berkas.append(ini)
+    return berkas
+
+
+async def buka_jendela_bukti(db: AsyncSession, chat_id: str | None, tx_id: int) -> None:
+    """Foto yang menyusul tanpa keterangan (sisa album) dalam 3 menit ikut
+    dilampirkan ke transaksi ini (lihat whatsapp.commands.handle_media)."""
+    from app.models.models import WhatsAppPendingCommand
+
+    if not chat_id:
+        return
+    db.add(
+        WhatsAppPendingCommand(
+            chat_id=chat_id,
+            transaction_id=tx_id,
+            expires_at=datetime.now(UTC) + timedelta(minutes=_MENIT_JENDELA),
+        )
+    )
+    await db.flush()
+
+
+async def _bukti_hari_ini(db: AsyncSession, po: PurchaseOrder) -> list[dict]:
+    """Bukti transfer pembayaran PO ini yang dicatat hari ini, untuk BAYAR
+    tanpa foto (mis. material ikut ditransfer bersama kasbon)."""
+    res = await db.execute(
+        select(TransactionAttachment)
+        .join(Transaction, Transaction.id == TransactionAttachment.transaction_id)
+        .where(
+            Transaction.purchase_order_id == po.id,
+            Transaction.tx_date == hari_ini(),
+            Transaction.deleted_at.is_(None),
+        )
+        .order_by(TransactionAttachment.transaction_id.desc(), TransactionAttachment.id)
+    )
+    semua = res.scalars().all()
+    if not semua:
+        return []
+    tx_id = semua[0].transaction_id
+    return [
+        {"url": a.url, "file_name": a.file_name, "file_size": a.file_size, "mime_type": a.mime_type}
+        for a in semua
+        if a.transaction_id == tx_id
+    ]
+
+
+async def setelah_lampiran_tx(db: AsyncSession, tx_id: int, berkas: dict) -> str:
+    """Lampiran tambahan untuk kas keluar pembayaran PO / pencairan kas:
+    teruskan ke pemasok / penerima dana. Return keterangan tambahan."""
+    from app.models.models import CashRequest
+
+    tx = await db.get(Transaction, tx_id)
+    if tx is None:
+        return ""
+    if tx.purchase_order_id:
+        po = await db.get(PurchaseOrder, tx.purchase_order_id)
+        if po is not None and po.supplier_wa:
+            _antre(po.supplier_wa, f"Bukti transfer tambahan {kode(po)}.", berkas=berkas)
+            return " Bukti tambahan dikirim ke pemasok."
+        return ""
+    cr = (
+        await db.execute(select(CashRequest).where(CashRequest.disbursement_tx_id == tx_id))
+    ).scalar_one_or_none()
+    if cr is not None and cr.penerima_wa:
+        _antre(cr.penerima_wa, f"Bukti transfer tambahan KAS{cr.id}.", berkas=berkas)
+        return " Bukti tambahan dikirim ke penerima dana."
+    return ""
+
+
 async def _simpan_foto(ambil_media: AmbilMedia | None, subdir: str, nama: str) -> dict | str:
     """Unduh & simpan foto dari pesan WA. Return meta berkas, atau pesan galat (str)."""
     from app.services.storage.local import save_bytes
@@ -1497,6 +1673,7 @@ async def tangani_perintah(
     user: User | None,
     teks: str,
     ambil_media: AmbilMedia | None = None,
+    chat_id: str | None = None,
 ) -> str | None:
     """Perintah alur PO dari pengguna tertaut. Return None kalau bukan perintah alur PO."""
     if user is None:
@@ -1509,7 +1686,9 @@ async def tangani_perintah(
 
     from app.services import wa_kas
 
-    hasil_kas = await wa_kas.tangani_perintah(db, user=user, teks=teks, ambil_media=ambil_media)
+    hasil_kas = await wa_kas.tangani_perintah(
+        db, user=user, teks=teks, ambil_media=ambil_media, chat_id=chat_id
+    )
     if hasil_kas is not None:
         return hasil_kas
 
@@ -1539,19 +1718,17 @@ async def tangani_perintah(
     if aksi == "batal":
         return await batal(db, user, po)
     if aksi == "terima":
-        if ambil_media is None:
-            return f"Kirim *foto surat jalan* dengan keterangan *TERIMA {kode(po)}*."
         if po.wa_tahap != FINAL:
             return f"{kode(po)} belum bisa diterima: {LABEL_TAHAP.get(po.wa_tahap or '', 'bukan alur WA')}."
-        berkas = await _simpan_foto(
-            ambil_media, f"invoices/po-{po.id}", f"surat-jalan-{kode(po)}.jpg"
+        berkas = await kumpulkan_foto(
+            db, chat_id, ambil_media, f"invoices/po-{po.id}", f"surat-jalan-{kode(po)}.jpg"
         )
         if isinstance(berkas, str):
             return berkas
+        if not berkas:
+            return f"Kirim *foto surat jalan* dengan keterangan *TERIMA {kode(po)}*."
         return await terima(db, user, po, berkas)
     if aksi == "bayar":
-        if ambil_media is None:
-            return f"Kirim *foto bukti transfer* dengan keterangan *BAYAR {kode(po)}*."
         if user.role not in PENYETUJU:
             return "Hanya keuangan/pimpinan yang bisa mencatat pembayaran."
         if po.wa_tahap not in (FINAL, DITERIMA):
@@ -1559,10 +1736,14 @@ async def tangani_perintah(
         if not await tagihan_terbuka(db, po):
             if po.wa_tahap == FINAL:
                 return f"{kode(po)} belum punya tagihan: tunggu barang datang (TERIMA {kode(po)})."
-        berkas = await _simpan_foto(
-            ambil_media, f"transactions/po-{po.id}", f"bukti-{kode(po)}.jpg"
+        berkas = await kumpulkan_foto(
+            db, chat_id, ambil_media, f"transactions/po-{po.id}", f"bukti-{kode(po)}.jpg"
         )
         if isinstance(berkas, str):
             return berkas
-        return await bayar(db, user, po, berkas)
+        if not berkas:
+            berkas = await _bukti_hari_ini(db, po)
+        if not berkas:
+            return f"Kirim *foto bukti transfer* dengan keterangan *BAYAR {kode(po)}*."
+        return await bayar(db, user, po, berkas, chat_id=chat_id)
     return None

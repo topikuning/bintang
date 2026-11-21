@@ -748,6 +748,9 @@ proyek BMJ1
 penerima Tedi Yulianto Prabowo
 Material 11jt
 Kasbon Pekerja 70jt
+bank BCA
+rekening 1234567890
+atas nama Tedi Yulianto Prabowo
 wa 0813-8811-1354
 ```
 
@@ -787,6 +790,9 @@ wa 0812-3456-7890
 
 Catatan:
 - **Kasbon/upah dalam /po** (baris berisi kata kasbon, upah, gaji, honor, borongan, uang muka, panjar, DP, ongkos kerja/tukang): begitu PO disetujui, bagian ini langsung menjadi tagihan jatuh tempo hari itu dan bisa dibayar dengan **BAYAR PO12** tanpa surat jalan. Material dalam PO yang sama tetap menunggu **TERIMA PO12** + foto surat jalan. PO yang seluruhnya kasbon tidak memerlukan surat jalan.
+- **Rekening tujuan wajib** di `/po` dan `/kas`, mis. `bank BCA` / `rekening 1234567890` / `atas nama Tedi` (format *Nama Bank : … / Atas Nama : … / Rekening : …* juga dibaca). Bila tidak ditulis, dipakai rekening di data pemasok; tanpa keduanya permintaan ditolak. Rekening tampil di pesan persetujuan, pemberitahuan siap bayar, ringkasan pagi, dan aplikasi. Pemasok bisa mengoreksinya dengan menulis baris bank/rekening/atas nama di balasannya; rekening pertama otomatis tersimpan di data pemasok.
+- **Bukti lebih dari satu foto** (mis. transfer dipecah karena limit bank): kirim semua foto sekaligus; keterangan **BAYAR PO12** / **BAYAR KAS3** / **TERIMA PO12** cukup di salah satu foto. Semua foto tersimpan dan diteruskan ke pemasok/penerima. Foto yang menyusul dalam 3 menit setelah BAYAR juga ikut dilampirkan.
+- **BAYAR tanpa foto** memakai bukti transfer PO itu yang sudah dikirim hari ini (mis. kasbon dan material ditransfer sekaligus; setelah TERIMA, cukup kirim **BAYAR PO12**).
 - **Peminta tidak perlu mendaftar.** Nomor WA yang belum tertaut cukup mengirim `/po`:
   - nomor itu sudah tercatat di data pengguna (kolom telepon) -> langsung ditautkan ke akun tersebut;
   - nomor baru -> sistem membuat akun dan menanyakan nama sekali, lalu permintaan langsung diproses. Keuangan/pimpinan menerima pemberitahuan *Pengguna baru lewat WhatsApp*.

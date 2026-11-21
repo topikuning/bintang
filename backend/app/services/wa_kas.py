@@ -80,6 +80,7 @@ async def _ringkas(db: AsyncSession, cr: CashRequest) -> list[str]:
         f"Pengaju: {pengaju.name if pengaju else '-'}"
         + (f" - proyek {proyek.name} ({proyek.code})" if proyek else ""),
         *([f"Penerima: {cr.penerima_nama}"] if cr.penerima_nama else []),
+        *([f"🏦 Transfer ke: {cr.rekening_tujuan}"] if cr.rekening_tujuan else []),
         "",
         *_rincian(cr),
         f"*Total: {wa_po_flow.rp(cr.total_amount)}*",
@@ -93,7 +94,8 @@ async def _ringkas(db: AsyncSession, cr: CashRequest) -> list[str]:
 
 _CONTOH = (
     "Contoh:\n/kas\nproyek BMJ1\npenerima Tedi Yulianto\nMaterial 11jt\n"
-    "Kasbon Pekerja 70jt\nwa 0813-xxxx-xxxx (nomor penerima, opsional)"
+    "Kasbon Pekerja 70jt\nbank BCA\nrekening 1234567890\natas nama Tedi Yulianto\n"
+    "wa 0813-xxxx-xxxx (nomor penerima, opsional)"
 )
 
 
@@ -104,6 +106,7 @@ async def ajukan(db: AsyncSession, user: User, teks: str) -> str:
     if user.role == UserRole.EXECUTIVE:
         return "Akun Anda hanya bisa melihat."
     isi = teks.split("\n", 1)[1] if "\n" in teks else re.sub(r"^\s*/\w+", "", teks)
+    rekening, isi = po_teks.ambil_rekening(isi)
     penerima_wa, isi = ambil_nomor_wa(isi)
     h = po_teks.baca(isi)
     if h.sisa:
@@ -116,6 +119,18 @@ async def ajukan(db: AsyncSession, user: User, teks: str) -> str:
     proyek = await resolve_project(db, user, h.proyek)
     if proyek is None:
         return f"Proyek '{h.proyek}' tidak ditemukan atau Anda tidak punya akses."
+    # Rekening tujuan wajib: dari pesan, atau dari data pemasok bernama sama.
+    if rekening.lengkap:
+        rekening_tujuan = rekening.teks(h.vendor)
+    else:
+        from app.models.models import VendorClient
+        from app.services.bot_doc_session import resolve_vendor
+
+        vendor_id, _ = await resolve_vendor(db, h.vendor)
+        vendor = await db.get(VendorClient, vendor_id) if vendor_id else None
+        rekening_tujuan = (vendor.bank_account or "").strip() if vendor is not None else ""
+        if not rekening_tujuan:
+            return "Cantumkan rekening tujuan transfer, mis.:\n" + po_teks.CONTOH_REKENING
 
     hari = wa_po_flow.hari_ini()
     judul = f"Kas {h.vendor}" if h.vendor else f"Kas {h.barang[0]['description']}"
@@ -128,6 +143,7 @@ async def ajukan(db: AsyncSession, user: User, teks: str) -> str:
         notes=h.catatan,
         penerima_nama=(h.vendor or None),
         penerima_wa=penerima_wa,
+        rekening_tujuan=rekening_tujuan,
         total_amount=sum(
             (Decimal(str(b["quantity"])) * Decimal(str(b["unit_price"])) for b in h.barang),
             Decimal("0"),
@@ -216,8 +232,9 @@ async def setelah_disetujui(db: AsyncSession, cr: CashRequest, admin: User) -> N
     for u in await wa_po_flow._penyetuju(db, kecuali_id=admin.id):
         wa_po_flow._antre(
             u.whatsapp_chat_id,
-            f"✅ {kode(cr)} ({wa_po_flow.rp(cr.total_amount)}) disetujui oleh {admin.name}. "
-            f"Setelah transfer, kirim foto bukti dengan keterangan *BAYAR {kode(cr)}*.",
+            f"✅ {kode(cr)} ({wa_po_flow.rp(cr.total_amount)}) disetujui oleh {admin.name}.\n"
+            + (f"🏦 Transfer ke: {cr.rekening_tujuan}\n" if cr.rekening_tujuan else "")
+            + f"Setelah transfer, kirim foto bukti dengan keterangan *BAYAR {kode(cr)}*.",
         )
 
 
@@ -257,8 +274,9 @@ async def _batal(db: AsyncSession, user: User, cr: CashRequest) -> str:
 
 
 async def _kabari_dicairkan(
-    db: AsyncSession, cr: CashRequest, aktor: User, berkas: dict | None
+    db: AsyncSession, cr: CashRequest, aktor: User, berkas: list[dict] | dict | None
 ) -> None:
+    daftar = berkas if isinstance(berkas, list) else ([berkas] if berkas else [])
     jumlah = wa_po_flow.rp(cr.total_amount)
     pengaju = await db.get(User, cr.requester_id)
     if pengaju is not None and pengaju.id != aktor.id:
@@ -276,10 +294,25 @@ async def _kabari_dicairkan(
             + (f" untuk proyek {proyek.name}" if proyek else "")
             + f" ({kode(cr)}, {wa_po_flow.tgl(wa_po_flow.hari_ini())}). Terima kasih."
         )
-        wa_po_flow._antre(cr.penerima_wa, teks, berkas=berkas)
+        if not daftar:
+            wa_po_flow._antre(cr.penerima_wa, teks)
+        for i, b in enumerate(daftar):
+            wa_po_flow._antre(
+                cr.penerima_wa,
+                teks if i == 0 else f"Bukti transfer {i + 1}/{len(daftar)} ({kode(cr)}).",
+                berkas=b,
+            )
 
 
-async def bayar(db: AsyncSession, aktor: User, cr: CashRequest, berkas: dict) -> str:
+async def bayar(
+    db: AsyncSession,
+    aktor: User,
+    cr: CashRequest,
+    berkas: dict | list[dict],
+    *,
+    chat_id: str | None = None,
+) -> str:
+    daftar = berkas if isinstance(berkas, list) else [berkas]
     if aktor.role not in wa_po_flow.PENYETUJU:
         return "Hanya keuangan/pimpinan yang bisa mencatat pembayaran."
     if cr.status != CashRequestStatus.APPROVED.value or not cr.disbursement_tx_id:
@@ -293,7 +326,8 @@ async def bayar(db: AsyncSession, aktor: User, cr: CashRequest, berkas: dict) ->
     tx.status = TxnStatus.VERIFIED
     tx.verified_by_id = aktor.id
     tx.verified_at = datetime.now(UTC)
-    db.add(TransactionAttachment(transaction_id=tx.id, uploaded_by_id=aktor.id, **berkas))
+    for b in daftar:
+        db.add(TransactionAttachment(transaction_id=tx.id, uploaded_by_id=aktor.id, **b))
     await log(
         db,
         user_id=aktor.id,
@@ -304,7 +338,8 @@ async def bayar(db: AsyncSession, aktor: User, cr: CashRequest, berkas: dict) ->
         after=snapshot(tx),
         note=f"[WA] pencairan {kode(cr)}",
     )
-    await _kabari_dicairkan(db, cr, aktor, berkas)
+    await _kabari_dicairkan(db, cr, aktor, daftar)
+    await wa_po_flow.buka_jendela_bukti(db, chat_id, tx.id)
     return (
         f"💸 {kode(cr)} {wa_po_flow.rp(cr.total_amount)} dicatat sebagai kas keluar"
         + (
@@ -356,7 +391,7 @@ async def setelah_tx_diverifikasi(db: AsyncSession, tx: Transaction, aktor: User
 
 
 async def tangani_perintah(
-    db: AsyncSession, *, user: User, teks: str, ambil_media=None
+    db: AsyncSession, *, user: User, teks: str, ambil_media=None, chat_id: str | None = None
 ) -> str | None:
     from app.services import pengajuan_dana
 
@@ -376,8 +411,9 @@ async def tangani_perintah(
             await pengajuan_dana.setujui(db, cr, user)
             await setelah_disetujui(db, cr, user)
             return (
-                f"✅ {kode(cr)} disetujui ({wa_po_flow.rp(cr.total_amount)}). Setelah transfer, "
-                f"kirim foto bukti dengan keterangan *BAYAR {kode(cr)}*."
+                f"✅ {kode(cr)} disetujui ({wa_po_flow.rp(cr.total_amount)}).\n"
+                + (f"🏦 Transfer ke: {cr.rekening_tujuan}\n" if cr.rekening_tujuan else "")
+                + f"Setelah transfer, kirim foto bukti dengan keterangan *BAYAR {kode(cr)}*."
             )
         if aksi == "tolak":
             await pengajuan_dana.tolak(db, cr, user, sisa or "-")
@@ -386,16 +422,16 @@ async def tangani_perintah(
     except HTTPException:
         return f"{kode(cr)} tidak menunggu persetujuan (status {cr.status})."
     # bayar
-    if ambil_media is None:
-        return f"Kirim *foto bukti transfer* dengan keterangan *BAYAR {kode(cr)}*."
     if cr.status != CashRequestStatus.APPROVED.value:
         return f"{kode(cr)} belum disetujui (status {cr.status})."
-    berkas = await wa_po_flow._simpan_foto(
-        ambil_media, f"transactions/kas-{cr.id}", f"bukti-{kode(cr)}.jpg"
+    berkas = await wa_po_flow.kumpulkan_foto(
+        db, chat_id, ambil_media, f"transactions/kas-{cr.id}", f"bukti-{kode(cr)}.jpg"
     )
     if isinstance(berkas, str):
         return berkas
-    return await bayar(db, user, cr, berkas)
+    if not berkas:
+        return f"Kirim *foto bukti transfer* dengan keterangan *BAYAR {kode(cr)}*."
+    return await bayar(db, user, cr, berkas, chat_id=chat_id)
 
 
 # ---------------------------------------------------------------------------
@@ -436,4 +472,6 @@ async def ringkasan(db: AsyncSession) -> list[str]:
             baris.append(
                 f"• {kode(c)} · {c.penerima_nama or c.title} · {wa_po_flow.rp(c.total_amount)}"
             )
+            if c.rekening_tujuan:
+                baris.append(f"   🏦 {c.rekening_tujuan}")
     return baris

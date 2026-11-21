@@ -343,6 +343,8 @@ class PurchaseOrder(TimestampMixin, Base):
     # yang dibuat dari aplikasi seperti biasa.
     # Nomor WA pemasok, format WAHA "62812xxxx@c.us".
     supplier_wa: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # Rekening tujuan pembayaran (bank, nomor, atas nama), dari pesan /po atau data pemasok.
+    rekening_tujuan: Mapped[str | None] = mapped_column(EncryptedString(500), nullable=True)
     # Tempo pembayaran yang disepakati pemasok, dalam hari sejak barang diterima.
     tempo_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Tahap alur WA: MENUNGGU_PEMASOK, MENUNGGU_PENGAJU, MENUNGGU_PERSETUJUAN,

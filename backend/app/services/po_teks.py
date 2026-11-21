@@ -147,3 +147,56 @@ def baca(teks: str) -> HasilBaca:
             }
         )
     return h
+
+
+# ---------------------------------------------------------------------------
+# Rekening tujuan pembayaran
+# ---------------------------------------------------------------------------
+
+_RE_BANK = re.compile(r"^\s*(?:nama\s+)?bank\s*[:=\-]?\s*(.+?)\s*$", re.I)
+_RE_NOREK = re.compile(
+    r"^\s*(?:no(?:mor)?\.?\s*)?(?:rek(?:ening)?|norek)\.?\s*[:=\-]?\s*([\d][\d .\-]{3,}\d)\s*$",
+    re.I,
+)
+_RE_ATAS_NAMA = re.compile(r"^\s*(?:atas\s+nama|a\.?\s*n\.?)\s*[:=\-]?\s*(.+?)\s*$", re.I)
+
+
+@dataclass
+class Rekening:
+    bank: str | None = None
+    nomor: str | None = None
+    atas_nama: str | None = None
+
+    @property
+    def lengkap(self) -> bool:
+        return bool(self.bank and self.nomor and len(re.sub(r"\D", "", self.nomor)) >= 5)
+
+    def teks(self, nama_cadangan: str | None = None) -> str:
+        nama = self.atas_nama or nama_cadangan
+        return f"{self.bank} {self.nomor}" + (f" a.n. {nama}" if nama else "")
+
+
+def ambil_rekening(teks: str) -> tuple[Rekening, str]:
+    """Ambil baris bank / rekening / atas nama dari pesan (dan buang dari teks),
+    supaya nomor rekening tidak terbaca sebagai nomor WA atau barang."""
+    rek = Rekening()
+    sisa = []
+    for baris in (teks or "").splitlines():
+        b = baris.strip().lstrip("-•*").strip()
+        m = _RE_NOREK.match(b)
+        if m and not rek.nomor:
+            rek.nomor = re.sub(r"[ .\-]+", " ", m.group(1)).strip()
+            continue
+        m = _RE_BANK.match(b)
+        if m and not rek.bank:
+            rek.bank = m.group(1).strip()
+            continue
+        m = _RE_ATAS_NAMA.match(b)
+        if m and not rek.atas_nama:
+            rek.atas_nama = m.group(1).strip()
+            continue
+        sisa.append(baris)
+    return rek, "\n".join(sisa)
+
+
+CONTOH_REKENING = "bank BCA\nrekening 1234567890\natas nama Tedi Yulianto"

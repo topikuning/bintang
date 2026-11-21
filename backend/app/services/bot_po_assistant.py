@@ -63,6 +63,9 @@ async def parse_text_and_save(
     """Audit 2026-05-30: /po + multi-line text body."""
     # Alur PO lewat WA: nomor WA pemasok di pesan diambil dulu (dan dibuang
     # dari teks) supaya tidak terbaca sebagai barang oleh pembaca AI.
+    # Rekening tujuan dibaca lebih dulu supaya nomor rekening tidak terbaca
+    # sebagai nomor WA pemasok atau barang.
+    rekening, text = po_teks.ambil_rekening(text)
     supplier_wa, text = ambil_nomor_wa(text)
     # Baris proyek/vendor/catatan dan baris barang ber-nominal (11jt, 300rb,
     # Rp ..., @ ...) dibaca pasti tanpa AI; AI hanya membaca baris barang
@@ -111,10 +114,16 @@ async def parse_text_and_save(
         )
 
     vendor_id, vendor_name = await resolve_vendor(db, parsed.get("vendor_hint"))
-    if not supplier_wa and vendor_id:
-        vendor = await db.get(VendorClient, vendor_id)
-        if vendor is not None and vendor.phone:
-            supplier_wa = normalisasi_wa(vendor.phone) or None
+    vendor = await db.get(VendorClient, vendor_id) if vendor_id else None
+    if not supplier_wa and vendor is not None and vendor.phone:
+        supplier_wa = normalisasi_wa(vendor.phone) or None
+    # Rekening pembayaran wajib: dari pesan, atau dari data pemasok.
+    if rekening.lengkap:
+        rekening_tujuan = rekening.teks(vendor_name)
+    elif vendor is not None and (vendor.bank_account or "").strip():
+        rekening_tujuan = vendor.bank_account.strip()
+    else:
+        raise BotDocError("Cantumkan rekening tujuan pembayaran, mis.:\n" + po_teks.CONTOH_REKENING)
 
     payload = await _build_payload(
         project=project,
@@ -124,6 +133,7 @@ async def parse_text_and_save(
         notes=parsed.get("notes"),
         source="chat_text",
         supplier_wa=supplier_wa,
+        rekening_tujuan=rekening_tujuan,
     )
     session_id = await save_session(
         db,
@@ -291,9 +301,11 @@ async def _build_payload(
     source: str,
     ocr_meta: dict | None = None,
     supplier_wa: str | None = None,
+    rekening_tujuan: str | None = None,
 ) -> dict:
     return {
         "supplier_wa": supplier_wa,
+        "rekening_tujuan": rekening_tujuan,
         "project_id": project.id,
         "project_code": project.code,
         "project_name": project.name,
@@ -349,6 +361,8 @@ def _format_preview(payload: dict) -> str:
         if conf is not None:
             lines.append(f"_Keyakinan OCR: {conf:.0%}_")
     lines.append("")
+    if payload.get("rekening_tujuan"):
+        lines.append(f"🏦 Rekening: {payload['rekening_tujuan']}")
     if payload.get("supplier_wa"):
         lines.append(f"📱 WA pemasok: {tampil_nomor(payload['supplier_wa'])}")
         lines.append("Balas *ya* untuk membuat PO dan mengirimnya ke pemasok, *batal* untuk batal.")
@@ -398,6 +412,7 @@ async def confirm_create(
             company_id=payload["company_id"],
             vendor_client_id=payload.get("vendor_client_id"),
             vendor_name=payload.get("vendor_name"),
+            rekening_tujuan=payload.get("rekening_tujuan"),
             po_date=po_date,
             tax=Decimal("0"),
             discount=Decimal("0"),

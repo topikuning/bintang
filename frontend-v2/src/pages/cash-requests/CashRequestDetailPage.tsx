@@ -287,6 +287,16 @@ export function CashRequestDetailPage() {
           )}
         </div>
 
+        {(cr.penerima_nama || cr.rekening_tujuan) && (
+          <div className="mt-3 rounded border bg-surface px-3 py-2 text-[13px] text-ink-700">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+              Transfer ke
+            </span>
+            {cr.penerima_nama && <div className="mt-1 font-medium">{cr.penerima_nama}</div>}
+            {cr.rekening_tujuan && <div className="font-mono">{cr.rekening_tujuan}</div>}
+          </div>
+        )}
+
         {cr.notes && (
           <div className="mt-3 rounded bg-ink-50 px-3 py-2 text-[13px] text-ink-700">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-500">
