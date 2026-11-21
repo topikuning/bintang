@@ -52,6 +52,9 @@ const TAHAP: Record<POWaTahap, { label: string; tone: string; langkah: string }>
   },
 }
 
+const RE_KASBON =
+  /\b(kasbon|kas\s*bon|upah|gaji|honor|ongkos\s*(kerja|tukang)|borongan|uang\s*muka|panjar|bon\s*pekerja|dp)\b/i
+
 function nomorTampil(chatId: string | null | undefined): string {
   if (!chatId) return "-"
   const digits = chatId.split("@")[0] ?? chatId
@@ -74,6 +77,10 @@ export function POAlurWA({ po }: { po: PurchaseOrder }) {
   const [berkas, setBerkas] = useState<File | null>(null)
 
   if (!po.wa_tahap) return null
+  // Kasbon/upah ditagih saat PO disetujui dan bisa dibayar sebelum barang datang
+  // (aturan sama dengan backend wa_po_flow.adalah_kasbon).
+  const adaKasbon = (po.items ?? []).some((it) => RE_KASBON.test(it.description ?? ""))
+  const bisaBayar = po.wa_tahap === "DITERIMA" || (po.wa_tahap === "FINAL" && adaKasbon)
   const kode = `PO${po.id}`
   const t = TAHAP[po.wa_tahap]
   const jatuhTempo =
@@ -129,9 +136,11 @@ export function POAlurWA({ po }: { po: PurchaseOrder }) {
         )}
       </dl>
 
-      {po.wa_tahap === "DITERIMA" && isAdmin && (
+      {bisaBayar && isAdmin && (
         <div className="mt-4 rounded-md border bg-surface-muted p-3">
-          <div className="text-sm font-medium text-ink-900">Bayar & kirim bukti ke pemasok</div>
+          <div className="text-sm font-medium text-ink-900">
+            {po.wa_tahap === "FINAL" ? "Bayar kasbon & kirim bukti" : "Bayar & kirim bukti ke pemasok"}
+          </div>
           <p className="mt-0.5 text-[12px] text-ink-500">
             Dicatat sebagai kas keluar (terverifikasi) sebesar sisa tagihan. Bukti transfer dikirim
             ke WhatsApp pemasok.

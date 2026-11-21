@@ -835,7 +835,9 @@ async def bayar_po(
     if po is None:
         raise HTTPException(404, "not_found")
     await ensure_project_access(db, admin, po.project_id)
-    if po.wa_tahap != wa_po_flow.DITERIMA:
+    if po.wa_tahap not in (wa_po_flow.FINAL, wa_po_flow.DITERIMA) or (
+        po.wa_tahap == wa_po_flow.FINAL and not await wa_po_flow.tagihan_terbuka(db, po)
+    ):
         raise HTTPException(409, "po_belum_siap_dibayar")
     berkas = await save_upload(bukti, f"transactions/po-{po.id}")
     hasil = await wa_po_flow.bayar(db, admin, po, berkas)

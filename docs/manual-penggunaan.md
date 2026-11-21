@@ -764,6 +764,7 @@ wa 0812-3456-7890
 ```
 
 Catatan:
+- **Kasbon/upah dalam /po** (baris berisi kata kasbon, upah, gaji, honor, borongan, uang muka, panjar, DP, ongkos kerja/tukang): begitu PO disetujui, bagian ini langsung menjadi tagihan jatuh tempo hari itu dan bisa dibayar dengan **BAYAR PO12** tanpa surat jalan. Material dalam PO yang sama tetap menunggu **TERIMA PO12** + foto surat jalan. PO yang seluruhnya kasbon tidak memerlukan surat jalan.
 - **Peminta tidak perlu mendaftar.** Nomor WA yang belum tertaut cukup mengirim `/po`:
   - nomor itu sudah tercatat di data pengguna (kolom telepon) -> langsung ditautkan ke akun tersebut;
   - nomor baru -> sistem membuat akun dan menanyakan nama sekali, lalu permintaan langsung diproses. Keuangan/pimpinan menerima pemberitahuan *Pengguna baru lewat WhatsApp*.
