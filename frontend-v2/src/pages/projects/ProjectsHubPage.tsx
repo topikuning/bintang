@@ -318,26 +318,26 @@ function ProjectCard({ p }: { p: ProjectStats }) {
             <FolderKanban className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-semibold truncate group-hover:text-brand-700">
+            <div className="text-sm font-semibold leading-snug break-words group-hover:text-brand-700">
               {p.name}
             </div>
-            <div className="text-[11px] text-ink-500 truncate flex items-center gap-1">
+            <div className="mt-0.5 text-[11px] text-ink-500 break-words">
               <span className="font-mono">{p.code}</span>
               {p.company && (
                 <>
-                  <span>·</span>
-                  <Building2 className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{p.company}</span>
+                  {" · "}
+                  <Building2 className="mr-1 inline-block h-3 w-3 align-[-2px]" />
+                  {p.company}
                 </>
               )}
             </div>
           </div>
         </div>
-        <Badge tone={tone}>{healthLabel(p.health)}</Badge>
+        <Badge tone={tone} className="shrink-0">{healthLabel(p.health)}</Badge>
       </div>
 
       {/* Cashflow grid */}
-      <div className="grid grid-cols-3 gap-2 text-[11px] border-t pt-2">
+      <div className="space-y-0.5 text-[12px] border-t pt-2">
         <Stat label="Masuk" value={fmtIDR(p.total_in)} positive />
         <Stat label="Keluar" value={fmtIDR(p.total_out)} negative />
         <Stat
@@ -368,8 +368,9 @@ function ProjectCard({ p }: { p: ProjectStats }) {
               style={{ width: `${Math.min(100, p.budget.usage_pct)}%` }}
             />
           </div>
-          <div className="text-[10px] text-ink-500 font-mono">
-            {fmtIDR(p.budget.spent)} / {fmtIDR(p.budget.amount)}
+          <div className="text-[10px] text-ink-500 font-mono flex flex-wrap gap-x-1">
+            <span>{fmtIDR(p.budget.spent)}</span>
+            <span>/ {fmtIDR(p.budget.amount)}</span>
           </div>
         </div>
       )}
@@ -397,12 +398,12 @@ function Stat({
   tone?: "default" | "danger"
 }) {
   return (
-    <div className="min-w-0">
+    <div className="flex items-baseline justify-between gap-3">
       <div className="text-ink-500">{label}</div>
       <div
         data-num
         className={cn(
-          "font-mono font-semibold truncate [font-variant-numeric:tabular-nums]",
+          "font-mono font-semibold text-right whitespace-nowrap [font-variant-numeric:tabular-nums]",
           positive && "text-success-700",
           negative && "text-danger-700",
           tone === "danger" && "text-danger-700",
