@@ -31,7 +31,7 @@ BARU = "6285700002222@c.us"
 TEDI = "6281388111354@c.us"
 PESAN = (
     "/kas\nproyek bmj1\nvendor Tedi Yulianto Prabowo\nMaterial 11jt\n"
-    "Kasbon Pekerja 70jt\nwa +62 813-8811-1354"
+    "Kasbon Pekerja 70jt\nNama Bank : BCA\nRekening : 7770001234\nwa +62 813-8811-1354"
 )
 
 
@@ -125,8 +125,20 @@ async def test_kas_dari_nomor_baru_sampai_ditransfer(db, monkeypatch):
 async def test_kas_ditolak_dan_dibatalkan(db, monkeypatch):
     proyek, pengaju, keuangan, vendor = await _seed(db)
     kirim = await _siapkan_webhook(db, monkeypatch)
-    await kirim({"from": PENGAJU_WA, "fromMe": False, "body": "/kas\nproyek BMJ1\nSemen 5jt"})
-    await kirim({"from": PENGAJU_WA, "fromMe": False, "body": "/kas\nproyek BMJ1\nPasir 2jt"})
+    await kirim(
+        {
+            "from": PENGAJU_WA,
+            "fromMe": False,
+            "body": "/kas\nproyek BMJ1\nSemen 5jt\nbank BRI\nrekening 1234567",
+        }
+    )
+    await kirim(
+        {
+            "from": PENGAJU_WA,
+            "fromMe": False,
+            "body": "/kas\nproyek BMJ1\nPasir 2jt\nbank BRI\nrekening 1234567",
+        }
+    )
     a, b = (await db.execute(select(CashRequest).order_by(CashRequest.id))).scalars().all()
 
     keluar = await kirim(

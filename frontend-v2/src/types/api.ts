@@ -376,6 +376,7 @@ export interface PurchaseOrder {
   items?: POItem[]
   /** Alur PO lewat WhatsApp (kosong untuk PO biasa). */
   supplier_wa?: string | null
+  rekening_tujuan?: string | null
   tempo_days?: number | null
   wa_tahap?: POWaTahap | null
   diterima_at?: string | null
@@ -536,6 +537,8 @@ export interface CashRequest {
   request_date: string
   title: string
   notes: string | null
+  penerima_nama?: string | null
+  rekening_tujuan?: string | null
   total_amount: string
   status: CashRequestStatus
   approved_by_id: number | null

@@ -147,6 +147,8 @@ async def _to_out(
         request_date=cr.request_date,
         title=cr.title,
         notes=cr.notes,
+        penerima_nama=cr.penerima_nama,
+        rekening_tujuan=cr.rekening_tujuan,
         total_amount=cr.total_amount,
         status=cr.status,
         approved_by_id=cr.approved_by_id,

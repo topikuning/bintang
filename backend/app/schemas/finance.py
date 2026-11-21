@@ -434,6 +434,7 @@ class POOut(POBase):
     vendor_client_name: str | None = None
     # Alur PO lewat WhatsApp (kosong untuk PO biasa).
     supplier_wa: str | None = None
+    rekening_tujuan: str | None = None
     tempo_days: int | None = None
     wa_tahap: str | None = None
     diterima_at: date | None = None

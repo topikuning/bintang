@@ -340,6 +340,12 @@ async def _pesan_ke_pemasok(db: AsyncSession, po: PurchaseOrder) -> str:
     ]
     if Decimal(po.total or 0) > 0:
         baris.append(f"Total: {rp(po.total)}")
+    if po.rekening_tujuan:
+        baris += [
+            "",
+            f"🏦 Pembayaran akan kami transfer ke: {po.rekening_tujuan}",
+            "Bila rekening berbeda, tulis di balasan: bank ..., rekening ..., atas nama ...",
+        ]
     tautan = tautan_penawaran(po)
     if tautan:
         baris += [
@@ -397,6 +403,8 @@ async def _simpan_nomor_pemasok(db: AsyncSession, po: PurchaseOrder) -> None:
         po.vendor_client_id = vendor.id
     if not (vendor.phone or "").strip():
         vendor.phone = nomor
+    if po.rekening_tujuan and not (vendor.bank_account or "").strip():
+        vendor.bank_account = po.rekening_tujuan
 
 
 async def kirim_ke_pemasok(db: AsyncSession, po: PurchaseOrder, aktor: User) -> str:
@@ -458,6 +466,7 @@ class BalasanPemasok:
     tempo: int | None = None
     po_id: int | None = None
     alasan: str = ""
+    rekening: str | None = None  # koreksi rekening dari pemasok
 
 
 def _angka(teks: str, satuan: str | None) -> Decimal | None:
@@ -551,7 +560,11 @@ async def tangani_balasan_pemasok(db: AsyncSession, chat_id: str, teks: str) -> 
     if not terbuka:
         return None
 
+    from app.services.po_teks import ambil_rekening
+
+    rek, teks = ambil_rekening(teks)
     b = parse_balasan_pemasok(teks)
+    b.rekening = rek.teks() if rek.lengkap else None
     if b.po_id is not None:
         po = next((p for p in terbuka if p.id == b.po_id), None)
         if po is None:
@@ -583,6 +596,8 @@ async def terapkan_balasan(db: AsyncSession, po: PurchaseOrder, b: BalasanPemaso
         return HasilBalasan(False, f"{kode(po)} sudah tidak menunggu jawaban pemasok.")
     pengaju = await _pengaju(db, po)
     nama = await _nama_pemasok(db, po)
+    if b.rekening and b.aksi != "tolak":
+        po.rekening_tujuan = b.rekening
 
     if b.aksi == "tolak":
         po.wa_tahap = DITOLAK_PEMASOK
@@ -706,6 +721,7 @@ async def _teks_minta_persetujuan(db: AsyncSession, po: PurchaseOrder, pengaju: 
             *_daftar_barang(po),
             f"Total: {rp(po.total)}",
             *([f"Pembayaran: {tempo}"] if tempo else []),
+            *([f"🏦 Transfer ke: {po.rekening_tujuan}"] if po.rekening_tujuan else []),
             "",
             f"Balas *SETUJUI {kode(po)}* atau *TOLAK {kode(po)} alasan*. "
             "Bisa juga disetujui di aplikasi (Purchase Order).",
@@ -1032,7 +1048,8 @@ async def _tagih_kasbon(db: AsyncSession, po: PurchaseOrder, penyetuju: User) ->
         _antre(
             u.whatsapp_chat_id,
             f"🔔 Kasbon {kode(po)} ke {inv.party_name}: *{rp(inv.total)}* siap dibayar hari ini.\n"
-            f"Kirim foto bukti transfer dengan keterangan *BAYAR {kode(po)}*.",
+            + (f"🏦 Transfer ke: {po.rekening_tujuan}\n" if po.rekening_tujuan else "")
+            + f"Kirim foto bukti transfer dengan keterangan *BAYAR {kode(po)}*.",
         )
 
 
@@ -1070,7 +1087,9 @@ async def terima(db: AsyncSession, user: User, po: PurchaseOrder, berkas: dict |
             _antre(
                 u.whatsapp_chat_id,
                 f"🔔 Tagihan baru {kode(po)} ke {nama}: {rp(inv.total)}, jatuh tempo "
-                f"*{tgl(jatuh_tempo)}*.\nKirim foto bukti transfer dengan keterangan *BAYAR {kode(po)}*.",
+                f"*{tgl(jatuh_tempo)}*.\n"
+                + (f"🏦 Transfer ke: {po.rekening_tujuan}\n" if po.rekening_tujuan else "")
+                + f"Kirim foto bukti transfer dengan keterangan *BAYAR {kode(po)}*.",
             )
     return (
         f"📥 Surat jalan {kode(po)} dicatat. Tagihan {rp(inv.total)} ke {nama} "
@@ -1405,6 +1424,10 @@ async def ringkasan_tagihan(db: AsyncSession, tanggal: date | None = None) -> st
             baris.append(
                 f"• {ref} · {inv.party_name or '-'} · {rp(sisa)} · {proyek.get(inv.project_id, '-')}{tambahan}"
             )
+            if inv.purchase_order_id:
+                po_inv = await db.get(PurchaseOrder, inv.purchase_order_id)
+                if po_inv is not None and po_inv.rekening_tujuan:
+                    baris.append(f"   🏦 {po_inv.rekening_tujuan}")
     contoh = next(
         (
             f"PO{inv.purchase_order_id}"

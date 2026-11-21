@@ -138,7 +138,9 @@ async def _seed(db):
         role=UserRole.CENTRAL_ADMIN,
         whatsapp_chat_id=KEUANGAN_WA,
     )
-    vendor = VendorClient(name="CV Sumber Bangunan")
+    vendor = VendorClient(
+        name="CV Sumber Bangunan", bank_account="BCA 1112223334 a.n. CV Sumber Bangunan"
+    )
     db.add_all([pengaju, keuangan, vendor])
     await db.flush()
     db.add(ProjectUser(project_id=proyek.id, user_id=pengaju.id))
