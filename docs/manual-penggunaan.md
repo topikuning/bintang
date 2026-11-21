@@ -738,6 +738,41 @@ AKUN
 
 Foto/gambar yang dikirim **setelah** `/keluar` atau `/masuk` (dalam jendela ~5 menit) **otomatis attach** ke transaksi terakhir.
 
+### Pesan material lewat WhatsApp (PO ke pemasok)
+
+Seluruh alur PO bisa berjalan di WhatsApp: dari permintaan material sampai bukti bayar terkirim ke pemasok. Setiap PO punya **kode pendek** `PO` + angka (mis. `PO12`) yang dipakai di semua perintah; nomor resmi PO tetap tercantum di setiap pesan.
+
+| Langkah | Siapa | Kirim ke nomor WA sistem |
+|---|---|---|
+| 1. Minta material | Pengguna lapangan | `/po` + daftar barang, `proyek …`, `vendor …`, `wa 08xxxx` (nomor pemasok). Sistem membalas ringkasan → balas **ya**. PO langsung dikirim ke pemasok. |
+| 2. Jawaban pemasok | Pemasok | **SETUJU 30** (harga sesuai, tempo 30 hari) · **SETUJU TUNAI** · **UBAH** lalu per baris `nomor barang = harga` dan `TEMPO 30` · **TOLAK** |
+| 3. Teruskan | Pengguna | Menerima penawaran pemasok → **AJUKAN PO12** (atau **BATAL PO12**) |
+| 4. Setujui | Keuangan / pimpinan | **SETUJUI PO12** atau **TOLAK PO12 alasan** — atau tombol *Setujui* di aplikasi. PO final terkirim ke pemasok. |
+| 5. Barang datang | Pengguna | **Foto surat jalan** dengan keterangan **TERIMA PO12** → tagihan dibuat, jatuh tempo = tanggal terima + tempo |
+| 6. Ringkasan pagi | Otomatis | Tiap pagi (bawaan 07:00 WITA) keuangan/pimpinan menerima daftar tagihan lewat jatuh tempo, hari ini, dan besok. Kapan saja: kirim **TAGIHAN**. |
+| 7. Bayar | Keuangan / pimpinan | **Foto bukti transfer** dengan keterangan **BAYAR PO12** — atau di aplikasi: detail PO → *Bayar & kirim bukti*. Kas keluar tercatat (terverifikasi), bukti dikirim ke pemasok, pengguna diberi tahu. |
+
+Contoh langkah 1:
+
+```
+/po
+Semen Tonasa 50 kg = 200 sak
+Pasir cor = 5 m3
+proyek BMJ1
+vendor CV Sumber Bangunan
+wa 0812-3456-7890
+```
+
+Catatan:
+- Harga boleh dikosongkan; pemasok mengisinya lewat **UBAH**. PO tidak bisa diajukan sebelum semua harga dan tempo terisi.
+- Kalau nomor WA pemasok tidak ditulis, sistem memakai nomor telepon di data master vendor. Tanpa keduanya PO hanya disimpan sebagai draf; kirim belakangan dengan **KIRIM PO12 08xxxx**.
+- Pemasok yang menerima lebih dari satu pesanan cukup menyertakan kodenya, mis. **SETUJU PO12 30**.
+- Penyetuju dan penerima ringkasan pagi = akun **SUPERADMIN / CENTRAL_ADMIN** yang sudah menautkan WhatsApp (`/link`).
+- Bukti transfer (foto atau PDF) dikirim **langsung sebagai berkas** ke WhatsApp pemasok, dengan keterangan nominal dan tanggal transfer. Hal yang sama berlaku untuk bukti yang diunggah dari aplikasi.
+- Kalau WAHA menolak mengirim berkas, sistem mengirim pesannya sebagai teks saja. Pesan itu memuat tautan ke bukti bila *Public Base URL* terisi. Tautan tersebut hanya membuka satu bukti dan kedaluwarsa setelah 60 hari.
+- Jam ringkasan pagi: Pengaturan Sistem → WhatsApp → *Jam ringkasan tagihan (WITA)*. Isi `mati` untuk mematikannya.
+- Status alur terlihat di detail PO (panel *Alur WhatsApp*).
+
 ---
 
 ## 16. Pengaturan Sistem (SUPERADMIN)

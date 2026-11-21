@@ -102,6 +102,19 @@ async def cmd_help(db, user, chat_id, args, msg) -> str:
         "  • `vendor PT Sumber Besi` — hint vendor\n"
         "  • `konteks: invoice utk pekerjaan konstruksi` — konteks dipakai AI utk OCR yg lebih akurat + disimpan sbg catatan\n"
         "  Contoh: `/invoice proyek BMJ1 konteks: pembelian material besi tulangan`\n"
+        "\n*Pesan material lewat WA (PO ke pemasok):*\n"
+        "```/po\n"
+        "Semen Tonasa 50 kg = 200 sak\n"
+        "proyek BMJ1\n"
+        "vendor CV Sumber Bangunan\n"
+        "wa 08123456789```\n"
+        "  Balas *ya* → PO dikirim ke WA pemasok. Pemasok membalas SETUJU/UBAH.\n"
+        "  *AJUKAN PO12* — teruskan penawaran pemasok ke keuangan\n"
+        "  *SETUJUI PO12* / *TOLAK PO12 alasan* — keuangan/pimpinan\n"
+        "  *TERIMA PO12* + foto surat jalan — barang datang, tagihan dibuat\n"
+        "  *BAYAR PO12* + foto bukti transfer — keuangan; bukti dikirim ke pemasok\n"
+        "  *KIRIM PO12 08xxxx* — kirim/ulang ke nomor pemasok · *BATAL PO12*\n"
+        "  *TAGIHAN* — tagihan jatuh tempo hari ini & besok (keuangan)\n"
         "\n*AI (admin):*\n"
         "  /tanya <pertanyaan> — tanya laporan natural\n"
         "  Contoh: ```/tanya top vendor bulan ini```\n"
@@ -412,7 +425,10 @@ async def cmd_po(db, user, chat_id, args, msg) -> str:
     """
     if not user:
         return "Akun belum ter-link. Pakai /link <kode> dulu."
-    text = (msg or {}).get("text") or (msg or {}).get("caption") or ""
+    # WAHA menaruh teks pesan di `body`; tanpa ini pesan multi-baris
+    # tergabung jadi satu baris lewat `args` dan barang tidak terpisah.
+    raw = (msg or {}).get("body") or (msg or {}).get("text") or (msg or {}).get("caption") or ""
+    text = raw if isinstance(raw, str) else ""
     if "\n" in text:
         body = text.split("\n", 1)[1].strip()
     else:

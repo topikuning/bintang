@@ -117,7 +117,7 @@ async def test_parse_and_save_happy_path(db, monkeypatch):
         chat_id="111",
         text=text,
     )
-    assert "Preview PO" in reply
+    assert "Ringkasan PO" in reply
     assert "Besi 10 polos" in reply
     assert "BMJ1" in reply
     assert "PT Sumber Besi" in reply

@@ -532,8 +532,8 @@ function ProjectSummaryCard({ project: p }: { project: GlobalDashboardProjectSum
     >
       <div className="flex items-start justify-between gap-2 min-w-0">
         <div className="min-w-0 flex-1">
-          <div className="font-semibold text-ink-900 truncate">{p.name}</div>
-          <div className="text-[11px] text-ink-500 truncate font-mono">
+          <div className="font-semibold leading-snug text-ink-900 break-words">{p.name}</div>
+          <div className="mt-0.5 text-[11px] text-ink-500 break-words font-mono">
             {p.code}
             {p.company && <span className="font-sans"> · {p.company}</span>}
           </div>
@@ -541,35 +541,33 @@ function ProjectSummaryCard({ project: p }: { project: GlobalDashboardProjectSum
         <HealthBadge status={p.health} />
       </div>
 
-      {/* min-w-0 di setiap grid cell supaya nomor panjang (mis.
-          "Rp 1.234,5 jt") shrink, bukan push grid cell jadi lebih lebar
-          dari 1fr. truncate fallback supaya tetap rapi kalau super
-          panjang. */}
-      <div className="mt-2 grid grid-cols-3 gap-2">
-        <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-wider text-ink-500">Masuk</div>
+      {/* Satu baris per angka (label kiri, nominal utuh kanan) – tidak ada
+          lagi angka yang terpotong "…" di kartu sempit. */}
+      <div className="mt-2 space-y-0.5 border-t pt-2">
+        <div className="flex items-baseline justify-between gap-3">
+          <div className="text-[11px] text-ink-500">Masuk</div>
           <div
             data-num
-            className="font-mono text-[13px] font-semibold text-success-700 [font-variant-numeric:tabular-nums] truncate"
+            className="font-mono text-[13px] font-semibold text-success-700 [font-variant-numeric:tabular-nums] text-right whitespace-nowrap"
           >
             {fmtCompact(p.total_in)}
           </div>
         </div>
-        <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-wider text-ink-500">Keluar</div>
+        <div className="flex items-baseline justify-between gap-3">
+          <div className="text-[11px] text-ink-500">Keluar</div>
           <div
             data-num
-            className="font-mono text-[13px] font-semibold text-danger-700 [font-variant-numeric:tabular-nums] truncate"
+            className="font-mono text-[13px] font-semibold text-danger-700 [font-variant-numeric:tabular-nums] text-right whitespace-nowrap"
           >
             {fmtCompact(p.total_out)}
           </div>
         </div>
-        <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-wider text-ink-500">Saldo</div>
+        <div className="flex items-baseline justify-between gap-3">
+          <div className="text-[11px] text-ink-500">Saldo</div>
           <div
             data-num
             className={cn(
-              "font-mono text-[13px] font-semibold [font-variant-numeric:tabular-nums] truncate",
+              "font-mono text-[13px] font-semibold [font-variant-numeric:tabular-nums] text-right whitespace-nowrap",
               minus ? "text-danger-700" : "text-ink-900",
             )}
           >

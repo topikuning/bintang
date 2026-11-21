@@ -89,6 +89,23 @@ export function useCancelPO() {
   })
 }
 
+/** Alur PO lewat WhatsApp: catat pembayaran + bukti transfer; bukti ikut
+ *  dikirim ke WA pemasok. Hanya untuk PO yang barangnya sudah diterima. */
+export function useBayarPO() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, bukti }: { id: number; bukti: File }): Promise<PurchaseOrder> => {
+      const fd = new FormData()
+      fd.append("bukti", bukti)
+      const { data } = await api.post<PurchaseOrder>(`/purchase-orders/${id}/bayar`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      return data
+    },
+    onSuccess: () => invalidateFinanceQueries(qc),
+  })
+}
+
 export function useDeletePO() {
   const qc = useQueryClient()
   return useMutation({

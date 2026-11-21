@@ -321,12 +321,43 @@ async def webhook(
     # `text` di WAHA pas message punya media biasanya = caption.
     caption = text
 
+    # Alur PO lewat WhatsApp: pesan keluar dikumpulkan dan baru dikirim
+    # setelah commit (lihat services/wa_po_flow.py).
+    from app.services import wa_po_flow
+    from app.services.whatsapp import client as wa_media
+
+    wa_po_flow.buka_kotak()
+
+    async def _ambil_media() -> tuple[bytes, str] | None:
+        dl = None
+        mime_hint = None
+        if media:
+            url, mime_hint, _fname = media
+            dl = await wa_media.download_media(url)
+        if dl is None and msg_id:
+            got = await wa_media.download_message_media(str(msg_id))
+            if got is not None:
+                dl = (got[0], got[1])
+        if dl is None:
+            return None
+        content, mime = dl
+        return content, (mime or mime_hint or "image/jpeg")
+
+    alur_po = await wa_po_flow.tangani_perintah(
+        db,
+        user=user,
+        teks=text,
+        ambil_media=_ambil_media if is_media_msg else None,
+    )
+
     # Audit 2026-06-02: foto + caption /po atau /invoice -> OCR flow.
     from app.services.bot_doc_photo import parse_doc_cmd
 
     doc_cmd_spec = parse_doc_cmd(caption) if is_media_msg else None
 
-    if doc_cmd_spec is not None and is_media_msg and media:
+    if alur_po:
+        reply = alur_po
+    elif doc_cmd_spec is not None and is_media_msg and media:
         url, mime_hint, _fname = media
         from app.services.bot_doc_photo import handle_doc_photo
         from app.services.whatsapp import client as wa_client
@@ -352,6 +383,10 @@ async def webhook(
         if user and text.strip() and not text.startswith("/"):
             reply = await _handle_doc_session_reply(db, user, chat_id, text)
 
+        # Balasan pemasok (SETUJU / UBAH / TOLAK) untuk PO yang menunggunya.
+        if not reply and text.strip() and not text.startswith("/"):
+            reply = await wa_po_flow.tangani_balasan_pemasok(db, chat_id, text) or ""
+
         if not reply and text.startswith("/"):
             reply = await dispatch_command(db, user, chat_id, text, payload)
 
@@ -372,6 +407,7 @@ async def webhook(
                 reply = reply or media_reply
 
     await db.commit()
+    await wa_po_flow.kirim_kotak()
 
     if reply:
         await wa.send_text(chat_id, reply)

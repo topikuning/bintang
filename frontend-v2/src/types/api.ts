@@ -374,7 +374,22 @@ export interface PurchaseOrder {
   created_at: string
   updated_at?: string
   items?: POItem[]
+  /** Alur PO lewat WhatsApp (kosong untuk PO biasa). */
+  supplier_wa?: string | null
+  tempo_days?: number | null
+  wa_tahap?: POWaTahap | null
+  diterima_at?: string | null
 }
+
+export type POWaTahap =
+  | "MENUNGGU_PEMASOK"
+  | "MENUNGGU_PENGAJU"
+  | "MENUNGGU_PERSETUJUAN"
+  | "FINAL"
+  | "DITERIMA"
+  | "LUNAS"
+  | "DITOLAK_PEMASOK"
+  | "DIBATALKAN"
 
 // Master data shapes (untuk CRUD page)
 export interface Company {

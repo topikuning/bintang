@@ -27,6 +27,7 @@ from app.models.models import (
     Project,
     PurchaseOrder,
     User,
+    VendorClient,
 )
 from app.services.ai.features.po_chat_parser import parse as ai_parse
 from app.services.bot_doc_session import (
@@ -39,6 +40,7 @@ from app.services.bot_doc_session import (
     resolve_vendor,
     save_session,
 )
+from app.services.whatsapp.phone import ambil_nomor_wa, normalisasi_wa, tampil_nomor
 
 # Backward-compat alias.
 BotPOError = BotDocError
@@ -58,6 +60,9 @@ async def parse_text_and_save(
     text: str,
 ) -> str:
     """Audit 2026-05-30: /po + multi-line text body."""
+    # Alur PO lewat WA: nomor WA pemasok di pesan diambil dulu (dan dibuang
+    # dari teks) supaya tidak terbaca sebagai barang oleh pembaca AI.
+    supplier_wa, text = ambil_nomor_wa(text)
     parsed = await ai_parse(db, user_id=user.id, text=text)
     items: list[dict] = parsed.get("items") or []
     if not items:
@@ -85,6 +90,10 @@ async def parse_text_and_save(
         )
 
     vendor_id, vendor_name = await resolve_vendor(db, parsed.get("vendor_hint"))
+    if not supplier_wa and vendor_id:
+        vendor = await db.get(VendorClient, vendor_id)
+        if vendor is not None and vendor.phone:
+            supplier_wa = normalisasi_wa(vendor.phone) or None
 
     payload = await _build_payload(
         project=project,
@@ -93,6 +102,7 @@ async def parse_text_and_save(
         vendor_name=vendor_name,
         notes=parsed.get("notes"),
         source="chat_text",
+        supplier_wa=supplier_wa,
     )
     session_id = await save_session(
         db,
@@ -259,8 +269,10 @@ async def _build_payload(
     notes: str | None,
     source: str,
     ocr_meta: dict | None = None,
+    supplier_wa: str | None = None,
 ) -> dict:
     return {
+        "supplier_wa": supplier_wa,
         "project_id": project.id,
         "project_code": project.code,
         "project_name": project.name,
@@ -283,15 +295,17 @@ def _format_preview(payload: dict) -> str:
             has_any_price = True
             total_est += Decimal(str(it["unit_price"])) * Decimal(str(it.get("quantity") or 1))
     lines: list[str] = []
-    lines.append("📋 *Preview PO*")
+    lines.append("📋 *Ringkasan PO*")
     lines.append(f"Proyek: {payload['project_name']} ({payload['project_code']})")
     vendor_label = payload["vendor_name"] or "(belum diisi)"
     if payload.get("vendor_client_id"):
         vendor_label = f"{vendor_label} ✓"
-    lines.append(f"Vendor: {vendor_label}")
-    lines.append(f"Items ({len(items)}):")
+    lines.append(f"Pemasok: {vendor_label}")
+    lines.append(f"Barang ({len(items)}):")
     for i, it in enumerate(items[:10], start=1):
         qty = it.get("quantity") or 1
+        if isinstance(qty, float) and qty.is_integer():
+            qty = int(qty)
         unit = it.get("unit") or ""
         price = it.get("unit_price")
         suffix = ""
@@ -299,11 +313,11 @@ def _format_preview(payload: dict) -> str:
             suffix = f" @ Rp {Decimal(str(price)):,.0f}".replace(",", ".")
         lines.append(f"  {i}. {it['description']} · {qty} {unit}{suffix}".rstrip())
     if len(items) > 10:
-        lines.append(f"  ... +{len(items) - 10} item lainnya")
+        lines.append(f"  ... +{len(items) - 10} barang lainnya")
     if has_any_price:
-        lines.append(f"Estimasi total (sub): Rp {total_est:,.0f}".replace(",", "."))
+        lines.append(f"Perkiraan total: Rp {total_est:,.0f}".replace(",", "."))
     else:
-        lines.append("Estimasi total: belum diisi (harga kosong)")
+        lines.append("Perkiraan total: belum ada (harga kosong)")
     if payload.get("notes"):
         lines.append(f"💬 Konteks: _{payload['notes']}_")
     if payload.get("ai_extraction_id"):
@@ -312,9 +326,17 @@ def _format_preview(payload: dict) -> str:
     if meta:
         conf = meta.get("confidence_score")
         if conf is not None:
-            lines.append(f"_OCR confidence: {conf:.0%}_")
+            lines.append(f"_Keyakinan OCR: {conf:.0%}_")
     lines.append("")
-    lines.append("Balas *ya* untuk simpan sebagai DRAFT, *batal* untuk batal.")
+    if payload.get("supplier_wa"):
+        lines.append(f"📱 WA pemasok: {tampil_nomor(payload['supplier_wa'])}")
+        lines.append("Balas *ya* untuk membuat PO dan mengirimnya ke pemasok, *batal* untuk batal.")
+    else:
+        lines.append(
+            "Balas *ya* untuk simpan sebagai draf, *batal* untuk batal.\n"
+            "_Supaya langsung dikirim ke pemasok, tambahkan baris nomor WA pemasok, "
+            "mis. `wa 08123456789`._"
+        )
     return "\n".join(lines)
 
 
