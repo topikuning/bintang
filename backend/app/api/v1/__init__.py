@@ -23,6 +23,7 @@ from app.api.v1 import (
     non_project,
     notifications,
     ocr,
+    penawaran,
     projects,
     purchase_orders,
     reports,
@@ -74,6 +75,8 @@ api_router.include_router(whatsapp.router, prefix="/whatsapp", tags=["whatsapp"]
 api_router.include_router(messaging.router, prefix="/messaging", tags=["messaging"])
 api_router.include_router(non_project.router, prefix="/non-project", tags=["non-project"])
 api_router.include_router(cash_requests.router, prefix="/cash-requests", tags=["cash-requests"])
+# Publik (tanpa login): halaman isi harga untuk pemasok, diamankan token bertanda tangan.
+api_router.include_router(penawaran.router, prefix="/penawaran", tags=["penawaran"])
 # Ekspor sekali pakai ke Bintang v3 – mati kecuali EKSPOR_V3_TOKEN diisi.
 api_router.include_router(ekspor_v3.router, prefix="/ekspor-v3", tags=["ekspor-v3"])
 # allocations dipasang di prefix root karena rutenya bercampur:

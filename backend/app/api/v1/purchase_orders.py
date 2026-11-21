@@ -722,6 +722,9 @@ async def issue_po(
     await ensure_project_access(db, user, po.project_id)
     if po.status != POStatus.DRAFT:
         raise HTTPException(409, "invalid_state")
+    from app.services import wa_po_flow
+
+    wa_po_flow.buka_kotak()
     po.status = POStatus.ISSUED
     await log(
         db,
@@ -731,7 +734,10 @@ async def issue_po(
         action=AuditAction.UPDATE,
         note="issued",
     )
+    # Keuangan/pimpinan dikabari lewat WA dan bisa langsung SETUJUI/TOLAK.
+    await wa_po_flow.setelah_diajukan_aplikasi(db, po, user)
     await db.commit()
+    await wa_po_flow.kirim_kotak()
     res = await db.execute(
         select(PurchaseOrder)
         .options(selectinload(PurchaseOrder.items))

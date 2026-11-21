@@ -324,9 +324,16 @@ async def _pesan_ke_pemasok(db: AsyncSession, po: PurchaseOrder) -> str:
     ]
     if Decimal(po.total or 0) > 0:
         baris.append(f"Total: {rp(po.total)}")
+    tautan = tautan_penawaran(po)
+    if tautan:
+        baris += [
+            "",
+            "👉 *Isi harga & tempo lewat tautan ini* (tanpa login, praktis untuk banyak barang):",
+            tautan,
+        ]
     baris += [
         "",
-        "Mohon balas pesan ini:",
+        "Atau balas pesan ini:" if tautan else "Mohon balas pesan ini:",
         "• *SETUJU 30* → harga sesuai, tempo pembayaran 30 hari",
         "• *SETUJU TUNAI* → harga sesuai, dibayar saat barang diterima",
         "• Ubah harga dan/atau tempo, contoh:",
@@ -485,6 +492,11 @@ def parse_balasan_pemasok(teks: str) -> BalasanPemasok:
             harga[int(mh.group(1))] = nilai
 
     kata = low.split()[0].strip(".,!:*") if low.split() else ""
+    if tempo is None and kata in _KATA_SETUJU:
+        # "SETUJU 30" (juga bila disertai baris harga): angka pertama = tempo.
+        m2 = re.match(r"^\W*\w+\W+(\d{1,3})\b(?!\s*[.)]?\s*[=:])", low)
+        if m2:
+            tempo = int(m2.group(1))
     if kata == "tolak" or low.startswith(("tidak bisa", "tidak sanggup", "maaf tidak")):
         alasan = (
             t.split(None, 1)[1].strip() if kata == "tolak" and len(t.split(None, 1)) > 1 else ""
@@ -493,10 +505,6 @@ def parse_balasan_pemasok(teks: str) -> BalasanPemasok:
     if kata == "ubah" or harga:
         return BalasanPemasok("ubah", harga=harga, tempo=tempo, po_id=po_id)
     if kata in _KATA_SETUJU:
-        if tempo is None:
-            m2 = re.match(r"^\W*\w+\W+(\d{1,3})\b", low)
-            if m2:
-                tempo = int(m2.group(1))
         return BalasanPemasok("setuju", tempo=tempo, po_id=po_id)
     return BalasanPemasok("tidak_dikenal", po_id=po_id)
 
@@ -544,7 +552,19 @@ async def tangani_balasan_pemasok(db: AsyncSession, chat_id: str, teks: str) -> 
 
     if b.aksi == "tidak_dikenal":
         return _petunjuk_pemasok(po)
+    return (await terapkan_balasan(db, po, b)).pesan
 
+
+@dataclass
+class HasilBalasan:
+    ok: bool  # True = penawaran/penolakan tercatat; False = perlu dilengkapi
+    pesan: str  # untuk pemasok
+
+
+async def terapkan_balasan(db: AsyncSession, po: PurchaseOrder, b: BalasanPemasok) -> HasilBalasan:
+    """Terapkan jawaban pemasok (dari WA atau dari tautan isi harga)."""
+    if po.wa_tahap != MENUNGGU_PEMASOK:
+        return HasilBalasan(False, f"{kode(po)} sudah tidak menunggu jawaban pemasok.")
     pengaju = await _pengaju(db, po)
     nama = await _nama_pemasok(db, po)
 
@@ -558,15 +578,18 @@ async def tangani_balasan_pemasok(db: AsyncSession, chat_id: str, teks: str) -> 
             f"❌ {nama} menolak {kode(po)} ({po.number}).\nAlasan: {b.alasan or '-'}\n"
             "PO dibatalkan. Kirim /po baru dengan pemasok lain.",
         )
-        return f"Baik, {kode(po)} kami catat tidak bisa dipenuhi. Terima kasih atas jawabannya."
+        return HasilBalasan(
+            True, f"Baik, {kode(po)} kami catat tidak bisa dipenuhi. Terima kasih atas jawabannya."
+        )
 
     harga_lama = {i: Decimal(it.unit_price or 0) for i, it in enumerate(po.items, start=1)}
     if b.aksi == "ubah":
         salah = sorted(n for n in b.harga if n < 1 or n > len(po.items))
         if salah:
-            return (
+            return HasilBalasan(
+                False,
                 f"Nomor barang {', '.join(map(str, salah))} tidak ada. "
-                f"{kode(po)} berisi {len(po.items)} barang (nomor 1–{len(po.items)})."
+                f"{kode(po)} berisi {len(po.items)} barang (nomor 1–{len(po.items)}).",
             )
         for n, h in b.harga.items():
             po.items[n - 1].unit_price = h
@@ -575,14 +598,19 @@ async def tangani_balasan_pemasok(db: AsyncSession, chat_id: str, teks: str) -> 
     kosong = [i for i, it in enumerate(po.items, start=1) if Decimal(it.unit_price or 0) <= 0]
     if kosong:
         contoh = "\n".join(f"{i} = harga" for i in kosong)
-        return f"Harga barang nomor {', '.join(map(str, kosong))} belum ada. Mohon balas:\n*UBAH*\n{contoh}"
-    if tempo is None:
-        return (
-            "Mohon sertakan tempo pembayaran (jumlah hari setelah barang diterima), "
-            "contoh: *SETUJU 30* atau *SETUJU TUNAI*."
+        return HasilBalasan(
+            False,
+            f"Harga barang nomor {', '.join(map(str, kosong))} belum ada. "
+            f"Mohon balas:\n*UBAH*\n{contoh}",
         )
-    if tempo > 365:
-        return "Tempo pembayaran maksimal 365 hari."
+    if tempo is None:
+        return HasilBalasan(
+            False,
+            "Mohon sertakan tempo pembayaran (jumlah hari setelah barang diterima), "
+            "contoh: *SETUJU 30* atau *SETUJU TUNAI*.",
+        )
+    if tempo < 0 or tempo > 365:
+        return HasilBalasan(False, "Tempo pembayaran 0–365 hari.")
 
     from app.api.v1.purchase_orders import _compute_totals
 
@@ -617,15 +645,83 @@ async def tangani_balasan_pemasok(db: AsyncSession, chat_id: str, teks: str) -> 
             ]
         ),
     )
-    return (
+    return HasilBalasan(
+        True,
         f"Terima kasih. Penawaran {kode(po)} kami terima: total {rp(po.total)}, "
-        f"{teks_tempo(tempo)}. Kami kabari setelah disetujui."
+        f"{teks_tempo(tempo)}. Kami kabari setelah disetujui.",
     )
 
 
 # ---------------------------------------------------------------------------
 # Langkah 3–4: ajukan, setujui, tolak, batal
 # ---------------------------------------------------------------------------
+
+
+def _label(po: PurchaseOrder) -> str:
+    if po.wa_tahap:
+        return LABEL_TAHAP.get(po.wa_tahap, po.wa_tahap)
+    return {
+        POStatus.DRAFT: "masih draf",
+        POStatus.APPROVED: "sudah disetujui",
+        POStatus.FULFILLED: "sudah diterima",
+        POStatus.CANCELLED: "dibatalkan",
+    }.get(po.status, po.status.value)
+
+
+def menunggu_persetujuan(po: PurchaseOrder) -> bool:
+    """PO alur WA yang sudah diajukan, atau PO biasa yang diajukan di aplikasi."""
+    if po.wa_tahap is None:
+        return po.status == POStatus.ISSUED
+    return po.wa_tahap == MENUNGGU_PERSETUJUAN
+
+
+async def _teks_minta_persetujuan(db: AsyncSession, po: PurchaseOrder, pengaju: User) -> str:
+    proyek = await _proyek(db, po)
+    nama = await _nama_pemasok(db, po)
+    tempo = teks_tempo(po.tempo_days) if po.tempo_days is not None else po.payment_terms
+    return "\n".join(
+        [
+            f"🧾 *{kode(po)} menunggu persetujuan*",
+            f"Pengaju: {pengaju.name}"
+            + (f" — proyek {proyek.name} ({proyek.code})" if proyek else ""),
+            f"Pemasok: {nama}",
+            f"No. PO: {po.number}",
+            "",
+            *_daftar_barang(po),
+            f"Total: {rp(po.total)}",
+            *([f"Pembayaran: {tempo}"] if tempo else []),
+            "",
+            f"Balas *SETUJUI {kode(po)}* atau *TOLAK {kode(po)} alasan*. "
+            "Bisa juga disetujui di aplikasi (Purchase Order).",
+        ]
+    )
+
+
+async def minta_persetujuan(db: AsyncSession, po: PurchaseOrder, pengaju: User) -> str:
+    """Kirim permintaan persetujuan ke semua keuangan/pimpinan yang menautkan WA.
+
+    Pengaju yang juga penyetuju TIDAK dikirimi pesan terpisah (ia sedang di
+    percakapan itu); balasan untuknya memuat perintah SETUJUI/TOLAK.
+    Return kalimat ringkas untuk pengaju.
+    """
+    teks = await _teks_minta_persetujuan(db, po, pengaju)
+    lain = await _penyetuju(db, kecuali_id=pengaju.id)
+    for u in lain:
+        _antre(u.whatsapp_chat_id, teks)
+    nama_lain = ", ".join(u.name for u in lain)
+    if pengaju.role in PENYETUJU:
+        return (
+            f"✅ {kode(po)} diajukan"
+            + (f" dan diteruskan ke {nama_lain}" if lain else "")
+            + f".\nAnda juga penyetuju: balas *SETUJUI {kode(po)}* atau *TOLAK {kode(po)} alasan*."
+        )
+    if not lain:
+        return (
+            f"{kode(po)} diajukan, tetapi belum ada akun keuangan/pimpinan yang menautkan "
+            "WhatsApp, jadi pemberitahuan tidak terkirim. Minta mereka kirim */link* "
+            "ke nomor ini, atau setujui dari aplikasi."
+        )
+    return f"✅ {kode(po)} diteruskan ke {nama_lain} untuk disetujui."
 
 
 async def ajukan(db: AsyncSession, user: User, po: PurchaseOrder) -> str:
@@ -635,33 +731,20 @@ async def ajukan(db: AsyncSession, user: User, po: PurchaseOrder) -> str:
         return f"{kode(po)} tidak bisa diajukan: {LABEL_TAHAP.get(po.wa_tahap or '', 'bukan alur WA')}."
     po.wa_tahap = MENUNGGU_PERSETUJUAN
     await _catat(db, user, po, "diajukan untuk persetujuan")
-    proyek = await _proyek(db, po)
-    nama = await _nama_pemasok(db, po)
-    teks = "\n".join(
-        [
-            f"🧾 *{kode(po)} menunggu persetujuan*",
-            f"Pengaju: {user.name}"
-            + (f" — proyek {proyek.name} ({proyek.code})" if proyek else ""),
-            f"Pemasok: {nama}",
-            f"No. PO: {po.number}",
-            "",
-            *_daftar_barang(po),
-            f"Total: {rp(po.total)}",
-            f"Pembayaran: {teks_tempo(po.tempo_days)}",
-            "",
-            f"Balas *SETUJUI {kode(po)}* atau *TOLAK {kode(po)} alasan*. "
-            "Bisa juga disetujui di aplikasi (Purchase Order).",
-        ]
-    )
-    penyetuju = await _penyetuju(db, kecuali_id=user.id)
-    for u in penyetuju:
+    return await minta_persetujuan(db, po, user)
+
+
+async def setelah_diajukan_aplikasi(db: AsyncSession, po: PurchaseOrder, pengaju: User) -> None:
+    """Dipanggil endpoint issue di aplikasi: kabari keuangan/pimpinan lewat WA."""
+    from app.services import messaging
+
+    if not await messaging.whatsapp_active(db):
+        return
+    po = await ambil_po(db, po.id) or po
+    teks = await _teks_minta_persetujuan(db, po, pengaju)
+    # Dari aplikasi: semua penyetuju dikabari, termasuk pengaju bila ia penyetuju.
+    for u in await _penyetuju(db):
         _antre(u.whatsapp_chat_id, teks)
-    if not penyetuju:
-        return (
-            f"{kode(po)} diajukan. Belum ada akun keuangan/pimpinan yang menautkan WhatsApp, "
-            "jadi persetujuan dilakukan dari aplikasi."
-        )
-    return f"✅ {kode(po)} diteruskan ke keuangan/pimpinan untuk disetujui."
 
 
 async def _kabari_final(db: AsyncSession, po: PurchaseOrder, penyetuju: User) -> None:
@@ -695,13 +778,22 @@ async def _kabari_final(db: AsyncSession, po: PurchaseOrder, penyetuju: User) ->
 async def setujui(db: AsyncSession, penyetuju: User, po: PurchaseOrder) -> str:
     if penyetuju.role not in PENYETUJU:
         return "Hanya keuangan/pimpinan yang bisa menyetujui PO."
-    if po.wa_tahap != MENUNGGU_PERSETUJUAN:
-        return f"{kode(po)} tidak menunggu persetujuan ({LABEL_TAHAP.get(po.wa_tahap or '', '-')})."
+    if not menunggu_persetujuan(po):
+        return f"{kode(po)} tidak menunggu persetujuan ({_label(po)})."
     po.status = POStatus.APPROVED
     po.approved_by_id = penyetuju.id
     po.approved_at = datetime.now(UTC)
-    po.wa_tahap = FINAL
     await _catat(db, penyetuju, po, "disetujui")
+    if po.wa_tahap is None:
+        # PO biasa (diajukan di aplikasi): kabari pembuatnya saja.
+        pengaju = await _pengaju(db, po)
+        if pengaju is not None and pengaju.id != penyetuju.id:
+            _antre(
+                pengaju.whatsapp_chat_id,
+                f"✅ {kode(po)} ({po.number}) disetujui oleh {penyetuju.name}.",
+            )
+        return f"✅ {kode(po)} disetujui ({rp(po.total)})."
+    po.wa_tahap = FINAL
     await _kabari_final(db, po, penyetuju)
     return f"✅ {kode(po)} disetujui ({rp(po.total)}). PO final dikirim ke pemasok."
 
@@ -723,18 +815,23 @@ async def setelah_disetujui_aplikasi(db: AsyncSession, po: PurchaseOrder, penyet
 async def tolak(db: AsyncSession, penyetuju: User, po: PurchaseOrder, alasan: str) -> str:
     if penyetuju.role not in PENYETUJU:
         return "Hanya keuangan/pimpinan yang bisa menolak PO."
-    if po.wa_tahap != MENUNGGU_PERSETUJUAN:
-        return f"{kode(po)} tidak menunggu persetujuan ({LABEL_TAHAP.get(po.wa_tahap or '', '-')})."
+    if not menunggu_persetujuan(po):
+        return f"{kode(po)} tidak menunggu persetujuan ({_label(po)})."
     alasan = alasan.strip() or "-"
     po.status = POStatus.CANCELLED
     po.cancel_reason = f"Ditolak {penyetuju.name}: {alasan}"[:1000]
-    po.wa_tahap = DIBATALKAN
+    alur_wa = po.wa_tahap is not None
+    if alur_wa:
+        po.wa_tahap = DIBATALKAN
     await _catat(db, penyetuju, po, f"ditolak: {alasan}")
     pengaju = await _pengaju(db, po)
-    _antre(
-        pengaju.whatsapp_chat_id if pengaju else None,
-        f"❌ {kode(po)} ditolak oleh {penyetuju.name}.\nAlasan: {alasan}",
-    )
+    if pengaju is not None and pengaju.id != penyetuju.id:
+        _antre(
+            pengaju.whatsapp_chat_id,
+            f"❌ {kode(po)} ditolak oleh {penyetuju.name}.\nAlasan: {alasan}",
+        )
+    if not alur_wa:
+        return f"{kode(po)} ditolak. Pembuat PO sudah diberi tahu."
     _antre(
         po.supplier_wa, f"Mohon maaf, pesanan {kode(po)} ({po.number}) dibatalkan. Terima kasih."
     )
@@ -863,41 +960,70 @@ async def _tagihan_po(db: AsyncSession, po: PurchaseOrder) -> Invoice | None:
     return res.scalars().first()
 
 
-def _kunci_tautan() -> bytes:
-    return hashlib.sha256(f"bukti-v1:{settings.SECRET_KEY}".encode()).digest()
+def _kunci_tautan(tujuan: str = "bukti") -> bytes:
+    # Kunci berbeda per tujuan: token bukti tidak bisa dipakai sebagai token
+    # penawaran, dan sebaliknya.
+    return hashlib.sha256(f"{tujuan}-v1:{settings.SECRET_KEY}".encode()).digest()
+
+
+def _buat_token(tujuan: str, ident: int, berlaku_hari: int, sekarang: float | None) -> str:
+    exp = int((sekarang or time.time()) + berlaku_hari * 86400)
+    isi = f"{ident}.{exp}"
+    sig = hmac.new(_kunci_tautan(tujuan), isi.encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{isi}.{sig}"
+
+
+def _baca_token(tujuan: str, token: str, sekarang: float | None) -> int | None:
+    try:
+        ident, exp, sig = token.split(".")
+        ident_i, exp_i = int(ident), int(exp)
+    except ValueError:
+        return None
+    benar = hmac.new(
+        _kunci_tautan(tujuan), f"{ident_i}.{exp_i}".encode(), hashlib.sha256
+    ).hexdigest()[:32]
+    if not hmac.compare_digest(benar, sig):
+        return None
+    if exp_i < (sekarang or time.time()):
+        return None
+    return ident_i
 
 
 def token_bukti(
     attachment_id: int, *, berlaku_hari: int = 60, sekarang: float | None = None
 ) -> str:
-    exp = int((sekarang or time.time()) + berlaku_hari * 86400)
-    isi = f"{attachment_id}.{exp}"
-    sig = hmac.new(_kunci_tautan(), isi.encode(), hashlib.sha256).hexdigest()[:32]
-    return f"{isi}.{sig}"
+    return _buat_token("bukti", attachment_id, berlaku_hari, sekarang)
 
 
 def baca_token_bukti(token: str, *, sekarang: float | None = None) -> int | None:
     """Return id lampiran transaksi kalau token sah & belum kedaluwarsa."""
-    try:
-        att, exp, sig = token.split(".")
-        att_id, exp_i = int(att), int(exp)
-    except ValueError:
-        return None
-    benar = hmac.new(_kunci_tautan(), f"{att_id}.{exp_i}".encode(), hashlib.sha256).hexdigest()[:32]
-    if not hmac.compare_digest(benar, sig):
-        return None
-    if exp_i < (sekarang or time.time()):
-        return None
-    return att_id
+    return _baca_token("bukti", token, sekarang)
+
+
+def token_penawaran(po_id: int, *, berlaku_hari: int = 30, sekarang: float | None = None) -> str:
+    return _buat_token("penawaran", po_id, berlaku_hari, sekarang)
+
+
+def baca_token_penawaran(token: str, *, sekarang: float | None = None) -> int | None:
+    """Return id PO kalau token tautan isi harga sah & belum kedaluwarsa."""
+    return _baca_token("penawaran", token, sekarang)
+
+
+def _alamat_dasar() -> str:
+    from app.services.app_settings import get_cached
+
+    return (get_cached("PUBLIC_BASE_URL") or settings.PUBLIC_BASE_URL or "").strip().rstrip("/")
 
 
 def tautan_bukti(attachment_id: int) -> str | None:
-    from app.services.app_settings import get_cached
+    dasar = _alamat_dasar()
+    return f"{dasar}/bukti/{token_bukti(attachment_id)}" if dasar else None
 
-    dasar = (get_cached("PUBLIC_BASE_URL") or settings.PUBLIC_BASE_URL or "").strip().rstrip("/")
-    if not dasar:
-        return None
-    return f"{dasar}/bukti/{token_bukti(attachment_id)}"
+
+def tautan_penawaran(po: PurchaseOrder) -> str | None:
+    """Tautan halaman isi harga untuk pemasok (tanpa login)."""
+    dasar = _alamat_dasar()
+    return f"{dasar}/penawaran/{token_penawaran(po.id)}" if dasar else None
 
 
 async def bayar(db: AsyncSession, aktor: User, po: PurchaseOrder, berkas: dict) -> str:

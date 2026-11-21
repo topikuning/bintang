@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate, useParams } from "react-router"
 import { AppShell } from "@/components/layout/AppShell"
 import { RequireAuth } from "@/components/auth/RequireAuth"
 import { LoginPage } from "@/pages/Login"
+import { PenawaranPage } from "@/pages/public/PenawaranPage"
 import { NotFoundPage } from "@/pages/NotFound"
 import { RouteErrorBoundary } from "@/components/data/RouteErrorBoundary"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -189,6 +190,8 @@ function RedirectMasterProject() {
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage />, errorElement: <RouteErrorBoundary /> },
+  // Publik (tanpa login): pemasok mengisi harga lewat tautan di pesan WA.
+  { path: "/penawaran/:token", element: <PenawaranPage />, errorElement: <RouteErrorBoundary /> },
   {
     element: <RequireAuth />,
     errorElement: <RouteErrorBoundary />,
