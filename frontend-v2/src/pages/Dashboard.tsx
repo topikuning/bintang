@@ -968,7 +968,7 @@ function AnomalyRow({ flag }: { flag: AnomalyFlag }) {
         <div className="text-[12px] font-medium text-ink-800">
           {flag.anomaly_type} ·{" "}
           <Link
-            to={`/transactions/${flag.tx_id}`}
+            to={`/transactions?id=${flag.tx_id}`}
             className="text-brand-600 hover:underline"
           >
             TX #{flag.tx_id}

@@ -243,7 +243,7 @@ function LinkedTransactionsSection({ poId }: { poId: number }) {
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <RouterLink
-                  to={`/transactions/${t.id}`}
+                  to={`/transactions?id=${t.id}`}
                   className="font-medium text-brand-700 hover:underline truncate inline-block"
                 >
                   Tx #{t.id} ·{" "}
@@ -267,7 +267,7 @@ function LinkedTransactionsSection({ poId }: { poId: number }) {
                     className="text-[11px] flex items-center justify-between gap-2"
                   >
                     <RouterLink
-                      to={`/invoices/${a.invoice_id}`}
+                      to={`/invoices?id=${a.invoice_id}`}
                       className="text-info-700 hover:underline inline-flex items-center gap-1 truncate"
                     >
                       <Receipt className="h-3 w-3 shrink-0" />

@@ -31,7 +31,7 @@ export function RecentTransactions({ items, className, limit }: RecentTransactio
       {data.map((t) => (
         <li key={t.id}>
           <Link
-            to={`/transactions?open=${t.id}`}
+            to={`/transactions?id=${t.id}`}
             className="flex items-center gap-3 px-3 py-2.5 hover:bg-surface-muted"
           >
             <span

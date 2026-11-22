@@ -235,7 +235,7 @@ function AllocationsSection({
           <li key={a.id} className="flex items-center gap-2 px-3 py-2 text-sm">
             <div className="flex-1 min-w-0">
               <RouterLink
-                to={`/invoices/${a.invoice_id}`}
+                to={`/invoices?id=${a.invoice_id}`}
                 className="text-brand-700 hover:underline font-mono truncate inline-block"
               >
                 {a.invoice_number ?? `#${a.invoice_id}`}

@@ -348,7 +348,7 @@ function PaymentsSection({
               {/* TX ID clickable -> bidirectional drilldown ke detail tx
                   pembayar. Sebelumnya teks plain, sulit di-trace. */}
               <RouterLink
-                to={`/transactions/${pm.id}`}
+                to={`/transactions?id=${pm.id}`}
                 className="text-sm font-medium truncate text-brand-700 hover:underline block"
               >
                 {pm.description || pm.reference_no || `Transaksi #${pm.id}`}

@@ -182,6 +182,13 @@ function L({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<PageFallback />}>{children}</Suspense>
 }
 
+/** Link /transactions/:id, /invoices/:id, /purchase-orders/:id (bookmark lama)
+ *  dialihkan ke daftar dengan ?id=N, yang membuka detailnya. */
+function RedirectDetail({ ke }: { ke: string }) {
+  const { id } = useParams<{ id: string }>()
+  return <Navigate to={`/${ke}?id=${encodeURIComponent(id ?? "")}`} replace />
+}
+
 /** Redirect link lama /master/projects/:id ke /projects/:id (canonical). */
 function RedirectMasterProject() {
   const { id } = useParams<{ id: string }>()
@@ -205,8 +212,11 @@ export const router = createBrowserRouter([
           { path: "action-center", element: <L><ActionCenterPage /></L> },
           { path: "transactions", element: <L><TransactionsListPage /></L> },
           { path: "transactions/cash-advances", element: <L><CashAdvancePage /></L> },
+          { path: "transactions/:id", element: <RedirectDetail ke="transactions" /> },
           { path: "invoices", element: <L><InvoicesListPage /></L> },
+          { path: "invoices/:id", element: <RedirectDetail ke="invoices" /> },
           { path: "purchase-orders", element: <L><POListPage /></L> },
+          { path: "purchase-orders/:id", element: <RedirectDetail ke="purchase-orders" /> },
           { path: "budget", element: <L><BudgetPage /></L> },
           { path: "non-project", element: <L><NonProjectPage /></L> },
           { path: "settings/non-project", element: <L><NonProjectSettingsPage /></L> },

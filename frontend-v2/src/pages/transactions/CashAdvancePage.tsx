@@ -192,7 +192,7 @@ function OutstandingList({
               <span>{r.tx_date}</span>
               <span>·</span>
               <Link
-                to={`/transactions/${r.id}`}
+                to={`/transactions?id=${r.id}`}
                 className="text-brand-600 hover:underline"
               >
                 Tx #{r.id}
@@ -501,7 +501,7 @@ function SettlementDialog({
                       <div className="text-[11px] text-brand-700">
                         Bayar invoice:{" "}
                         <Link
-                          to={`/invoices/${it.invoice_id}`}
+                          to={`/invoices?id=${it.invoice_id}`}
                           className="hover:underline"
                         >
                           {it.invoice_number ?? `#${it.invoice_id}`}
@@ -522,7 +522,7 @@ function SettlementDialog({
                 <span>
                   Top-up tx (kelebihan klaim){" "}
                   <Link
-                    to={`/transactions/${s.topup_tx_id}`}
+                    to={`/transactions?id=${s.topup_tx_id}`}
                     className="text-brand-600 hover:underline"
                   >
                     #{s.topup_tx_id}
