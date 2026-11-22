@@ -317,11 +317,28 @@ async def bayar(
         return "Hanya keuangan/pimpinan yang bisa mencatat pembayaran."
     if cr.status != CashRequestStatus.APPROVED.value or not cr.disbursement_tx_id:
         return f"{kode(cr)} belum disetujui (status {cr.status})."
-    tx = await db.get(Transaction, cr.disbursement_tx_id)
+    # Kunci baris (PostgreSQL) supaya dua BAYAR yang datang bersamaan tidak
+    # sama-sama mencatat transfer.
+    tx = (
+        await db.execute(
+            select(Transaction)
+            .where(Transaction.id == cr.disbursement_tx_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
     if tx is None or tx.deleted_at is not None:
         return f"Kas keluar untuk {kode(cr)} tidak ditemukan."
     if tx.status == TxnStatus.VERIFIED:
-        return f"{kode(cr)} sudah tercatat ditransfer sebelumnya."
+        kapan = (
+            f" pada {wa_po_flow.tgl(tx.verified_at.astimezone(wa_po_flow.WITA).date())}"
+            if tx.verified_at
+            else ""
+        )
+        return (
+            f"{kode(cr)} sudah lunas: {wa_po_flow.rp(tx.amount)} tercatat ditransfer{kapan}. "
+            "Tidak ada yang perlu dicatat lagi. Bukti tambahan bisa dilampirkan di aplikasi."
+        )
     before = snapshot(tx)
     tx.status = TxnStatus.VERIFIED
     tx.verified_by_id = aktor.id

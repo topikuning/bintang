@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.models.models import (
     CashRequest,
@@ -15,6 +16,7 @@ from app.models.models import (
     TransactionAttachment,
     TxnStatus,
     User,
+    WaPesanMasuk,
 )
 from app.services import wa_kas, wa_po_flow
 from tests.test_wa_po_flow import (  # noqa: F401
@@ -95,6 +97,9 @@ async def test_kas_dari_nomor_baru_sampai_ditransfer(db, monkeypatch):
     # BAYAR tanpa foto -> diminta foto.
     keluar = await kirim({"from": KEUANGAN_WA, "fromMe": False, "body": f"BAYAR {k}"})
     assert "foto bukti transfer" in keluar[0][1]
+    # Pesan teks yang sama boleh dikirim ulang (tanpa msg_id sama): tetap dibalas.
+    keluar = await kirim({"from": KEUANGAN_WA, "fromMe": False, "body": f"BAYAR {k}"})
+    assert "foto bukti transfer" in keluar[0][1]
 
     # BAYAR + foto -> kas keluar terverifikasi, Tedi & Wawan dikabari.
     terkirim_media: list[tuple] = []
@@ -104,15 +109,15 @@ async def test_kas_dari_nomor_baru_sampai_ditransfer(db, monkeypatch):
         return {"id": "x"}
 
     monkeypatch.setattr(wa, "send_media", media)
-    keluar = await kirim(
-        {
-            "from": KEUANGAN_WA,
-            "fromMe": False,
-            "body": f"BAYAR {k}",
-            "hasMedia": True,
-            "media": {"url": "http://waha/files/bukti.jpg", "mimetype": "image/jpeg"},
-        }
-    )
+    pesan_bayar = {
+        "id": "false_628111_BAYAR1",
+        "from": KEUANGAN_WA,
+        "fromMe": False,
+        "body": f"BAYAR {k}",
+        "hasMedia": True,
+        "media": {"url": "http://waha/files/bukti.jpg", "mimetype": "image/jpeg"},
+    }
+    keluar = await kirim(pesan_bayar)
     await db.refresh(tx)
     assert tx.status == TxnStatus.VERIFIED and tx.verified_by_id == keuangan.id
     assert (
@@ -124,6 +129,39 @@ async def test_kas_dari_nomor_baru_sampai_ditransfer(db, monkeypatch):
     assert any(c == BARU and "sudah ditransfer ke Tedi" in t for c, t in keluar)
     assert [c for c, _ in terkirim_media] == [TEDI]
     assert "Rp 81.000.000 sudah kami transfer" in terkirim_media[0][1]
+
+    # Produksi 22 Nov 2026: pesan BAYAR terproses dua kali lalu dibalas
+    # "sudah tercatat ditransfer sebelumnya". Pesan ganda kini diam.
+    jumlah_bukti = len(
+        (
+            await db.execute(
+                select(TransactionAttachment).where(TransactionAttachment.transaction_id == tx.id)
+            )
+        ).all()
+    )
+    assert await kirim(pesan_bayar) == []  # kiriman ulang WAHA (msg_id sama)
+    assert await kirim({**pesan_bayar, "id": "false_628111_BAYAR1_HD"}) == []  # foto HD
+    assert len(terkirim_media) == 1
+    assert (
+        len(
+            (
+                await db.execute(
+                    select(TransactionAttachment).where(
+                        TransactionAttachment.transaction_id == tx.id
+                    )
+                )
+            ).all()
+        )
+        == jumlah_bukti
+    )
+    # BAYAR lagi jauh setelahnya: dijelaskan bahwa sudah lunas.
+    await db.execute(
+        update(WaPesanMasuk).values(created_at=datetime.now(UTC) - timedelta(minutes=5))
+    )
+    await db.commit()
+    keluar = await kirim({**pesan_bayar, "id": "false_628111_BAYAR2"})
+    assert "sudah lunas: Rp 81.000.000 tercatat ditransfer" in keluar[0][1]
+    assert "sebelumnya" not in keluar[0][1]
     # Sudah ditransfer -> hilang dari ringkasan.
     assert k not in await wa_po_flow.ringkasan_tagihan(db)
 
