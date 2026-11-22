@@ -309,6 +309,15 @@ async def test_alur_lengkap_po_lewat_whatsapp(db, monkeypatch, upload_dir):
     sehari_lewat = await wa_po_flow.ringkasan_tagihan(db, inv.due_date + timedelta(days=1))
     assert "Lewat jatuh tempo* (1)" in sehari_lewat
 
+    # Proyek sudah selesai/dibatalkan -> tagihannya tidak dikirim lagi
+    proyek_po = await db.get(Project, po.project_id)
+    for st in wa_po_flow.PROYEK_TUTUP:
+        proyek_po.status = st
+        await db.flush()
+        assert k not in await wa_po_flow.ringkasan_tagihan(db, inv.due_date + timedelta(days=1))
+    proyek_po.status = ProjectStatus.AKTIF
+    await db.flush()
+
     # Pengaju tidak bisa mencatat pembayaran
     r = await wa_po_flow.tangani_perintah(db, user=pengaju, teks=f"BAYAR {k}", ambil_media=_media())
     assert "Hanya keuangan/pimpinan" in r

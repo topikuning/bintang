@@ -57,6 +57,7 @@ from app.models.models import (
     InvoiceType,
     POStatus,
     Project,
+    ProjectStatus,
     PurchaseOrder,
     Transaction,
     TransactionAttachment,
@@ -69,6 +70,9 @@ from app.services.whatsapp import client as wa
 from app.services.whatsapp.phone import normalisasi_wa, tampil_nomor
 
 logger = logging.getLogger(__name__)
+
+# Proyek yang sudah ditutup tidak lagi ditagihkan di ringkasan pagi / TAGIHAN.
+PROYEK_TUTUP = (ProjectStatus.SELESAI, ProjectStatus.DIBATALKAN)
 
 # Indonesia tidak memakai musim panas; offset tetap lebih aman daripada
 # bergantung pada data zona waktu di image.
@@ -1373,7 +1377,9 @@ async def ringkasan_tagihan(db: AsyncSession, tanggal: date | None = None) -> st
     besok = h + timedelta(days=1)
     res = await db.execute(
         select(Invoice)
+        .join(Project, Project.id == Invoice.project_id)
         .where(
+            Project.status.not_in(PROYEK_TUTUP),
             Invoice.type == InvoiceType.IN,
             Invoice.status.in_(
                 (InvoiceStatus.ISSUED, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.OVERDUE)

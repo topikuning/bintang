@@ -443,7 +443,9 @@ async def ringkasan(db: AsyncSession) -> list[str]:
     """Baris tambahan untuk ringkasan pagi: kas menunggu persetujuan / transfer."""
     res = await db.execute(
         select(CashRequest)
+        .join(Project, Project.id == CashRequest.project_id)
         .where(
+            Project.status.not_in(wa_po_flow.PROYEK_TUTUP),
             CashRequest.deleted_at.is_(None),
             CashRequest.status.in_(
                 (CashRequestStatus.PENDING.value, CashRequestStatus.APPROVED.value)

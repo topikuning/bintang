@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.models.models import (
     CashRequest,
     CashRequestStatus,
+    ProjectStatus,
     Transaction,
     TransactionAttachment,
     TxnStatus,
@@ -72,6 +73,12 @@ async def test_kas_dari_nomor_baru_sampai_ditransfer(db, monkeypatch):
     assert f"• {k} · Tedi Yulianto Prabowo · Rp 81.000.000" in await wa_po_flow.ringkasan_tagihan(
         db
     )
+    # ... kecuali proyeknya sudah selesai.
+    proyek.status = ProjectStatus.SELESAI
+    await db.flush()
+    assert k not in await wa_po_flow.ringkasan_tagihan(db)
+    proyek.status = ProjectStatus.AKTIF
+    await db.flush()
 
     # Pengaju tidak bisa menyetujui.
     keluar = await kirim({"from": BARU, "fromMe": False, "body": f"SETUJUI {k}"})
