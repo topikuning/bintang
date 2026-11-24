@@ -300,6 +300,36 @@ async def webhook(
     if not chat_id:
         return {"ok": True, "skipped": "no chat_id"}
 
+    # Pesan ganda (kiriman ulang WAHA, foto HD kedua) tidak diproses lagi.
+    from app.services import wa_pesan_masuk
+
+    msg_id = payload.get("id") or payload.get("messageId") or (payload.get("key") or {}).get("id")
+    if isinstance(msg_id, dict):  # WEBJS: {"_serialized": "..."}
+        msg_id = msg_id.get("_serialized") or msg_id.get("id")
+    # Pencocokan isi hanya untuk pesan berfoto (foto HD kedua); balasan teks
+    # seperti "ya" boleh dikirim berulang dan cukup disaring lewat msg_id.
+    ber_media = bool(
+        payload.get("hasMedia")
+        or payload.get("type") in ("image", "video", "document")
+        or _extract_media(payload)
+    )
+    baris_id, lewati = await wa_pesan_masuk.catat(
+        db,
+        chat_id=chat_id,
+        msg_id=str(msg_id) if msg_id else None,
+        teks=_extract_text(payload) if ber_media else None,
+    )
+    if lewati:
+        logger.info("WA pesan %s dilewati (%s) dari %s", msg_id, lewati, chat_id)
+        return {"ok": True, "skipped": lewati}
+    try:
+        return await _proses_pesan(db, payload, chat_id)
+    except Exception:
+        await wa_pesan_masuk.lupakan(db, baris_id)
+        raise
+
+
+async def _proses_pesan(db: AsyncSession, payload: dict, chat_id: str) -> dict:
     # WhatsApp bisa mengirim ID '…@lid' alih-alih nomor. `nomor` = nomor asli
     # ('62…@c.us') bila bisa diketahui; dipakai untuk mencocokkan pengguna
     # dan pemasok (pemasok tidak perlu terdaftar, cukup nomornya).

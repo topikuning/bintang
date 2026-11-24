@@ -148,6 +148,24 @@ class WaFotoTunda(TimestampMixin, Base):
     mime_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
 
+class WaPesanMasuk(TimestampMixin, Base):
+    """Pesan WA masuk yang sudah diterima, untuk menolak pesan ganda.
+
+    WAHA bisa mengirim ulang webhook yang sama (mis. karena balasan kami
+    lambat), dan WhatsApp mengirim foto HD sebagai pesan kedua dengan
+    keterangan yang sama. Tanpa penyaring, "BAYAR KAS1" terproses dua kali.
+    """
+
+    __tablename__ = "wa_pesan_masuk"
+    __table_args__ = (Index("ix_wa_pesan_masuk_chat_sidik", "chat_id", "sidik"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    msg_id: Mapped[str | None] = mapped_column(String(160), unique=True, nullable=True)
+    chat_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # sha256 dari isi teks yang dinormalkan; None untuk pesan tanpa teks
+    sidik: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
 class BotPendingDocSession(TimestampMixin, Base):
     """Session sementara per (channel, chat_id) utk konfirmasi pembuatan
     dokumen (PO atau Invoice) via bot chat.

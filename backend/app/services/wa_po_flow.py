@@ -1238,6 +1238,10 @@ async def bayar(
     daftar = berkas if isinstance(berkas, list) else [berkas]
     if aktor.role not in PENYETUJU:
         return "Hanya keuangan/pimpinan yang bisa mencatat pembayaran."
+    # Kunci baris PO (PostgreSQL) supaya dua BAYAR yang datang bersamaan tidak
+    # sama-sama melunasi tagihan.
+    await db.execute(select(PurchaseOrder.id).where(PurchaseOrder.id == po.id).with_for_update())
+    await db.refresh(po, attribute_names=["wa_tahap", "status"])
     if po.wa_tahap not in (FINAL, DITERIMA):
         return (
             f"{kode(po)} belum bisa dibayar: {LABEL_TAHAP.get(po.wa_tahap or '', 'bukan alur WA')}."
@@ -1246,7 +1250,7 @@ async def bayar(
     if not terbuka:
         if po.wa_tahap == DITERIMA:
             po.wa_tahap = LUNAS
-            return f"Tagihan {kode(po)} sudah lunas sebelumnya."
+            return f"Tagihan {kode(po)} sudah lunas. Tidak ada yang perlu dicatat lagi."
         return f"{kode(po)} belum punya tagihan: tunggu barang datang (TERIMA {kode(po)})."
     total = Decimal("0")
     ada_kasbon = False
